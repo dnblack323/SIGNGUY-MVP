@@ -9,6 +9,13 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 60_000,
       refetchOnWindowFocus: false,
+      // Do not retry on 4xx — surface HTTP client errors immediately so pages
+      // can render their friendly error state instead of hanging in "Loading…".
+      retry: (failureCount, err) => {
+        const status = err?.response?.status;
+        if (status && status >= 400 && status < 500) return false;
+        return failureCount < 2;
+      },
     },
   },
 });
