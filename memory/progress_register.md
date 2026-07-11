@@ -11,8 +11,8 @@
 | EC | Name | Status | Notes |
 |---|---|---|---|
 | **EC0** | Owner Decisions and Governance Lock | **COMPLETE** | All 27 owner decisions answered and baked into the owner-approved consolidated master plan (Part 4). Do not rerun. |
-| **EC1** | Security and Permanent App Guardrails | **READY TO BUILD** | First code-bearing checkpoint. Awaiting EC1 implementation prompt. |
-| EC2 | Shared Platform Foundations | NOT STARTED | Depends on EC1 exit. |
+| **EC1** | Security and Permanent App Guardrails | **COMPLETE** | Production startup guards, dev-route protection, terminology guard, money policy contract, extended permission catalog with platform + portal scope separation, LOCKED sidebar + flyout navigation. 34/34 tests pass. Evidence: `/app/evidence/EC1_evidence.md`. |
+| EC2 | Shared Platform Foundations | **READY TO BUILD** | Depends on EC1 exit. |
 | EC3 | Core Money and Order Pipeline | NOT STARTED | Depends on EC2 exit. |
 | EC4 | Documents, Portals, and Customer Workflow | NOT STARTED | Depends on EC3 exit. |
 | EC5 | Inventory, Purchasing, Finance, and Reporting | NOT STARTED | Depends on EC3 exit. |

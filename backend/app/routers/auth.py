@@ -214,8 +214,10 @@ async def reset_password(payload: ResetPasswordIn) -> Response:
 async def _dev_last_reset_token(email: EmailStr) -> dict:
     """DEV-ONLY convenience endpoint: fetch the latest unused reset token for an email.
 
-    Remove or disable in production.
+    Refuses to run outside a development environment (EC1 guard).
     """
+    if _settings.env != "development":
+        raise HTTPException(status_code=404, detail="Not found")
     user = await db.users.find_one({"email": email})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -229,7 +231,12 @@ async def _dev_last_reset_token(email: EmailStr) -> dict:
 
 @router.get("/dev-config")
 async def dev_config() -> dict:
-    """Tells the frontend whether the dev auth bypass is enabled."""
+    """Tells the frontend whether the dev auth bypass is enabled.
+
+    Refuses to run outside a development environment (EC1 guard).
+    """
+    if _settings.env != "development":
+        raise HTTPException(status_code=404, detail="Not found")
     return {"dev_bypass": _settings.auth_dev_bypass}
 
 
@@ -241,10 +248,11 @@ DEV_OWNER_EMAIL = "dev@signguy-dev.example.com"
 async def dev_login() -> TokenOut:
     """DEV-ONLY: auto-provision a Dev Shop + owner and return a JWT.
 
-    Requires AUTH_DEV_BYPASS=true in the backend env.
-    Must be disabled in production.
+    Requires ENV=development AND AUTH_DEV_BYPASS=true. In production, refuses
+    even if AUTH_DEV_BYPASS were somehow set (defense in depth alongside the
+    startup guard in app.core.security_guards).
     """
-    if not _settings.auth_dev_bypass:
+    if _settings.env != "development" or not _settings.auth_dev_bypass:
         raise HTTPException(status_code=404, detail="Dev bypass disabled")
 
     tenant = await db.tenants.find_one({"slug": DEV_TENANT_SLUG})

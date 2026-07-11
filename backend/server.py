@@ -4,6 +4,7 @@ import logging
 
 from app.core.config import get_settings
 from app.core.db import ensure_indexes
+from app.core.security_guards import enforce_startup_guards
 from app.services.storage import initialize as init_storage
 from app.routers import (
     auth as auth_router,
@@ -27,6 +28,9 @@ logging.basicConfig(
 logger = logging.getLogger("signguy")
 
 _settings = get_settings()
+
+# EC1 — Production Startup Guards: refuse to start under an unsafe configuration.
+enforce_startup_guards(_settings)
 
 app = FastAPI(title="SignGuy AI", version="0.1.0")
 

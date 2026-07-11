@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { Home, Users, FileText, ShoppingBag, Wrench, Receipt, Folder, Mail, Settings, LogOut, Building2, ChevronsLeft, ShieldAlert, Calculator, DollarSign } from "lucide-react";
+import { LogOut, Building2, ChevronsLeft, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -7,25 +7,48 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { NAV_AREAS, filterFlyoutByPermissions } from "@/lib/navigation";
 
-const NAV = [
-  { to: "/", label: "Home", icon: Home, perm: "dashboard:read", testId: "nav-home" },
-  { to: "/customers", label: "Customers", icon: Users, perm: "customer:read", testId: "nav-customers" },
-  { to: "/quotes", label: "Quotes", icon: FileText, perm: "quote:read", testId: "nav-quotes" },
-  { to: "/orders", label: "Orders", icon: ShoppingBag, perm: "order:read", testId: "nav-orders" },
-  { to: "/work-orders", label: "Work Orders", icon: Wrench, perm: "work_order:read", testId: "nav-work-orders" },
-  { to: "/invoices", label: "Invoices", icon: Receipt, perm: "invoice:read", testId: "nav-invoices" },
-  { to: "/documents", label: "Documents", icon: Folder, perm: "document:read", testId: "nav-documents" },
-  { to: "/email-history", label: "Email History", icon: Mail, perm: "email:read", testId: "nav-email-history" },
-  { to: "/pricing-foundation", label: "Pricing Foundation", icon: DollarSign, perm: "pricing:read", testId: "nav-pricing-foundation" },
-  { to: "/pricing-calculator", label: "Pricing Calculator", icon: Calculator, perm: "pricing:calculate", testId: "nav-pricing-calculator" },
-  { to: "/settings", label: "Settings", icon: Settings, perm: null, testId: "nav-settings" },
-];
+function FlyoutPanel({ area, permissions, onNavigate }) {
+  const entries = filterFlyoutByPermissions(area.flyout, permissions);
+  if (!entries.length) return null;
+  return (
+    <div
+      data-testid={`flyout-${area.key}`}
+      className="absolute left-full top-0 ml-1 w-64 rounded-lg border bg-popover shadow-lg py-2 z-40"
+    >
+      <div className="px-3 pb-2 text-xs uppercase tracking-wide text-muted-foreground">
+        {area.label}
+      </div>
+      {entries.map((e) => {
+        const disabled = !!e.disabled;
+        return (
+          <NavLink
+            key={e.key}
+            to={disabled ? "#" : e.to}
+            onClick={(evt) => { if (disabled) evt.preventDefault(); else onNavigate?.(); }}
+            data-testid={e.testId}
+            data-disabled={disabled ? "true" : "false"}
+            className={({ isActive }) => cn(
+              "block px-3 py-1.5 text-sm rounded-md mx-1",
+              disabled ? "text-muted-foreground/60 cursor-not-allowed" : "hover:bg-muted/60",
+              !disabled && isActive ? "bg-muted/80 text-foreground" : "text-muted-foreground",
+            )}
+          >
+            {e.label}
+            {disabled && <span className="ml-2 text-[10px] uppercase tracking-wider">soon</span>}
+          </NavLink>
+        );
+      })}
+    </div>
+  );
+}
 
 function SidebarInner({ onNavigate }) {
   const { tenant, permissions, user, logout } = useAuth();
+  const [openArea, setOpenArea] = useState(null);
   return (
-    <div className="flex h-full flex-col" data-testid="app-shell-sidebar">
+    <div className="flex h-full flex-col relative" data-testid="app-shell-sidebar" onMouseLeave={() => setOpenArea(null)}>
       <div className="px-4 py-4 border-b">
         <div className="flex items-center gap-2">
           <div className="grid size-9 place-items-center rounded-lg bg-primary text-primary-foreground">
@@ -37,25 +60,55 @@ function SidebarInner({ onNavigate }) {
           </div>
         </div>
       </div>
-      <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto">
-        {NAV.filter((it) => !it.perm || permissions.includes(it.perm)).map((it) => (
-          <NavLink
-            key={it.to}
-            to={it.to}
-            end={it.to === "/"}
-            onClick={onNavigate}
-            data-testid={it.testId}
-            className={({ isActive }) => cn(
-              "h-10 px-3 rounded-lg flex items-center gap-3 text-sm relative transition-colors",
-              isActive
-                ? "text-foreground bg-muted/80 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:bg-[hsl(var(--ring))]"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
-            )}
-          >
-            <it.icon className="size-4" />
-            <span>{it.label}</span>
-          </NavLink>
-        ))}
+      <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-visible" data-testid="sidebar-nav">
+        {NAV_AREAS.map((area) => {
+          const Icon = area.icon;
+          if (area.home) {
+            return (
+              <NavLink
+                key={area.key}
+                to={area.to}
+                end
+                onClick={onNavigate}
+                data-testid={area.testId}
+                className={({ isActive }) => cn(
+                  "h-10 px-3 rounded-lg flex items-center gap-3 text-sm transition-colors",
+                  isActive ? "bg-muted/80 text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
+                )}
+              >
+                <Icon className="size-4" />
+                <span>{area.label}</span>
+              </NavLink>
+            );
+          }
+          return (
+            <div key={area.key}>
+              <div
+                className="relative"
+                onMouseEnter={() => setOpenArea(area.key)}
+              >
+                <button
+                  type="button"
+                  data-testid={area.testId}
+                  onClick={() => setOpenArea(openArea === area.key ? null : area.key)}
+                  className={cn(
+                    "w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm transition-colors",
+                    openArea === area.key ? "bg-muted/80 text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
+                  )}
+                >
+                  <Icon className="size-4" />
+                  <span>{area.label}</span>
+                </button>
+                {openArea === area.key && (
+                  <FlyoutPanel area={area} permissions={permissions} onNavigate={onNavigate} />
+                )}
+              </div>
+              {area.divider && (
+                <div className="my-2 border-t border-border/60" data-testid="sidebar-divider" />
+              )}
+            </div>
+          );
+        })}
       </nav>
       <div className="border-t px-2 py-2">
         <DropdownMenu>
@@ -85,7 +138,6 @@ export default function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const loc = useLocation();
   const { devBypass } = useAuth();
-  const active = NAV.find((it) => it.to !== "/" && loc.pathname.startsWith(it.to)) || (loc.pathname === "/" && NAV[0]);
   return (
     <div className="min-h-dvh bg-background text-foreground">
       {devBypass && (
@@ -95,13 +147,11 @@ export default function AppShell() {
         </div>
       )}
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr]">
-        {/* Desktop sidebar */}
         <aside className="hidden lg:flex flex-col border-r bg-[hsl(var(--sidebar))] h-dvh sticky top-0">
           <SidebarInner />
         </aside>
 
         <div className="min-w-0">
-          {/* Topbar */}
           <header className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60" data-testid="app-shell-topbar">
             <div className="h-14 px-4 md:px-6 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
@@ -116,13 +166,13 @@ export default function AppShell() {
                   </SheetContent>
                 </Sheet>
                 <div className="font-display font-semibold truncate" data-testid="topbar-page-title">
-                  {active?.label || "SignGuy AI"}
+                  SignGuy AI
                 </div>
               </div>
             </div>
           </header>
 
-          <main className="px-4 md:px-6 py-6 max-w-[1400px]" data-testid="app-shell-content">
+          <main className="px-4 md:px-6 py-6 max-w-[1400px]" data-testid="app-shell-content" data-active-path={loc.pathname}>
             <Outlet />
           </main>
         </div>

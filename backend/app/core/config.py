@@ -35,6 +35,42 @@ class Settings:
         # MUST be set to false before production/deploy.
         self.auth_dev_bypass: bool = os.environ.get("AUTH_DEV_BYPASS", "false").lower() == "true"
 
+        # EC1 — Environment + Integration-Enabled flags.
+        # ENV values: "development" (default), "test", "production".
+        # Startup guards (app.core.security_guards) enforce required secrets only
+        # when the corresponding integration is enabled in production.
+        self.env: str = os.environ.get("ENV", "development").strip().lower()
+
+        # SendGrid webhook (inbound delivery events). Requires webhook secret when enabled.
+        self.sendgrid_webhook_enabled: bool = (
+            os.environ.get("SENDGRID_WEBHOOK_ENABLED", "false").lower() == "true"
+        )
+        self.sendgrid_webhook_secret: str | None = (
+            os.environ.get("SENDGRID_WEBHOOK_SECRET") or None
+        )
+
+        # Stripe (Core payments). Distinguish "writes enabled" from "webhook enabled".
+        self.stripe_writes_enabled: bool = (
+            os.environ.get("STRIPE_WRITES_ENABLED", "false").lower() == "true"
+        )
+        self.stripe_webhook_enabled: bool = (
+            os.environ.get("STRIPE_WEBHOOK_ENABLED", "false").lower() == "true"
+        )
+        self.stripe_api_key: str | None = os.environ.get("STRIPE_API_KEY") or None
+        self.stripe_webhook_secret: str | None = (
+            os.environ.get("STRIPE_WEBHOOK_SECRET") or None
+        )
+
+        # AI provider (Emergent LLM key). Only required when AI generation is enabled.
+        self.ai_enabled: bool = os.environ.get("AI_ENABLED", "false").lower() == "true"
+
+        # SMS/MMS. Only required when SMS is enabled.
+        self.sms_enabled: bool = os.environ.get("SMS_ENABLED", "false").lower() == "true"
+        self.sms_provider_key: str | None = os.environ.get("SMS_PROVIDER_KEY") or None
+        self.sms_provider_secret: str | None = (
+            os.environ.get("SMS_PROVIDER_SECRET") or None
+        )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

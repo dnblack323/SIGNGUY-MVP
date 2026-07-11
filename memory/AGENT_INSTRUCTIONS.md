@@ -1,95 +1,82 @@
-# SIGNGUY-MVP Agent Instructions
+# SignGuy AI — Agent Instructions
 
-This file captures the controlling rules for all work in this repository. **Every migration or new feature MUST follow these rules.** See the source instructions doc (attached by user) for the full text; this file is the operating summary.
+**Authority order:**
+1. Owner-approved consolidated master plan: `/app/SIGNGUY_AI_FINAL_CONSOLIDATED_MASTER_BUILD_PLAN.md`.
+2. Final scope + decision register: `/app/SIGNGUY_AI_FINAL_SCOPE_AND_DECISION_REGISTER.md`.
+3. Feature readiness matrix: `/app/SIGNGUY_AI_FEATURE_READINESS_MATRIX.md`.
+4. Repository + architecture source map: `/app/SIGNGUY_AI_REPOSITORY_AND_ARCHITECTURE_SOURCE_MAP.md`.
+5. Progress register: `/app/memory/progress_register.md`.
+6. Completion register: `/app/memory/completion_register.md`.
+7. Architecture docs: `/app/docs/architecture/*.md`.
+8. Security docs: `/app/docs/security/*.md`.
 
-## Repository role
-This repo (SIGNGUY-MVP) is the **permanent production application**. It is the **only** repo where new implementation may continue.
+## Permanent LOCKED rules (EC1)
 
-## Donor repos (READ-ONLY reference)
-| Priority | Repo | Role |
-|---|---|---|
-| 2 | `signguyai_rebuild_version` | UI, navigation, workspace, DocuLink, Wrap Lab, Webstores — visual/workflow donor |
-| 3 | `signguy-ai-feb22` | Invoice/payment/migration/security-test — financial-logic donor |
-| 4 | `signguyai` | Original feature inventory / historical behavior — discovery only |
+### Repository roles
+- `dnblack323/SIGNGUY-MVP` = permanent product. Only repo that receives new development.
+- Donor repositories (`SIGNGUY-AI-OS`, `signguyai_rebuild_version`, `signguy-ai-feb22`, `signguyai`) are read-only references. No deletion until final commercial completion.
 
-> I (the agent) do **not** have direct access to those donor repos. When migration work requires inspecting donor code, the user must paste the relevant file/section, or grant me read access.
+### Terminology
+- Canonical: Customer, Lead, Quote, Order, Order Item, Work Order, Invoice, Payment, etc.
+- Prohibited canonical: `Job`, `Job Item`, `Job Ticket`, `Production Ticket`, `Job Ticket Summary`.
+- Guard: `python -m app.core.terminology_guard /app`.
 
-## Source-conflict order (highest wins)
-1. Current written user instruction
-2. Current MVP implementation / approved spec
-3. Module-specific migration audit
-4. rebuild-version workflow spec
-5. February financial behavior
-6. Original-repo historical behavior
+### Money policy
+- Commerce fields stored as integer cents with `_cents` suffix.
+- Pricing configuration remains dollar-based (`Decimal` internally).
+- Single conversion boundary at `backend/app/core/money.py::dollars_to_cents`.
+- Stripe amounts are integer cents on wire and Payment row.
 
-## Preflight audit — REQUIRED before any migration
-Before touching code for a module I must produce a **Feature Migration Preflight Audit** that:
-- Names the exact MVP module + current files/models/routes/services/pages/tests/deps
-- Inspects the same feature in each donor repo (or notes that the user must paste it)
-- Identifies authoritative source for behavior, UI, data, tests, terminology
-- Defines the final MVP data model and ownership boundaries
-- Classifies each item **reuse / adapt / rewrite / reject**
-- Lists required data migrations for existing MVP data
-- Only THEN begin implementation, under MVP auth/tenant/permission/audit/money/storage/email foundations
-- Adds tests: success, failure, permissions, tenant isolation, duplicate requests, status transitions, migration safety, regression
-- Documents what was implemented, what donor code was used, what was rejected, what was deferred
-- Marks the donor implementation retired for that module
+### Navigation
+- Collapsible left sidebar with side flyouts. Home + six areas + divider.
+- Source of truth: `frontend/src/lib/navigation.js`.
 
-## Prohibited actions
-- Create a new repo or restart from scratch
-- Merge donor repos wholesale
-- Continue implementing features in donor repos
-- Rename OrderItem → JobTicket, or use Job as primary shop-order entity
-- Module-specific copies of shared services (email, storage, audit, permission, customer, payment, notification, settings)
-- Treat polished UI as proof of production-ready backend
-- Skip tenant-isolation / permission tests
-- Hard-delete financial or audit history
-- Store uploaded files as base64 in MongoDB (must use object storage)
-- Mark a module "complete" from folders/READMEs/placeholders
-- Add Webstores or Wrap Lab depth before shared core is stable
+### Security
+- Production startup guards enforced by `app/core/security_guards.py`.
+- Dev routes (`/api/auth/dev-*`, `/api/auth/_dev/*`) refuse to run outside `ENV=development`.
+- JWT placeholders forbidden in production.
 
-## Completion standard for every stage
-- No duplicate implementation active
-- All protected resources tenant-scoped on backend
-- Permissions enforced at route/service, not just hidden in UI
-- Business state backend-derived where possible
-- Important mutations produce audit/activity evidence
-- Financial records use reversal / void / adjustment (never destructive rewrite)
-- Files use object storage + controlled access
-- Frontend screens have loading, empty, error, permission, success states
-- Legacy data has explicit migration + rollback strategy
-- Focused + regression tests pass
-- Docs updated before next stage
+### Permissions
+- Three disjoint scopes: `Perm` (staff), `PlatformPerm`, `PortalPerm`.
+- Backend enforcement is authoritative.
+- Frontend consumes permissions from `/api/auth/me`.
 
-## Mandatory build order
-0. Repo & Architecture Control
-1. Auth, Tenants, Users, Roles, Permissions
-2. Shared Platform Services (audit, storage, email, notifs, settings, feature flags, entitlements, IDs, money, dates, validation, errors, shared API client)
-3. Customers & Contacts
-4. Quotes (items, pricing snapshots, approvals, expiration, revisions, sending, portal visibility, idempotent convert-to-order)
-5. Orders & Order Items (central business record; item entry, pricing snapshots, statuses, notes, files, activity, `production_required` flag, source links)
-6. Invoices & Payments (Feb22 financial behavior: independent document vs financial status, partial payments, history, void rules, reconciliation, Stripe readiness, migrations)
-7. Production & Work Orders (only from `production_required` items; WO summaries, assignments, stages, board views, completion history, packets)
-8. DocuLink & Shared Files (templates, generated docs, uploads, links, shares, categories, questionnaires, attachments, access rules, portal visibility, retention)
-9. Email, Notifications, Customer Communication (SendGrid templates, logs, triggers, failed-send behavior, comm history, notif preferences, later SMS)
-10. Customer Portal Lite
-11. Proof Approval, Signatures, Packets
-12. Pricing Foundation & Calculators
-13. Inventory, Purchasing, Finance, Reports
-14. Team, Time Clock, Payroll, Scheduling
-15. Webstores / Order Portal Manager (only after shared core stable)
-16. Wrap Lab (built on shared services)
-17. AI Tools, Community, Platform Admin, Launch Hardening
+### Module standard
+- New modules use `models/ + repositories/ + routers/ + services/` layout.
+- Do NOT refactor stable MVP modules into repositories.
+- Routers stay thin; repositories own tenant filters; services own algorithms.
 
-## Notes on current state (as of adoption of these rules)
-- Stages 0–3 complete ✅
-- Stage 4 Quotes: **gaps** — quote items with pricing snapshots, expiration dates, revisions, portal visibility
-- Stage 5 Orders/OrderItems: **gaps** — item-level pricing snapshots, `production_required` flag on items, richer source links
-- Stage 6 Invoices/Payments: **gaps** — independent `document_status` vs `financial_status`, void with reason + Stripe restrictions, reconciliation service, Stripe readiness, legacy-payment migration scripts
-- Stage 7 Work Orders: **gaps** — currently snapshots ALL order items; must be gated by `production_required`. Missing stages, board views, completion history, production packets.
-- Stage 8 Documents: ✅ basics; missing template library, generated documents, shares, retention
-- Stage 9 Email: ✅ SendGrid live; missing notification preferences, notif system separate from email
-- Stage 10 Portal Lite: **not built**
-- Stage 11 Proof/Signatures: **not built**
-- Stage 12 Pricing Foundation: ✅ MVP delivered
-- Stages 13–17: **not built**
+## Working MVP systems (do not destabilize)
+
+Auth, Tenants, Users, Roles, Customers, Quotes, Orders, Work Orders, Invoices, Manual Payments, Object Storage, Attachments, Audit, Sequences, Pricing Foundation + Calculator, SendGrid outbound, frontend design system, MoneyInput.
+
+## Checkpoint execution rules
+
+- Complete one execution checkpoint at a time.
+- Do not begin the next checkpoint automatically. Wait for the next execution prompt.
+- Every checkpoint exit ships an evidence package at `/app/evidence/EC<n>_evidence.md`.
+- Update `/app/memory/progress_register.md` at every checkpoint transition.
+
+## Test commands
+
+- Backend: `cd /app/backend && python -m pytest tests/ -q`.
+- Terminology: `python -m app.core.terminology_guard /app`.
+- Backend health: `curl -s http://localhost:8001/api/health` or the external `REACT_APP_BACKEND_URL/api/health`.
+- Supervisor: `sudo supervisorctl status`.
+
+## Never-again enforcement
+
+All 42 Never-Again rules from Final Scope Register Part 12 apply. Highlights:
+- No parallel Customer/Order/Invoice/Payment/User/File/Audit systems.
+- No Base64-in-Mongo storage.
+- No frontend-only permissions.
+- No missing tenant filters or hardcoded tenant IDs.
+- No direct payment-status mutation.
+- No unverified payment webhooks.
+- No portal/staff JWT crossover.
+- No production dev bypass.
+- No giant App.js / router files / pricing files.
+- No duplicate menus or dashboards.
+- No destructive delete on financials.
+- No wholesale donor copy.
+- No AI before credit metering + cost controls.
