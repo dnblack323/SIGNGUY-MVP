@@ -83,10 +83,12 @@ All rules from v1 stand:
 
 ## 11. Frontend test results
 
-- **Testing agent:** `testing_agent_v3_fork` run (see `/app/test_reports/iteration_2.json`).
-- **Result:** **20/21 scenarios pass (~95%)** on the initial run.
-- **Only issue found:** loading-vs-error state for nonexistent IDs — react-query default retry hid the error state. **Fixed** by capping retries on 4xx in `frontend/src/index.js`. The test-agent's own recommended fix in `rca of the issue` was applied verbatim.
-- All EC3-critical flows passed on the initial run:
+- **Testing agent:** `testing_agent_v3_fork` run — see `/app/test_reports/iteration_2.json`.
+- **Automated run (initial):** **20 / 21 scenarios passed on the first run.** The single failing scenario was the loading-vs-error state for nonexistent detail routes (`/quotes/nonexistent-id`, `/orders/nonexistent-id`) — the pages hung on the loading indicator because the default `@tanstack/react-query` policy retried the 404 three times with exponential backoff before propagating `isError=true`.
+- **Fix applied:** `frontend/src/index.js` — QueryClient `defaultOptions.queries.retry` now returns `false` for any 4xx status (and caps 5xx retries at 2). The friendly `[data-testid="quote-error"]` / `[data-testid="order-error"]` elements are wired up in both detail pages.
+- **Post-fix verification: partial and honest.** The `testing_agent_v3_fork` was **NOT re-invoked** for a full 21-scenario rerun after the fix. The fix was applied and code-reviewed only. A follow-up automated regression (or a targeted manual click-through) of scenario 21 is still recommended before any production release. The other 20 scenarios were confirmed passing on the initial automated run and no changes were made to their code paths.
+- **Result of record:** **20/21 automated scenarios passed; the remaining scenario received a code fix that was NOT re-run through the automated agent.**
+- Scenarios that passed on the initial automated run:
   1. Quotes list empty state + create button.
   2. Create quote → detail page defaults to Line Items.
   3. Detailed add: banners 24×36 qty 2 @ $25 → server-derived $50.
@@ -105,6 +107,12 @@ All rules from v1 stand:
   16. Edit item to toggle production off without reason → validation; with reason → saved.
   17. Backend authoritative totals confirmed.
   18. Sidebar + NotificationBell unchanged.
+  19. Existing EC1/EC2 navigation behaviour intact.
+  20. Permission-hidden actions render correctly under dev-bypass owner permissions.
+
+Scenario receiving a code fix without a subsequent full automated rerun:
+
+  21. **`/quotes/{invalid-id}` and `/orders/{invalid-id}` render the friendly error state.** Fix: `index.js` QueryClient `retry: false` on 4xx. Re-verification via `testing_agent_v3_fork` is deferred to the next fork or the next feature-adjacent regression pass.
 
 ## 12. Backend test results (unchanged)
 
@@ -155,6 +163,7 @@ Backend rollback is unchanged from v1.
 ## 18. Final EC3 status
 
 **EC3 — COMPLETE.**
+**EC4 — READY TO BUILD.** Do not begin EC4 without the explicit EC4 execution prompt.
 
 Exit conditions (per EC3 §32):
 - Quote Line Items permanent + tenant-safe ✓
@@ -176,7 +185,7 @@ Exit conditions (per EC3 §32):
 - Cross-tenant tests pass ✓
 - Idempotency tests pass ✓
 - Existing EC1 + EC2 tests pass ✓
-- **Frontend Quote + Order workflows function** ✓ (20/21 test-agent scenarios pass on first run; the 21st was fixed and reverified via the same file that surfaced it)
+- **Frontend Quote + Order workflows function** ✓ (20/21 automated scenarios pass; 21st received code fix without a subsequent full automated rerun — see §11)
 - Documentation updated ✓
 - Evidence package complete (this file) ✓
 - EC4 was NOT started ✓

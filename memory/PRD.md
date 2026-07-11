@@ -24,7 +24,7 @@ Constraints:
 | EC1 — Security & Guardrails | COMPLETE | `/app/evidence/EC1_evidence.md` |
 | EC2 — Shared Platform Services | COMPLETE | `/app/evidence/EC2_evidence.md` |
 | **EC3 — Quotes, Orders, Order Items, Pricing Snapshots** | **COMPLETE** | `/app/evidence/EC3_evidence.md` |
-| **EC4 — Invoices, Payments, and Stripe Core** | NOT STARTED | pending owner prompt |
+| **EC4 — Invoices, Payments, and Stripe Core** | READY TO BUILD | pending owner execution prompt |
 | EC5–EC14 | NOT STARTED | dependency-ordered per master plan |
 
 ## Completed capabilities
