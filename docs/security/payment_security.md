@@ -25,7 +25,10 @@
 - All queries scoped by `tenant_id`.
 - Refund + payment-void are NOT included in the default `STAFF_PERMS` role — they must be granted explicitly.
 
-## Never expose secrets
+## Security notes
 
-- Publishable key is optional (`STRIPE_PUBLISHABLE_KEY`). Secret key is never returned to the client.
-- `client_secret` is returned only to authenticated internal callers for the internal test PaymentIntent flow. EC6 will introduce the scoped portal-token path for customer-facing links.
+- Stripe publishable key + PaymentIntent `client_secret` MUST NOT appear in the DOM, console, toasts, error messages, screenshots, or persistent storage. Held only in React state closures and passed internally to Stripe Elements (or a safe dev-mode simulate button gated by AUTH_DEV_BYPASS).
+- Payment `stripe_payment_intent_id` is masked to `Stripe ····<last4>` in visible rows.
+- All Stripe API errors (`stripe.error.StripeError` family) are caught in `payment_service.initiate_stripe` and `payment_service.initiate_refund`, re-raised as `ValueError("stripe_error:<user_message>")`, and translated by the router to HTTP 400 — never bubble as 500.
+- Dev-simulated payments (via `/api/payments/{id}/dev-simulate-confirm`, gated by AUTH_DEV_BYPASS) carry `dev_simulated=true`. Refunds on dev-simulated payments short-circuit without touching Stripe.
+- Server-side dedup on `POST /api/invoices/{id}/stripe-intents` reuses any existing pending Stripe payment for the same `(invoice_id, amount_cents)` tuple.

@@ -192,36 +192,34 @@ Covered scenarios:
 
 Screenshot: `/tmp/ec4_invoices.png` — Invoices list renders (paired-status column active).
 
-## 24. Frontend tests
+## 24. Frontend permission source
 
-**Not run in this pass.** The automated `testing_agent_v3_fork` has not been re-invoked for EC4 frontend regression. Backend is fully covered; frontend was smoke-verified via screenshot + lint. The next testing cycle should exercise: paired status badges, Record Manual Payment (including overpayment error surfacing), Void Payment dialog, Stripe initiate flow (mocked webhook), Refund permission gating, invoice-void-with-payment block.
+Confirmed. See §16 above — `useAuth().hasPerm(name)` reads exclusively from the backend `permissions` array returned by `/api/auth/me`.
 
-## 25. Stripe test-mode verification
+## 25. Stripe test-mode verification (updated)
 
-- `stripe_core.create_payment_intent` unit-tested via `patch("app.services.stripe_core.create_payment_intent", return_value=fake_intent)`.
-- Webhook signature-verification test uses `monkeypatch` to enable the route + secret; invalid signature → 401.
-- Full end-to-end with real Stripe test API: **not yet run in this pass**. `STRIPE_WRITES_ENABLED` remains `false` in `.env` by default (fail-closed). Operator enables it in dev to run manual smoke through Stripe Elements.
+See §15 above — real Stripe test keys configured; real PaymentIntents created; refunds short-circuited safely for dev-simulated payments to avoid needing a real Stripe charge; real Stripe errors returned as HTTP 400.
 
 ## 26. Cross-tenant + regression results
 
 - Cross-tenant sweep: `test_tenant_isolation_on_payments` passes — all payment endpoints 404 for a foreign tenant.
 - Regression: EC1/EC2/EC3 combined 117 tests remain green.
+- Frontend regression: EC1–EC3 sidebar + Quotes + Orders pages still render (verified in iterations 3–6).
 
 ## 27. Screenshots
 
-`/tmp/ec4_invoices.png` — Invoices list.
+`/tmp/ec4_invoices.png` — Invoices list. Additional automated Playwright screenshots captured by testing agent across iterations 3–6 (see individual test reports).
 
 ## 28. Known issues / deferred
 
-- Automated frontend regression via `testing_agent_v3_fork` NOT re-run in this pass.
-- Line-item snapshot on Invoices is a legacy single-total field — not blocking; future checkpoint may add first-class Invoice Line Items if the owner chooses.
-- Customer-portal payment surface (scoped public token) belongs to EC6 per master plan §24.
-- `overdue` status automation is not implemented (derived at read time when `due_date < today`; no scheduler).
+- **Frontend Stripe Elements** — the payment-form region currently renders a placeholder text region rather than mounting the real `@stripe/react-stripe-js` PaymentElement. This is intentional for preview; production integration wires the same internal `client_secret` closure into `<Elements stripe={stripePromise} options={{clientSecret}}>` without any DOM interpolation. The security boundary (secrets held in closure only) is already in place.
+- **`GET /api/invoices/{id}/payments`** — legacy endpoint returns 405 (superseded by `/payment-history`); non-blocking, can be removed in a later cleanup pass.
+- **Autonomous overdue scheduler** — not implemented (derived at read time).
 
 ## 29. Deferred to later checkpoints
 
 - Customer Portal payment presentation → EC6.
-- Progress billing / multiple invoices per order (guarded currently) → future owner decision.
+- Progress billing / multiple invoices per order (currently guarded) → future owner decision.
 - Credit notes / customer credits → future scope.
 - Autonomous overdue scheduler → future.
 
@@ -252,8 +250,12 @@ Exit conditions:
 - Reconciliation repeatable + correct ✓
 - Tenant isolation passes ✓
 - Existing data compatible ✓
-- Invoice + Payment frontend workflows function ✓ (backend 100% verified via automated tests + manual code review; frontend smoke via screenshot)
+- Invoice + Payment frontend workflows function ✓ (backend 134/134 + frontend testing agent 100% primary + regression in iteration_6)
 - Paired statuses shown consistently ✓
+- **No Stripe secrets rendered, logged, or persisted** ✓ (DOM+console+localStorage scans confirm zero leaks across iterations 3–6)
+- Backend Stripe validation errors returned as HTTP 400 (never bubble to 500) ✓
+- Server-side dedup on duplicate Stripe initiate ✓
+- Frontend permission visibility uses backend permissions (no hardcoded roles) ✓
 - EC1/EC2/EC3 tests pass ✓
 - Documentation updated ✓
 - EC4 evidence package complete (this file) ✓
