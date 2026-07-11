@@ -17,7 +17,7 @@
 
 **Navigation contract (LOCKED):** Collapsible left sidebar with side flyouts per the Final Scope & Decision Register Part 3.1 — Home / Shop Operations / Business & Finance / Team & Workflow / Creative Studio / (divider) / Control Center / Help & Community. Permanent second-level module navigation is NOT placed across the top of every page.
 
-**Money policy (recommended for ratification — Decision 1):** Commerce values stored in integer cents with `_cents` suffix. Pricing configuration remains dollar-based with `Decimal` internally. Single pricing→commerce conversion boundary.
+**Money policy (OWNER APPROVED — Decision 1):** Commerce values stored in integer cents with `_cents` suffix. Pricing configuration remains dollar-based with `Decimal` internally. Single pricing→commerce conversion boundary.
 
 **Evidence-level legend** (carried forward): RV / STHV / FSV / PSI / SS / SO / RS.
 
@@ -40,7 +40,7 @@ The nine checkpoints are dependency-ordered so that (a) money-safety and tenant-
 **Checkpoint counts and totals** (see Part 34 for exact totals):
 - 9 Program Checkpoints (PC1-PC9) plus 15 Execution Checkpoints (EC0-EC14).
 - 152 module rows in the master matrix (rows preserved 1:1 from Final Scope & Decision Register Part 4; no bounded module removed).
-- 27 owner decisions (10 LOCKED or OWNER APPROVED; 17 REQUIRES OWNER ANSWER at Prompt 4 execution time).
+- 27 owner decisions answered and recorded: 23 fully approved, 1 approved with a module-preflight condition, and 3 approved subject to cost/model audit.
 - 20 module preflights scheduled.
 - 0 application code changes performed in this document.
 
@@ -109,7 +109,7 @@ When any two references conflict, the higher-numbered priority wins:
 - Help, community, bugs, feature requests, contact support, what's new → Help & Community.
 - Portals + public systems are separately routed; they do not become internal sidebar areas.
 
-## 3.4 Money Policy (recommended for ratification — Decision 1)
+## 3.4 Money Policy (OWNER APPROVED — Decision 1)
 
 - Commerce values (`Quote.total_cents`, `QuoteLineItem.line_total_cents`, `Order.total_cents`, `OrderItem.unit_price_cents`, `OrderItem.line_total_cents`, `WorkOrderItemSnapshot.unit_price_cents`, `Invoice.total_cents`, `InvoiceLineItem.unit_price_cents`, `Payment.amount_cents`, and future `tax_cents`, `discount_cents`, `fee_cents`, `amount_paid_cents`, `balance_due_cents`) are integer cents.
 - Pricing configuration in `pricing_settings` remains dollar-based with `Decimal` math internally.
@@ -135,45 +135,280 @@ When any two references conflict, the higher-numbered priority wins:
 
 ---
 
-# PART 4 — OWNER DECISION RATIFICATION REGISTER
+# PART 4 — OWNER-APPROVED DECISION REGISTER
 
-This register enumerates all 27 open owner decisions. Every checkpoint block that depends on a REQUIRES OWNER ANSWER decision is flagged in Parts 5, 6, and 34.
+All 27 owner decisions have now been answered and are controlling instructions for the permanent product. These decisions replace the former pending-decision table. An implementation agent may not reopen them merely because a donor repository uses a different pattern or an older document contains different candidate values.
 
-**Status legend:** OWNER APPROVED / LOCKED / DEFERRED UNTIL MODULE PREFLIGHT / DEFERRED UNTIL COST AUDIT / REQUIRES OWNER ANSWER / NOT A RELEASE BLOCKER / COMMERCIAL RELEASE BLOCKER.
+**Decision status summary**
 
-| # | Decision title | Existing options | Recommendation | Evidence | Risks (per option) | Modules affected | Checkpoints affected | Blocks planning | Blocks implementation | Blocks commercial release | Final owner selection | Final status |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | Money policy ratification | (a) Ratify MVP cents/dollars split; (b) Move commerce to Decimal dollars; (c) Move config to cents | **(a)** Ratify MVP split (Part 3.4) | FSV MVP + FEB | (b)(c) require data migration and Stripe write refactor | Invoices, Payments, Quotes, Orders, Reports | CP1, CP3, CP5, CP8 | No | Yes (CP3+) | Yes | Pending | REQUIRES OWNER ANSWER / COMMERCIAL RELEASE BLOCKER |
-| 2 | Permission catalog | (a) Adopt Part 9 module-based catalog; (b) Adopt REB 57-permission StrEnum verbatim; (c) Custom subset | **(a)** Part 9 module-based catalog | FSV REB + RV MVP | (b) over-broad + churn on rename; (c) risk of missing perms | All modules | CP1 (definition), then every subsequent CP (enforcement) | No | Yes (CP2+) | Yes | Pending | REQUIRES OWNER ANSWER |
-| 3 | Repository-class pattern | (a) New modules only; (b) Also refactor MVP; (c) Skip | **(a)** New modules only | FSV REB + RV MVP | (b) high-risk MVP refactor; (c) inconsistency | All new modules | CP2+ | No | Yes (CP2+) | No | Pending | REQUIRES OWNER ANSWER |
-| 4 | SendGrid fail-closed prod behavior | (a) Force-fail startup if secret unset in prod; (b) Log warning; (c) Silent | **(a)** Force-fail | FSV REB webhook shape | (b)(c) accept spoofed events | Email Activity, Portal notifications | CP2 | No | Yes (CP2) | Yes | Pending | REQUIRES OWNER ANSWER / COMMERCIAL RELEASE BLOCKER |
-| 5 | SIGNGUY-AI-OS archive timing | (a) Freeze now, archive after commercial completion, no delete; (b) Archive now; (c) Merge; (d) Delete | **(a)** Freeze now, archive after commercial completion | STHV | (d) loss of recovery; (c) drift | Repo policy | (none) | No | No | No | Pending | REQUIRES OWNER ANSWER / NOT A RELEASE BLOCKER |
-| 6 | Webstores add-on + standalone policy | (a) Both (owner direction); (b) Add-on only; (c) Standalone only | **(a)** Both, shared backend | Owner statement | (b) loses standalone TAM; (c) breaks bundle | Webstores | CP7 | No | Yes (CP7) | Yes (before Webstores GA) | (a) | OWNER APPROVED — LOCKED |
-| 7 | Wrap Lab standalone policy | (a) Add-on + conditional standalone; (b) Add-on only; (c) Standalone always | **(a)** Add-on + conditional after preflight | Owner statement + module preflight required | (c) risk of shared-core duplication | Wrap Lab | CP7 | No | Yes (Wrap GA) | Yes | (a) pending preflight | OWNER APPROVED (direction) / DEFERRED UNTIL MODULE PREFLIGHT |
-| 8 | Portal authentication mode | (a) Multi-mode (password + magic link + public tokens); (b) Magic-link only; (c) Password only | **(a)** Multi-mode | ORIG PSI + industry | (b) friction for recurring portals; (c) friction for approvals | All portals | CP2 (foundation), CP4 (customer portal), CP6 (employee), CP7 (webstore portals) | No | Yes (CP4+) | Yes | Pending | REQUIRES OWNER ANSWER / COMMERCIAL RELEASE BLOCKER |
-| 9 | Sales-tax strategy | (a) Shop-configured + integration boundary; (b) Full Avalara/TaxJar at launch; (c) Manual only | **(a)** Shop-configured + boundary | Comparison | (b) cost + vendor lock; (c) errors | Invoices, Reports | CP3, CP5 | No | Yes (CP3) | Yes | Pending | REQUIRES OWNER ANSWER / COMMERCIAL RELEASE BLOCKER |
-| 10 | Commercial pricing (subscriptions, add-ons) | REB candidate values | **Do not adopt REB values as final. Ratify per row in Prompt 5+.** | REB candidate | Wrong pricing = revenue impact | Subscriptions | CP8 | Yes for CP8 GA | Yes (CP8) | Yes | Pending | REQUIRES OWNER ANSWER / COMMERCIAL RELEASE BLOCKER |
-| 11 | Founders pricing (specific amounts) | REB candidate `$189/mo Complete Bundle` | **Do not adopt without owner ratification.** | REB candidate | Wrong founder pricing = acquisition impact | Subscriptions | CP8 | Yes for founder launch | Yes (CP8) | Yes (founder launch) | Pending | REQUIRES OWNER ANSWER / COMMERCIAL RELEASE BLOCKER |
-| 12 | AI-credit top-up pack pricing | REB candidate `$19/100, $45/300, $99/800` | **Do not adopt without measured cost audit.** | REB candidate | Wrong = margin risk | AI credits | CP8 | Yes (final values) | Yes (CP8 credit purchase) | Yes | Pending | REQUIRES OWNER ANSWER / DEFERRED UNTIL COST AUDIT / COMMERCIAL RELEASE BLOCKER |
-| 13 | Included AI credit amounts per plan | REB candidate | Ratify + measured cost audit | REB candidate | Wrong = margin or churn | AI credits, Subscriptions | CP8 | Yes (final values) | Yes (CP8) | Yes | Pending | REQUIRES OWNER ANSWER / DEFERRED UNTIL COST AUDIT / COMMERCIAL RELEASE BLOCKER |
-| 14 | AI credit expiration | (a) Included reset monthly, top-ups never expire; (b) All expire in 12 months; (c) Custom | **(a)** | Industry | Aggressive expiration = churn | AI credits | CP8 | No | Yes (CP8) | Yes | Pending | REQUIRES OWNER ANSWER |
-| 15 | Transaction fees (standard + webstore) | REB candidate 0/50/100 bp std, 0/150/200 bp webstore | Ratify + reconcile founders-promo cap with "first 50" direction | REB candidate | Wrong = margin/adoption | Payments, Webstores | CP7, CP8 | Yes (final values) | Yes (Stripe launch) | Yes | Pending | REQUIRES OWNER ANSWER / COMMERCIAL RELEASE BLOCKER |
-| 16 | Setup/onboarding fees | (a) None (DIY); (b) One-time; (c) Waived for founders | **(a)** None (DIY onboarding) | Candidate | Fees = friction | Subscriptions | CP8 | No | No | Yes | Pending | REQUIRES OWNER ANSWER |
-| 17 | Non-founder free-trial | (a) 7 days limited AI; (b) 14 days; (c) None | **(a)** | Founder = 7 days | Long trial = revenue delay | Subscriptions, Marketing | CP8, CP9 | No | Yes (CP8 trial enable) | Yes | Pending | REQUIRES OWNER ANSWER |
-| 18 | AI provider / model choices | (a) Emergent LLM key + model rules per intensity; (b) Direct provider integration | **(a)** Emergent LLM key | Emergent confirmed | Model choice affects cost + quality | AI Tools, AI Assistant | CP8 | Yes (final rules) | Yes (CP8) | Yes | (a) pending model rules | OWNER APPROVED (direction) / REQUIRES OWNER ANSWER (specifics) |
-| 19 | SMS provider | (a) Twilio (donor pattern); (b) Alternative | **(a)** Twilio | ORIG uses Twilio | Vendor risk | SMS/MMS | CP9 (per Decision 27 timing) | No | Yes (SMS enable) | Depends on Decision 27 | Pending | REQUIRES OWNER ANSWER |
-| 20 | Report-builder scope | (a) Curated + custom builder; (b) Curated only; (c) Full BI | **(a)** Curated + staged custom builder | ORIG has reports | Full BI = late; curated only = churn | Reports | CP5 | No | Yes (CP5 GA) | Yes unless the owner explicitly approves commercial deferral; staged implementation is allowed but permanent required scope remains | Pending | REQUIRES OWNER ANSWER |
-| 21 | Platform-admin impersonation | (a) None; (b) Read-only view-as with audit + tenant notification; (c) Full impersonation | **(b)** Read-only view-as | Standard SaaS | Abuse risk | Platform Admin | CP8 | No | Yes (feature enable) | No | Pending | REQUIRES OWNER ANSWER |
-| 22 | Customer portal payment methods | (a) Stripe card only; (b) Stripe + ACH; (c) Multiple | **(a)** Stripe card at launch, ACH later | Standard | ACH = lower fees, slower | Customer Portal, Payments | CP4 | No | Yes (portal payment) | Yes | Pending | REQUIRES OWNER ANSWER / COMMERCIAL RELEASE BLOCKER |
-| 23 | Employee portal payroll visibility | (a) Full payslip; (b) YTD summary only; (c) None | **(a)** Full payslip with tenant-owner override | Legal varies by state | Wrong = legal exposure | Employee Portal, Payroll | CP6 | No | Yes (Payroll GA) | No (post-launch acceptable if scoped) | Pending | REQUIRES OWNER ANSWER |
-| 24 | Final navigation labels + structure | (a) LOCKED sidebar per Part 3.1; (b) Permanent second-level top nav; (c) Alternative | **(a)** LOCKED | Owner directive + Part 3.1 | Wording drift | Navigation | (all) | No | No | No | (a) | LOCKED |
-| 25 | Final internal checkpoint order | (a) CP1–CP9 per Part 5; (b) Alternative | **(a)** CP1–CP9 | This master plan | Wrong order = rework | Master build plan | (all) | No | No | No | (a) | LOCKED (this master plan) |
-| 26 | Grace period on subscription payment failure | (a) 7 days; (b) 3 days; (c) 14 days | **(a)** 7 days soft grace → 14 days soft block → hard block | Industry | Short = churn; long = revenue delay | Subscriptions, Entitlements | CP8 | No | Yes (CP8) | Yes | Pending | REQUIRES OWNER ANSWER |
-| 27 | SMS/MMS commercial-release timing | (a) Required before first commercial sale; (b) Approved permanent-product feature scheduled for later commercial release | **Do not decide automatically. Owner must select.** | ORIG donor + carrier 10DLC lead time | (a) delays launch; (b) launches without SMS | SMS/MMS, Portal, Notifications, Order events, Marketing | CP9 (if a) or post-launch (if b) | No | Yes (SMS enable) | Depends on selection | Pending | REQUIRES OWNER ANSWER / COMMERCIAL RELEASE TIMING |
+- Fully owner approved: 23
+- Owner approved with module-preflight condition: 1 (Decision 7)
+- Owner approved subject to cost/model audit before live commercial activation: 3 (Decisions 12, 13, and 18)
+- Unanswered decisions: 0
+- EC0 governance status: COMPLETE
+- Next executable checkpoint: EC1 — Security and Permanent App Guardrails
 
-**Owner-decision totals: 27 enumerated. 10 LOCKED/OWNER APPROVED (Decisions 6, 7 direction, 18 direction, 24, 25). 17 REQUIRES OWNER ANSWER (Decisions 1, 2, 3, 4, 5, 7 specifics, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 specifics, 19, 20, 21, 22, 23, 26, 27) — of which 15 will be needed before their downstream checkpoint enters implementation. Decisions 12 & 13 are DEFERRED UNTIL COST AUDIT.**
+## Decision 1 — Permanent Money Representation Policy
 
----
+**OWNER-APPROVED SELECTION:** Preserve the existing MVP split.
+
+- Every stored transactional commerce value uses integer cents.
+- Transactional fields use the `_cents` suffix.
+- Pricing configuration may remain dollar-based and use `Decimal` internally.
+- One explicit pricing-to-commerce conversion boundary converts calculator dollars to commerce cents.
+- Stripe values remain integer cents.
+- No ambiguous unsuffixed money fields are allowed on Quotes, Orders, Work Orders, Invoices, Payments, taxes, discounts, or fees.
+
+**Implementation effect:** No destructive money migration is authorized. FEB invoice/payment logic must be rehoused into the existing MVP cents contract.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 2 — Permission Catalog
+
+**OWNER-APPROVED SELECTION:** Use a permanent module-based permission catalog. Reuse REB's structured enum pattern, but do not blindly copy all donor permissions.
+
+Permissions must be organized around permanent modules, including Customers, Quotes, Orders, Work Orders, Invoices, Payments, Documents, Inventory, Purchasing, Employees, Time Clock, Timesheets, Payroll, Reports, Webstores, Wrap Lab, AI Tools, Settings, Platform Administration, and Portals.
+
+Backend enforcement is authoritative. Frontend permission checks only control presentation.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 3 — Repository-Class Pattern
+
+**OWNER-APPROVED SELECTION:** Use repository classes for new or substantially rebuilt modules only.
+
+Do not refactor stable MVP modules merely for visual uniformity. Every new repository must enforce tenant scope, own collection indexes, provide scoped CRUD methods, and keep routers thin.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 4 — SendGrid Webhook Production Behavior
+
+**OWNER-APPROVED SELECTION:** Fail closed in production.
+
+Production startup must fail when the SendGrid webhook is enabled but the verification secret is missing. Development may leave the webhook disabled, but unverifiable production events must never be accepted.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 5 — SIGNGUY-AI-OS Archive Timing
+
+**OWNER-APPROVED SELECTION:** Freeze immediately, compare completely before archival, archive only after commercial completion, and never delete as part of this rebuild.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 6 — Webstores Add-On and Standalone Policy
+
+**OWNER-APPROVED SELECTION:** Webstores is both a paid Core add-on and a standalone product using the same backend and shared domain systems.
+
+Standalone mode uses entitlements and a reduced interface. It must not create separate Customer, Order, Payment, Document, User, File, Email, or Audit systems. Upgrading to Core requires no data migration.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 7 — Wrap Lab Standalone Policy
+
+**OWNER-APPROVED SELECTION:** Wrap Lab is founder-included and available as a paid add-on. It must be designed for possible standalone sale, but standalone activation requires a completed preflight proving shared-core reuse without duplication.
+
+**STATUS:** OWNER APPROVED WITH MODULE-PREFLIGHT CONDITION
+
+## Decision 8 — Portal Authentication Mode
+
+**OWNER-APPROVED SELECTION:** Separate portal identities with password and magic-link access for recurring users, plus scoped, expiring, single-purpose tokens for proof approval, quote approval, signatures, invoice views, payment links, and questionnaires.
+
+Portal credentials and tokens must never be interchangeable with staff JWTs. Customer, Employee, Webstore Owner, and Webstore Manager scopes remain distinct.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 9 — Sales-Tax Strategy
+
+**OWNER-APPROVED SELECTION:** Initial release uses shop-configured multiple tax jurisdictions, customer exemption records and certificate storage, invoice tax snapshots, audited manual overrides, and a clean future tax-provider service boundary.
+
+Historical invoices must never be silently recalculated after configuration changes. Avalara or TaxJar is not required for the first commercial release.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 10 — General Commercial Subscription Pricing
+
+**OWNER-APPROVED SELECTION:**
+
+- SignGuy AI Core: **$149/month**
+- Webstores add-on to Core: **$59/month**
+- Wrap Lab add-on to Core: **$79/month**
+- Complete Bundle: **$249/month**
+- Webstores standalone: **$89/month**
+- Wrap Lab standalone: **$119/month**, only after standalone readiness is approved
+
+Core business records must not be limited by customer, quote, order, invoice, employee, or revenue quotas. AI use beyond included credits is purchased separately.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 11 — Founder Pricing
+
+**OWNER-APPROVED SELECTION:** One Founder Edition for the first 50 shops at **$149/month**, price-locked while continuously active.
+
+Includes Core, Webstores, Wrap Lab, all standard business features, and 1,000 monthly AI credits. No artificial business-record limits. Includes a one-week free trial with limited AI use.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 12 — AI-Credit Top-Up Pricing
+
+**OWNER-APPROVED SELECTION:** Initial structure:
+
+- 100 credits: **$19**
+- 300 credits: **$45**
+- 800 credits: **$99**
+
+The structure is approved, but live billing activation requires a measured provider-cost audit. Values may be adjusted before activation if margins are unsafe.
+
+**STATUS:** OWNER APPROVED SUBJECT TO COST AUDIT
+
+## Decision 13 — Included AI-Credit Amounts
+
+**OWNER-APPROVED SELECTION:**
+
+- Core: 300 credits/month
+- Webstores standalone: 300 credits/month
+- Wrap Lab standalone: 500 credits/month
+- Complete Bundle: 1,000 credits/month
+- Founder Edition: 1,000 credits/month
+- Seven-day trial: 50 total credits
+
+Included credits reset monthly. Exact per-tool charges require the provider-cost audit before commercial activation.
+
+**STATUS:** OWNER APPROVED SUBJECT TO COST AUDIT
+
+## Decision 14 — AI-Credit Expiration
+
+**OWNER-APPROVED SELECTION:** Included credits reset each billing cycle and do not roll over. Purchased top-up credits do not expire while the account remains active and are consumed after included credits. Provider failures refund credits. Administrative adjustments require a reason and audit event.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 15 — Transaction Fees
+
+**OWNER-APPROVED SELECTION:**
+
+- Founder first three paid months: 0% standard / 0% Webstore platform fee
+- Founder ongoing: 0.5% standard / 1.5% Webstore
+- General availability: 1% standard / 2% Webstore
+
+Stripe processing fees remain separate. Platform fees must be calculated server-side, stored with the transaction, reported clearly, and never accepted from client calculations.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 16 — Setup and Onboarding Fees
+
+**OWNER-APPROVED SELECTION:**
+
+- DIY onboarding: free
+- Guided setup session: $299 one time
+- Done-for-you basic configuration: $799 one time
+- Larger data/template/pricing/workflow setup: custom quote
+
+Founder customers receive standard DIY onboarding at no additional charge.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 17 — Non-Founder Free Trial
+
+**OWNER-APPROVED SELECTION:** Seven-day free trial with 50 AI credits and no artificial limits on normal Core records. A payment method is required before conversion to paid service. Live transaction processing and production SMS may remain disabled until verification.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 18 — AI Provider and Model Rules
+
+**OWNER-APPROVED SELECTION:** Use the Emergent-managed AI integration initially behind a provider abstraction. Route models by task category and intensity rather than hardcoding one provider everywhere.
+
+Every AI request must record tenant, tool, model, estimated cost, credit charge, result, refund behavior, cost cap, and audit metadata. Exact model assignments and per-tool credit costs require a cost-and-quality audit.
+
+**STATUS:** OWNER APPROVED SUBJECT TO MODEL/COST AUDIT
+
+## Decision 19 — SMS/MMS Provider
+
+**OWNER-APPROVED SELECTION:** Twilio initially, behind a provider adapter.
+
+Must support outbound SMS/MMS, delivery webhooks, inbound replies, opt-out handling, tenant-scoped logs, idempotency, US 10DLC registration, and production credential rotation. Previously pasted credentials must never be reused.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 20 — Custom Report Builder Scope
+
+**OWNER-APPROVED SELECTION:** Curated reports plus a staged Custom Report Builder are required permanent-product scope.
+
+The staged builder includes data-source selection, column selection, filters, sorting/grouping, saved reports, exports, and approved chart options. It must not expand into a general-purpose BI platform. It may be built in controlled stages but may not be silently moved to an undefined backlog.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 21 — Platform-Admin Impersonation
+
+**OWNER-APPROVED SELECTION:** Read-only “View As Tenant” mode only.
+
+Requires a reason, persistent banner, audit history, tenant-visible notification/audit entry, automatic expiration, and strict prohibition on payment, billing, security, deletion, or user-identity changes. No unrestricted full impersonation.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 22 — Customer Portal Payment Methods
+
+**OWNER-APPROVED SELECTION:** Launch with Stripe credit/debit card payments plus authorized internal recording of manual payments. ACH is a later addition after card reconciliation is stable.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 23 — Employee Portal Payroll Visibility
+
+**OWNER-APPROVED SELECTION:** Employees may view their own full approved payroll information, including pay periods, hours, rates, gross pay, advances, adjustments, carryover, payments, history, and payslip/statement downloads.
+
+Employees may never view another employee's records. Sensitive payroll information must not leak through general team permissions.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 24 — Final Navigation Structure
+
+**OWNER-APPROVED AND LOCKED:** Collapsible left sidebar:
+
+- Home
+- Shop Operations
+- Business & Finance
+- Team & Workflow
+- Creative Studio
+- Divider
+- Control Center
+- Help & Community
+
+Each area uses a side flyout. Page ribbons, tabs, and filters may not duplicate permanent navigation. Home remains an icon to the main dashboard.
+
+**STATUS:** OWNER APPROVED AND LOCKED
+
+## Decision 25 — Final Build and Checkpoint Order
+
+**OWNER-APPROVED AND LOCKED:** Use the consolidated plan's nine program checkpoints and fifteen execution checkpoints. EC0 is now complete. EC1 is the first code-bearing checkpoint.
+
+**STATUS:** OWNER APPROVED AND LOCKED
+
+## Decision 26 — Subscription Payment-Failure Grace Period
+
+**OWNER-APPROVED SELECTION:**
+
+- Days 1-7: normal access with billing warning
+- Days 8-14: soft restriction on paid add-ons and new AI usage
+- After day 14: paid modules blocked until billing is corrected
+
+Data is preserved. Billing, export, and support remain accessible. Platform administrators may grant a documented temporary extension.
+
+**STATUS:** OWNER APPROVED
+
+## Decision 27 — SMS/MMS Commercial-Release Timing
+
+**OWNER-APPROVED SELECTION:** SMS/MMS remains permanent-product scope but does not block the first commercial sale.
+
+First commercial release may proceed when email and portal messaging work and SMS architecture/entitlement hooks are prepared. Twilio SMS/MMS ships in a later controlled commercial release after 10DLC registration, opt-out handling, delivery webhooks, inbound replies, and compliance testing.
+
+**STATUS:** OWNER APPROVED — LATER COMMERCIAL RELEASE
+
+## Part 4 Completion Effect
+
+- EC0 is complete.
+- No owner-response packet is required before EC1.
+- EC1 may begin using these decisions as locked governance.
+- Decisions 12, 13, and 18 do not block EC1; their audits block live AI commercial activation.
+- Decision 7 does not block Core implementation; its preflight blocks standalone Wrap Lab activation.
+- Decision 27 does not block first commercial release, but SMS/MMS remains tracked permanent scope.
 
 # PART 5 — PROGRAM CHECKPOINT ARCHITECTURE
 
@@ -1961,7 +2196,7 @@ Use Part 7A as the controlling source. For every module list the exact source re
 The following EC units are the only units used for implementation branches and evidence packages. Each EC stops independently. The broader PC mapping remains in Part 5.
 
 
-## 30A.1 EC0 — Owner Decisions and Governance Lock
+## 30A.1 EC0 — Owner Decisions and Governance Lock — COMPLETE
 
 **Purpose:** Resolve blocking owner decisions and freeze terminology, repository roles, money, permissions, release timing, and commercial policies.
 
@@ -2473,20 +2708,20 @@ The following EC units are the only units used for implementation branches and e
 
 # PART 31 — FINAL READINESS CONCLUSION
 
-## MASTER BUILD PLAN COMPLETE — OWNER DECISIONS REQUIRED BEFORE CHECKPOINT IMPLEMENTATION
+## MASTER BUILD PLAN COMPLETE — EC0 OWNER DECISIONS LOCKED; READY FOR EC1 IMPLEMENTATION
 
 - **Program checkpoints:** 9 (PC1-PC9).
 - **Execution checkpoints:** 15 (EC0-EC14).
 - **Modules assigned:** 152 (every row in Part 8; 100% assignment).
 - **Owner decisions total:** 27.
 - **Owner decisions resolved (LOCKED / OWNER APPROVED):** 5 (Decisions 6, 7 direction, 18 direction, 24, 25).
-- **Owner decisions still open (REQUIRES OWNER ANSWER — includes DEFERRED UNTIL COST AUDIT and DEFERRED UNTIL MODULE PREFLIGHT):** 22 (Decisions 1, 2, 3, 4, 5, 7 specifics, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 specifics, 19, 20, 21, 22, 23, 26, 27 — counted separately from resolved directions where applicable).
+- **Owner decisions still open:** 0. Decisions 12, 13, and 18 retain required cost/model audits before live AI commercial activation; Decision 7 retains a standalone-Wrap preflight condition.
 - **Module preflights scheduled:** 20 (PF1–PF20; PF21 SMS/MMS conditional on Decision 27).
-- **First implementation checkpoint recommended:** **EC0 — Owner Decisions and Governance Lock**, followed by **EC1 — Security and Permanent App Guardrails**. CP1 is blocked pending owner ratification of Decisions 1, 2, 4 (SendGrid fail-closed direction), and Decision 24 (LOCKED — already resolved). Decisions 3 and 5 are recommended but do not strictly block CP1.
+- **First implementation checkpoint recommended:** **EC1 — Security and Permanent App Guardrails.** EC0 is complete and all 27 owner decisions are recorded.
 - **Code changes performed in this document:** **NONE.**
-- **Next action:** Owner ratification of Decisions 1, 2, 3, 4 (and confirmation of Decision 5 archive-timing recommendation), followed by the EC0/EC1 implementation prompts using the template in Part 29.
+- **Next action:** Execute EC1 using this owner-approved consolidated plan. Do not rerun EC0 unless the owner explicitly changes a recorded decision.
 
-**Exact next action:** Present Decisions 1, 2, 3, 4 to the owner for approval. On approval, invoke the EC0 implementation prompt and stop after its evidence package from Part 29 with `<CP_NUMBER>=CP1` and `<CP_NAME>=Product Rules, Security Guards, and Money Policy Landing`.
+**Exact next action:** Send Emergent the EC1 implementation prompt and require it to stop after the EC1 evidence package.
 
 ---
 
