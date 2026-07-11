@@ -8,21 +8,18 @@
   2) **Object storage** upload/download with tenant-scoped storage paths
 - ✅ Enforce non-negotiables throughout: **tenant isolation**, **one permission dependency**, **idempotency guards**, **append-only audit/activity events with REQUIRED actor fields**, **no `_id` in API responses**, **money policy explicitly documented**, correct terminology (**Order / OrderItem / Work Order**, never “Job / Job Ticket”).
 - ✅ Provide a **Dev Auth Bypass** mode to allow UI testing without login when desired (**AUTH_DEV_BYPASS=true**), with a prominent UI banner and an explicit requirement to disable in production.
-- ✅ Complete donor-repo evidence audit and lock the permanent roadmap:
-  - `SIGNGUY_AI_FEATURE_READINESS_MATRIX.md` corrected with rigorous evidence levels (**RV/SV/SS/SO/RS**).
-  - `SIGNGUY_AI_REPOSITORY_AND_ARCHITECTURE_SOURCE_MAP.md` corrected and completed (Parts 1–11).
-  - Confirmed `SIGNGUY-AI-OS` is byte-identical to `SIGNGUY-MVP` (md5 tree match) → retire.
+- ✅ Complete donor-repo evidence audit and lock the permanent roadmap **with accurate evidence labels**:
+  - `SIGNGUY_AI_FEATURE_READINESS_MATRIX.md` corrected with explicit evidence levels (**RV / STHV / FSV / PSI / SS / SO / RS**).
+  - `SIGNGUY_AI_REPOSITORY_AND_ARCHITECTURE_SOURCE_MAP.md` corrected and completed (Parts 1–11) with the same evidence discipline.
+  - `SIGNGUY-AI-OS` confirmed as a **mirror of MVP under `backend/app/**/*.py` (STHV, scoped)** → **freeze against new development**; complete-tree comparison and archival timing deferred to owner.
+
+> **Stage-numbering disclaimer (plan-level):** Any stage/phase number retained in this plan refers only to a prior proposed sequence. Prompt 3 and the final master build plan may rename, reorder, combine, or replace phases based on the final dependency analysis.
+
 - 🔜 Next hardening steps (permanent product build-out; not “post-MVP defer”):
-  - Record and sign off the **six standing architecture decisions** in `memory/AGENT_INSTRUCTIONS.md`:
-    1) Money representation policy (FEB boundary compromise vs cents-everywhere)
-    2) Permissions catalog adoption (REB 57-permission enum)
-    3) Repository pattern adoption for new modules
-    4) Canonical terminology map (Order/OrderItem/WorkOrder)
-    5) SendGrid webhook secret enforcement behavior
-    6) Retire `SIGNGUY-AI-OS`
+  - Record and sign off the **owner-decision items** in `memory/AGENT_INSTRUCTIONS.md` (see Next Actions section).
   - Security production gates: force-fail on `AUTH_DEV_BYPASS=true` in production; rotate JWT secret away from dev placeholder.
   - Extract REB `upload_validation.py` into MVP for stronger MIME/magic-byte/size/SHA-256 enforcement.
-  - Stage 4/5/6 correctness upgrades (quotes line items, pricing snapshots, `production_required` gate, invoice dual-status + payment reconciliation).
+  - Correctness upgrades: Quotes line items + pricing snapshots; `production_required` gate for Work Orders; invoice dual-status + payment reconciliation + void behavior.
 
 ---
 
@@ -129,7 +126,7 @@
 ---
 
 ## Phase 4 — Orders + Order Items
-**Status:** ✅ Completed (baseline) 
+**Status:** ✅ Completed (baseline)
 
 **User stories**
 1. As staff, I can create an Order for a customer (from quote or standalone).
@@ -153,7 +150,7 @@
 ---
 
 ## Phase 5 — Work Orders (0..N per Order)
-**Status:** ✅ Completed (Multiple per Order enabled) 
+**Status:** ✅ Completed (Multiple per Order enabled)
 
 **User stories**
 1. As staff, I can create multiple Work Orders for one Order.
@@ -173,12 +170,12 @@
 - ✅ Testing agent verified multiple work orders per single order.
 
 **Permanent-product upgrade notes (from donor evidence audit)**
-- 🔜 Stage 5/7 correction required: Work Orders must snapshot only `production_required=True` items (REB `services/order_item_rules.py` provides the canonical default gate).
+- 🔜 Correction required: Work Orders must snapshot only `production_required=True` items (REB `services/order_item_rules.py` provides the default gate). This is a targeted replacement/extension, not a rebuild.
 
 ---
 
 ## Phase 6 — Invoice (0..1 per Order) + Payments
-**Status:** ✅ Completed (baseline) 
+**Status:** ✅ Completed (baseline)
 
 **User stories**
 1. As staff, I can create an Invoice from an Order once (idempotent guard).
@@ -199,15 +196,17 @@
 - ✅ Testing agent verified invoice idempotency + payment dedupe + paid status.
 
 **Permanent-product upgrade notes (from donor evidence audit)**
-- 🔜 Stage 6 financial migration is planned and evidence-backed:
-  - FEB `InvoiceService.reconcile_invoice_financials()` is the single authoritative formula.
-  - FEB `PaymentService` supports: integer cents Payment collection, idempotency 409 replay, overpayment reject, void-with-reason (manual only), Stripe two-step (pending → webhook confirm), and independent `document_status` vs `financial_status`.
-- 🔜 Requires explicit sign-off on the money representation policy before porting.
+- 🔜 Financial migration is planned and evidence-backed (FEB `InvoiceService`/`PaymentService` are FSV for specific files):
+  - Independent `document_status` vs `financial_status`.
+  - Void-with-reason (manual only).
+  - Overpayment rejection.
+  - Stripe two-step (pending → webhook confirm) when Stripe is introduced.
+  - Central reconciliation formula ownership.
 
 ---
 
 ## Phase 7 — Documents/Files + Attachments (shared)
-**Status:** ✅ Completed (baseline) 
+**Status:** ✅ Completed (baseline)
 
 **User stories**
 1. As staff, I can upload a file once and attach it to records.
@@ -235,7 +234,7 @@
 ---
 
 ## Phase 8 — SendGrid Email + Email Log
-**Status:** ✅ Completed (live integration) 
+**Status:** ✅ Completed (live integration)
 
 **User stories**
 1. As staff, I can draft a custom message and send email for Quote/Invoice/general.
@@ -335,65 +334,78 @@ Temporarily disable worrying about login while doing product iteration.
 1. Correct and complete `SIGNGUY_AI_FEATURE_READINESS_MATRIX.md` using direct donor repo inspection (no user file pastes).
 2. Correct and complete `SIGNGUY_AI_REPOSITORY_AND_ARCHITECTURE_SOURCE_MAP.md` in place (preserve Parts 1/3/3A/11 as draft findings, then verify and finish Parts 2/4/5/6/7/8/9/10).
 3. Remove all language implying features are "deferred by MVP scope".
+4. Produce a final consistent evidence standard: fully verified claims (FSV), partially inspected claims (PSI), reference-only claims (RS), and scoped tree-hash verification (STHV).
 
 **Implementation steps (as delivered)**
-- ✅ Cloned and inspected 4 donor repos line-by-line:
-  - FEB: `invoice_service.py`, `payment_service.py`, `models/payments.py`, `models/jobs.py`
-  - REB: settings, communications (+ SendGrid webhook), doculink, wrap_lab, quotes, orders, invoices, access, pricing_foundation, pricing_engine, activity, webstores, platform_admin, shared_systems, upload_validation, billing_rules, order_schemas, order_item_rules
-  - ORIG: `object_storage.py`, approvals/signatures/portal (head sections)
-- ✅ Verified `SIGNGUY-AI-OS` byte-identical to MVP (md5 tree match).
-- ✅ Rewrote `SIGNGUY_AI_FEATURE_READINESS_MATRIX.md` with evidence levels and corrected COPY/REF/EXT/RB decisions.
-- ✅ Updated `SIGNGUY_AI_REPOSITORY_AND_ARCHITECTURE_SOURCE_MAP.md` in place:
-  - Updated Parts 1/3/3A/11 against corrected matrix
-  - Completed Parts 2/4/5/6/7/8/9/10
-  - Appended final correction changelog and evidence sufficiency verdict (YES)
+- ✅ Inspected donor repos with explicit evidence discipline (per-file evidence levels):
+  - FEB (FSV for listed files): `invoice_service.py`, `payment_service.py`, `models/payments.py`, `models/jobs.py`
+  - REB (FSV for listed files): settings, communications (+ SendGrid webhook), doculink, wrap_lab, quotes, orders, invoices, access, pricing_foundation, pricing_engine, activity, webstores, platform_admin, shared_systems, upload_validation, billing_rules, order_schemas, order_item_rules
+  - ORIG: `object_storage.py` (FSV), and approvals/signatures/portal (PSI — head sections only; module preflight required)
+- ✅ Verified `SIGNGUY-AI-OS` matches MVP **under `backend/app/**/*.py` only** via scoped source-tree hash comparison (STHV). (No full-tree, branch, tag, or commit-history comparison performed in this phase.)
+- ✅ Rewrote `SIGNGUY_AI_FEATURE_READINESS_MATRIX.md` with corrected money-representation facts, evidence levels, and corrected COPY/REF/EXT/RB decisions.
+- ✅ Updated `SIGNGUY_AI_REPOSITORY_AND_ARCHITECTURE_SOURCE_MAP.md` in place and applied consistency-only cleanup:
+  - Stage-numbering disclaimer
+  - Removed claims of “no unverified findings” / “every file read line-by-line”
+  - Reclassified ORIG portal/signatures/approvals as PSI
+  - Downgraded REB `billing_rules.py` from canonical/final → implementation candidate requiring owner approval
+  - Replaced OS repo “archive within 7 days” with freeze/compare/retain/decide-after-completion language
+  - Corrected money-policy locked-vs-owner-decision split
 
 **Deliverables**
-- ✅ `/app/SIGNGUY_AI_FEATURE_READINESS_MATRIX.md` (corrected)
-- ✅ `/app/SIGNGUY_AI_REPOSITORY_AND_ARCHITECTURE_SOURCE_MAP.md` (completed)
+- ✅ `/app/SIGNGUY_AI_FEATURE_READINESS_MATRIX.md` (corrected; 493 lines)
+- ✅ `/app/SIGNGUY_AI_REPOSITORY_AND_ARCHITECTURE_SOURCE_MAP.md` (completed; 915 lines)
 
 **Success criteria**
 - ✅ No donor-file pastes requested.
-- ✅ Every prior `UNK` resolved to SV/SS/SO/RS or explicitly bounded.
+- ✅ Every donor claim has an explicit evidence label; PSI/RS are clearly separated from FSV.
 - ✅ Audit documents updated in place; no competing architecture doc created.
 
 ---
 
 ## Next Actions / Backlog (Permanent Product Build-Out)
 
-1. **Retire the mirror repo**
-   - Archive `dnblack323/SIGNGUY-AI-OS` (byte-identical mirror) and point README to `SIGNGUY-MVP`.
+> These are the next planning items before implementation. Prompt 3 will finalize checkpoint ordering and commercial scope.
 
-2. **Sign off and record the six standing architecture decisions**
-   - Add to `/app/memory/AGENT_INSTRUCTIONS.md`:
-     - Money representation policy (FEB boundary compromise vs cents-everywhere)
-     - REB permission catalog adoption (57-permission enum)
-     - Repository pattern for new modules
-     - Terminology map (Order/OrderItem/WorkOrder)
-     - SendGrid webhook secret enforcement
-     - OS repo retirement plan
+1. **SIGNGUY-AI-OS handling (owner decision: timing)**
+   - Freeze against new development immediately.
+   - Perform a complete-tree comparison (all tracked files, branches, tags, docs, and commit history).
+   - Retain as a read-only reference throughout the build.
+   - Decide archival timing after final commercial completion.
 
-3. **Production safety gates**
+2. **Record and sign off owner-decision items in `/app/memory/AGENT_INSTRUCTIONS.md`**
+   - Money representation policy:
+     - **LOCKED factual finding:** MVP currently stores commerce values as integer cents and pricing configuration/calculator values as dollar-based numbers with Decimal internal math.
+     - **OWNER DECISION:** ratify that observed split as the permanent money policy, including `_cents` naming and a single pricing-to-commerce conversion boundary.
+   - REB permission catalog adoption (candidate; owner review required).
+   - Repository pattern for new modules (candidate; owner review required).
+   - SendGrid webhook secret enforcement behavior (fail-closed in production; owner sign-off).
+   - Commercial pricing: confirm or replace every candidate value from REB `billing_rules.py` (plans/prices/credits/promo/fee rates).
+   - Portal auth method (magic link vs password vs both).
+   - Webstores mode (add-on-only vs standalone).
+   - Sales-tax strategy.
+   - AI provider and credit-cost model.
+
+3. **Production safety gates (implementation later, decision now)**
    - Force-fail on `AUTH_DEV_BYPASS=true` in production.
    - Rotate JWT secret away from placeholder.
 
-4. **Shared security hardening**
+4. **Shared security hardening (implementation later)**
    - Extract REB `upload_validation.py` into MVP and enforce for all uploads.
 
-5. **Stage correctness upgrades (per mandated build order)**
-   - Stage 4 upgrade: Quotes with line items + pricing snapshots + expiration + approve/decline metadata (REB model).
-   - Stage 5 fix + Stage 7: Add `production_required` to OrderItem; Work Orders snapshot only production-required items (REB rules).
-   - Stage 6 migration: Port FEB InvoiceService + PaymentService + Payment model; implement dual `document_status`/`financial_status`, void-with-reason, reconciliation; add webhook infra as required.
+5. **Focused correctness upgrades (implementation later; ordering set by Prompt 3)**
+   - Quote upgrade: line items + pricing snapshots + expiration + approval metadata (REB model).
+   - Order upgrade: pricing snapshot fields and per-item pricing override with audit.
+   - Work Order correction: add `production_required` to OrderItem; Work Orders snapshot only production-required items.
+   - Invoice/payment migration: introduce dual-status `document_status`/`financial_status`, central reconciliation, payment void-with-reason, overpayment reject, Stripe-ready two-step pattern.
 
-6. **Shared platform services (Stage 2 build-outs)**
+6. **Shared platform services (implementation later)**
    - Settings framework (REB scaffold).
    - Notifications service + email activity + SendGrid inbound webhook (REB scaffold).
    - Feature entitlements service (needed for add-on modules).
 
-7. **Deferred only by dependency (not by scope)**
-   - Portal auth + Customer Portal (ORIG blueprint).
-   - DocuLink documents/shares (REB scaffold + rewire storage).
-   - Webstores / Order Portal Manager (REB specs + scaffold + ORIG feature map).
-   - Wrap Lab (REB workflow engine).
-   - AI credits + billing (REB billing rules + ORIG credit/billing reference).
-   - Inventory/Purchasing/Vendors, Payroll/Employees/Timeclock, Reports/Analytics.
+7. **Findings requiring module-level verification during feature preflight (do not block Prompt 3)**
+   - Customer portal (ORIG blueprint; PSI until full trace).
+   - Signatures and approvals (ORIG; PSI until full trace).
+   - Stripe Connect (security review required).
+   - Webstores (deep donor/spec analysis required).
+   - Inventory, payroll, reports, AI systems (reference-only donors require module preflight).

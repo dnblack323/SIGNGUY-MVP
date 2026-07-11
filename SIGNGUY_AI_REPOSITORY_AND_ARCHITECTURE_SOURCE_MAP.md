@@ -1,8 +1,10 @@
 # SignGuy AI — Repository & Architecture Source Map
 
-**Audit date:** 2026-07-11 (corrected pass — all donor files inspected line-by-line via `git clone` into `/tmp/donor_repos/`)
-**Auditor:** E2 agent (read-only for this audit; no application code changes)
-**Companion document:** `/app/SIGNGUY_AI_FEATURE_READINESS_MATRIX.md` (also corrected in this pass) — the per-feature evidence source.
+**Audit date:** 2026-07-11 (final consistency-only cleanup pass; substantive findings unchanged from the 2026-07-11 reconciliation pass)
+**Auditor:** E2 agent (read-only for this audit; no application code changes). Every donor claim carries an explicit evidence level. Fully verified claims (FSV) are backed by complete source inspection; partially inspected (PSI) claims identify what was observed and defer the remainder to module preflight; reference-only (RS) claims are file-tree observations.
+**Companion document:** `/app/SIGNGUY_AI_FEATURE_READINESS_MATRIX.md` (also updated in the same reconciliation pass) — the per-feature evidence source.
+
+> **Stage-numbering disclaimer.** Any stage number retained in this document refers only to a prior proposed sequence. Prompt 3 and the final master build plan may rename, reorder, combine, or replace those stages based on the final dependency analysis.
 
 **Repository role:** `dnblack323/SIGNGUY-MVP` is the **permanent commercial product**. Every architectural conclusion below assumes this. All prior "deferred by MVP scope" language has been removed from this document.
 
@@ -10,7 +12,7 @@
 
 | Part | Section | Status | Notes |
 |---|---|---|---|
-| 1 | Repository Responsibility Map | **COMPLETED (corrected)** | Every donor claim now backed by an inspected file. |
+| 1 | Repository Responsibility Map | **COMPLETED (corrected)** | Every donor claim carries an explicit evidence level (FSV / PSI / RS). |
 | 2 | Source-of-Truth Map by System | **COMPLETED** | See section below. |
 | 3 | SIGNGUY-MVP Current Architecture Snapshot | **COMPLETED (unchanged — remains accurate)** | Exact paths + collections + flows verified. |
 | 3A | Complete-Product Architecture Capacity Check | **COMPLETED (corrected)** | "Deferred by MVP scope" language removed; every gap has a permanent-product build-out plan. |
@@ -23,9 +25,9 @@
 | 10 | Required Architecture Checkpoints | **COMPLETED** | See section below. |
 | 11 | Final Architecture Determination | **COMPLETED (corrected)** | Conclusion strengthened by the corrected evidence base. |
 
-**Sections requiring additional repository inspection:** NONE. Every donor claim in this document is backed by a file that was read in this pass. Files inspected line-by-line: FEB `services/invoice_service.py`, `services/payment_service.py`, `models/payments.py`, `models/jobs.py`; REB `routes/settings.py`, `models/settings.py`, `routes/communications.py`, `services/communications.py`, `services/doculink_bridge.py`, `services/doculink_storage.py`, `routes/doculink.py`, `services/wrap_lab_service.py`, `routes/wrap_lab.py`, `models/wrap_lab.py`, `routes/quotes.py`, `models/quotes.py`, `routes/orders.py`, `models/orders.py`, `routes/invoices.py`, `models/invoices.py`, `services/order_schemas.py`, `services/order_item_rules.py`, `models/access.py`, `routes/pricing_foundation.py`, `services/pricing_engine.py`, `routes/activity.py`, `services/activity.py`, `routes/webstores.py`, `services/webstore_service.py`, `models/webstores.py`, `routes/platform_admin.py`, `routes/shared_systems.py`, `services/upload_validation.py`, `services/billing_rules.py`; ORIG `services/object_storage.py`, `routes/approvals.py` (head), `routes/signatures.py` (head), `routes/portal.py` (head).
+**Sections requiring additional repository inspection at implementation time:** Findings requiring module-level verification remain for the customer portal, signatures, approvals, Stripe Connect, Webstores, inventory, payroll, reports, and AI systems. These do not block Prompt 3 but must be resolved through feature preflight before implementation. Files fully inspected in this pass (FSV): FEB `services/invoice_service.py`, `services/payment_service.py`, `models/payments.py`, `models/jobs.py`; REB `routes/settings.py`, `models/settings.py`, `routes/communications.py`, `services/communications.py`, `services/doculink_bridge.py`, `services/doculink_storage.py`, `routes/doculink.py`, `services/wrap_lab_service.py`, `routes/wrap_lab.py`, `models/wrap_lab.py`, `routes/quotes.py`, `models/quotes.py`, `routes/orders.py`, `models/orders.py`, `routes/invoices.py`, `models/invoices.py`, `services/order_schemas.py`, `services/order_item_rules.py`, `models/access.py`, `routes/pricing_foundation.py`, `services/pricing_engine.py`, `routes/activity.py`, `services/activity.py`, `routes/webstores.py`, `services/webstore_service.py`, `models/webstores.py`, `routes/platform_admin.py`, `routes/shared_systems.py`, `services/upload_validation.py`, `services/billing_rules.py`; ORIG `services/object_storage.py`. Files partially inspected in this pass (PSI — head sections only, full trace required during module preflight): ORIG `routes/approvals.py`, `routes/signatures.py`, `routes/portal.py`.
 
-**Unverified findings:** none in this pass.
+**Evidence-level policy:** Every donor claim is assigned an explicit evidence level. Fully verified claims are backed by complete source inspection; partially inspected and reference-only claims are clearly identified and require module preflight.
 
 ---
 
@@ -118,11 +120,11 @@
 - **Recommended role:** **PRIMARY ARCHITECTURE REFERENCE + WORKING-SCAFFOLD CODE DONOR** (not just docs).
 - **Final warnings:** the ORDER_PORTAL specs are extensive and would drive the entire Webstore/Order Portal Manager rebuild — do not attempt Webstores before reading them. The webhook signature verifier accepts anything if `SIGNGUYAI_SENDGRID_WEBHOOK_SECRET` is unset — force-set on production before enabling.
 
-## 1.4 `dnblack323/signguy-ai-feb22` — **PRIMARY FINANCIAL-LOGIC DONOR (SV — line-by-line verified)**
+## 1.4 `dnblack323/signguy-ai-feb22` — **PRIMARY FINANCIAL-LOGIC DONOR (FSV for the specific files listed)**
 
 - **URL:** https://github.com/dnblack323/signguy-ai-feb22
 - **Original intended purpose:** February backup / financial correction branch.
-- **Current actual purpose:** Highest-value donor for **Invoices + Payments + Stripe Connect**. Corrected in this pass with line-by-line inspection:
+- **Current actual purpose:** Highest-value donor for **Invoices + Payments + Stripe Connect**. Files fully inspected in this pass (FSV):
   - `services/invoice_service.py` (147 lines) — `compute_line_items_and_totals()` (server-side line-item snapshot, never trusts client totals) + `reconcile_invoice_financials()` (single authoritative formula computing `amount_paid`, `balance_due`, `status`, `document_status`, `financial_status` in one place) + `_derive_states()` (independent document / financial dimensions).
   - `services/payment_service.py` (320 lines) — `record_manual_payment` (idempotency-key with 409 on replay, overpayment reject, 2-decimal validation), `void_manual_payment` (required reason, preserves original row, never applies to Stripe payments), `confirm_stripe_invoice_payment` (webhook-only, verified session with metadata, DuplicateKeyError race handling), `create_pending_stripe_payment` (two-step pattern at checkout session creation time).
   - `models/payments.py` (148 lines) — unified Payment collection, integer cents (`amount_cents`), `PaymentSource` (manual / stripe_connect / migration / system_reconciliation), `PaymentStatus` (pending / succeeded / failed / canceled / voided), `RecordPaymentRequest` + `VoidPaymentRequest` typed request bodies, `refunded_amount_cents` future-compatible field.
@@ -358,8 +360,8 @@ For each system in the permanent product, this table names the single canonical 
 | Email — inbound webhook (bounces, opens, clicks) | REB `POST /communications/webhooks/sendgrid` → new MVP endpoint | REB `routes/communications.py::ingest_sendgrid_webhook` | REF | FSV |
 | Email activity log | REB `email_activity` collection → new MVP collection | REB `routes/communications.py::create_email_activity_record` | REF | FSV |
 | Documents / DocuLink | REB `routes/doculink.py` (rewire storage adapter to Emergent) | REB `routes/doculink.py`, `services/doculink_storage.py`, `services/doculink_bridge.py`, `models/doculink.py` | RB | FSV |
-| Signatures | ORIG `routes/signatures.py` (rename job→order) | ORIG `routes/signatures.py`, ORIG `services/object_storage.py` | REF | FSV |
-| Approvals / Artwork proofs | ORIG `routes/approvals.py` (dual-parent already) | ORIG `routes/approvals.py` | REF | FSV |
+| Signatures | ORIG `routes/signatures.py` (rename job→order) | ORIG `routes/signatures.py`, ORIG `services/object_storage.py` | REF | PSI (head only — full trace required during module preflight) |
+| Approvals / Artwork proofs | ORIG `routes/approvals.py` (dual-parent already) | ORIG `routes/approvals.py` | REF | PSI (head only — full trace required during module preflight) |
 | Customers | MVP `routers/customers.py`, `models/customer.py` | KEEP | RV |
 | Quotes | REB `routes/quotes.py` + `models/quotes.py` → merge into MVP `routers/quotes.py` | REB files | REF | FSV |
 | Orders / Order Items | REB `routes/orders.py` + `models/orders.py` + `services/order_schemas.py` | REB files | REF | FSV |
@@ -371,7 +373,7 @@ For each system in the permanent product, this table names the single canonical 
 | Payments — unified collection + void-with-reason + idempotency | FEB `services/payment_service.py` + `models/payments.py` → new MVP module | FEB files | EXT | FSV |
 | Stripe Connect | ORIG + FEB `routes/stripe_connect.py` + FEB `services/payment_service.py::confirm_stripe_invoice_payment` | ORIG + FEB files | REF (safety-critical) | FSV |
 | Money representation policy | Ratify MVP's existing "commerce in integer cents / configuration in float dollars" split (documented in the corrected Feature Readiness Matrix). Do NOT adopt FEB's float+cents boundary compromise. | MVP `models/quote.py`, `models/order.py`, `models/invoice.py`, `models/work_order.py`, `services/pricing.py`, `services/starter_defaults.py`, `frontend/src/lib/format.js`, `frontend/src/components/forms/MoneyInput.jsx`; FEB `services/invoice_service.py::_derive_states` + `models/payments.py` for reference | Decision (owner sign-off) | FSV |
-| Customer portal | Rebuild against MVP shared services using ORIG `routes/portal.py` as blueprint | ORIG `routes/portal.py` | RB | FSV |
+| Customer portal | Rebuild against MVP shared services using ORIG `routes/portal.py` as blueprint | ORIG `routes/portal.py` | RB | PSI (head only — full trace required during module preflight) |
 | Employee portal | Rebuild against MVP shared services using ORIG + FEB `routes/employee_portal.py` as blueprint | ORIG + FEB files | RB | RS |
 | Wrap Lab | REB `services/wrap_lab_service.py` + `routes/wrap_lab.py` + `models/wrap_lab.py` | REB files | REF | FSV |
 | Webstores (Order Portal Manager) | REB `ORDER_PORTAL_*_SPEC.md` (blueprint) + REB `routes/webstores.py` (capabilities scaffold) + ORIG `routes/webstores.py` (feature map only) | REB + ORIG files | RB | SO+SV |
@@ -493,7 +495,7 @@ Every decision above lives in `memory/AGENT_INSTRUCTIONS.md` once signed off. No
 
 # PART 5A — COMMERCIAL PRICING CATALOG (REB `billing_rules.py`) — OWNER APPROVAL REQUIRED
 
-REB `services/billing_rules.py` is treated in this audit as an **EXISTING COMMERCIAL PRICING IMPLEMENTATION CANDIDATE**, not the final commercial model. Every value below requires explicit owner sign-off before it can be treated as canonical. Prompt 3 will determine final commercial scope and pricing decisions.
+REB `services/billing_rules.py` is the most complete existing commercial-pricing implementation candidate in any donor. None of its prices, fees, plans, credits, promotions, or transaction rates are final until owner approval. Every value below is a **CANDIDATE — OWNER APPROVAL REQUIRED**. Prompt 3 will determine final commercial scope and pricing decisions.
 
 **Subscription products (`SUBSCRIPTION_PRODUCTS`) — owner approval required on each:**
 - `prod_core_os` "SignGuy Core Standalone" — founders `$99.00/mo`, GA `$149.00/mo`, 300 founders credits, 300 GA credits.
@@ -524,7 +526,7 @@ REB `services/billing_rules.py` is treated in this audit as an **EXISTING COMMER
 - `prod_complete_bundle` includes all three (core / webstores / wrap) True.
 - Standalone products enable only their respective feature key.
 
-Prompt 3 must ratify (or overrule) each of the above before any billing code lands in MVP.
+REB `billing_rules.py` is the most complete existing commercial-pricing implementation candidate, but none of its prices, fees, plans, credits, promotions, or transaction rates are final until owner approval. Prompt 3 must ratify (or overrule) each of the above before any billing code lands in MVP.
 
 ---
 
@@ -584,7 +586,7 @@ Every module in the permanent product depends on some subset of the following sh
 | F14 | Money-safe reconciliation service (InvoiceService+PaymentService) | NOT YET BUILT | F1, F3, F4, F6, F11 | Payments, Portal (payment view), Reports | FEB `services/invoice_service.py` + `services/payment_service.py` | FSV |
 | F15 | Frontend shared components | DONE (RV) | — | All UI | MVP `src/components/*` | RV |
 
-**Build order for the shared foundations** (a subset of the mandated 0–17 stage plan):
+**Proposed build order for the shared foundations** (a proposed dependency reference; final internal checkpoint order to be set by Prompt 3 and the master build plan):
 - Immediately (before Stage 6): **F6 (money policy)** — a decision, not code. Cannot be skipped.
 - Stage 2 (shared platform services): **F7 (Settings)**, **F8 (Notifications)**, **F9 (Feature flags)** — all have working REB scaffolds ready to port.
 - Stage 6 (Invoices / Payments): **F11 (webhook infra)** + **F14 (money-safe reconciliation service)** land together with the Invoice / Payment migration.
@@ -634,7 +636,7 @@ At permanent-product Stage-complete state, the desired end state is: **one live 
 |---|---|---|---|---|
 | 1 | `AUTH_DEV_BYPASS=true` shipping to production | High if forgotten | Critical (tenant takeover) | Force-fail startup if `AUTH_DEV_BYPASS==true` AND `ENV==production` |
 | 2 | JWT dev secret shipping to production | High if forgotten | Critical | Same startup guard on JWT secret matching a well-known placeholder |
-| 3 | `SIGNGUY-AI-OS` drift by accidental commits | High while both live | High | Archive within 7 days |
+| 3 | `SIGNGUY-AI-OS` drift by accidental commits | High while both live | High | Freeze against new development immediately. Perform a complete-tree comparison. Retain as a read-only reference throughout the build. Decide archival timing after final commercial completion. |
 | 4 | Job/JobTicket terminology contamination during FEB port | High if unchecked | Critical (data model split) | Mandatory rename checklist on every donor-file port; enforce in code review |
 | 5 | Copying ORIG `routes/pricing.py` / `MaterialsAdmin.js` | Moderate | Critical (banned by migration doc) | Enforced by AGENT_INSTRUCTIONS.md |
 | 6 | Adding Stripe without webhook signature verification + replay handling | Moderate | Critical (real money) | Land F11 (webhook infra) BEFORE Stripe Connect port |
@@ -647,7 +649,7 @@ At permanent-product Stage-complete state, the desired end state is: **one live 
 | 13 | `PreviewEnvelope` / preview-user impersonation defaults leaking into MVP | Moderate | High | Sanitise every REB file on port |
 | 14 | Object storage exposed unauthed | Low (MVP already gated) | Critical | Existing tenant-path check enforces this |
 | 15 | Building Webstores before F9 (entitlements) exists | Moderate | High (module without on/off switch) | F9 lands as Stage 2 |
-| 16 | Building Wrap Lab before Approvals + Signatures + Portal | Moderate | High | Follow mandated stage order |
+| 16 | Building Wrap Lab before Approvals + Signatures + Portal | Moderate | High | Follow the proposed dependency order established by Prompt 3 |
 | 17 | AI cost blowup without per-tenant credit metering | High if enabled early | Critical | Do not enable AI until credit ledger + entitlements land |
 | 18 | Portal auth reusing admin JWT | Moderate | High (privilege escalation) | Separate portal auth model with dedicated permission scope |
 | 19 | Missing tenant filter on a new module's list endpoint | Moderate | Critical (cross-tenant leak) | Repository pattern (Part 6) forces tenant scoping; new module unit-test with cross-tenant sweep |
@@ -667,7 +669,7 @@ At permanent-product Stage-complete state, the desired end state is: **one live 
 
 # PART 10 — REQUIRED ARCHITECTURE CHECKPOINTS
 
-Each stage in the mandated build order must satisfy the following checkpoints before it is marked complete.
+Each internal checkpoint (once Prompt 3 establishes the final order) must satisfy the following before it is marked complete.
 
 | Checkpoint | Required for every stage |
 |---|---|
@@ -705,7 +707,7 @@ Each stage in the mandated build order must satisfy the following checkpoints be
 
 ### Supporting evidence
 - Auth, tenants, permissions, object storage, audit, sequences, SendGrid, pricing foundation, cross-tenant isolation are all verified working (testing agent report 100% pass; smoke script passes).
-- Terminology and module boundaries already match the mandated build order (Customer→Quote→Order→OrderItem→WorkOrder→Invoice→Payments). No `Job/JobTicket` contamination.
+- Terminology and module boundaries align with the proposed dependency order (Customer→Quote→Order→OrderItem→WorkOrder→Invoice→Payments). No `Job/JobTicket` contamination.
 - The gaps to reach commercial complete-product readiness are all additive modules (Portal, Webstore, Wrap, AI, Payroll, Inventory, Reports) plus five shared foundations (notification service, feature flags/entitlements, background jobs, webhook infra, portal auth). None require touching existing working code.
 
 ### Answers to the closing questions
@@ -795,7 +797,7 @@ Each stage in the mandated build order must satisfy the following checkpoints be
 
 ## Whether enough architecture evidence exists to proceed to Prompt 3
 
-**YES.** Parts 1, 3, 3A, 11 have been reviewed against the corrected feature readiness matrix — every donor claim in this document is now backed by a file that was read line-by-line in this pass. Parts 2, 4, 5, 6, 7, 8, 9, 10 are now complete (see sections above / below). Prompt 3 (implementation planning) may proceed on this evidence base.
+**Architecture evidence sufficient for Prompt 3, subject to module-preflight verification for the systems listed below.** Parts 1, 3, 3A, 11 have been reviewed against the corrected feature readiness matrix — every donor claim carries an explicit evidence level (FSV / PSI / RS). Fully verified claims are backed by complete source inspection; partially inspected and reference-only claims are clearly identified and require module preflight. Parts 2, 4, 5, 6, 7, 8, 9, 10 are complete. Prompt 3 may proceed on this evidence base for the LOCKED items; the REQUIRES-OWNER-DECISION items require owner approval; the REQUIRES-MODULE-PREFLIGHT items must be resolved through feature preflight before implementation of the affected modules.
 
 **Recommendation:** land the six sign-off decisions in the corrected Feature Readiness Matrix (money representation, permission catalog, repository pattern, terminology renames, SendGrid webhook secret, `SIGNGUY-AI-OS` retirement) into `memory/AGENT_INSTRUCTIONS.md` before beginning Stage 6 (Invoice / Payment migration).
 
@@ -835,7 +837,7 @@ This is the summary the user requested. It captures **what changed from the orig
 6. **The Order-based approval flow does NOT need to be invented from scratch.** ORIG `routes/approvals.py::_get_proof_parent_name` already bridges both `db.jobs` and `db.orders`.
 7. **REB's notification service is real code with webhook signature verification, not a spec.** HMAC-SHA256 against `SIGNGUYAI_SENDGRID_WEBHOOK_SECRET`.
 8. **REB's Wrap Lab is a real workflow engine, not a UI mock.** 11 stages, 14 actions, stage gates, portal allowlist.
-9. **REB's `billing_rules.py` is the canonical commercial pricing spec**, not one of several competing donors — the 4 subscription products + credit top-ups + founders promo + transaction fee bps table is the intended permanent product commercial model.
+9. **REB `billing_rules.py` is the most complete existing commercial-pricing implementation candidate**, but none of its prices, fees, plans, credits, promotions, or transaction rates are final until owner approval. It is a candidate, not the canonical model.
 10. **Money representation — corrected in this pass.** The previous framing ("MVP uses float dollars everywhere; adopt FEB's boundary compromise") was wrong. **MVP already stores commerce (Quote/Order/Invoice/Payment/WorkOrder) in integer cents and pricing configuration in float dollars.** The recommended policy is to ratify MVP's existing split; the FEB boundary compromise is NOT adopted. Owner sign-off required on the `_cents` suffix rule.
 
 ## Which Prompt 2 conclusions remain valid
@@ -851,7 +853,7 @@ This is the summary the user requested. It captures **what changed from the orig
 ## Which Prompt 2 conclusions need revision
 
 - **Part 1.3 (REB role)** — was `PRIMARY ARCHITECTURE REFERENCE (secondary: SELECTIVE CODE DONOR)`, now upgraded to `PRIMARY ARCHITECTURE REFERENCE + WORKING-SCAFFOLD CODE DONOR (FSV)` because concrete scaffolds have been read.
-- **Part 1.4 (FEB role)** — was `PRIMARY BUSINESS-BEHAVIOR REFERENCE`, now upgraded to `PRIMARY FINANCIAL-LOGIC DONOR (SV — line-by-line verified)`. Explicit line counts and behaviors are documented.
+- **Part 1.4 (FEB role)** — was `PRIMARY BUSINESS-BEHAVIOR REFERENCE`, now `PRIMARY FINANCIAL-LOGIC DONOR (FSV for the specific files listed)`. Explicit line counts and behaviors are documented.
 - **Part 1.5 (ORIG role)** — was `HISTORICAL REFERENCE / FEATURE DISCOVERY`, now upgraded to `FEATURE DISCOVERY + TARGETED CODE DONOR (SV for the specific files listed)`. Certain ORIG files are portable.
 - **Part 3A `deferred by MVP scope` phrasing on SMS/MMS** — corrected. Every entry now reads as a permanent-product build-out plan.
 - **Part 11 unresolved-decisions list** — corrected. Replaced with the six standing decisions in Part 5 (money policy, permission catalog source, repository pattern adoption, terminology map, SendGrid webhook secret enforcement, `SIGNGUY-AI-OS` retirement) plus four architectural style decisions (Webstores commercial mode, Portal auth style, LLM provider for AI billing, sales-tax responsibility).
@@ -864,7 +866,7 @@ This is the summary the user requested. It captures **what changed from the orig
 
 - Parts 1, 3, 3A, 11 have been reviewed against every corrected matrix row.
 - Parts 2, 4, 5, 6, 7, 8, 9, 10 have been produced.
-- Every donor claim in this document (Parts 1–11 inclusive) is backed by a file that was cloned locally and read line-by-line in this pass — no "UNK" or "user please paste" flags remain.
+- Every donor claim in this document (Parts 1–11 inclusive) carries an explicit evidence level. Fully verified claims (FSV) are backed by complete source inspection. Partially inspected (PSI) and reference-only (RS) claims are clearly identified and require module preflight before implementation. No "UNK" or "user please paste" flags remain.
 - Six standing architectural decisions (Part 5) are pending user sign-off. All other findings are locked.
 
 ## Next non-audit action
@@ -886,12 +888,13 @@ Land the six standing decisions in `/app/memory/AGENT_INSTRUCTIONS.md` (money-re
 - Tenant isolation and backend-enforced permission gating remain mandatory on every new module.
 - SendGrid webhook must fail-closed in production if the secret is unset.
 - Donor repositories remain read-only references throughout the build. No deletion until final commercial completion.
+- **Money representation — factual finding (LOCKED, FSV):** MVP currently stores commerce values as integer cents and pricing configuration/calculator values as dollar-based numbers with Decimal internal math. This is the observed source state; the decision to ratify it as the permanent policy is a separate item (see REQUIRES OWNER DECISION below).
 
 ## REQUIRES OWNER DECISION IN PROMPT 3
 
-- Money representation — ratify the recommended policy (commerce in integer `_cents`, configuration in float dollars, single boundary at pricing→commerce hand-off) or overrule.
-- Final commercial pricing and fees — every value in REB `billing_rules.py` (subscription prices, credit-pack prices, founders promo terms, transaction fee basis points) requires owner approval before being treated as canonical (enumerated in Part 5A).
-- Final internal checkpoint order — the previous 0–17 stage numbering is a proposed dependency reference, not a locked plan; Prompt 3 sets the definitive checkpoint list after scope + pricing + policy decisions land.
+- **Money representation — owner decision:** ratify the observed MVP split as the permanent money policy, including `_cents` naming and a single pricing-to-commerce conversion boundary. Recommended, but owner must ratify or overrule.
+- Final commercial pricing and fees — REB `billing_rules.py` is the most complete existing commercial-pricing implementation candidate, but none of its prices, fees, plans, credits, promotions, or transaction rates are final until owner approval (enumerated in Part 5A).
+- Final internal checkpoint order — any prior stage numbering is a proposed dependency reference, not a locked plan; Prompt 3 sets the definitive checkpoint list after scope + pricing + policy decisions land.
 - Portal authentication method — magic link, password, both.
 - Webstores product mode — add-on-only vs also standalone.
 - Sales-tax strategy — integration or shop-configured flat rates.
