@@ -55,6 +55,7 @@ api_router.include_router(customers_router.router)
 api_router.include_router(quotes_router.router)
 api_router.include_router(orders_router.router)
 api_router.include_router(work_orders_router.router)
+api_router.include_router(work_orders_router.prod_router)
 api_router.include_router(invoices_router.router)
 from app.routers import payments as payments_router  # noqa: E402
 from app.routers import webhooks_stripe as webhooks_stripe_router  # noqa: E402
