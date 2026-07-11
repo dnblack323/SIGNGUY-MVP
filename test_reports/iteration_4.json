@@ -1,0 +1,48 @@
+{
+  "summary": "EC4 CORRECTIONS re-test — Stripe pending-phase renders correctly (placeholder + note + simulate-confirm all visible), simulate-confirm flips invoice to Paid, hydration <div>-in-<p> warning FIXED. Two NEW critical issues discovered that were previously masked by the pre-fix env: (1) Payment row displays the `pi_dev_*` intent id verbatim as provider_ref → the review's explicit ban on `pi_dev_` strings in DOM is violated; (2) Refund flow returns 500 because stripe_core.create_refund has NO dev-placeholder short-circuit (only create_payment_intent does) → it calls out to real Stripe with 'sk_test_emergent' and Stripe returns 401 AuthenticationError. Also, duplicate Stripe initiate creates a SECOND pending payment row instead of returning already_exists=true / reusing the existing intent.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/payments/{id}/refund", "issue": "500 Internal Server Error. stripe_core.create_refund calls stripe.Refund.create() directly without the _is_dev_placeholder_key + auth_dev_bypass short-circuit that create_payment_intent has. With STRIPE_API_KEY='sk_test_emergent' Stripe returns 401 AuthenticationError which is not caught → 500 bubbles out. Traceback: /app/backend/app/services/stripe_core.py:114 → stripe._error.AuthenticationError: Invalid API Key provided: sk_test_****gent", "priority": "CRITICAL"},
+      {"endpoint": "POST /api/invoices/{id}/stripe-intents", "issue": "Duplicate initiate is NOT deduplicated. Calling this twice for the same invoice while a prior PaymentIntent is still status=pending creates a NEW payment row + new pi_dev_ id instead of reusing the existing pending row or returning {already_exists:true}. Observed: invoice ended up with 2 payment rows (1 confirmed, 1 pending) after intended-dup flow. Backend should query for existing pending source=stripe payment for the (invoice_id, amount_cents) tuple and return it.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PaymentRow (invoices/PaymentsTab)", "issue": "SECURITY: The payment row renders payment.provider_ref (the pi_dev_* intent id) as visible text. Review explicitly forbids `pi_dev_` in DOM. Observed text on confirmed row: 'STRIPE  Confirmed  stripe  Jul 11, 2026  $100.00  pi_dev_a16e8dd715224aebbf7f  Refund'. Either mask the provider_ref (show only last 4) or omit it from the visible cell. This is the ONLY leak found — client_secret / publishable_key / cs_test_ / pk_ / sk_ all remain 0 matches in DOM+console+localStorage.", "selector": "[data-testid^='payment-row-'] (text node)", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Stripe refund", "issue": "Frontend correctly rounds-trips the request but the backend returns 500 (see backend_issues.critical[0]). refund-dialog stays open, no refund row is created. User sees a generic error toast.", "affected_selectors": ["refund-dialog", "refund-submit"]},
+      {"flow": "Stripe duplicate initiate", "issue": "Frontend re-opening the dialog + submitting again always creates a fresh intent because it closes the closure secretPayload on Close. The dedup responsibility is entirely server-side and the server does not implement it.", "affected_selectors": ["stripe-initiate-open", "stripe-submit", "payment-row-{id}"]}
+    ],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Stripe initiate happy path: dialog opens → phase transitions to pending → stripe-payment-element + stripe-payment-element-placeholder ('Secure payment fields load from Stripe. Enter your card, then confirm.') + stripe-pending-note ('Waiting for Stripe confirmation via signed webhook…') all visible",
+    "stripe-simulate-confirm button visible in pending phase (AUTH_DEV_BYPASS gated) and successfully POSTs /api/payments/{id}/dev-simulate-confirm → backend confirm_stripe_from_webhook runs → invoice-fin-status-paid renders, balance goes to 0, payment row status flips to Confirmed",
+    "Secret scan: DOM/console/localStorage all 0 matches for cs_test_/cs_live_/pi_test_/pk_test_/pk_live_/sk_test_/sk_live_/client_secret/publishable_key",
+    "PageHeader hydration fix confirmed: 0 validateDOMNesting warnings in console across invoice detail navigation",
+    "Regression: /quotes and /orders render with correct h1; /invoices/nonexistent-id renders [data-testid='invoice-error'] (iteration_2 retry:false fix still holds)"
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "CRITICAL: Add dev-placeholder short-circuit to stripe_core.create_refund analogous to create_payment_intent — when _is_dev_placeholder_key(api_key) and settings.auth_dev_bypass, return a synthesized {id: 're_dev_<hex>', status: 'pending', amount: amount_cents} without touching stripe.Refund.create(). This is the direct RCA of the 500.",
+    "HIGH: Mask or omit payment.provider_ref (pi_dev_*) in the payment row cell. Even a synthesized dev intent id counts as a `pi_dev_` DOM occurrence per review contract. Recommend showing only last 4 chars or dropping the cell for non-owner viewers.",
+    "HIGH: Implement server-side dedup on POST /api/invoices/{id}/stripe-intents. Before creating a new intent, look up existing payments where invoice_id=X AND source='stripe' AND status IN ('pending','requires_payment_method') AND amount_cents=Y and return that row with already_exists=true instead of creating another.",
+    "OPTIONAL: Frontend could pre-check by fetching the payments list before calling stripe-intents and reuse the pending row, but the server-side guard is authoritative."
+  ],
+  "critical_code_review_comments": [
+    "stripe_core.py:96-115 create_refund is missing the exact same guard added to create_payment_intent at line 65. This asymmetry causes the 500 in dev/preview. Both funcs must be gated by _is_dev_placeholder_key(key) + auth_dev_bypass.",
+    "PaymentDialogs.jsx InitiateStripePaymentButton: closure secrets remain uninterpolated (confirmed 0 leaks for client_secret/publishable_key). The pi_dev_ leak is downstream — it happens in the PaymentsTab row renderer, not in this dialog.",
+    "payment_service.py initiate_stripe_payment should include a dedup guard against existing pending intents for the same invoice+amount, similar to how manual-payments uses Idempotency-Key. The client-supplied Idempotency-Key protects against network retries but not against a fresh dialog re-open.",
+    "PageHeader.jsx subtitle wrapper is now <div className='text-sm text-muted-foreground mt-1'> — fix confirmed, no more <div> in <p> hydration errors."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not re-tested (134/134 per request); NEW critical: refund 500 + dup-initiate not exercised in prior suite", "frontend": "~70% (pending phase / simulate-confirm / hydration / regression all pass; refund + dup-dedup + provider_ref leak fail)"},
+  "test_credentials": "AUTH_DEV_BYPASS=true — auto-logged in as Dev Shop owner (all perms)",
+  "seed_data_creation": "Reused stripe-test invoice ba1161be-1012-4d28-afd9-236fe3eff1a7 from iteration_3. It now has 2 stripe payment rows: 34678610-afa9-40b7-b433-5f45e1e4752a (Confirmed, pi_dev_a16e8dd715224aebbf7f) and dec05fb1-7e88-47b9-a815-5fc260366086 (Pending, pi_dev_1a88c2527bc7408fa896). Invoice flipped to Paid (over-paid because 2×$100 confirmed against $100 balance — but only 1 actually confirmed; the second is stuck Pending forever since we didn't simulate it).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After main agent (1) adds dev-placeholder guard to create_refund, (2) masks provider_ref in payment row, (3) adds server-side dedup on stripe-intents — re-run only: refund flow (submit refund reason + amount → refund row appears with status=pending), duplicate-initiate (verify only 1 stripe payment row exists after 2 submits, response includes already_exists=true), and full DOM secret scan for pi_dev_ across payments tab. Do not need to re-verify hydration, simulate-confirm, or EC1-EC3 regressions.",
+  "rca of the issue": "REFUND 500: /app/backend/app/services/stripe_core.py:96 create_refund lacks the _is_dev_placeholder_key + auth_dev_bypass guard that was added to create_payment_intent at line 65. When STRIPE_API_KEY='sk_test_emergent' (placeholder), stripe.Refund.create() posts to https://api.stripe.com/v1/refunds → 401 AuthenticationError → uncaught → 500. PROVIDER_REF LEAK: PaymentsTab renders payment.provider_ref inline; when the intent id is pi_dev_*, that pattern appears in the DOM. DUPLICATE INITIATE: payment_service.initiate_stripe_payment relies solely on client Idempotency-Key for dedup, which changes every dialog-open (crypto.randomUUID in PaymentDialogs.jsx:185), so backend always creates a new row."
+}
