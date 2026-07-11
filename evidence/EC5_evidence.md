@@ -57,7 +57,27 @@ EC5 added 9 new tests: `test_work_orders_ec5.py`. All EC1–EC4 (134) regression
 Covered: generation filters production items, no-production rejection, duplicate-active dedup, regenerate + snapshot immutability, transitions + reason enforcement + Order coordination, cross-tenant assignment rejection, summary pricing-gated, board grouping, tenant isolation across GET/POST/summary.
 
 ## Frontend
-Existing Work Orders list + detail pages continue to work — router additions are backward compatible (legacy `production-status` endpoint retained; new `transition/regenerate/assign/summary/board` endpoints available for the next UI iteration). A dedicated Production Board page + drag-drop transitions is recommended as a follow-up frontend increment but **not** part of the EC5 backend exit condition (§30). Frontend automated regression via `testing_agent_v3_fork` NOT re-run in this backend-only pass — recorded honestly.
+EC5 frontend delivered in-full (iteration 7 + 8 automated `testing_agent_v3_fork` runs, 100% pass on iteration 8):
+
+- **Production Board (`/work-orders/board`)** — Kanban with 7 columns over `GET /api/production/board`, HTML5 drag-and-drop between columns (`work_order:write` gated), inline reason-required modal for `blocked`/`cancelled` drops, priority/assignee filters, overdue chips + assignee chips + item counts.
+- **Work Order Detail rebuilt** — 9-state status pill + priority pill, `v{n}` version badge, allowed-transitions-only sidebar buttons, reason-required modal for blocked/cancelled, per-status `wo-transition-{state}` testids. Superseded banner (v1 side) + "regenerated from earlier version" banner (new side) with links across the version chain.
+- **Generate Work Order UX** — `GenerateWorkOrderDialog` on Order Detail collects priority / due date / instructions / internal notes / assignees; graceful `already_exists=true` handling.
+- **Regenerate / Supersede UX** — button on both Work Order Detail header (disabled on terminal / superseded rows) AND Order Detail (when active current-version WO exists). Reason-required modal calls `/regenerate`; user is redirected to the new version.
+- **Assignment UI** — `AssignDialog` multi-select over `/users`; server-side notifications via EC2 helper.
+- **Printable Summary** — `PrintSummaryDialog` opens from the WO detail header, injects scoped `@media print` CSS to isolate the print region, and calls `window.print()`. Pricing columns render only when the caller carries `invoice:read`.
+- **Work Orders list** — 9-state filters (`wo-filter-{state}`), `current_only` toggle (default on), priority + due + version chips inline.
+- **Sidebar** — Production Board link added under Shop Operations flyout (`flyout-production-board`).
+- **Permissions** — all UI controls gated on `/auth/me` payload (`work_order:read`, `work_order:write`, `invoice:read`) — no hardcoded role strings.
+- **A11y** — DialogDescription added on Generate / Regenerate / TransitionReason / Assign / Print / Board reason dialogs (Radix aria warnings cleared).
+
+## Automated frontend regression
+`testing_agent_v3_fork` iteration 7 → 8:
+- Iteration 7: functional coverage of all 8 review flows; found 5 issues (1 backend summary permissions gap, 1 regen redirect wiring, 3 cosmetic/a11y). All fixed.
+- Iteration 8: 100% pass on all 5 fixes + regression flows. No new issues.
+- Report files: `/app/test_reports/iteration_7.json`, `/app/test_reports/iteration_8.json`.
+
+## Backend adjustment during EC5 corrections
+- `GET /api/work-orders/{id}/summary` now derives permissions from the caller's `role` when the auth dependency does not expose an explicit `permissions` list (tests can still override via a `permissions` field on the dependency-overridden user). Owner role now correctly receives `unit_price_cents` on summary items. All 143 backend tests remain green after the fix.
 
 ## Cross-tenant results
 `test_tenant_isolation_work_orders` passes — foreign tenant returns 404 on GET, transition, summary.
@@ -66,10 +86,8 @@ Existing Work Orders list + detail pages continue to work — router additions a
 EC1 (34) + EC2 (58) + EC3 (25) + EC4 (17) + EC5 (9) = **143/143** backend tests pass. No 5xx in the endpoint sweep.
 
 ## Known issues / deferred
-- **Production Board UI** — backend endpoint ready; frontend Kanban page not built in this pass (backward-compatible extension of existing list page).
-- **Automated frontend regression** for the new EC5 endpoints — deferred to the next testing cycle.
-- **PDF Work Order Summary** — belongs to EC6 Asset Library per master plan; EC5 ships tenant-safe JSON + browser print HTML surface.
-- **Sub-second board dedup** on rapid drag-drop — mitigated by backend transition validation returning 400 on invalid transitions.
+- **PDF Work Order Summary** — belongs to EC6 Asset Library per master plan; EC5 ships tenant-safe JSON + `window.print()` HTML surface via `PrintSummaryDialog`.
+- **Board card polish (real-time refetch on drag conflicts)** — mitigated by backend transition validation returning 400 on invalid transitions; drag conflicts surface as toasts.
 
 ## Rollback
 Additive schema changes; new services + new router group can be reverted without data migration.

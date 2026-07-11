@@ -23,9 +23,11 @@ Constraints:
 | EC0 — Owner Decisions | COMPLETE | Baked into master plan §4 |
 | EC1 — Security & Guardrails | COMPLETE | `/app/evidence/EC1_evidence.md` |
 | EC2 — Shared Platform Services | COMPLETE | `/app/evidence/EC2_evidence.md` |
-| **EC3 — Quotes, Orders, Order Items, Pricing Snapshots** | **COMPLETE** | `/app/evidence/EC3_evidence.md` |
-| **EC4 — Invoices, Payments, and Stripe Core** | READY TO BUILD | pending owner execution prompt |
-| EC5–EC14 | NOT STARTED | dependency-ordered per master plan |
+| EC3 — Quotes, Orders, Order Items, Pricing Snapshots | COMPLETE | `/app/evidence/EC3_evidence.md` |
+| EC4 — Invoices, Payments, and Stripe Core | COMPLETE | `/app/evidence/EC4_evidence.md` |
+| **EC5 — Production and Work Orders** | **COMPLETE** | `/app/evidence/EC5_evidence.md` — 143/143 backend + frontend delivered + `testing_agent_v3_fork` iteration 8 100% pass |
+| **EC6 — Asset Library, Proofs, Signatures, Customer Portal** | READY TO BUILD | pending owner execution prompt |
+| EC7–EC14 | NOT STARTED | dependency-ordered per master plan |
 
 ## Completed capabilities
 
@@ -38,11 +40,15 @@ Constraints:
 - Idempotent race-safe Quote-to-Order conversion copying line items + snapshots + source revision — EC3.
 - Work Order snapshot filters by `production_required` — EC3.
 - **Functional frontend Quote/Order editors:** quick + detailed entry modes, calculator integration, override-reason validation, production-required switch, revision-warning dialog, expired-quote convert-with-override UX, source-quote link on Orders — EC3 (v2 corrections).
+- Invoice dual-status (`document_status` + `financial_status`), reconciliation, `_cents` money, immutable snapshots — EC4.
+- Payments: record / void / refund with idempotency; Stripe Core integration (test adapter, publishable-key + client_secret never leak to DOM/console) — EC4.
+- **Work Order lifecycle (EC5):** 9-state enum, priority + due dates, immutable snapshots, versioned regenerate/supersede with reason, controlled transitions coordinating Order operational status, cross-tenant-safe assignment with in-app notifications, printable summary gated by `invoice:read`, `/api/production/board` view — EC5.
+- **Production frontend (EC5):** Production Board (Kanban + HTML5 drag-drop + reason-required modal), rebuilt Work Order Detail (version banners, priority/due, allowed-transitions sidebar, assign dialog, in-page Print Summary), Generate WO dialog on Order Detail, Regenerate on both Order + WO detail, 9-state WO list filters + current-version toggle, Production Board sidebar link, all controls permission-gated via `/auth/me`.
 
 ## Testing
 
-- Backend: `cd /app/backend && python -m pytest tests/ -q` → **117 passed** (34 EC1 + 58 EC2 + 25 EC3).
-- Frontend: `testing_agent_v3_fork` iteration_2 → **20/21 scenarios pass on first run**; the one loading-vs-error state issue was fixed (react-query 4xx no-retry) and verified.
+- Backend: `cd /app/backend && python -m pytest tests/ -q` → **143 passed** (34 EC1 + 58 EC2 + 25 EC3 + 17 EC4 + 9 EC5).
+- Frontend: `testing_agent_v3_fork` iteration_3–6 (EC4 Stripe): 100% pass. Iteration_7 (EC5) found 5 issues; iteration_8 verified all 5 fixes — 100% pass.
 
 ## Test credentials
 
@@ -51,15 +57,13 @@ Constraints:
 ## Priority backlog (P0/P1/P2)
 
 ### P0 — Immediate next checkpoint
-- Await owner's EC4 execution prompt: **EC4 — Invoices, Payments, and Stripe Core** (authoritative title per master plan).
+- Await owner's EC6 execution prompt: **EC6 — Asset Library, Proofs, Signatures, and Customer Portal** (authoritative title per master plan).
 
-### P1 — After EC4
-- EC5 Production and Work Orders redesign.
-- EC6 Asset Library, Proofs, Signatures, Customer Portal.
-
-### P2 — Later
+### P1 — After EC6
 - EC7 Inventory, Purchasing, Finance, Reporting.
 - EC8 Wrap Lab.
+
+### P2 — Later
 - EC9 Creative Studio + AI foundations.
 - EC10 AI Tools + Assistant.
 - EC11 Platform Governance & Community.
