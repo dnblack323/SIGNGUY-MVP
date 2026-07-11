@@ -72,6 +72,9 @@ _ERR_MAP = {
 
 def _raise(ex: Exception) -> None:
     msg = str(ex)
+    # Stripe API errors surfaced as ValueError("stripe_error:<msg>") from the service layer.
+    if msg.startswith("stripe_error:"):
+        raise HTTPException(status_code=400, detail=msg[len("stripe_error:"):] or "Stripe error")
     status, detail = _ERR_MAP.get(msg, (400, msg))
     raise HTTPException(status_code=status, detail=detail)
 
@@ -181,6 +184,7 @@ async def dev_simulate_confirm(
         payment_intent_id=doc["stripe_payment_intent_id"],
         provider_event_id=f"dev_simulate_{payment_id}",
         charge_id=f"ch_dev_{payment_id}",
+        dev_simulated=True,
     )
     return {"confirmed": True}
 

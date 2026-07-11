@@ -1,0 +1,39 @@
+{
+  "summary": "EC4 CORRECTIONS re-test #3 — REFUND FLOW NOW PASSING. Full end-to-end: fresh customer/order/invoice → issue → POST /invoices/{id}/stripe-intents (201, real Stripe pi_3Tryn... created) → POST /payments/{pay}/dev-simulate-confirm (200, source payment now flagged dev_simulated=true) → open refund-open-{id} dialog → set reason → refund-submit → HTTP 201 with new refund payment row (source=stripe, refund_of_payment_id=source_id, status=pending, stripe_refund_id=re_dev_12354b8b41d34cbc99f9, amount_cents=10000). Toast 'Refund initiated' shown. DOM/localStorage/console scanned for [re_dev_, pi_dev_, cs_test_, pk_test_, sk_test_, client_secret, publishable_key] — ZERO leaks. Payment row still masked as 'Stripe ····VAAy'. All regressions PASS: dedup returns same payment_id with already_exists=true, refund-submit disabled without reason, API 4xx refund overage returns HTTP 400 with detail (no 500), dev-simulate-confirm still flips invoice to Paid, /invoices/nonexistent-id-abc shows invoice-error.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "PRIMARY: Refund on dev-simulated confirmed Stripe payment → HTTP 201, new refund row appears (source=stripe, status=pending, refund_of_payment_id set, amount=10000). No 500. Toast 'Refund initiated' rendered.",
+    "PRIMARY: Source payment row now carries dev_simulated=true after /dev-simulate-confirm (payment-history API confirms).",
+    "PRIMARY: DOM/localStorage/console scan across invoice detail page — zero occurrences of re_dev_, pi_dev_, cs_test_, pk_test_, sk_test_, client_secret, publishable_key. _maskPi correctly hides the synthesized re_dev_ id.",
+    "ERROR SURFACE: refund-submit is disabled while reason is empty (no silent-submit path).",
+    "ERROR SURFACE: POST /payments/{id}/refund with amount>source returns HTTP 400 {detail:'Refund amount is invalid'} (no 500 bubble). Frontend toast.error(extractError(e)) will surface this to user on real dialog submit.",
+    "REGRESSION dedup: two identical POST /invoices/{id}/stripe-intents return same payment_id (44a825da-...), both 201, second has already_exists=true.",
+    "REGRESSION provider_ref masking: 'Stripe ····VAAy' rendered in payment row for real Stripe intent id.",
+    "REGRESSION dev-simulate-confirm: invoice flips to Paid, balance $0.00.",
+    "REGRESSION invoice-error: /invoices/nonexistent-id-abc renders [data-testid='invoice-error']."
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Refund short-circuit for dev_simulated + auth_dev_bypass in payment_service.initiate_refund is working as designed — synthesizes re_dev_ id without touching Stripe. Confirmed via payment-history: refund row has stripe_refund_id='re_dev_...' and no Stripe API traffic hit.",
+    "Stripe error handling now correctly translates 4xx (validation) — refund overage returns HTTP 400 not 500. This unblocks the frontend toast.error(extractError(e)) path.",
+    "InvoiceDetailPage.jsx _maskPi correctly masks — but note the refund row uses stripe_refund_id (re_dev_...) not stripe_payment_intent_id, and the row displays 'Refund · refund: <reason>' with no id shown, so re_dev_ never enters the DOM. Good.",
+    "Refund row initially status=pending (charge.refunded webhook not simulated) — expected & acceptable per request."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not re-run per request", "frontend": "100% (3/3 primary targets + 4/4 regressions PASS)"},
+  "test_credentials": "AUTH_DEV_BYPASS=true — auto-logged in as Dev Shop owner. localStorage key: signguy.token",
+  "seed_data_creation": "Created invoice 23960599-2c94-4065-a528-0812aabcc435 with confirmed stripe payment 2c8304e6-dc42-4e35-be82-56e041b48cb4 (pi_3TrynZ0ZdYjMF5FY0NWGVAAy, dev_simulated=true) and refund row df4e5277-5cbf-4e35-9730-3bfbecabbb23 (re_dev_12354b8b41d34cbc99f9, pending). Dedup test invoice with payment 44a825da-faaf-4d82-b921-18bc883c2593.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "EC4 refund flow is fully passing. Fixes verified: (a) dev_simulated flag correctly written to Payment row via /dev-simulate-confirm, (b) initiate_refund short-circuits for dev_simulated+auth_dev_bypass returning synthesized re_dev_ result, (c) Stripe validation errors caught and returned as HTTP 400 instead of 500. No further action required for EC4.",
+  "rca of the issue": "Prior iteration_5 500 error is fully resolved. The three-part fix (dev_simulated flag propagation from /dev-simulate-confirm, short-circuit in initiate_refund when source.dev_simulated + AUTH_DEV_BYPASS, and try/except StripeError→ValueError('stripe_error:...')→HTTP 400 mapping) works end-to-end. No re_dev_ or other sensitive Stripe identifiers leak to the DOM/localStorage/console — frontend _maskPi masking + the refund row not displaying the refund id are the belt-and-suspenders."
+}

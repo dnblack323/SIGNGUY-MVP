@@ -233,7 +233,21 @@ async def initiate_stripe(
         invoice_id=invoice_id,
         internal_payment_id=pay.id,
         idempotency_key=ikey,
-    )
+    ) if False else None
+    try:
+        intent = stripe_core.create_payment_intent(
+            amount_cents=amount_cents,
+            tenant_id=tenant_id,
+            invoice_id=invoice_id,
+            internal_payment_id=pay.id,
+            idempotency_key=ikey,
+        )
+    except Exception as ex:  # noqa: BLE001
+        import stripe as _stripe
+        await db.payments.delete_one({"id": pay.id})
+        if isinstance(ex, _stripe.error.StripeError):
+            raise ValueError(f"stripe_error:{getattr(ex, 'user_message', None) or str(ex)}")
+        raise
     await db.payments.update_one(
         {"id": pay.id},
         {"$set": {
@@ -262,22 +276,23 @@ async def confirm_stripe_from_webhook(
     payment_intent_id: str,
     provider_event_id: str,
     charge_id: Optional[str] = None,
+    dev_simulated: bool = False,
 ) -> None:
     doc = await db.payments.find_one({"stripe_payment_intent_id": payment_intent_id})
     if not doc:
         return
     if doc.get("status") == "confirmed":
         return
-    await db.payments.update_one(
-        {"id": doc["id"]},
-        {"$set": {
-            "status": "confirmed",
-            "stripe_charge_id": charge_id,
-            "provider_event_id": provider_event_id,
-            "confirmed_at": utc_now().isoformat(),
-            "updated_at": utc_now().isoformat(),
-        }},
-    )
+    updates: dict[str, Any] = {
+        "status": "confirmed",
+        "stripe_charge_id": charge_id,
+        "provider_event_id": provider_event_id,
+        "confirmed_at": utc_now().isoformat(),
+        "updated_at": utc_now().isoformat(),
+    }
+    if dev_simulated:
+        updates["dev_simulated"] = True
+    await db.payments.update_one({"id": doc["id"]}, {"$set": updates})
     await reconcile(tenant_id=doc["tenant_id"], invoice_id=doc["invoice_id"])
     await record_audit(
         tenant_id=doc["tenant_id"], actor_user_id="webhook", actor_email="stripe",
@@ -350,12 +365,28 @@ async def initiate_refund(
         raise ValueError("refund_amount_invalid")
 
     ikey = f"rf:{payment_id}:{amount_cents}:{uuid.uuid4().hex[:8]}"
-    result = stripe_core.create_refund(
-        payment_intent_id=src["stripe_payment_intent_id"],
-        amount_cents=amount_cents,
-        reason=reason,
-        idempotency_key=ikey,
-    )
+    # Dev-simulated payments never touched real Stripe → short-circuit refund too.
+    from ..core.config import get_settings
+    dev_simulated_source = bool(src.get("dev_simulated")) and get_settings().auth_dev_bypass
+    try:
+        if dev_simulated_source:
+            result = {
+                "id": f"re_dev_{uuid.uuid4().hex[:20]}",
+                "status": "pending",
+                "amount": int(amount_cents),
+            }
+        else:
+            result = stripe_core.create_refund(
+                payment_intent_id=src["stripe_payment_intent_id"],
+                amount_cents=amount_cents,
+                reason=reason,
+                idempotency_key=ikey,
+            )
+    except Exception as ex:  # noqa: BLE001 — catch stripe.error.StripeError family
+        import stripe as _stripe
+        if isinstance(ex, _stripe.error.StripeError):
+            raise ValueError(f"stripe_error:{getattr(ex, 'user_message', None) or str(ex)}")
+        raise
 
     refund_row = Payment(
         tenant_id=tenant_id,
