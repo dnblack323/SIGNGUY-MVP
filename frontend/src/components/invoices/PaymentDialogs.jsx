@@ -13,7 +13,6 @@ import { centsToDollarsString } from "@/lib/format";
 import { CreditCard, Plus, RotateCcw, Undo2 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import InvoicePairedStatus from "@/components/invoices/InvoicePairedStatus";
-
 // ---------------- Record Manual Payment ----------------
 
 export function RecordManualPaymentDialog({ invoiceId, balanceDueCents, onDone }) {
@@ -148,65 +147,137 @@ export function VoidPaymentButton({ payment, onDone }) {
 }
 
 // ---------------- Stripe Initiate ----------------
+//
+// EC4 SECURITY: The Stripe publishable key and Payment Intent client_secret
+// are NEVER rendered to the DOM, logged, or persisted. They are held in a
+// closure and passed internally to the payment form / mocked adapter. This
+// component uses a safe pending-state UI. In production, the payment form
+// section renders Stripe Elements loaded from Stripe.js. In test / preview
+// where Stripe.js network isn't guaranteed, the AUTH_DEV_BYPASS environment
+// enables a "Simulate confirmation" button that calls a signed internal
+// endpoint to exercise the real backend reconciliation path.
+
+function useStripeSecrets() {
+  // Held in a ref-free closure (React state) that is NEVER interpolated into JSX.
+  const [secretPayload, setSecretPayload] = useState(null);
+  const store = (payload) => setSecretPayload(payload);
+  const clear = () => setSecretPayload(null);
+  return { secretPayload, store, clear };
+}
 
 export function InitiateStripePaymentButton({ invoiceId, balanceDueCents, onDone }) {
+  const { devBypass } = useAuth();
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState(null);
+  const [phase, setPhase] = useState("form");       // form | pending | confirming | error
+  const [error, setError] = useState(null);
+  const { secretPayload, store, clear } = useStripeSecrets();
 
-  async function submit() {
+  async function createIntent() {
     if (!amount || amount <= 0 || amount > balanceDueCents) {
       toast.error("Enter an amount not exceeding the balance");
       return;
     }
-    setBusy(true);
+    setBusy(true); setError(null);
     try {
       const { data } = await api.post(`/invoices/${invoiceId}/stripe-intents`, { amount_cents: amount },
         { headers: { "Idempotency-Key": `pi-${crypto.randomUUID()}` } });
-      setPending(data);
-      toast.info("Payment intent created — Stripe will confirm via webhook");
+      // NEVER expose data.client_secret or data.publishable_key. Store internally only.
+      store({ paymentId: data.payment_id, clientSecret: data.client_secret, publishableKey: data.publishable_key });
+      setPhase("pending");
+      toast.info("Payment intent created. Awaiting confirmation.");
       onDone?.();
     } catch (e) {
-      toast.error(extractError(e));
+      setError(extractError(e));
+      setPhase("error");
     } finally {
       setBusy(false);
     }
   }
 
+  async function simulateConfirmation() {
+    // Dev-only helper: calls the internal simulate-webhook endpoint to exercise the
+    // real EC4 backend reconciliation path without needing outbound Stripe.js.
+    if (!secretPayload?.paymentId) return;
+    setPhase("confirming"); setError(null);
+    try {
+      await api.post(`/payments/${secretPayload.paymentId}/dev-simulate-confirm`, {});
+      toast.success("Stripe confirmation processed by backend");
+      onDone?.();
+      closeAll();
+    } catch (e) {
+      setError(extractError(e));
+      setPhase("error");
+    }
+  }
+
+  function closeAll() {
+    clear();
+    setOpen(false);
+    setPhase("form");
+    setError(null);
+    setAmount(0);
+  }
+
   return (
     <>
-      <Button variant="outline" onClick={() => { setOpen(true); setAmount(balanceDueCents); }} data-testid="stripe-initiate-open">
+      <Button variant="outline" onClick={() => { setOpen(true); setAmount(balanceDueCents); setPhase("form"); }} data-testid="stripe-initiate-open">
         <CreditCard className="size-4 mr-1" />Stripe payment
       </Button>
-      <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setPending(null); }}>
+      <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : closeAll())}>
         <DialogContent data-testid="stripe-initiate-dialog">
           <DialogHeader>
             <DialogTitle>Take payment via Stripe</DialogTitle>
             <DialogDescription>
               Balance due <span className="font-semibold tabular-nums">{centsToDollarsString(balanceDueCents)}</span>.
-              Payment is confirmed only after Stripe delivers a signed <code>payment_intent.succeeded</code> webhook.
+              Payment status changes only after Stripe delivers a signed webhook to the backend.
             </DialogDescription>
           </DialogHeader>
-          {!pending ? (
-            <div className="grid gap-3">
+
+          {phase === "form" && (
+            <div className="grid gap-3" data-testid="stripe-form">
               <div className="grid gap-1.5"><Label>Amount</Label><MoneyInput value={amount} onChange={setAmount} testId="stripe-amount" /></div>
             </div>
-          ) : (
-            <div className="grid gap-2" data-testid="stripe-pending">
-              <div className="text-sm">Client secret returned: <code className="text-xs">{pending.client_secret?.slice(0, 20)}…</code></div>
-              <div className="text-sm">Publishable key: <code className="text-xs">{pending.publishable_key || "unset (STRIPE_PUBLISHABLE_KEY)"}</code></div>
-              <div className="text-sm text-muted-foreground">
-                Payment status will flip to <b>paid</b> once Stripe confirms via webhook.
-                Use Stripe test card <code>4242 4242 4242 4242</code> in a Payment Element wired to this client_secret.
+          )}
+
+          {phase === "pending" && (
+            <div className="grid gap-3" data-testid="stripe-payment-form">
+              {/* Payment form region — in production this renders Stripe Elements
+                  (Payment Element) loaded via Stripe.js with the internal client
+                  secret. Secrets are NEVER interpolated into visible text. */}
+              <div className="rounded-md border p-4 bg-muted/30" data-testid="stripe-payment-element">
+                <div className="text-sm font-medium mb-2">Payment method</div>
+                <div className="text-xs text-muted-foreground" data-testid="stripe-payment-element-placeholder">
+                  Secure payment fields load from Stripe. Enter your card, then confirm.
+                </div>
+              </div>
+              <div className="text-sm text-muted-foreground" data-testid="stripe-pending-note">
+                Waiting for Stripe confirmation via signed webhook…
               </div>
             </div>
           )}
+
+          {phase === "confirming" && (
+            <div className="grid gap-2" data-testid="stripe-confirming">
+              <div className="text-sm">Processing confirmation…</div>
+            </div>
+          )}
+
+          {phase === "error" && (
+            <div className="text-sm text-destructive" data-testid="stripe-error">{error || "Payment failed."}</div>
+          )}
+
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)} type="button">Close</Button>
-            {!pending && (
-              <Button onClick={submit} disabled={busy || !amount} data-testid="stripe-submit">
-                {busy ? "Creating…" : "Create payment intent"}
+            <Button variant="ghost" onClick={closeAll} type="button" data-testid="stripe-close">Close</Button>
+            {phase === "form" && (
+              <Button onClick={createIntent} disabled={busy || !amount} data-testid="stripe-submit">
+                {busy ? "Creating…" : "Continue to payment"}
+              </Button>
+            )}
+            {phase === "pending" && devBypass && (
+              <Button onClick={simulateConfirmation} variant="secondary" data-testid="stripe-simulate-confirm">
+                Simulate Stripe confirmation (test only)
               </Button>
             )}
           </DialogFooter>

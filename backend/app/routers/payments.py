@@ -158,6 +158,33 @@ async def refund_payment(
         raise HTTPException(status_code=502, detail=f"Stripe error: {ex}")
 
 
+@router.post("/payments/{payment_id}/dev-simulate-confirm")
+async def dev_simulate_confirm(
+    payment_id: str,
+    user: dict = Depends(require_permission(Perm.PAYMENT_WRITE)),
+) -> dict:
+    """DEV-ONLY: simulate a Stripe webhook confirmation for a pending Stripe payment.
+
+    Gated by AUTH_DEV_BYPASS=true. Never available in production.
+    Exercises the real backend `confirm_stripe_from_webhook` reconciliation path.
+    """
+    from ..core.config import get_settings
+    if not get_settings().auth_dev_bypass:
+        raise HTTPException(status_code=404, detail="Not found")
+    doc = await db.payments.find_one({"id": payment_id, "tenant_id": user["tenant_id"]})
+    if not doc or doc.get("source") != "stripe" or not doc.get("stripe_payment_intent_id"):
+        raise HTTPException(status_code=404, detail="Stripe payment not found")
+    if doc.get("status") == "confirmed":
+        return {"already_confirmed": True}
+    from ..services.payment_service import confirm_stripe_from_webhook
+    await confirm_stripe_from_webhook(
+        payment_intent_id=doc["stripe_payment_intent_id"],
+        provider_event_id=f"dev_simulate_{payment_id}",
+        charge_id=f"ch_dev_{payment_id}",
+    )
+    return {"confirmed": True}
+
+
 @router.get("/invoices/{invoice_id}/payment-history")
 async def payment_history(
     invoice_id: str,
