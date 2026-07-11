@@ -77,17 +77,18 @@
 - **Recommended role in final build:** PERMANENT DESTINATION (primary role). No secondary role.
 - **Final warnings:** do not treat this as a "prototype" — grow it. Do not merge donor repos into it wholesale. Do not rename `Order → Job` under any circumstance.
 
-## 1.2 `dnblack323/SIGNGUY-AI-OS` — **RETIRE (byte-identical mirror of SIGNGUY-MVP — RUNTIME VERIFIED)**
+## 1.2 `dnblack323/SIGNGUY-AI-OS` — **MIRROR OF SIGNGUY-MVP UNDER `backend/app/**/*.py` (SOURCE TREE HASH VERIFIED, SCOPED); NO NEW DEVELOPMENT**
 
 - **URL:** https://github.com/dnblack323/SIGNGUY-AI-OS
 - **Original intended purpose:** Unclear from tree.
-- **Current actual purpose:** **Byte-level clone of `SIGNGUY-MVP`. Confirmed in this pass by md5sum of every `.py` file under `backend/app/` — the tree hash matches MVP exactly (`34bdb9b33abb1fa71058c8d5481723d8`). File counts also match: 39 backend `.py` files vs 39; 21 frontend pages vs 21. Last commit `f896a77 2026-07-08`.** Not just a "likely mirror" — a proven mirror.
-- **Development status:** Effectively dormant relative to MVP; last commit is auto-generated on the same day as an MVP push.
-- **Architecture:** identical to MVP.
-- **Recommended role in final build:** **RETIRE.** Two concrete options: (a) archive the repository via GitHub's "Archive" action + replace README with a redirect pointer to `SIGNGUY-MVP`; or (b) delete after archiving a final release tag. **Do NOT leave it live** — any commit to either side introduces silent drift.
-- **Final warnings:** the two-repo state is a permanent product risk on par with `AUTH_DEV_BYPASS=true` shipping.
+- **Current actual purpose:** Mirror of `SIGNGUY-MVP` for the scope compared. In this pass I ran `md5sum` over every `.py` file under `backend/app/` in both repos; the sorted hash streams match (`34bdb9b33abb1fa71058c8d5481723d8`). Backend `.py` count matches (39 vs 39). Frontend page count matches (21 vs 21). Last commit `f896a77 2026-07-08`.
+- **What was NOT compared in this pass:** the full git tree (frontend `src/**` beyond page count, `package.json` + lockfile diffs, `requirements.txt`, `.env` samples, docs, memory notes, non-Python assets, branch heads, commit history, tag lists). Calling the two repos "byte-identical" would be overreach and is not claimed here.
+- **Development status:** Effectively dormant relative to MVP; last commit auto-generated on the same day as an MVP push.
+- **Architecture:** Matches MVP for the scoped path.
+- **Recommended role in final build:** **NO NEW DEVELOPMENT.** Before any archival action, run a complete-tree comparison (all files, all branches, tags, commit history). After the permanent product is finished and all migrations are verified, move to read-only / archive status. **Do NOT delete** — preserve branches, tags, commit history, documentation, and recovery value until final commercial completion.
+- **Final warnings:** the mirror-repo state remains a permanent-product risk (drift on any commit); freeze against new development immediately and defer the archival timing decision to the owner.
 
-## 1.3 `dnblack323/signguyai_rebuild_version` — **PRIMARY ARCHITECTURE REFERENCE + WORKING-SCAFFOLD CODE DONOR (SV)**
+## 1.3 `dnblack323/signguyai_rebuild_version` — **PRIMARY ARCHITECTURE REFERENCE + WORKING-SCAFFOLD CODE DONOR (FSV)**
 
 - **URL:** https://github.com/dnblack323/signguyai_rebuild_version
 - **Original intended purpose:** Rebuild-in-progress workspace.
@@ -129,12 +130,12 @@
   - `routes/invoices.py` (586 lines), `routes/stripe_connect.py` (719 lines), `routes/portal.py` (576 lines), `routes/employee_portal.py` (506 lines) — treated as reference-only due to Job-domain contamination.
 - **Development status:** Historical (last push 2026-07-10 doc updates).
 - **Architecture:** Python + JavaScript. Uses `Job/JobItem/JobTicket` domain everywhere (INCOMPATIBLE with MVP terminology). **However — the two files that matter for Stage 6 (`services/invoice_service.py` and `services/payment_service.py`) touch ONLY `db.invoices` and `db.payments`, both of which are MVP-compatible after `job_id` → `order_id` rename on the Payment/Invoice models.**
-- **Reusable services (SV):** `services/invoice_service.py`, `services/payment_service.py` (with terminology rename), `services/feature_gate.py`, `services/tier_config.py`.
-- **Reusable models (SV):** `models/payments.py` (rename `job_id` → `order_id`).
+- **Reusable services (FSV):** `services/invoice_service.py`, `services/payment_service.py` (with terminology rename), `services/feature_gate.py`, `services/tier_config.py`.
+- **Reusable models (FSV):** `models/payments.py` (rename `job_id` → `order_id`).
 - **Reusable tests:** `backend_test.py` + `tests/` directory.
 - **Code that must not be copied wholesale:** `models/jobs.py`, `routes/jobs.py`, `routes/tiers.py`, `routes/portal.py`, `routes/employees.py`, `routes/employee_portal.py`, everything Job-domain.
 - **Recommended role:** **PRIMARY FINANCIAL-LOGIC DONOR** for Stage 6.
-- **Final warnings:** every ported line must be terminology-renamed. Do not create parallel `Job*` collections in MVP. Adopt FEB's money-representation compromise: float dollars in Invoice/Quote/Order fields, integer cents in the new Payment collection, conversion boundary inside `reconcile_invoice_financials()`.
+- **Final warnings:** every ported line must be terminology-renamed. Do not create parallel `Job*` collections in MVP. Money-representation policy (see the corrected Feature Readiness Matrix's MONEY REPRESENTATION section) is: **do NOT adopt FEB's float+cents boundary compromise; ratify MVP's existing "commerce in integer cents / configuration in float dollars" split.** FEB's `reconcile_invoice_financials()` becomes simpler on port because both Invoice.total_cents and Payment.amount_cents are already integer cents in MVP.
 
 ## 1.5 `dnblack323/signguyai` — **FEATURE DISCOVERY + TARGETED CODE DONOR (SV for the specific files listed)**
 
@@ -345,44 +346,44 @@ For each system in the permanent product, this table names the single canonical 
 |---|---|---|---|---|
 | Auth / JWT / password reset | MVP | `backend/app/core/security.py`, `routers/auth.py`, `deps.py`, `models/user.py` | KEEP | RV |
 | Tenants / org boundaries | MVP | `models/user.py::Tenant`, `deps.py::get_current_tenant`, `core/db.py::ensure_indexes` | KEEP | RV |
-| Permissions catalog | REB `models/access.py` (57 permissions) → MVP `core/permissions.py` | REB `models/access.py`, MVP `core/permissions.py` | REF | SV |
-| Audit event | MVP `services/audit.py` (actor required) + adopt REB `models/activity.py` shape | MVP `services/audit.py`, REB `services/activity.py` + `routes/activity.py` + `models/activity.py` | REF | RV+SV |
+| Permissions catalog | REB `models/access.py` (57 permissions) → MVP `core/permissions.py` | REB `models/access.py`, MVP `core/permissions.py` | REF | FSV |
+| Audit event | MVP `services/audit.py` (actor required) + adopt REB `models/activity.py` shape | MVP `services/audit.py`, REB `services/activity.py` + `routes/activity.py` + `models/activity.py` | REF | RV+FSV |
 | Object storage | MVP `services/storage.py` (Emergent) | MVP `services/storage.py` | KEEP | RV |
 | Atomic sequence numbering | MVP `services/sequence.py` | MVP `services/sequence.py` | KEEP | RV |
-| Upload validation | REB `services/upload_validation.py` → MVP `services/upload_validation.py` | REB `services/upload_validation.py` | EXT | SV |
-| Attachments / polymorphic links / shares | MVP attachments + REB `file_links` + `document_links` + `document_shares` | MVP files router; REB `routes/doculink.py` + `models/doculink.py` | REF | RV+SV |
-| Settings framework | REB `routes/settings.py` + `models/settings.py` → new MVP module `routers/settings.py` | REB files | REF | SV |
-| Notifications | REB `routes/communications.py` (notification portion) → new MVP module | REB `routes/communications.py` + `services/communications.py` | REF | SV |
+| Upload validation | REB `services/upload_validation.py` → MVP `services/upload_validation.py` | REB `services/upload_validation.py` | EXT | FSV |
+| Attachments / polymorphic links / shares | MVP attachments + REB `file_links` + `document_links` + `document_shares` | MVP files router; REB `routes/doculink.py` + `models/doculink.py` | REF | RV+FSV |
+| Settings framework | REB `routes/settings.py` + `models/settings.py` → new MVP module `routers/settings.py` | REB files | REF | FSV |
+| Notifications | REB `routes/communications.py` (notification portion) → new MVP module | REB `routes/communications.py` + `services/communications.py` | REF | FSV |
 | Email — outbound send | MVP `services/email.py` (SendGrid live) | MVP `services/email.py`, `routers/emails.py` | KEEP | RV |
-| Email — inbound webhook (bounces, opens, clicks) | REB `POST /communications/webhooks/sendgrid` → new MVP endpoint | REB `routes/communications.py::ingest_sendgrid_webhook` | REF | SV |
-| Email activity log | REB `email_activity` collection → new MVP collection | REB `routes/communications.py::create_email_activity_record` | REF | SV |
-| Documents / DocuLink | REB `routes/doculink.py` (rewire storage adapter to Emergent) | REB `routes/doculink.py`, `services/doculink_storage.py`, `services/doculink_bridge.py`, `models/doculink.py` | RB | SV |
-| Signatures | ORIG `routes/signatures.py` (rename job→order) | ORIG `routes/signatures.py`, ORIG `services/object_storage.py` | REF | SV |
-| Approvals / Artwork proofs | ORIG `routes/approvals.py` (dual-parent already) | ORIG `routes/approvals.py` | REF | SV |
+| Email — inbound webhook (bounces, opens, clicks) | REB `POST /communications/webhooks/sendgrid` → new MVP endpoint | REB `routes/communications.py::ingest_sendgrid_webhook` | REF | FSV |
+| Email activity log | REB `email_activity` collection → new MVP collection | REB `routes/communications.py::create_email_activity_record` | REF | FSV |
+| Documents / DocuLink | REB `routes/doculink.py` (rewire storage adapter to Emergent) | REB `routes/doculink.py`, `services/doculink_storage.py`, `services/doculink_bridge.py`, `models/doculink.py` | RB | FSV |
+| Signatures | ORIG `routes/signatures.py` (rename job→order) | ORIG `routes/signatures.py`, ORIG `services/object_storage.py` | REF | FSV |
+| Approvals / Artwork proofs | ORIG `routes/approvals.py` (dual-parent already) | ORIG `routes/approvals.py` | REF | FSV |
 | Customers | MVP `routers/customers.py`, `models/customer.py` | KEEP | RV |
-| Quotes | REB `routes/quotes.py` + `models/quotes.py` → merge into MVP `routers/quotes.py` | REB files | REF | SV |
-| Orders / Order Items | REB `routes/orders.py` + `models/orders.py` + `services/order_schemas.py` | REB files | REF | SV |
-| `production_required` gate | REB `services/order_item_rules.py` | REB file | REF | SV |
-| Pricing snapshots on OrderItem/QuoteLineItem | REB `services/pricing_engine.py` result → MVP OrderItem/QuoteLineItem field `latest_pricing_snapshot` | REB `services/pricing_engine.py`, REB `routes/orders.py::save-pricing/override-pricing`, MVP `services/pricing.py` | REF | SV+RV |
+| Quotes | REB `routes/quotes.py` + `models/quotes.py` → merge into MVP `routers/quotes.py` | REB files | REF | FSV |
+| Orders / Order Items | REB `routes/orders.py` + `models/orders.py` + `services/order_schemas.py` | REB files | REF | FSV |
+| `production_required` gate | REB `services/order_item_rules.py` | REB file | REF | FSV |
+| Pricing snapshots on OrderItem/QuoteLineItem | REB `services/pricing_engine.py` result → MVP OrderItem/QuoteLineItem field `latest_pricing_snapshot` | REB `services/pricing_engine.py`, REB `routes/orders.py::save-pricing/override-pricing`, MVP `services/pricing.py` | REF | FSV+RV |
 | Pricing Foundation & Calculator | MVP `services/pricing.py` + `starter_defaults.py` (already delivered) | MVP files | KEEP | RV |
-| Work Orders | MVP `routers/work_orders.py` + REB `generate_work_order_draft` snapshot rule | MVP + REB `routes/orders.py::generate_work_order_placeholder` | REF | RV+SV |
-| Invoices — dual status | FEB `services/invoice_service.py` + `models/jobs.py::InvoiceBase` (document_status + financial_status fields) → MVP `models/invoice.py` | FEB files | EXT | SV |
-| Payments — unified collection + void-with-reason + idempotency | FEB `services/payment_service.py` + `models/payments.py` → new MVP module | FEB files | EXT | SV |
-| Stripe Connect | ORIG + FEB `routes/stripe_connect.py` + FEB `services/payment_service.py::confirm_stripe_invoice_payment` | ORIG + FEB files | REF (safety-critical) | SV |
-| Money representation policy | Decision documented in Stage 6 handoff (FEB compromise: float dollars in invoices/orders/quotes, integer cents in Payment collection) | FEB `services/invoice_service.py::_derive_states` + `models/payments.py` | Decision | SV |
-| Customer portal | Rebuild against MVP shared services using ORIG `routes/portal.py` as blueprint | ORIG `routes/portal.py` | RB | SV |
+| Work Orders | MVP `routers/work_orders.py` + REB `generate_work_order_draft` snapshot rule | MVP + REB `routes/orders.py::generate_work_order_placeholder` | REF | RV+FSV |
+| Invoices — dual status | FEB `services/invoice_service.py` + `models/jobs.py::InvoiceBase` (document_status + financial_status fields) → MVP `models/invoice.py` | FEB files | EXT | FSV |
+| Payments — unified collection + void-with-reason + idempotency | FEB `services/payment_service.py` + `models/payments.py` → new MVP module | FEB files | EXT | FSV |
+| Stripe Connect | ORIG + FEB `routes/stripe_connect.py` + FEB `services/payment_service.py::confirm_stripe_invoice_payment` | ORIG + FEB files | REF (safety-critical) | FSV |
+| Money representation policy | Ratify MVP's existing "commerce in integer cents / configuration in float dollars" split (documented in the corrected Feature Readiness Matrix). Do NOT adopt FEB's float+cents boundary compromise. | MVP `models/quote.py`, `models/order.py`, `models/invoice.py`, `models/work_order.py`, `services/pricing.py`, `services/starter_defaults.py`, `frontend/src/lib/format.js`, `frontend/src/components/forms/MoneyInput.jsx`; FEB `services/invoice_service.py::_derive_states` + `models/payments.py` for reference | Decision (owner sign-off) | FSV |
+| Customer portal | Rebuild against MVP shared services using ORIG `routes/portal.py` as blueprint | ORIG `routes/portal.py` | RB | FSV |
 | Employee portal | Rebuild against MVP shared services using ORIG + FEB `routes/employee_portal.py` as blueprint | ORIG + FEB files | RB | RS |
-| Wrap Lab | REB `services/wrap_lab_service.py` + `routes/wrap_lab.py` + `models/wrap_lab.py` | REB files | REF | SV |
+| Wrap Lab | REB `services/wrap_lab_service.py` + `routes/wrap_lab.py` + `models/wrap_lab.py` | REB files | REF | FSV |
 | Webstores (Order Portal Manager) | REB `ORDER_PORTAL_*_SPEC.md` (blueprint) + REB `routes/webstores.py` (capabilities scaffold) + ORIG `routes/webstores.py` (feature map only) | REB + ORIG files | RB | SO+SV |
 | Public storefront | REB `ORDER_PORTAL_PUBLIC_STOREFRONT_SPEC.md` (spec) + ORIG `routes/public_website.py` (reference) | REB + ORIG files | RB | SO+RS |
-| Community Hub | REB `routes/shared_systems.py::community/*` | REB file | REF | SV |
-| AI tool catalog | REB `routes/shared_systems.py::AI_TOOLS` (24 tools) | REB file | EXT | SV |
-| AI generation (real provider) | New MVP module using EMERGENT_LLM_KEY + persist to `ai_responses` collection per REB shape | REB `routes/shared_systems.py::POST /ai/generate` (stub) as target shape | RB | SV |
-| Subscription plans & fees catalog | REB `services/billing_rules.py` | REB file | EXT | SV |
-| AI credits & top-up packs | REB `services/billing_rules.py` (CREDIT_TOP_UP_PRODUCTS) + new MVP credit ledger collection | REB file + new MVP collection | EXT+RB | SV |
+| Community Hub | REB `routes/shared_systems.py::community/*` | REB file | REF | FSV |
+| AI tool catalog | REB `routes/shared_systems.py::AI_TOOLS` (24 tools) | REB file | EXT | FSV |
+| AI generation (real provider) | New MVP module using EMERGENT_LLM_KEY + persist to `ai_responses` collection per REB shape | REB `routes/shared_systems.py::POST /ai/generate` (stub) as target shape | RB | FSV |
+| Subscription plans & fees catalog | REB `services/billing_rules.py` | REB file | EXT | FSV |
+| AI credits & top-up packs | REB `services/billing_rules.py` (CREDIT_TOP_UP_PRODUCTS) + new MVP credit ledger collection | REB file + new MVP collection | EXT+RB | FSV |
 | Feature flags / entitlements | REB `FeatureEntitlementRepository` (referenced by `webstore_service.py`) → new MVP module | REB `services/webstore_service.py` + spec | REF | SS |
-| Platform administration | REB `routes/platform_admin.py` | REB file | REF | SV |
-| Community bug / feature reports | REB `routes/shared_systems.py::community` (already categorises `bug_report`, `feature_request`) | REB file | REF | SV |
+| Platform administration | REB `routes/platform_admin.py` | REB file | REF | FSV |
+| Community bug / feature reports | REB `routes/shared_systems.py::community` (already categorises `bug_report`, `feature_request`) | REB file | REF | FSV |
 | Global search | No donor — build against MVP after core stable | — | RB | — |
 | Background job runner | No donor with production-grade scheduler; build against MVP shared services + REB `digest_scheduler.py` (from ORIG) as reference | ORIG `services/digest_scheduler.py`, `services/workflow_engine.py` | RB | RS |
 | SMS / MMS | Build against MVP shared services using ORIG `routes/sms.py` + `services/sms_service.py` as reference | ORIG files | RB | RS |
@@ -469,22 +470,61 @@ Consolidated table:
 
 # PART 5 — REQUIRED TARGET ARCHITECTURE DECISIONS
 
-The following six decisions must be signed off before Stage 6 lands (they are also carried at the end of the corrected Feature Readiness Matrix):
+The following six decisions are surfaced for owner sign-off in Prompt 3. Nothing is treated as final here.
 
-1. **Money representation** — adopt FEB's boundary compromise (float dollars in Invoice/Order/Quote fields, integer cents only in the new Payment collection with conversion inside `reconcile_invoice_financials()`)? Recommended: **YES** — preserves existing MVP data compatibility.
-2. **Permission catalog source** — adopt REB `models/access.py`'s 57-permission StrEnum verbatim (mapped into MVP `core/permissions.py`)? Recommended: **YES** — gives platform_admin and webstore_owner roles from day one.
-3. **Repository pattern** — adopt REB's repository pattern (a class per collection, `ensure_indexes()`, tenant-scoped methods) for all new modules (Settings, Notifications, DocuLink, Wrap Lab, Platform Admin, Webstore, Community)? Recommended: **YES** — matches the modular donor architecture and simplifies porting.
-4. **Terminology map** — canonical `Order/OrderItem/WorkOrder` names recorded permanently in `memory/AGENT_INSTRUCTIONS.md`; every donor file renamed on port. Recommended: **YES** (already the mandated rule, but must be re-affirmed in the corrected instructions).
-5. **SendGrid webhook enablement** — set `SIGNGUYAI_SENDGRID_WEBHOOK_SECRET` in production and force-fail startup if unset (REB currently accepts anything if secret unset). Recommended: **YES**.
-6. **`SIGNGUY-AI-OS` retirement** — freeze / archive within 7 days. Recommended: **YES** — byte-identical to MVP; leaving it live is a permanent-product risk.
+1. **Money representation** — recommendation: **ratify MVP's existing "commerce in integer cents / configuration in float dollars" split** (documented in the corrected Feature Readiness Matrix). All Quote/Order/Invoice/Payment/WorkOrder money is already integer `_cents`; pricing configuration + calculator output are float dollars with Decimal internal math. **Do NOT adopt FEB's float+cents boundary compromise** — MVP is already cleaner than FEB. Owner sign-off required on the exact `_cents` suffix rule, boundary location, and no-unsuffixed-money-fields rule.
+2. **Permission catalog source** — REB `models/access.py`'s 57-permission StrEnum is a **candidate** for the permanent catalog. Adoption requires owner review of the platform_admin / webstore_owner scopes and their default mappings.
+3. **Repository pattern** — REB uses a repository class per collection with `ensure_indexes()` and tenant-scoped methods. Adopting this shape for new modules is a candidate; owner sign-off requested.
+4. **Terminology map** — canonical `Order/OrderItem/WorkOrder` naming remains in `memory/AGENT_INSTRUCTIONS.md`; every donor file renamed on port. (This one is already effectively locked but is listed for completeness.)
+5. **SendGrid webhook enablement** — set `SIGNGUYAI_SENDGRID_WEBHOOK_SECRET` in production and force-fail startup if unset (REB is otherwise permissive). Owner sign-off on the fail-closed behavior.
+6. **`SIGNGUY-AI-OS` handling** — recommendation: no new development; complete-tree comparison (all files, branches, tags, commit history); then read-only/archive status **after** the permanent product is finished and all migrations are verified. **Do NOT delete** until final commercial completion. Owner sign-off required on the archival timing.
 
-**Additional standing decisions carried from the previous pass that remain relevant:**
+**Additional owner sign-off items surfaced but not decided in this audit:**
 7. Webstores commercial mode — add-on-only, or also standalone (as REB `billing_rules.py` implies)?
 8. Customer portal auth — magic-link tokens, passwords, or both?
-9. LLM provider for AI Assistant — Emergent LLM key (single universal key) is confirmed available; Nano Banana + GPT-5.2 image generation open for use once AI billing/entitlement lands.
+9. LLM provider for AI Assistant — Emergent LLM key is confirmed available; specific model choices and per-tool cost caps require owner approval.
 10. Sales-tax responsibility — permanent product to compute via an integration (Avalara / TaxJar) or shop-configured flat rates only?
+11. Commercial pricing catalog — every value in REB `services/billing_rules.py` (subscription products / prices, credit-pack prices, founders promo terms, transaction fee basis points) is an **EXISTING COMMERCIAL PRICING IMPLEMENTATION CANDIDATE — OWNER APPROVAL REQUIRED**. Enumerated list in Part 5A below.
+12. Final internal checkpoint order — the previous 0–17 stage numbering is a useful proposed dependency reference. The final internal checkpoint order (name + count + dependencies) will be established by Prompt 3 and the master build plan **after** all scope and dependency decisions above are resolved.
 
-Every decision above lives in `memory/AGENT_INSTRUCTIONS.md` once signed off. No stage 6+ code lands until #1–#6 are recorded there.
+Every decision above lives in `memory/AGENT_INSTRUCTIONS.md` once signed off. No implementation code lands until they are recorded there.
+
+---
+
+# PART 5A — COMMERCIAL PRICING CATALOG (REB `billing_rules.py`) — OWNER APPROVAL REQUIRED
+
+REB `services/billing_rules.py` is treated in this audit as an **EXISTING COMMERCIAL PRICING IMPLEMENTATION CANDIDATE**, not the final commercial model. Every value below requires explicit owner sign-off before it can be treated as canonical. Prompt 3 will determine final commercial scope and pricing decisions.
+
+**Subscription products (`SUBSCRIPTION_PRODUCTS`) — owner approval required on each:**
+- `prod_core_os` "SignGuy Core Standalone" — founders `$99.00/mo`, GA `$149.00/mo`, 300 founders credits, 300 GA credits.
+- `prod_webstore_standalone` "Web Stores Standalone" — founders `$59.00/mo`, GA `$89.00/mo`, 200 founders credits, 300 GA credits.
+- `prod_wrap_standalone` "Wrap Command Center Standalone" — founders `$79.00/mo`, GA `$119.00/mo`, 350 founders credits, 500 GA credits.
+- `prod_complete_bundle` "The Complete Bundle" — founders `$189.00/mo`, GA `$279.00/mo`, 1000 credits both phases.
+
+**Credit top-up packs (`CREDIT_TOP_UP_PRODUCTS`) — owner approval required on each:**
+- `prod_topup_100` "AI Quick Fix Pack" — `$19.00`, 100 credits.
+- `prod_topup_300` "AI Growth Boost Pack" — `$45.00`, 300 credits.
+- `prod_topup_800` "AI Power Pack" — `$99.00`, 800 credits.
+
+**Founders promo (`FOUNDERS_PROMO`) — owner approval required on each:**
+- Promo code `FOUNDERS3MO`, max 25 redemptions, 3-month duration, 3-month fee holiday.
+- Discounts: `$40.00` on Core, `$20.00` on Webstores, `$30.00` on Wrap, `$70.00` on Complete Bundle.
+
+**Transaction fee basis points (`TRANSACTION_FEE_BASIS_POINTS`) — owner approval required on each:**
+- Promo-active phase: 0 bp standard / 0 bp webstore.
+- Founders phase: 50 bp standard / 150 bp webstore.
+- General availability: 100 bp standard / 200 bp webstore.
+
+**Structural rules (`determine_transaction_fee_basis_points`) — owner approval required:**
+- Cutover: `shop_onboarded_index > 50` OR `phase == "general_availability"` → GA rates.
+- If `has_redeemed_promo_code` AND `months_since_promo_applied < 3` → promo-active rates.
+- Else → founders rates.
+
+**Product entitlement defaults (`product_entitlement_defaults`) — owner approval required:**
+- `prod_complete_bundle` includes all three (core / webstores / wrap) True.
+- Standalone products enable only their respective feature key.
+
+Prompt 3 must ratify (or overrule) each of the above before any billing code lands in MVP.
 
 ---
 
@@ -529,19 +569,19 @@ Every module in the permanent product depends on some subset of the following sh
 | # | Foundation | Status | Blocked-by | Blocks | Source | Evidence |
 |---|---|---|---|---|---|---|
 | F1 | Auth / JWT / tenants / permissions | DONE (RV) | — | Everything | MVP | RV |
-| F2 | Object storage + attachments + upload validation | Object storage DONE; upload validation not yet extracted from REB | F1 | Files, Docs, Portal, Wrap, Signatures | MVP + REB `upload_validation.py` | RV+SV |
+| F2 | Object storage + attachments + upload validation | Object storage DONE; upload validation not yet extracted from REB | F1 | Files, Docs, Portal, Wrap, Signatures | MVP + REB `upload_validation.py` | RV+FSV |
 | F3 | Sequence generator | DONE (RV) | F1 | Numbered records (quotes/orders/invoices/work orders) | MVP | RV |
-| F4 | Audit / activity event | DONE (RV); adopt REB event shape | F1 | Everything | MVP + REB `services/activity.py` | RV+SV |
-| F5 | SendGrid outbound + inbound webhook + activity log | Outbound DONE; webhook + activity log to port from REB | F1, F4 | Emails, Portal, Notifications, Approvals | MVP + REB `routes/communications.py` | RV+SV |
+| F4 | Audit / activity event | DONE (RV); adopt REB event shape | F1 | Everything | MVP + REB `services/activity.py` | RV+FSV |
+| F5 | SendGrid outbound + inbound webhook + activity log | Outbound DONE; webhook + activity log to port from REB | F1, F4 | Emails, Portal, Notifications, Approvals | MVP + REB `routes/communications.py` | RV+FSV |
 | F6 | Money representation policy (documented decision) | NOT YET DOCUMENTED | — | Stage 6 Invoice/Payment migration | Decision (see Part 5 #1) | — |
-| F7 | Settings framework (namespace/key repository) | NOT YET BUILT | F1, F4 | Notifications, Pricing UI, Webstore config, Wrap Lab config | REB `routes/settings.py` + `models/settings.py` | SV |
-| F8 | Notifications service | NOT YET BUILT | F1, F4, F7 | Portals, Emails (in-app companions), Orders/Wrap events | REB `routes/communications.py::notifications` | SV |
-| F9 | Feature flags / entitlements service | NOT YET BUILT | F1, F7 | Webstores, Wrap Lab (as add-ons), AI (as metered add-on) | REB `services/billing_rules.py` + `FeatureEntitlementRepository` (spec) | SV+SS |
+| F7 | Settings framework (namespace/key repository) | NOT YET BUILT | F1, F4 | Notifications, Pricing UI, Webstore config, Wrap Lab config | REB `routes/settings.py` + `models/settings.py` | FSV |
+| F8 | Notifications service | NOT YET BUILT | F1, F4, F7 | Portals, Emails (in-app companions), Orders/Wrap events | REB `routes/communications.py::notifications` | FSV |
+| F9 | Feature flags / entitlements service | NOT YET BUILT | F1, F7 | Webstores, Wrap Lab (as add-ons), AI (as metered add-on) | REB `services/billing_rules.py` + `FeatureEntitlementRepository` (spec) | FSV+SS |
 | F10 | Background-job runner | NOT YET BUILT | F1, F4 | Digest emails, dunning, scheduled reports, Stripe reconciliation | ORIG `services/digest_scheduler.py` + `workflow_engine.py` (reference) | RS |
-| F11 | Inbound webhook infrastructure (signature verify + replay-safe) | Partial (REB SendGrid webhook shape); Stripe not yet | F1, F4 | Stripe Connect, SendGrid event webhook, future integrations | REB `routes/communications.py::ingest_sendgrid_webhook` + FEB Stripe webhook | SV |
+| F11 | Inbound webhook infrastructure (signature verify + replay-safe) | Partial (REB SendGrid webhook shape); Stripe not yet | F1, F4 | Stripe Connect, SendGrid event webhook, future integrations | REB `routes/communications.py::ingest_sendgrid_webhook` + FEB Stripe webhook | FSV |
 | F12 | Portal auth model (magic-link / customer / employee) | NOT YET BUILT | F1, F4, F5, F8 | Customer portal, Employee portal, Webstore owner portal, Wrap Lab customer portal | ORIG `routes/portal.py` + `routes/magic_links.py` (reference) | RS |
-| F13 | DocuLink polymorphic document service | NOT YET BUILT (F2 provides files; F13 wraps them) | F1, F2, F4, F7 | Portal, Wrap Lab, Approvals, Signatures, Templates | REB `routes/doculink.py` | SV |
-| F14 | Money-safe reconciliation service (InvoiceService+PaymentService) | NOT YET BUILT | F1, F3, F4, F6, F11 | Payments, Portal (payment view), Reports | FEB `services/invoice_service.py` + `services/payment_service.py` | SV |
+| F13 | DocuLink polymorphic document service | NOT YET BUILT (F2 provides files; F13 wraps them) | F1, F2, F4, F7 | Portal, Wrap Lab, Approvals, Signatures, Templates | REB `routes/doculink.py` | FSV |
+| F14 | Money-safe reconciliation service (InvoiceService+PaymentService) | NOT YET BUILT | F1, F3, F4, F6, F11 | Payments, Portal (payment view), Reports | FEB `services/invoice_service.py` + `services/payment_service.py` | FSV |
 | F15 | Frontend shared components | DONE (RV) | — | All UI | MVP `src/components/*` | RV |
 
 **Build order for the shared foundations** (a subset of the mandated 0–17 stage plan):
@@ -561,14 +601,14 @@ Every module in the permanent product depends on some subset of the following sh
 | Repo | Final role | Action |
 |---|---|---|
 | `SIGNGUY-MVP` | PERMANENT PRODUCT | Continue development. Only repo that receives new commits. |
-| `SIGNGUY-AI-OS` | Retire | Archive within 7 days. Replace README with a redirect to `SIGNGUY-MVP`. Optionally delete after final tag. |
+| `SIGNGUY-AI-OS` | No new development → complete-tree comparison → read-only/archive AFTER permanent product complete | Freeze against new commits immediately. Do NOT delete. Preserve branches, tags, commit history, docs, and recovery value until final commercial completion. |
 | `signguyai_rebuild_version` | Read-only reference | Freeze. Do not commit. Keep for spec docs + working-scaffold references. |
 | `signguy-ai-feb22` | Read-only reference | Freeze. Do not commit. Keep for financial-logic reference. |
 | `signguyai` | Read-only reference | Freeze. Do not commit. Keep for feature discovery. |
 
 ## 8.2 Consolidation sequence (chronological)
 
-1. **Immediate (before any code changes):** archive `SIGNGUY-AI-OS`.
+1. **Immediate (before any code changes):** freeze `SIGNGUY-AI-OS` against new commits (owner-approved). Do NOT delete; complete-tree comparison and archive-timing decision are deferred to after final commercial completion.
 2. **Immediate:** land the six standing decisions (Part 5) in `memory/AGENT_INSTRUCTIONS.md`.
 3. **Immediate:** rotate the JWT secret away from the dev placeholder; keep `AUTH_DEV_BYPASS=true` in preview only, false in production.
 4. **Stage 2 build-outs:** port REB Settings + Notifications + Feature-Entitlement scaffolds into MVP (three modules, all with existing donor code).
@@ -582,7 +622,7 @@ Every module in the permanent product depends on some subset of the following sh
 
 ## 8.3 Long-term repository state
 
-At permanent-product Stage 17 completion, the desired end state is: **one live repo (`SIGNGUY-MVP`)** + **three frozen read-only references** (`signguyai_rebuild_version`, `signguy-ai-feb22`, `signguyai`). `SIGNGUY-AI-OS` no longer exists.
+At permanent-product Stage-complete state, the desired end state is: **one live repo (`SIGNGUY-MVP`)** + **four frozen read-only references** (`signguyai_rebuild_version`, `signguy-ai-feb22`, `signguyai`, `SIGNGUY-AI-OS`). No repository is deleted before final commercial completion.
 
 ---
 
@@ -670,20 +710,20 @@ Each stage in the mandated build order must satisfy the following checkpoints be
 
 ### Answers to the closing questions
 - **Is SIGNGUY-MVP the correct permanent destination?** YES.
-- **Can it support the full approved feature set?** YES, after five additive foundations are in place (Settings, Notifications, Feature entitlements, Background jobs, Portal auth) — three of which have working REB scaffolds ready to port (SV in Part 4).
+- **Can it support the full approved feature set?** YES. **No wholesale rebuild or architectural replacement is required. Several focused systems require extension, migration, or targeted replacement** — see Part 4 "Targeted replacements required" section and the corrected Feature Readiness Matrix.
 - **Can it support advanced features without another rebuild?** YES.
 - **Can it support all portal types?** YES, once portal-auth foundation (F12) is added.
 - **Can it support Webstores as an add-on and standalone system?** YES, once F9 (feature-entitlements) + Stripe Connect foundations are added.
-- **Can it support Wrap Lab as an add-on?** YES, once Approvals + Signatures + shared portal are added. Wrap Lab logic is SV-ready in REB `services/wrap_lab_service.py`.
-- **Can it support AI credits and subscriptions?** YES, once F9 (entitlements) + credit ledger + Stripe are added. Commercial pricing catalog SV-ready in REB `services/billing_rules.py`.
+- **Can it support Wrap Lab as an add-on?** YES, once Approvals + Signatures + shared portal are added. Wrap Lab logic scaffold is FSV-ready in REB `services/wrap_lab_service.py`.
+- **Can it support AI credits and subscriptions?** YES, once F9 (entitlements) + credit ledger + Stripe are added. Commercial pricing catalog in REB `services/billing_rules.py` is a **candidate requiring owner approval** — see Part 5A.
 - **Can it support multi-tenant commercial use?** YES, once `AUTH_DEV_BYPASS=false`, JWT secret rotated, dev routes gated, monitoring wired.
-- **What must be changed before feature migration begins?** (1) Archive `SIGNGUY-AI-OS`. (2) Land the six standing decisions in `memory/AGENT_INSTRUCTIONS.md` (Part 5 decisions #1–#6). (3) Rotate JWT secret away from the dev placeholder. (4) Port REB `upload_validation.py` for immediate security upgrade.
-- **What may safely wait?** Background jobs (F10), Portal auth (F12) — these are only required when their dependent modules are next in line. Do not build them speculatively.
+- **What must be changed before feature migration begins?** (1) Freeze `SIGNGUY-AI-OS` against new development. (2) Land owner sign-off on the six standing decisions in `memory/AGENT_INSTRUCTIONS.md`. (3) Rotate JWT secret away from the dev placeholder. (4) Consider porting REB `upload_validation.py` for immediate security upgrade.
+- **What may safely wait?** Background jobs (F10), Portal auth (F12), Stripe Connect security review — required only when their dependent modules are next in line. Do not build them speculatively.
 - **What existing structure should be preserved?** Everything currently in SIGNGUY-MVP.
-- **What existing structure must be replaced?** Nothing in SIGNGUY-MVP.
-- **Which repos should be primary code donors?** `signguy-ai-feb22` for finance (SV); `signguyai_rebuild_version` for scaffolds + specs (SV); `signguyai` for the specific ORIG files listed in Part 1.5 (SV).
-- **Which repos should become read-only?** `signguyai`, `signguyai_rebuild_version`, `signguy-ai-feb22` (freeze), `SIGNGUY-AI-OS` (archive).
-- **What unresolved decisions remain?** The six sign-off decisions in Part 5 + four standing decisions (Webstores mode, Portal auth style, LLM provider details for AI billing, sales-tax responsibility).
+- **What existing structure must be replaced?** **No wholesale rebuild or architectural replacement is required.** The specific systems requiring extension, migration, or targeted replacement are enumerated in Part 4's "Targeted replacements required" section: invoice status and reconciliation, payment history and void behavior, work-order generation gate, settings framework, notifications framework, permissions catalog, dev-only authentication surfaces, webhook infrastructure, portal authentication, feature entitlements.
+- **Which repos should be primary code donors?** `signguy-ai-feb22` for finance (FSV); `signguyai_rebuild_version` for scaffolds + specs (FSV); `signguyai` for the specific ORIG files listed in Part 1.5 (FSV for `object_storage.py`; PSI for `signatures.py` / `approvals.py` / `portal.py`).
+- **Which repos should become read-only?** All four donor repositories (`signguyai`, `signguyai_rebuild_version`, `signguy-ai-feb22`, `SIGNGUY-AI-OS`) remain available as read-only references throughout the build. No deletion until final commercial completion.
+- **What unresolved decisions remain?** The six standing decisions in Part 5 + Part 5A commercial pricing catalog approvals + four architectural style decisions (Webstores mode, Portal auth style, LLM provider details for AI billing, sales-tax responsibility) + final internal checkpoint order (deferred to Prompt 3 + master build plan).
 
 ---
 
@@ -770,18 +810,18 @@ This is the summary the user requested. It captures **what changed from the orig
 
 - The **entire mindset was reframed from "MVP scope defer" to "permanent commercial product build-out"**. All 35 rows that previously said or implied "deferred / post-launch / optional / MVP-only" are now build-out items on the permanent-product roadmap. No feature is "deferred by MVP scope" anywhere in the document.
 - **Every `UNK` row was resolved** by inspecting the source file directly:
-  - `settings` — reclassified from `UNK` → `PI in MVP → REF to REB (SV)`, working scaffold confirmed.
-  - `notifications` — reclassified from `UNK` → `NS in MVP → RB on REB scaffold (SV)`, working scaffold confirmed.
-  - `doculink / documents` — reclassified from `PH` → `RB on REB scaffold (SV)`, full 244-line scaffold + storage adapter confirmed.
-  - `wrap_lab` — reclassified from `UNK — depth unknown` → `SS — REF (SV)`, 11-stage workflow engine with 14 workflow actions confirmed.
-  - `signatures` — promoted from `PI donor-side` to `NS in MVP → REF ORIG (SV)`, 11-parent signature system confirmed.
-  - `approvals` — reclassified from `UNK` → `PI (donor-side) → REF ORIG (SV)`, already dual-parent (jobs+orders) confirmed.
-  - `invoices` — promoted from `UNK details` → `PI in MVP → EXT FEB (SV)`, 147-line reconciliation formula confirmed.
-  - `payments` — promoted from `UNK details` → `PI in MVP → EXT FEB (SV)`, 320-line payment service with idempotency + void + Stripe two-step confirmed.
-  - `platform_admin` — promoted from `PI — 6+ pages` → `SS — REF (SV)`, REB scaffold with `require_platform_admin` + tenant readiness + audit events confirmed.
-  - `community` — promoted from `NS` → `SS — REF (SV)`, working post/reply/upvote/stats confirmed.
-  - `subscription plans / add-ons` — promoted from `UNK/DEF` → `EXT REB (SV)`, `billing_rules.py` with founders promo + fee bps confirmed.
-- `SIGNGUY-AI-OS` is now **byte-identical proof (RV)**, not "likely mirror". md5 tree match confirmed.
+  - `settings` — reclassified from `UNK` → `PI in MVP → REF to REB (FSV)`, working scaffold confirmed.
+  - `notifications` — reclassified from `UNK` → `NS in MVP → RB on REB scaffold (FSV)`, working scaffold confirmed.
+  - `doculink / documents` — reclassified from `PH` → `RB on REB scaffold (FSV)`, full 244-line scaffold + storage adapter confirmed.
+  - `wrap_lab` — reclassified from `UNK — depth unknown` → `SS — REF (FSV)`, 11-stage workflow engine with 14 workflow actions confirmed.
+  - `signatures` — promoted from `PI donor-side` to `NS in MVP → REF ORIG (FSV)`, 11-parent signature system confirmed.
+  - `approvals` — reclassified from `UNK` → `PI (donor-side) → REF ORIG (FSV)`, already dual-parent (jobs+orders) confirmed.
+  - `invoices` — promoted from `UNK details` → `PI in MVP → EXT FEB (FSV)`, 147-line reconciliation formula confirmed.
+  - `payments` — promoted from `UNK details` → `PI in MVP → EXT FEB (FSV)`, 320-line payment service with idempotency + void + Stripe two-step confirmed.
+  - `platform_admin` — promoted from `PI — 6+ pages` → `SS — REF (FSV)`, REB scaffold with `require_platform_admin` + tenant readiness + audit events confirmed.
+  - `community` — promoted from `NS` → `SS — REF (FSV)`, working post/reply/upvote/stats confirmed.
+  - `subscription plans / add-ons` — promoted from `UNK/DEF` → `EXT REB (FSV)`, `billing_rules.py` with founders promo + fee bps confirmed.
+- `SIGNGUY-AI-OS` is a **mirror of MVP under `backend/app/**/*.py` (STHV, scoped)**, not merely "likely mirror". Full-tree comparison NOT run.
 - **New rows added** for Money representation policy, Upload validation, SendGrid inbound webhook, DocuLink shares, Subscription products, `production_required` gate — all with direct source evidence.
 - `Path` values that were previously `Defer` are now: `REF` (with a concrete target file), `EXT` (with a target file), `RB` (with a target spec + reference file), or `KEEP` — no `Defer` remains anywhere.
 
@@ -790,18 +830,18 @@ This is the summary the user requested. It captures **what changed from the orig
 1. **REB is NOT "mostly spec, thin code".** It contains multi-hundred-line working scaffolds for at least 10 modules (Settings, Communications, DocuLink, Wrap Lab, Platform Admin, Shared Systems, Webstores, Billing, Pricing Engine, Upload Validation, Order Rules).
 2. **ORIG is NOT "reference only in every file".** Specific ORIG files are clean and directly-portable after terminology renames — `services/object_storage.py` (35 lines), `routes/signatures.py` (658 lines), `routes/approvals.py` (355 lines).
 3. **The base64-in-Mongo anti-pattern warning does NOT apply to ORIG `services/object_storage.py`.** That file is a clean 35-line Emergent HTTP client. The warning refers to older code paths purged elsewhere in ORIG.
-4. **`SIGNGUY-AI-OS` is not merely "likely" a mirror — it is byte-identical.** md5 tree match confirmed. Retire.
+4. **`SIGNGUY-AI-OS` is not merely "likely" a mirror — it matches MVP under `backend/app/**/*.py` (STHV, scoped).** md5 tree over the scoped path confirmed. Full-tree comparison (frontend, config, docs, branches, tags, commit history) NOT run. Recommendation: no new development; complete-tree comparison; read-only/archive after final commercial completion; no deletion.
 5. **The `Job/JobTicket` terminology conflict is narrower than assumed.** FEB `services/invoice_service.py` and `services/payment_service.py` are almost entirely job-agnostic — the port is a targeted rename, not a rewrite.
 6. **The Order-based approval flow does NOT need to be invented from scratch.** ORIG `routes/approvals.py::_get_proof_parent_name` already bridges both `db.jobs` and `db.orders`.
 7. **REB's notification service is real code with webhook signature verification, not a spec.** HMAC-SHA256 against `SIGNGUYAI_SENDGRID_WEBHOOK_SECRET`.
 8. **REB's Wrap Lab is a real workflow engine, not a UI mock.** 11 stages, 14 actions, stage gates, portal allowlist.
 9. **REB's `billing_rules.py` is the canonical commercial pricing spec**, not one of several competing donors — the 4 subscription products + credit top-ups + founders promo + transaction fee bps table is the intended permanent product commercial model.
-10. **Money representation is an unresolved architectural decision, not an implementation detail.** MVP uses float dollars; REB uses integer cents everywhere; FEB uses a documented boundary compromise (float dollars in invoices/orders/quotes, integer cents in Payment collection with conversion in the reconciliation service). Must be signed off before Stage 6.
+10. **Money representation — corrected in this pass.** The previous framing ("MVP uses float dollars everywhere; adopt FEB's boundary compromise") was wrong. **MVP already stores commerce (Quote/Order/Invoice/Payment/WorkOrder) in integer cents and pricing configuration in float dollars.** The recommended policy is to ratify MVP's existing split; the FEB boundary compromise is NOT adopted. Owner sign-off required on the `_cents` suffix rule.
 
 ## Which Prompt 2 conclusions remain valid
 
 - **Part 1.1 (SIGNGUY-MVP is the permanent destination)** — unchanged. Reinforced.
-- **Part 1.2 (SIGNGUY-AI-OS is a mirror)** — unchanged, strengthened from "likely" to "byte-identical (RV)".
+- **Part 1.2 (SIGNGUY-AI-OS is a mirror)** — unchanged, refined from "likely" to "matches MVP under `backend/app/**/*.py` (STHV, scoped)"; full-tree comparison NOT run. Recommendation changed from "retire" to "no new development; complete-tree comparison; read-only/archive after final commercial completion; no deletion".
 - **Part 3 (MVP current architecture snapshot)** — unchanged. Every path, collection, index still accurate.
 - **Part 3A (module capacity check bottom line: additive, no rebuild)** — unchanged. Reinforced.
 - **Part 11 core conclusion ("SIGNGUY-MVP is ready after limited foundation changes")** — unchanged.
@@ -810,7 +850,7 @@ This is the summary the user requested. It captures **what changed from the orig
 
 ## Which Prompt 2 conclusions need revision
 
-- **Part 1.3 (REB role)** — was `PRIMARY ARCHITECTURE REFERENCE (secondary: SELECTIVE CODE DONOR)`, now upgraded to `PRIMARY ARCHITECTURE REFERENCE + WORKING-SCAFFOLD CODE DONOR (SV)` because concrete scaffolds have been read.
+- **Part 1.3 (REB role)** — was `PRIMARY ARCHITECTURE REFERENCE (secondary: SELECTIVE CODE DONOR)`, now upgraded to `PRIMARY ARCHITECTURE REFERENCE + WORKING-SCAFFOLD CODE DONOR (FSV)` because concrete scaffolds have been read.
 - **Part 1.4 (FEB role)** — was `PRIMARY BUSINESS-BEHAVIOR REFERENCE`, now upgraded to `PRIMARY FINANCIAL-LOGIC DONOR (SV — line-by-line verified)`. Explicit line counts and behaviors are documented.
 - **Part 1.5 (ORIG role)** — was `HISTORICAL REFERENCE / FEATURE DISCOVERY`, now upgraded to `FEATURE DISCOVERY + TARGETED CODE DONOR (SV for the specific files listed)`. Certain ORIG files are portable.
 - **Part 3A `deferred by MVP scope` phrasing on SMS/MMS** — corrected. Every entry now reads as a permanent-product build-out plan.
@@ -830,4 +870,43 @@ This is the summary the user requested. It captures **what changed from the orig
 ## Next non-audit action
 
 Land the six standing decisions in `/app/memory/AGENT_INSTRUCTIONS.md` (money-representation policy, permission catalog source, repository pattern adoption, terminology map, SendGrid webhook secret enforcement, `SIGNGUY-AI-OS` retirement). No stage 6+ implementation code lands until those are recorded. Then proceed to Prompt 3.
+
+
+---
+
+# FINAL DECISION STATUS (2026-07-11 reconciliation pass)
+
+## LOCKED AND SAFE TO CARRY INTO PROMPT 3
+
+- `SIGNGUY-MVP` is the permanent destination.
+- No wholesale rebuild or architectural replacement is required. Several focused systems require **extension, migration, or targeted replacement** (enumerated in Part 4 "Targeted replacements required").
+- Canonical `Order / OrderItem / WorkOrder` terminology.
+- Reuse-first migration policy for donor code (verify → rename → port; never wholesale copy).
+- Targeted donor roles: `SIGNGUY-MVP` = destination; `SIGNGUY-AI-OS` = read-only mirror (no new development); REB / FEB / ORIG = read-only reference donors throughout the build.
+- Tenant isolation and backend-enforced permission gating remain mandatory on every new module.
+- SendGrid webhook must fail-closed in production if the secret is unset.
+- Donor repositories remain read-only references throughout the build. No deletion until final commercial completion.
+
+## REQUIRES OWNER DECISION IN PROMPT 3
+
+- Money representation — ratify the recommended policy (commerce in integer `_cents`, configuration in float dollars, single boundary at pricing→commerce hand-off) or overrule.
+- Final commercial pricing and fees — every value in REB `billing_rules.py` (subscription prices, credit-pack prices, founders promo terms, transaction fee basis points) requires owner approval before being treated as canonical (enumerated in Part 5A).
+- Final internal checkpoint order — the previous 0–17 stage numbering is a proposed dependency reference, not a locked plan; Prompt 3 sets the definitive checkpoint list after scope + pricing + policy decisions land.
+- Portal authentication method — magic link, password, both.
+- Webstores product mode — add-on-only vs also standalone.
+- Sales-tax strategy — integration or shop-configured flat rates.
+- AI provider and credit-cost model — Emergent LLM key confirmed available; specific per-tool cost caps and model selections require owner decision.
+- Repository archive timing — exactly WHEN `SIGNGUY-AI-OS` transitions from "no new development" to "archived / read-only", after the complete-tree comparison and final commercial completion.
+
+## REQUIRES MODULE PREFLIGHT DURING IMPLEMENTATION
+
+- Full customer portal trace (ORIG `routes/portal.py`, 2195 lines — first 80 lines PSI only in this pass).
+- Full signatures + approvals trace (ORIG `routes/signatures.py` 658 lines and `routes/approvals.py` 355 lines — both PSI in this pass).
+- Complete Stripe Connect security review (FEB + ORIG combined — money-movement critical, unread in this pass).
+- Detailed Webstore donor analysis (ORIG `routes/webstores.py` 3775 lines — feature discovery only, unread in this pass).
+- Detailed inventory / payroll / reports / AI donor analysis — RS class in this pass; individual files must be traced during their respective module preflight (per the FEATURE_MIGRATION_PREFLIGHT_PROTOCOL already in REB memory).
+
+## Whether enough architecture evidence exists to proceed to Prompt 3
+
+**YES for architecture; NO for commercial scope + pricing until owner approval.** The corrected audit is internally consistent, evidence-labels are accurate (FSV / STHV / PSI / SS / SO / RS), the money-representation contradiction is resolved, and the module-preflight items requiring deeper trace are enumerated. Prompt 3 can proceed on the LOCKED items above. The REQUIRES-OWNER-DECISION items must be resolved by the owner during Prompt 3 (they belong in the master build plan, not this audit).
 
