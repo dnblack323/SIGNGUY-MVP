@@ -15,10 +15,23 @@ const ORDER = {
   cancelled: "bg-slate-200 text-slate-800 ring-1 ring-slate-300",
 };
 const PROD = {
+  draft: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+  released: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
+  queued: "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
   not_started: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
   in_progress: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  blocked: "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
   on_hold: "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
+  ready: "bg-teal-100 text-teal-800 ring-1 ring-teal-200",
   completed: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  cancelled: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+  superseded: "bg-slate-200 text-slate-600 ring-1 ring-slate-300 line-through",
+};
+const PRIORITY = {
+  low: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+  normal: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
+  high: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  rush: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
 };
 const INV = {
   draft: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
@@ -37,7 +50,7 @@ const EMAIL = {
   skipped: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
 };
 
-const MAPS = { quote: QUOTE, order: ORDER, production: PROD, invoice: INV, email: EMAIL };
+const MAPS = { quote: QUOTE, order: ORDER, production: PROD, priority: PRIORITY, invoice: INV, email: EMAIL };
 
 export function StatusPill({ kind, value, className }) {
   const map = MAPS[kind] || QUOTE;

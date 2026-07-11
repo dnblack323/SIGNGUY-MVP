@@ -13,9 +13,10 @@ import { toast } from "sonner";
 import StatusPill from "@/components/common/StatusPill";
 import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import { centsToDollarsString } from "@/lib/format";
-import { ArrowLeft, Plus, Pencil, Trash2, Wrench, Receipt, Zap } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Wrench, Receipt, Zap, RefreshCw } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import LineItemDialog from "@/components/commerce/LineItemDialog";
+import GenerateWorkOrderDialog, { RegenerateDialog } from "@/components/work-orders/GenerateWorkOrderDialog";
 
 function ItemsPanel({ orderId, items, totals, canWrite, orderStatus }) {
   const qc = useQueryClient();
@@ -162,10 +163,19 @@ export default function OrderDetailPage() {
   });
 
   const [form, setForm] = useState({});
+  const [genWOOpen, setGenWOOpen] = useState(false);
+  const [regenWOOpen, setRegenWOOpen] = useState(false);
 
   const order = data?.order;
   const items = data?.items || [];
   const totals = data?.totals || {};
+
+  const { data: workOrders } = useQuery({
+    queryKey: ["order-work-orders", id],
+    queryFn: async () => (await api.get(`/work-orders`, { params: { order_id: id, current_only: true, limit: 5 } })).data,
+    enabled: !!id,
+  });
+  const activeWO = (workOrders?.items || []).find((w) => w.current_version !== false && !["cancelled", "superseded"].includes(w.production_status));
 
   const patch = useMutation({
     mutationFn: async (payload) => (await api.patch(`/orders/${id}`, payload)).data,
@@ -178,11 +188,6 @@ export default function OrderDetailPage() {
     onError: (e) => toast.error(extractError(e)),
   });
 
-  const createWO = useMutation({
-    mutationFn: async () => (await api.post(`/work-orders`, { order_id: id })).data,
-    onSuccess: (wo) => { toast.success(`Work order W-${wo.number} created`); navigate(`/work-orders/${wo.id}`); },
-    onError: (e) => toast.error(extractError(e)),
-  });
   const createInvoice = useMutation({
     mutationFn: async () => (await api.post(`/invoices`, {
       order_id: id, title: order?.job_name || "Invoice",
@@ -221,10 +226,23 @@ export default function OrderDetailPage() {
             </span>
           }
           actions={canWrite && (
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => createWO.mutate()} disabled={createWO.isPending || items.length === 0} data-testid="order-create-workorder-button">
-                <Wrench className="size-4 mr-1" />New work order
-              </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              {activeWO ? (
+                <>
+                  <Button asChild variant="outline" size="sm" data-testid="order-open-workorder-button">
+                    <Link to={`/work-orders/${activeWO.id}`}>
+                      <Wrench className="size-4 mr-1" />Work order W-{activeWO.number}
+                    </Link>
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setRegenWOOpen(true)} data-testid="order-regenerate-workorder-button">
+                    <RefreshCw className="size-4 mr-1" />Regenerate
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => setGenWOOpen(true)} disabled={items.length === 0} data-testid="order-create-workorder-button">
+                  <Wrench className="size-4 mr-1" />Generate work order
+                </Button>
+              )}
               <Button size="sm" onClick={() => createInvoice.mutate()} disabled={createInvoice.isPending || items.length === 0} data-testid="order-create-invoice-button">
                 <Receipt className="size-4 mr-1" />Create invoice
               </Button>
@@ -290,6 +308,21 @@ export default function OrderDetailPage() {
           </Card>
         </aside>
       </div>
+
+      <GenerateWorkOrderDialog
+        orderId={id}
+        open={genWOOpen}
+        onOpenChange={setGenWOOpen}
+        onCreated={(wo) => { qc.invalidateQueries({ queryKey: ["order-work-orders", id] }); if (!wo.already_exists) navigate(`/work-orders/${wo.id}`); }}
+      />
+      {activeWO && (
+        <RegenerateDialog
+          workOrderId={activeWO.id}
+          open={regenWOOpen}
+          onOpenChange={setRegenWOOpen}
+          onDone={(wo) => { qc.invalidateQueries({ queryKey: ["order-work-orders", id] }); navigate(`/work-orders/${wo.id}`); }}
+        />
+      )}
     </div>
   );
 }

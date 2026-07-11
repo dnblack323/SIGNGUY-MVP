@@ -1,0 +1,69 @@
+{
+  "summary": "EC5 Production/Work Orders frontend test pass. Ran full-flow Playwright verification against the public preview using AUTH_DEV_BYPASS. All primary flows work: Generate WO dialog, WO detail transitions with reason-required modal, Print Summary dialog, Production Board with 7 columns and HTML5 drag-drop reason gate, Regenerate with required reason and superseded banners, Assign dialog, WorkOrders list with 9-state filters and current-only toggle, sidebar Production Board link. Two functional issues found: (1) Print Summary always hides pricing even though dev owner has invoice:read (backend summary endpoint omits unit_price_cents), (2) Regenerate on Work Order Detail does not redirect to the new v2 WO (missing onDone/navigate wiring — OrderDetailPage does it correctly).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/work-orders/{id}/summary",
+        "issue": "Response never includes unit_price_cents on items, so the PrintSummaryDialog always renders the 'Pricing hidden — requires invoice access.' banner even when the caller holds invoice:read (dev owner does). The frontend gate is items.some(unit_price_cents != null); backend must include pricing fields conditional on invoice:read. Confirmed via curl — dev owner /auth/me returns invoice:read but summary items only contain description/quantity/dimensions/material_key."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "WorkOrderDetailPage RegenerateDialog wiring",
+        "issue": "Regenerating from Work Order Detail keeps the user on the old (now superseded) v1 page. Review requirement says the flow should redirect to the new v2 WO. OrderDetailPage passes onDone={(wo)=>navigate(`/work-orders/${wo.id}`)}, but WorkOrderDetailPage:277 does not. Fix: pass the same onDone (or wire useNavigate) to RegenerateDialog in WorkOrderDetailPage.",
+        "selector": "[data-testid=\"wo-regenerate-button\"] → [data-testid=\"regen-wo-submit\"]",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "WorkOrderDetailPage superseded banner",
+        "issue": "Banner reads: 'This work order was superseded. Current version: open .' — the trailing space and period after the 'open' link look like a rendering glitch/typo (extra dot). Cosmetic.",
+        "selector": "Work order detail top banner on v1 after regenerate",
+        "priority": "LOW"
+      },
+      {
+        "component": "WorkOrdersPage 9-state filters",
+        "issue": "Filter buttons (All/Draft/Released/Queued/In Progress/Blocked/Ready/Completed/Cancelled) have no data-testid attributes (expected e.g. wo-filter-draft). Also no explicit 'Superseded' filter — the review says 9-state filters but lists only 8 in the parenthetical, so this may be intentional but should be confirmed.",
+        "selector": "Filter row above the WO list",
+        "priority": "LOW"
+      },
+      {
+        "component": "Radix DialogContent a11y",
+        "issue": "Console warning 'Missing Description or aria-describedby' for GenerateWorkOrderDialog and PrintSummaryDialog. Add DialogDescription for a11y compliance.",
+        "selector": "[data-testid=\"generate-wo-dialog\"], [data-testid=\"print-summary-dialog\"]",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Print Summary pricing visibility",
+        "issue": "Even with invoice:read on the caller, Unit/Line columns are suppressed because backend /work-orders/{id}/summary never returns unit_price_cents. See backend_issues.",
+        "affected_selectors": ["[data-testid=\"print-summary-dialog\"]", "[data-testid=\"print-summary-no-pricing\"]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Backend: include unit_price_cents/line_total_cents in /api/work-orders/{id}/summary items when caller has invoice:read (currently omitted, forcing frontend to hide pricing).",
+    "Frontend: wire onDone={(wo)=>navigate(`/work-orders/${wo.id}`)} on the RegenerateDialog inside WorkOrderDetailPage.jsx (mirrors OrderDetailPage:319-323) so regeneration lands on the new v2 WO.",
+    "Frontend (nit): fix stray '.' at the end of the v1 superseded banner in WorkOrderDetailPage.",
+    "Frontend (nit): add data-testid=\"wo-filter-{state}\" to WorkOrdersPage filter chips and confirm whether a 'Superseded' filter is required.",
+    "Frontend (a11y): add DialogDescription to GenerateWorkOrderDialog and PrintSummaryDialog to silence Radix aria warnings."
+  ],
+  "critical_code_review_comments": [
+    "WorkOrderDetailPage.jsx:277 — RegenerateDialog is missing onDone navigation, causing UX drift with OrderDetailPage where onDone navigates to the new WO. Consolidate this wiring in the dialog itself or always pass onDone.",
+    "PrintSummaryDialog.jsx:34 — includePricing check relies on the backend echoing unit_price_cents. Consider driving visibility off the caller's permissions (hasPerm('invoice:read')) instead of a data-shape probe so a missing field doesn't silently hide pricing.",
+    "GenerateWorkOrderDialog.jsx — all 4 sub-dialogs (Generate/Regenerate/TransitionReason/Assign) are exported from one file. Fine at this size, but splitting per-file would improve locality/testability."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only pass)", "frontend": "~85% (all critical flows work; 1 wiring bug + 1 backend-visible pricing gap)"},
+  "test_credentials": "AUTH_DEV_BYPASS=true — /api/auth/dev-login returns dev owner token with all EC5 permissions including invoice:read.",
+  "seed_data_creation": "Added one production_required item ('3x5 Vinyl Banner', qty 2, $100 unit) to existing draft order 0-10 (b7fb1aae-...) via POST /api/orders/{id}/items. Then W-1 and W-2 (regenerated) were created through the UI. Board now has 1 draft WO card.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Order 0-10 (b7fb1aae-ab3e-42a7-b7d0-cfe3a551dbe8) now has W-1 (superseded) and W-2 (v2, draft, high, due 2026-07-18, assigned to Dev Owner). Testing the redirect fix should be a one-liner change in WorkOrderDetailPage.jsx line 277. For the pricing gap, verify backend /work-orders/{id}/summary returns unit_price_cents after fix. All EC5 data-testids listed in the review request are present and functional except: wo-assign-manage (actual id is wo-open-assign-button — non-blocking), wo-filter-{state} (missing on list filters).",
+  "rca of the issue": "Regenerate-no-redirect: WorkOrderDetailPage.jsx does not pass onDone to <RegenerateDialog />, so after regeneration the user is still on the old v1 WO detail. Print-summary pricing hidden: backend WorkOrderSummary response schema does not carry unit_price_cents, so the frontend's includePricing = items.some(unit_price_cents != null) is always false and the fallback banner renders. Both are one-line fixes on their respective sides."
+}

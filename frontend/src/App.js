@@ -16,6 +16,7 @@ import OrdersPage from "@/pages/OrdersPage";
 import OrderDetailPage from "@/pages/OrderDetailPage";
 import WorkOrdersPage from "@/pages/WorkOrdersPage";
 import WorkOrderDetailPage from "@/pages/WorkOrderDetailPage";
+import ProductionBoardPage from "@/pages/ProductionBoardPage";
 import InvoicesPage from "@/pages/InvoicesPage";
 import InvoiceDetailPage from "@/pages/InvoiceDetailPage";
 import DocumentsPage from "@/pages/DocumentsPage";
@@ -55,6 +56,7 @@ function App() {
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/orders/:id" element={<OrderDetailPage />} />
             <Route path="/work-orders" element={<WorkOrdersPage />} />
+            <Route path="/work-orders/board" element={<ProductionBoardPage />} />
             <Route path="/work-orders/:id" element={<WorkOrderDetailPage />} />
             <Route path="/invoices" element={<InvoicesPage />} />
             <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
