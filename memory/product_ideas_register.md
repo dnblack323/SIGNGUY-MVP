@@ -34,3 +34,30 @@ Owner-approved rules:
 - Interaction with the Approvals + Portal work (EC6) and the Reporting work (EC7).
 
 ---
+
+## Production Board Live Refresh
+
+**Recorded:** 2026-02 — after EC5 frontend corrections were accepted.
+**Origin:** Suggestion floated during EC5 close-out. Owner declined to schedule it and directed it here.
+
+**Purpose:**
+- Keep multiple production-floor screens synchronized.
+- Refresh Work Order card positions, assignments, priorities, and statuses.
+- Reduce stale board state across simultaneous users.
+
+**Explicit non-status:**
+- Not part of EC5.
+- Not part of EC6.
+- Not to be added as an EC5.1 increment or as opening work of any other checkpoint.
+- Requires its own later scope decision, dependency review, and preflight before any implementation is scheduled.
+
+**Future scope must decide:**
+- polling versus WebSocket/SSE
+- refresh interval
+- conflict handling during drag-and-drop
+- stale-card reconciliation
+- notification behavior
+- infrastructure and connection cost
+- offline/reconnect behavior
+
+---
