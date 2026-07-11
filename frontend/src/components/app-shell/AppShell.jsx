@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { NAV_AREAS, filterFlyoutByPermissions } from "@/lib/navigation";
+import NotificationBell from "@/components/notifications/NotificationBell";
 
 function FlyoutPanel({ area, permissions, onNavigate }) {
   const entries = filterFlyoutByPermissions(area.flyout, permissions);
@@ -168,6 +169,9 @@ export default function AppShell() {
                 <div className="font-display font-semibold truncate" data-testid="topbar-page-title">
                   SignGuy AI
                 </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <NotificationBell />
               </div>
             </div>
           </header>

@@ -19,6 +19,13 @@ from app.routers import (
     audit as audit_router,
     dashboard as dashboard_router,
     pricing as pricing_router,
+    # EC2 — Shared Platform Services
+    settings as settings_router,
+    notifications as notifications_router,
+    webhooks as webhooks_router,
+    entitlements as entitlements_router,
+    integration_status as integration_status_router,
+    activity as activity_router,
 )
 
 logging.basicConfig(
@@ -54,6 +61,14 @@ api_router.include_router(emails_router.router)
 api_router.include_router(audit_router.router)
 api_router.include_router(dashboard_router.router)
 api_router.include_router(pricing_router.router)
+
+# EC2 — Shared Platform Services
+api_router.include_router(settings_router.router)
+api_router.include_router(notifications_router.router)
+api_router.include_router(webhooks_router.router)
+api_router.include_router(entitlements_router.router)
+api_router.include_router(integration_status_router.router)
+api_router.include_router(activity_router.router)
 
 app.include_router(api_router)
 

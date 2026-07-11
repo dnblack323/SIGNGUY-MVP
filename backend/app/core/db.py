@@ -58,4 +58,53 @@ async def ensure_indexes() -> None:
     # Pricing settings \u2014 one doc per tenant
     await db.pricing_settings.create_index("tenant_id", unique=True)
 
+    # ---- EC2 — Shared Platform Services indexes ----
+    # settings
+    await db.settings.create_index([("tenant_id", 1), ("namespace", 1), ("key", 1)], unique=True)
+    await db.settings.create_index([("tenant_id", 1), ("namespace", 1)])
+
+    # activity_events
+    await db.activity_events.create_index("id", unique=True)
+    await db.activity_events.create_index([("tenant_id", 1), ("module", 1), ("created_at", -1)])
+    await db.activity_events.create_index([("tenant_id", 1), ("entity_type", 1), ("entity_id", 1)])
+    await db.activity_events.create_index([("tenant_id", 1), ("severity", 1), ("created_at", -1)])
+
+    # notifications
+    await db.notifications.create_index("id", unique=True)
+    await db.notifications.create_index(
+        [("tenant_id", 1), ("recipient_user_id", 1), ("status", 1), ("created_at", -1)]
+    )
+    await db.notifications.create_index(
+        [("tenant_id", 1), ("recipient_user_id", 1), ("read_at", 1)]
+    )
+
+    # email_activity
+    await db.email_activity.create_index("id", unique=True)
+    await db.email_activity.create_index([("tenant_id", 1), ("email_log_id", 1), ("event_timestamp", -1)])
+    await db.email_activity.create_index([("provider", 1), ("provider_event_id", 1)], unique=True)
+    await db.email_activity.create_index(
+        [("tenant_id", 1), ("related_entity_type", 1), ("related_entity_id", 1)]
+    )
+
+    # webhook_events
+    await db.webhook_events.create_index("id", unique=True)
+    await db.webhook_events.create_index([("provider", 1), ("provider_event_id", 1)], unique=True)
+    await db.webhook_events.create_index([("provider", 1), ("processing_status", 1), ("received_at", -1)])
+
+    # file_links / document_links / document_shares
+    await db.file_links.create_index("id", unique=True)
+    await db.file_links.create_index([("tenant_id", 1), ("parent_type", 1), ("parent_id", 1)])
+    await db.file_links.create_index([("tenant_id", 1), ("file_id", 1)])
+    await db.document_links.create_index("id", unique=True)
+    await db.document_links.create_index(
+        [("tenant_id", 1), ("document_id", 1), ("entity_type", 1), ("entity_id", 1)]
+    )
+    await db.document_shares.create_index("id", unique=True)
+    await db.document_shares.create_index([("tenant_id", 1), ("document_id", 1)])
+    await db.document_shares.create_index([("tenant_id", 1), ("recipient_key", 1), ("revoked", 1)])
+
+    # feature_entitlements
+    await db.feature_entitlements.create_index("id", unique=True)
+    await db.feature_entitlements.create_index([("tenant_id", 1), ("feature_key", 1)], unique=True)
+
     logger.info("MongoDB indexes ensured")

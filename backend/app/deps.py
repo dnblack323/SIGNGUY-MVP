@@ -55,3 +55,26 @@ def require_permission(*required: str | Perm) -> Callable:
         return user
 
     return _dep
+
+
+def require_entitlement(feature_key: str) -> Callable:
+    """EC2 — Guard that requires an active feature entitlement for the tenant.
+
+    Runs AFTER `get_current_user` (auth) but BEFORE any permission check the
+    caller adds, so an un-entitled tenant is rejected before spending work on
+    permission-role introspection. Returns the resolved user dict.
+    """
+
+    async def _dep(user: dict = Depends(get_current_user)) -> dict:
+        # Local import prevents a circular import between deps <-> services.
+        from .services.entitlements import has_entitlement
+
+        ok = await has_entitlement(tenant_id=user["tenant_id"], feature_key=feature_key)
+        if not ok:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=f"Feature not entitled: {feature_key}",
+            )
+        return user
+
+    return _dep

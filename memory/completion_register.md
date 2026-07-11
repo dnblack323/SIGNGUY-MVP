@@ -8,7 +8,8 @@
 |---|---|---|---|
 | **EC0** | Owner Decisions and Governance Lock | 2026-02 | Owner-approved consolidated master plan Part 4 (all 27 decisions baked in) |
 | **EC1** | Security and Permanent App Guardrails | 2026-02 | `/app/evidence/EC1_evidence.md` |
+| **EC2** | Shared Platform Foundations | 2026-02 | `/app/evidence/EC2_evidence.md` (92/92 tests pass) |
 
 ## Pending Checkpoints
 
-EC2 → EC14 remain per `/app/memory/progress_register.md`.
+EC3 → EC14 remain per `/app/memory/progress_register.md`.

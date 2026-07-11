@@ -3,13 +3,18 @@
 - Env-var config only.
 - Fails gracefully when keys are missing: EmailLog is written with status='skipped' or 'failed'.
 - Never crashes the calling request.
+- EC2: on successful outbound, writes a `processed` row into `email_activity`
+  so the observability feed shows the send before any provider webhook lands.
 """
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from ..core.config import get_settings
+from ..core.db import db
+from ..core.time_utils import prepare_for_mongo, utc_now
+from ..models.email_activity import EmailActivity
 
 logger = logging.getLogger(__name__)
 _settings = get_settings()
@@ -55,3 +60,39 @@ def send_email(
     except Exception as e:  # noqa: BLE001
         logger.exception("SendGrid send failed")
         return False, None, f"exception:{type(e).__name__}:{e}"
+
+
+async def record_processed_activity(
+    *,
+    tenant_id: str,
+    email_log_id: str,
+    to_email: str,
+    sendgrid_message_id: Optional[str],
+    related_entity_type: Optional[str] = None,
+    related_entity_id: Optional[str] = None,
+    ok: bool = True,
+    error: Optional[str] = None,
+) -> None:
+    """EC2 — write an internal 'processed' or 'dropped' row into email_activity
+    so the send is visible in the observability feed even before/without the
+    provider webhook. Uses `email_log_id`-based provider_event_id so external
+    SendGrid events don't collide.
+    """
+    provider_event_id = f"internal:{email_log_id}"
+    try:
+        activity = EmailActivity(
+            tenant_id=tenant_id,
+            provider="internal",
+            provider_event_id=provider_event_id,
+            email_log_id=email_log_id,
+            sendgrid_message_id=sendgrid_message_id,
+            to_email=to_email,  # type: ignore[arg-type]
+            event="processed" if ok else "dropped",
+            event_timestamp=utc_now(),
+            reason=error,
+            related_entity_type=related_entity_type,
+            related_entity_id=related_entity_id,
+        )
+        await db.email_activity.insert_one(prepare_for_mongo(activity.model_dump()))
+    except Exception:
+        logger.exception("record_processed_activity failed for email_log_id=%s", email_log_id)

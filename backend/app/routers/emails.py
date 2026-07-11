@@ -16,7 +16,7 @@ from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..deps import require_permission
 from ..models.email import EmailLog
 from ..services.audit import record_audit
-from ..services.email import is_configured as email_configured, send_email
+from ..services.email import is_configured as email_configured, send_email, record_processed_activity
 
 router = APIRouter(prefix="/emails", tags=["emails"])
 
@@ -168,6 +168,17 @@ async def send(
         sendgrid_message_id=msg_id,
     )
     await db.email_logs.insert_one(prepare_for_mongo(log.model_dump()))
+    # EC2 — mirror to email_activity so observability shows outbound sends
+    await record_processed_activity(
+        tenant_id=user["tenant_id"],
+        email_log_id=log.id,
+        to_email=str(payload.to_email),
+        sendgrid_message_id=msg_id,
+        related_entity_type=payload.related_type,
+        related_entity_id=payload.related_id,
+        ok=ok,
+        error=err,
+    )
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         action="email.send", entity_type=payload.related_type or "general",

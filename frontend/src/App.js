@@ -21,6 +21,10 @@ import InvoiceDetailPage from "@/pages/InvoiceDetailPage";
 import DocumentsPage from "@/pages/DocumentsPage";
 import EmailHistoryPage from "@/pages/EmailHistoryPage";
 import SettingsPage from "@/pages/SettingsPage";
+import CompanySettingsPage from "@/pages/CompanySettingsPage";
+import IntegrationsPage from "@/pages/IntegrationsPage";
+import FeatureAccessPage from "@/pages/FeatureAccessPage";
+import DataSecurityPage from "@/pages/DataSecurityPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 import PricingFoundationPage from "@/pages/PricingFoundationPage";
 import PricingCalculatorPage from "@/pages/PricingCalculatorPage";
@@ -59,6 +63,10 @@ function App() {
             <Route path="/pricing-foundation" element={<PricingFoundationPage />} />
             <Route path="/pricing-calculator" element={<PricingCalculatorPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/settings/company" element={<CompanySettingsPage />} />
+            <Route path="/settings/integrations" element={<IntegrationsPage />} />
+            <Route path="/settings/features" element={<FeatureAccessPage />} />
+            <Route path="/settings/data-security" element={<DataSecurityPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
           <Route path="*" element={<LoggedInHome />} />
