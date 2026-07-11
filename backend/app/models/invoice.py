@@ -7,8 +7,13 @@ from pydantic import Field
 
 from .base import BaseDoc
 
+# Legacy single-status enum retained ONLY for backwards-compatible reads.
 InvoiceStatus = Literal["draft", "sent", "viewed", "partially_paid", "paid", "overdue", "void"]
-PaymentMethod = Literal["cash", "check", "card", "bank_transfer", "other"]
+
+# EC4 permanent dual-status enums.
+DocumentStatus = Literal["draft", "issued", "void"]
+FinancialStatus = Literal["unpaid", "partial", "paid", "refunded", "voided"]
+PaymentMethod = Literal["cash", "check", "card_external", "bank_transfer_external", "other"]
 
 
 class InvoiceLineItem(BaseDoc):
@@ -27,22 +32,37 @@ class Invoice(BaseDoc):
     customer_id: str
     title: str
     description: Optional[str] = None
-    total_cents: int = 0  # manual total; when line_items exist, may be sum of line items
-    due_date: Optional[str] = None  # ISO date string
-    notes: Optional[str] = None
+
+    # Legacy single-status field (kept as compat mirror; NEVER mutated for
+    # financial state through the router).
     status: InvoiceStatus = "draft"
+
+    # EC4 — permanent dual status
+    document_status: DocumentStatus = "draft"
+    financial_status: FinancialStatus = "unpaid"
+
+    # Money (integer cents)
+    subtotal_cents: int = 0
+    discount_cents: int = 0
+    tax_cents: int = 0
+    fee_cents: int = 0
+    total_cents: int = 0
+    amount_paid_cents: int = 0
+    amount_refunded_cents: int = 0
+    balance_due_cents: int = 0
+
+    # Lifecycle
+    issued_at: Optional[datetime] = None
     sent_at: Optional[datetime] = None
     viewed_at: Optional[datetime] = None
-    created_by: str
+    voided_at: Optional[datetime] = None
+    void_reason: Optional[str] = None
 
-
-class Payment(BaseDoc):
-    tenant_id: str
-    invoice_id: str
-    amount_cents: int
-    method: PaymentMethod = "other"
-    paid_on: str  # ISO date
-    reference: Optional[str] = None
+    due_date: Optional[str] = None
     notes: Optional[str] = None
-    idempotency_key: Optional[str] = None
     created_by: str
+
+
+# Backward-compat re-export so any older import of `Payment` from
+# `models.invoice` continues to work while EC4 finalizes.
+from .payment import Payment  # noqa: E402,F401

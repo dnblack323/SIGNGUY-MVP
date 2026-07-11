@@ -132,4 +132,27 @@ async def ensure_indexes() -> None:
     await db.order_items.create_index([("tenant_id", 1), ("order_id", 1), ("position", 1)])
     await db.order_items.create_index([("tenant_id", 1), ("production_required", 1)])
 
+    # ---- EC4 — Payments indexes ----
+    await db.payments.create_index("id", unique=True)
+    await db.payments.create_index([("tenant_id", 1), ("invoice_id", 1), ("received_at", -1)])
+    await db.payments.create_index([("tenant_id", 1), ("customer_id", 1), ("created_at", -1)])
+    await db.payments.create_index(
+        [("tenant_id", 1), ("invoice_id", 1), ("idempotency_key", 1)],
+        unique=True, partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.payments.create_index(
+        "stripe_payment_intent_id", unique=True,
+        partialFilterExpression={"stripe_payment_intent_id": {"$type": "string"}},
+    )
+    await db.payments.create_index(
+        "stripe_charge_id", unique=True,
+        partialFilterExpression={"stripe_charge_id": {"$type": "string"}},
+    )
+    await db.payments.create_index(
+        "stripe_refund_id", unique=True,
+        partialFilterExpression={"stripe_refund_id": {"$type": "string"}},
+    )
+    await db.invoices.create_index([("tenant_id", 1), ("document_status", 1), ("updated_at", -1)])
+    await db.invoices.create_index([("tenant_id", 1), ("financial_status", 1), ("due_date", 1)])
+
     logger.info("MongoDB indexes ensured")

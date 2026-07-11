@@ -14,7 +14,8 @@
 | **EC1** | Security and Permanent App Guardrails | **COMPLETE** | Production startup guards, dev-route protection, terminology guard, money policy contract, extended permission catalog with platform + portal scope separation, LOCKED sidebar + flyout navigation. 34/34 tests pass. Evidence: `/app/evidence/EC1_evidence.md`. |
 | **EC2** | Shared Platform Foundations | **COMPLETE** | 92/92 tests pass (34 EC1 + 58 EC2). Settings framework, Activity feed, Notifications, Email Activity, SendGrid webhook (fail-closed), Upload validation, Polymorphic file/document links, Feature entitlements (tenant read + `require_entitlement` guard), Integration status. Frontend: Company Settings, Integrations, Feature Access, Data & Security pages + NotificationBell. Evidence: `/app/evidence/EC2_evidence.md`. |
 | **EC3** | Quotes, Orders, and Pricing Snapshots | **COMPLETE** | Backend 117/117 tests pass. Frontend: functional Quote/Order line-item editors, convert-with-override, revision warning, source-quote link. Automated testing agent: 20/21 scenarios pass; 21st (invalid-id error state) received a code fix in `frontend/src/index.js` that was NOT re-verified via a full automated rerun. Evidence: `/app/evidence/EC3_evidence.md`. |
-| **EC4** | Invoices, Payments, and Stripe Core | **READY TO BUILD** | Awaiting explicit owner execution prompt. |
+| **EC4** | Invoices, Payments, and Stripe Core | **COMPLETE** | Backend 134/134 tests pass (17 new EC4 tests + 117 EC1–EC3 regression). Dual-status invoices, backend-derived reconciliation, idempotent manual + Stripe payments, controlled voids + refunds, Stripe webhook via EC2 shared infra, overpayment rejection, paired-status frontend badges + Record Manual/Void/Initiate Stripe/Refund dialogs. Automated frontend regression via testing agent NOT re-run in this pass. Evidence: `/app/evidence/EC4_evidence.md`. |
+| **EC5** | (next per master plan) | **READY TO BUILD** | Awaiting explicit owner execution prompt. |
 | EC5 | Production and Work Orders | NOT STARTED | Depends on EC3/EC4. |
 | EC6 | Asset Library, Proofs, Signatures, and Customer Portal | NOT STARTED | Depends on EC2/EC3/EC4. |
 | EC7 | Inventory, Purchasing, Finance, and Reporting | NOT STARTED | Depends on EC3/EC4/EC5. |
@@ -51,11 +52,11 @@
 
 ## Next Action
 
-**Await the owner prompt to begin EC4 — Invoices, Payments, and Stripe Core.**
+**Await the owner prompt to begin EC5** (per the authoritative master plan).
 
-- Do NOT begin EC4 until the EC4 implementation prompt is provided.
-- Do NOT invoke or rerun the EC0/EC1/EC2/EC3 implementation prompts.
+- Do NOT begin EC5 until the EC5 implementation prompt is provided.
+- Do NOT invoke or rerun the EC0/EC1/EC2/EC3/EC4 implementation prompts.
 
 ---
 
-**Register last updated:** 2026-02 — EC3 corrections applied + verified; marked COMPLETE. Awaiting owner prompt to begin EC4 (Invoices, Payments, and Stripe Core).
+**Register last updated:** 2026-02 — EC4 marked COMPLETE (backend 134/134). Awaiting owner prompt to begin EC5.

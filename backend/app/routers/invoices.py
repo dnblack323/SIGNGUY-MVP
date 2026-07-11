@@ -35,7 +35,10 @@ class InvoiceUpdateIn(BaseModel):
 
 
 class InvoiceStatusIn(BaseModel):
-    status: Literal["draft", "sent", "viewed", "partially_paid", "paid", "overdue", "void"]
+    # EC4 — this endpoint ONLY controls document_status. Financial status is
+    # derived by the reconciliation service and cannot be set directly.
+    document_status: Literal["draft", "issued", "void"]
+    reason: Optional[str] = None
 
 
 class PaymentIn(BaseModel):
@@ -163,19 +166,55 @@ async def set_invoice_status(invoice_id: str, payload: InvoiceStatusIn, user: di
     doc = await db.invoices.find_one({"id": invoice_id, "tenant_id": user["tenant_id"]})
     if not doc:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    if payload.status == doc["status"]:
+
+    current = doc.get("document_status") or ("void" if doc.get("status") == "void" else "issued" if doc.get("status") not in {"draft", None} else "draft")
+    target = payload.document_status
+
+    if current == "void":
+        raise HTTPException(status_code=400, detail="Invoice is already void")
+    if target == current:
         return serialize_doc(doc)
-    extras: dict = {"status": payload.status, "updated_at": utc_now().isoformat()}
-    if payload.status == "sent" and not doc.get("sent_at"):
-        extras["sent_at"] = utc_now().isoformat()
-    if payload.status == "viewed" and not doc.get("viewed_at"):
-        extras["viewed_at"] = utc_now().isoformat()
+
+    allowed = {
+        "draft": {"issued", "void"},
+        "issued": {"void"},
+    }
+    if target not in allowed.get(current, set()):
+        raise HTTPException(status_code=400, detail=f"Invalid transition {current} → {target}")
+
+    now = utc_now().isoformat()
+    extras: dict = {"document_status": target, "updated_at": now}
+    if target == "issued":
+        extras["issued_at"] = now
+        if not doc.get("sent_at"):
+            extras["sent_at"] = now
+        extras["status"] = "sent"                       # compat mirror
+    elif target == "void":
+        # EC4 §22 — block void when net confirmed payments remain.
+        from ..services.invoice_reconciliation import reconcile
+        await reconcile(tenant_id=user["tenant_id"], invoice_id=invoice_id)
+        latest = await db.invoices.find_one({"id": invoice_id})
+        net_paid = int(latest.get("amount_paid_cents") or 0) - int(latest.get("amount_refunded_cents") or 0)
+        if net_paid > 0:
+            raise HTTPException(status_code=400,
+                                detail="Cannot void invoice with confirmed payments — refund or void manual payments first")
+        if not payload.reason or not payload.reason.strip():
+            raise HTTPException(status_code=400, detail="Void reason is required")
+        extras["voided_at"] = now
+        extras["void_reason"] = payload.reason.strip()
+        extras["status"] = "void"                       # compat mirror
+
     await db.invoices.update_one({"id": invoice_id}, {"$set": extras})
+    # Re-derive financial fields after any status change.
+    from ..services.invoice_reconciliation import reconcile
+    await reconcile(tenant_id=user["tenant_id"], invoice_id=invoice_id)
+
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
-        action="invoice.status_change", entity_type="invoice", entity_id=invoice_id,
-        summary=f"Invoice I-{doc['number']} → {payload.status}",
-        diff={"from": doc["status"], "to": payload.status},
+        action=f"invoice.{'voided' if target == 'void' else 'issued' if target == 'issued' else 'draft'}",
+        entity_type="invoice", entity_id=invoice_id,
+        summary=f"Invoice I-{doc['number']} document_status → {target}",
+        diff={"from": current, "to": target, "reason": payload.reason},
     )
     doc = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
     return serialize_doc(doc)
