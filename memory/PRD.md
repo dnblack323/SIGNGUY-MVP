@@ -25,9 +25,10 @@ Constraints:
 | EC2 — Shared Platform Services | COMPLETE | `/app/evidence/EC2_evidence.md` |
 | EC3 — Quotes, Orders, Order Items, Pricing Snapshots | COMPLETE | `/app/evidence/EC3_evidence.md` |
 | EC4 — Invoices, Payments, and Stripe Core | COMPLETE | `/app/evidence/EC4_evidence.md` |
-| **EC5 — Production and Work Orders** | **COMPLETE** | `/app/evidence/EC5_evidence.md` — 143/143 backend + frontend delivered + `testing_agent_v3_fork` iteration 8 100% pass |
-| **EC6 — Asset Library, Proofs, Signatures, Customer Portal** | READY TO BUILD | pending owner execution prompt |
-| EC7–EC14 | NOT STARTED | dependency-ordered per master plan |
+| EC5 — Production and Work Orders | COMPLETE | `/app/evidence/EC5_evidence.md` |
+| **EC6 — Asset Library, Proofs, Signatures, Customer Portal** | **COMPLETE** | `/app/evidence/EC6_evidence.md` — 154/154 backend + portal shell + public pages |
+| **EC7 — Inventory, Purchasing, Finance, Reporting** | READY TO BUILD | pending owner execution prompt |
+| EC8–EC14 | NOT STARTED | dependency-ordered per master plan |
 
 ## Completed capabilities
 
@@ -44,11 +45,12 @@ Constraints:
 - Payments: record / void / refund with idempotency; Stripe Core integration (test adapter, publishable-key + client_secret never leak to DOM/console) — EC4.
 - **Work Order lifecycle (EC5):** 9-state enum, priority + due dates, immutable snapshots, versioned regenerate/supersede with reason, controlled transitions coordinating Order operational status, cross-tenant-safe assignment with in-app notifications, printable summary gated by `invoice:read`, `/api/production/board` view — EC5.
 - **Production frontend (EC5):** Production Board (Kanban + HTML5 drag-drop + reason-required modal), rebuilt Work Order Detail (version banners, priority/due, allowed-transitions sidebar, assign dialog, in-page Print Summary), Generate WO dialog on Order Detail, Regenerate on both Order + WO detail, 9-state WO list filters + current-version toggle, Production Board sidebar link, all controls permission-gated via `/auth/me`.
+- **Asset Library + Portal (EC6):** Documents metadata + versioning layered over existing FileRecord; scoped public-action tokens (single-purpose, expiring, revocable, hashed at rest); magic-link portal login (hashed, single-use, audience-scoped); portal JWT separation (`sub_scope="portal"`, disjoint dependency graph); Portal Identity n:1 mapping to Customer with 5 backend-authoritative permission-bundle presets; staff surfaces for Proofs (create/version/transition), Approvals (dual-parent incl. WOS), Signature Requests + Signatures; Public single-action endpoints (proof approve, sign, quote_view, invoice_view, public quote request, customer intake with staged-changes review); Portal customer routes (Quotes/Orders/Invoices/Documents/Proofs/Messages/Profile) with tenant+customer scope on every query; Portal messages via existing email service (no new messaging schema); Portal shell + login/magic-link/verify + list pages at `/portal/*` and public token pages at `/p/*`, both mounted OUTSIDE the staff `<AppShell>`.
 
 ## Testing
 
-- Backend: `cd /app/backend && python -m pytest tests/ -q` → **143 passed** (34 EC1 + 58 EC2 + 25 EC3 + 17 EC4 + 9 EC5).
-- Frontend: `testing_agent_v3_fork` iteration_3–6 (EC4 Stripe): 100% pass. Iteration_7 (EC5) found 5 issues; iteration_8 verified all 5 fixes — 100% pass.
+- Backend: `cd /app/backend && python -m pytest tests/ -q` → **154 passed** (34 EC1 + 58 EC2 + 25 EC3 + 17 EC4 + 9 EC5 + 11 EC6).
+- Frontend: `testing_agent_v3_fork` iteration 8 (EC5) 100% pass. EC6 portal + public pages: pytest-covered end-to-end; frontend automated regression deferred to next session (has not been executed).
 
 ## Test credentials
 
@@ -57,11 +59,12 @@ Constraints:
 ## Priority backlog (P0/P1/P2)
 
 ### P0 — Immediate next checkpoint
-- Await owner's EC6 execution prompt: **EC6 — Asset Library, Proofs, Signatures, and Customer Portal** (authoritative title per master plan).
+- Await owner's EC7 execution prompt: **EC7 — Inventory, Purchasing, Finance, and Reporting** (authoritative title per master plan).
 
-### P1 — After EC6
-- EC7 Inventory, Purchasing, Finance, Reporting.
-- EC8 Wrap Lab.
+### P1 — After EC7
+- EC8 Team, Scheduling, Time, Payroll (+ Employee Portal).
+- EC9 Webstores + Stripe Connect (add-on + standalone shell).
+- EC10 Wrap Lab.
 
 ### P2 — Later
 - EC9 Creative Studio + AI foundations.

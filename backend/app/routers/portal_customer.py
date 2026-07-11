@@ -1,0 +1,276 @@
+"""EC6 — Portal Customer routes.
+
+Scope: portal identity's tenant + customer only. No client trusts.
+All queries filter by BOTH tenant_id AND customer_id from the JWT.
+"""
+from __future__ import annotations
+import time
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, EmailStr, Field
+
+from ..core.db import db
+from ..core.time_utils import serialize_doc, utc_now
+from ..deps_portal import get_current_portal_identity, require_portal_permission
+from ..services.approvals_signatures_service import record_approval
+from ..services.proofs_service import transition_proof
+from ..services.audit import record_audit
+from ..services.email import send_email
+
+router = APIRouter(prefix="/portal", tags=["portal_customer"])
+
+
+def _scope(identity: dict) -> dict:
+    return {"tenant_id": identity["tenant_id"], "customer_id": identity["customer_id"]}
+
+
+@router.get("/quotes")
+async def portal_quotes(
+    limit: int = Query(50, le=200),
+    identity: dict = Depends(require_portal_permission("portal:view_quotes")),
+) -> dict:
+    cur = db.quotes.find({**_scope(identity)}, {"_id": 0}).sort("created_at", -1).limit(limit)
+    return {"items": [serialize_doc(d) async for d in cur]}
+
+
+@router.get("/quotes/{qid}")
+async def portal_quote_detail(qid: str, identity: dict = Depends(require_portal_permission("portal:view_quotes"))) -> dict:
+    q = await db.quotes.find_one({"id": qid, **_scope(identity)}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    lines = [serialize_doc(li) async for li in db.quote_line_items.find(
+        {"tenant_id": identity["tenant_id"], "quote_id": qid, "revision_number": q.get("current_revision", q.get("revision_number", 1))},
+        {"_id": 0},
+    ).sort("position", 1)]
+    return {"quote": serialize_doc(q), "line_items": lines}
+
+
+class QuoteApprovalIn(BaseModel):
+    action: str  # approve | request_changes | decline
+    reason: Optional[str] = None
+
+
+@router.post("/quotes/{qid}/approval", status_code=201)
+async def portal_quote_approval(qid: str, payload: QuoteApprovalIn, request: Request,
+                                identity: dict = Depends(require_portal_permission("portal:approve_quotes"))) -> dict:
+    q = await db.quotes.find_one({"id": qid, **_scope(identity)})
+    if not q:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    try:
+        return await record_approval(
+            tenant_id=identity["tenant_id"], parent_type="quote_revision", parent_id=qid,
+            parent_version=q.get("current_revision", q.get("revision_number", 1)),
+            action=payload.action, actor_type="portal_customer", actor_ref=identity["id"],
+            actor_display=identity.get("full_name") or identity["email"],
+            reason=payload.reason,
+            ip=(request.client.host if request.client else None),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=str(ex))
+
+
+@router.get("/orders")
+async def portal_orders(
+    limit: int = Query(50, le=200),
+    identity: dict = Depends(require_portal_permission("portal:view_orders")),
+) -> dict:
+    cur = db.orders.find({**_scope(identity)}, {"_id": 0}).sort("created_at", -1).limit(limit)
+    return {"items": [serialize_doc(d) async for d in cur]}
+
+
+@router.get("/orders/{oid}")
+async def portal_order_detail(oid: str, identity: dict = Depends(require_portal_permission("portal:view_orders"))) -> dict:
+    o = await db.orders.find_one({"id": oid, **_scope(identity)}, {"_id": 0})
+    if not o:
+        raise HTTPException(status_code=404, detail="Order not found")
+    items = [serialize_doc(it) async for it in db.order_items.find(
+        {"tenant_id": identity["tenant_id"], "order_id": oid}, {"_id": 0}
+    ).sort("position", 1)]
+    return {"order": serialize_doc(o), "items": items}
+
+
+@router.get("/invoices")
+async def portal_invoices(
+    limit: int = Query(50, le=200),
+    identity: dict = Depends(require_portal_permission("portal:view_invoices")),
+) -> dict:
+    cur = db.invoices.find({**_scope(identity), "document_status": {"$ne": "draft"}}, {"_id": 0}).sort("created_at", -1).limit(limit)
+    return {"items": [serialize_doc(d) async for d in cur]}
+
+
+@router.get("/invoices/{iid}")
+async def portal_invoice_detail(iid: str, identity: dict = Depends(require_portal_permission("portal:view_invoices"))) -> dict:
+    inv = await db.invoices.find_one({"id": iid, **_scope(identity)}, {"_id": 0})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    payments = [serialize_doc(p) async for p in db.payments.find(
+        {"tenant_id": identity["tenant_id"], "invoice_id": iid, "status": {"$in": ["confirmed", "refunded"]}},
+        {"_id": 0, "idempotency_key": 0},
+    ).sort("received_at", -1)]
+    return {"invoice": serialize_doc(inv), "payments": payments}
+
+
+@router.get("/documents")
+async def portal_documents(
+    identity: dict = Depends(require_portal_permission("portal:view_documents")),
+) -> dict:
+    # Show only documents explicitly marked customer_visible AND matching this customer
+    q = {**_scope(identity), "visibility": "customer_visible", "archived": False}
+    cur = db.documents.find(q, {"_id": 0}).sort("created_at", -1).limit(200)
+    return {"items": [serialize_doc(d) async for d in cur]}
+
+
+@router.get("/proofs")
+async def portal_proofs(
+    identity: dict = Depends(require_portal_permission("portal:view_proofs")),
+) -> dict:
+    q = {"tenant_id": identity["tenant_id"], "customer_id": identity["customer_id"]}
+    cur = db.proofs.find(q, {"_id": 0}).sort("created_at", -1).limit(200)
+    return {"items": [serialize_doc(d) async for d in cur]}
+
+
+class ProofApprovalIn(BaseModel):
+    action: str  # approve | request_changes
+    reason: Optional[str] = None
+
+
+@router.post("/proofs/{pid}/approval", status_code=201)
+async def portal_proof_approval(pid: str, payload: ProofApprovalIn, request: Request,
+                                identity: dict = Depends(require_portal_permission("portal:approve_proofs"))) -> dict:
+    proof = await db.proofs.find_one({"id": pid, "tenant_id": identity["tenant_id"], "customer_id": identity["customer_id"]})
+    if not proof:
+        raise HTTPException(status_code=404, detail="Proof not found")
+    try:
+        approval = await record_approval(
+            tenant_id=identity["tenant_id"], parent_type="proof_version",
+            parent_id=pid, parent_version=proof.get("current_version", 1),
+            action=payload.action, actor_type="portal_customer", actor_ref=identity["id"],
+            actor_display=identity.get("full_name") or identity["email"],
+            reason=payload.reason,
+            ip=(request.client.host if request.client else None),
+            user_agent=request.headers.get("user-agent"),
+        )
+        # Transition proof through the owning service (audited)
+        if payload.action == "approve":
+            await transition_proof(
+                tenant_id=identity["tenant_id"], proof_id=pid, target="approved",
+                actor_user_id=None, actor_email=identity["email"], actor_kind="portal_customer",
+            )
+        elif payload.action == "request_changes":
+            await transition_proof(
+                tenant_id=identity["tenant_id"], proof_id=pid, target="changes_requested",
+                reason=payload.reason, actor_user_id=None, actor_email=identity["email"],
+                actor_kind="portal_customer",
+            )
+        return approval
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=str(ex))
+
+
+# ---- Messages (read + send via existing email service) ----
+
+@router.get("/messages")
+async def portal_messages(identity: dict = Depends(require_portal_permission("portal:view_messages"))) -> dict:
+    # Only email_logs that were sent TO the customer and are marked customer-visible
+    q = {"tenant_id": identity["tenant_id"], "customer_id": identity["customer_id"]}
+    cur = db.email_logs.find(q, {"_id": 0, "sendgrid_message_id": 0, "smtp_response": 0}).sort("created_at", -1).limit(100)
+    return {"items": [serialize_doc(d) async for d in cur]}
+
+
+class PortalMessageIn(BaseModel):
+    subject: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=5000)
+    related_entity_type: Optional[str] = None
+    related_entity_id: Optional[str] = None
+
+
+# Per-identity rate limiter for portal-send
+_PORTAL_SEND_BUCKET: dict[str, list[float]] = {}
+_PORTAL_SEND_WINDOW = 300
+_PORTAL_SEND_MAX = 5
+
+
+def _portal_send_rate(identity_id: str) -> None:
+    now = time.time()
+    bucket = [t for t in _PORTAL_SEND_BUCKET.get(identity_id, []) if now - t < _PORTAL_SEND_WINDOW]
+    if len(bucket) >= _PORTAL_SEND_MAX:
+        raise HTTPException(status_code=429, detail="Message rate limit exceeded. Try again shortly.")
+    bucket.append(now)
+    _PORTAL_SEND_BUCKET[identity_id] = bucket
+
+
+@router.post("/messages", status_code=201)
+async def portal_send_message(payload: PortalMessageIn, request: Request,
+                              identity: dict = Depends(require_portal_permission("portal:send_messages"))) -> dict:
+    _portal_send_rate(identity["id"])
+    # Server-resolves recipients — client CANNOT supply.
+    tenant = await db.tenants.find_one({"id": identity["tenant_id"]}, {"_id": 0})
+    # Resolve staff recipient — support name, contact_email, email (backwards compat)
+    to_email = (tenant or {}).get("contact_email") or (tenant or {}).get("email")
+    if not to_email:
+        # Fallback: first owner user's email
+        owner = await db.users.find_one({"tenant_id": identity["tenant_id"], "role": "owner", "is_active": True}, {"_id": 0, "email": 1})
+        to_email = owner["email"] if owner else None
+    if not to_email:
+        raise HTTPException(status_code=400, detail="Tenant contact email not configured")
+    body_text = (
+        f"From customer portal — {identity.get('full_name') or identity['email']}\n\n"
+        f"{payload.body}\n"
+    )
+    ok, msg_id, err = send_email(
+        to_email=to_email,
+        subject=f"[Portal] {payload.subject}",
+        body_text=body_text,
+        reply_to=identity["email"],
+    )
+    # Log to email_logs for staff visibility + audit
+    import uuid
+    log = {
+        "id": str(uuid.uuid4()),
+        "tenant_id": identity["tenant_id"],
+        "to_email": to_email,
+        "from_email": identity["email"],
+        "subject": payload.subject,
+        "body": body_text,
+        "template": "general",
+        "related_type": payload.related_entity_type or "general",
+        "related_id": payload.related_entity_id,
+        "customer_id": identity["customer_id"],
+        "status": "sent" if ok else "failed",
+        "sendgrid_message_id": msg_id,
+        "error_message": err,
+        "sent_by": f"portal:{identity['id']}",
+        "created_at": utc_now().isoformat(),
+        "updated_at": utc_now().isoformat(),
+    }
+    await db.email_logs.insert_one(log)
+    await record_audit(
+        tenant_id=identity["tenant_id"], actor_user_id=f"portal:{identity['id']}", actor_email=identity["email"],
+        action="portal.message_send", entity_type="email_log", entity_id=log["id"],
+        summary=f"Portal message: {payload.subject}",
+        diff={"related": [payload.related_entity_type, payload.related_entity_id]},
+    )
+    return {"status": "sent" if ok else "queued", "id": log["id"]}
+
+
+# ---- Profile ----
+
+class PortalProfileIn(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+
+
+@router.patch("/profile")
+async def portal_update_profile(payload: PortalProfileIn,
+                                identity: dict = Depends(require_portal_permission("portal:manage_profile"))) -> dict:
+    upd = payload.model_dump(exclude_none=True)
+    if not upd:
+        raise HTTPException(status_code=400, detail="No updates")
+    upd["updated_at"] = utc_now().isoformat()
+    await db.portal_identities.update_one(
+        {"id": identity["id"], "tenant_id": identity["tenant_id"]}, {"$set": upd},
+    )
+    doc = await db.portal_identities.find_one({"id": identity["id"]}, {"_id": 0, "password_hash": 0})
+    return serialize_doc(doc or {})

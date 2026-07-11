@@ -17,6 +17,8 @@ import OrderDetailPage from "@/pages/OrderDetailPage";
 import WorkOrdersPage from "@/pages/WorkOrdersPage";
 import WorkOrderDetailPage from "@/pages/WorkOrderDetailPage";
 import ProductionBoardPage from "@/pages/ProductionBoardPage";
+import PortalApp from "@/portal/PortalApp";
+import PublicApp from "@/public/PublicApp";
 import InvoicesPage from "@/pages/InvoicesPage";
 import InvoiceDetailPage from "@/pages/InvoiceDetailPage";
 import DocumentsPage from "@/pages/DocumentsPage";
@@ -47,6 +49,8 @@ function App() {
           <Route path="/register" element={<RegisterTenantPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/portal/*" element={<PortalApp />} />
+          <Route path="/p/*" element={<PublicApp />} />
           <Route element={<RequireAuth><AppShell /></RequireAuth>}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/customers" element={<CustomersPage />} />

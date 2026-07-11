@@ -155,4 +155,48 @@ async def ensure_indexes() -> None:
     await db.invoices.create_index([("tenant_id", 1), ("document_status", 1), ("updated_at", -1)])
     await db.invoices.create_index([("tenant_id", 1), ("financial_status", 1), ("due_date", 1)])
 
+    # ---- EC6 — Documents, Portal, Proofs, Signatures, Approvals, Public Tokens ----
+    await db.documents.create_index("id", unique=True)
+    await db.documents.create_index([("tenant_id", 1), ("category", 1), ("created_at", -1)])
+    await db.documents.create_index([("tenant_id", 1), ("customer_id", 1), ("archived", 1)])
+    await db.document_versions.create_index("id", unique=True)
+    await db.document_versions.create_index([("tenant_id", 1), ("document_id", 1), ("version", -1)])
+
+    await db.proofs.create_index("id", unique=True)
+    await db.proofs.create_index([("tenant_id", 1), ("number", 1)], unique=True, sparse=True)
+    await db.proofs.create_index([("tenant_id", 1), ("parent_type", 1), ("parent_id", 1)])
+    await db.proofs.create_index([("tenant_id", 1), ("customer_id", 1), ("status", 1)])
+    await db.proof_versions.create_index("id", unique=True)
+    await db.proof_versions.create_index([("tenant_id", 1), ("proof_id", 1), ("version", -1)], unique=True)
+
+    await db.approvals.create_index("id", unique=True)
+    await db.approvals.create_index([("tenant_id", 1), ("parent_type", 1), ("parent_id", 1), ("created_at", -1)])
+
+    await db.signature_requests.create_index("id", unique=True)
+    await db.signature_requests.create_index([("tenant_id", 1), ("number", 1)], unique=True, sparse=True)
+    await db.signature_requests.create_index([("tenant_id", 1), ("parent_type", 1), ("parent_id", 1)])
+    await db.signatures.create_index("id", unique=True)
+    await db.signatures.create_index([("tenant_id", 1), ("request_id", 1)])
+
+    await db.portal_identities.create_index("id", unique=True)
+    await db.portal_identities.create_index([("tenant_id", 1), ("email", 1)], unique=True)
+    await db.portal_identities.create_index([("tenant_id", 1), ("customer_id", 1)])
+    await db.portal_identities.create_index([("tenant_id", 1), ("status", 1)])
+
+    await db.magic_link_tokens.create_index("id", unique=True)
+    await db.magic_link_tokens.create_index("token_hash", unique=True)
+    await db.magic_link_tokens.create_index([("tenant_id", 1), ("portal_identity_id", 1), ("expires_at", 1)])
+
+    await db.public_action_tokens.create_index("id", unique=True)
+    await db.public_action_tokens.create_index("token_hash", unique=True)
+    await db.public_action_tokens.create_index([("tenant_id", 1), ("action", 1), ("parent_type", 1), ("parent_id", 1)])
+    await db.public_action_tokens.create_index([("tenant_id", 1), ("expires_at", 1)])
+
+    await db.quote_requests.create_index("id", unique=True)
+    await db.quote_requests.create_index([("tenant_id", 1), ("number", 1)], unique=True, sparse=True)
+    await db.quote_requests.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
+
+    await db.customer_intakes.create_index("id", unique=True)
+    await db.customer_intakes.create_index([("tenant_id", 1), ("customer_id", 1), ("status", 1)])
+
     logger.info("MongoDB indexes ensured")

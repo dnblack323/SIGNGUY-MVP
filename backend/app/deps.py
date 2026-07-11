@@ -26,6 +26,9 @@ async def get_current_user(
         payload = decode_access_token(creds.credentials)
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    # EC6 — Portal tokens must never authorize staff routes.
+    if payload.get("sub_scope") == "portal" or payload.get("typ") == "portal_access":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Portal token not allowed on staff route")
     user_id = payload.get("sub")
     tenant_id = payload.get("tenant_id")
     if not user_id or not tenant_id:

@@ -246,20 +246,32 @@ To keep risk local and testing tight, EC6 will land in 4 tight batches with pyte
 
 Each phase writes to `progress_register.md`; the checkpoint is only marked COMPLETE after phase 6d green and evidence package produced.
 
-## 12. Open questions for the owner before phase 6a begins
+## 12. Owner decisions (LOCKED for EC6)
 
-1. **Portal payment scope confirm (D22).** Card via Stripe + internal manual recording only, ACH deferred — confirmed?
-2. **Portal messages / communication history.** The user's execution prompt says "where already supported" — MVP currently exposes email-history but no threaded messaging. Proposed: portal `Messages` tab shows the tenant's `email_activity` scoped to the portal identity's `customer_id`, plus a "send message" that generates an email + activity row (no new messaging system). Confirm this minimal interpretation.
-3. **Portal identity ↔ Customer mapping.** One portal identity ↔ exactly one `Customer` (owner + main billing contact) is the simpler model. Multiple contacts per customer as portal users can land later. Proposed: 1:1 for EC6, additive to n:1 later. Confirm.
-4. **Proofs on Work Order Summary parent.** Master plan §11.1 says approvals dual-parent supports `work_order_summary`. Include this parent type in EC6, or defer WOS approvals to a later gate? Proposed: **include** (small addition given proofs infra already dual-parents).
-5. **Forms + Questionnaires depth.** Master plan lists Public Forms, Public Quote Requests, Public Customer Intake as CP4/EC6-tagged in §8.8. Your execution prompt says "Full form-builder product" is out of scope but "foundation work only where directly required by approved customer workflows." Proposed for EC6: **skip Forms / Questionnaires / Public Quote Requests / Public Customer Intake** entirely — none are exit conditions in master-plan §30A.7. If you want any of them included, name which.
-6. **Truncation.** Your execution prompt cut off at "Use ORIG only for targeted behavioral discovery of: customer proof". Please paste the remainder before I execute — any additional constraints there govern.
+1. **Portal payments** — Stripe card via EC4 Stripe Core only. ACH deferred. Manual Payment is a staff-only action; portal users may only view manual Payments after staff reconciliation as read-only history. **No customer-created manual payments.** No portal-specific payment collection.
+2. **Portal messages** — customer-scoped read-only communication history + "Send message" that routes through the existing `services/email.py`. **No new `portal_messages` collection.** Only communications explicitly flagged customer-visible are shown; internal notes, provider IDs, webhook metadata, bounce diagnostics, staff-only recipients, and internal delivery details are excluded. Portal message recipients + Customer + tenant + related-record resolution happen entirely on the backend — the client provides only `subject/body/related_entity_ref?`. Rate limit + audit every portal-originated message.
+3. **Portal identity → Customer** — **n:1**. Multiple portal identities per Customer (owner, billing, purchasing, project, proof approver, etc.), each with a **backend-enforced permission bundle**. Presets: `owner_full`, `billing_only`, `approver_only`, `viewer_only`, `custom`. One portal identity belongs to exactly one tenant and one Customer.
+4. **Approval parent types** — `quote_revision`, `proof_version`, `contract` (a document flagged as contract), `order_item` (where genuinely required), `work_order_summary`. Approval NEVER silently changes pricing / invoice status / payment status / production completion / unrelated Order Items. Any resulting operational transition goes through the owning module's service (EC3 order status, EC5 work-order transition) and is audited.
+5. **Forms scope** — build **Public Quote Request** and **Public Customer Intake** only. **No** full Forms Builder, **no** general Questionnaires Builder. Public Quote Request creates/matches a tenant-scoped Lead or Customer via approved duplicate-detection and creates a `draft_quote_request` (NOT an approved `sent` Quote). Public Customer Intake is sent to a known Customer via an expiring scoped token; original response stored; changes staged for staff review — no silent overwrite of authoritative Customer data. Approved attachments only. Spam + captcha + rate limit on the public quote request; token binding on customer intake. Both write audit + activity. Public users may NOT supply `tenant_id`, prices, quote status, assigned staff, approval state, or internal notes.
+6. **ORIG behavioral discovery scope** — customer proof delivery, customer approval & revision requests, signature-request behavior, customer document visibility, customer Quote/Order visibility, customer Invoice/Payment presentation, public intake & quote-request behavior, portal communication history, customer profile behavior. **Reject** ORIG authentication, tenant handling, Customer models, file storage, Payment systems, portal authorization, and route structure.
 
-## 13. Sign-off gate
+### Locked EC6 constraints (all authoritative)
 
-Preflight will proceed to phase 6a only after:
-- Owner answers items 12.1–12.6.
-- Owner posts the truncated remainder (12.6).
-- Owner posts explicit go-ahead.
+- Portal Identity records are separate from staff User records.
+- Portal JWTs use `sub_scope="portal"` and a fully separate dependency graph. Staff JWTs never authorize portal routes; portal JWTs never authorize staff routes.
+- Magic-link tokens are single-use, hashed at rest (SHA-256), expiring, and audience-scoped (bound to `portal_identity_id`).
+- Public action tokens are single-purpose (one action), expiring, revocable, hashed at rest, and bound to the exact `parent_type + parent_id + parent_version`. Proof-approval tokens do NOT grant general portal access. Invoice-payment tokens do NOT grant access to unrelated customer records.
+- Raw tokens NEVER stored in DB records, logs, analytics, or activity metadata. Tokens are delivered by email once; only hashes persist.
+- No unrestricted public document URLs. Customer-visible documents require either an intentional share record OR a scoped token.
+- Every portal query resolves tenant + Customer ownership on the backend. `tenant_id`, `customer_id`, permissions, approval state, price, balance, and record ownership are never trusted from the client.
+- Reuse: EC2 (files, links, shares, notifications, email, activity, audit, webhooks); EC3 (Quote/Order services); EC4 (Invoice/reconciliation/Payment/Stripe Core); EC5 (Work Order + Summary).
+- No parallel file, document, approval, signature, Customer, Invoice, Payment, or authentication systems.
+- Immutable: proof versions, approval records, signature evidence, customer-action history.
+- Idempotency: every portal write endpoint that could cause duplicates (approvals, signatures, portal messages, portal payment intent) uses request-scoped idempotency.
+- Rate-limit portal + public auth routes and the portal-message-send route.
+- Never expose internal pricing, profit, margin, private notes, staff-only attachments, audit metadata, or platform information on the portal or public surfaces.
+- Stop after EC6. Do not begin EC7.
 
-Until then no EC6 code is written.
+### Execution protocol (approved)
+
+Phases 6a → 6b → 6c → 6d run as internal implementation phases. **No pause between phases** unless: inspected code conflicts with this preflight, a security decision is not covered above, a destructive data migration becomes necessary, or a scope conflict with the master plan is discovered. Otherwise: complete EC6, run backend + frontend test suites, produce the evidence package, stop before EC7.

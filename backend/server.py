@@ -75,6 +75,23 @@ api_router.include_router(entitlements_router.router)
 api_router.include_router(integration_status_router.router)
 api_router.include_router(activity_router.router)
 
+    # EC6 — Portal auth
+from app.routers import portal_auth as portal_auth_router
+from app.routers import portal_customer as portal_customer_router
+from app.routers import portal_identities as portal_identities_router
+from app.routers import public_actions as public_actions_router
+from app.routers import documents_meta as documents_meta_router
+from app.routers import proofs as proofs_router
+from app.routers import signatures as signatures_router
+api_router.include_router(portal_auth_router.router)
+api_router.include_router(portal_customer_router.router)
+api_router.include_router(portal_identities_router.router)
+api_router.include_router(public_actions_router.router)
+api_router.include_router(documents_meta_router.router)
+api_router.include_router(proofs_router.router)
+api_router.include_router(signatures_router.router)
+api_router.include_router(signatures_router.approvals_router)
+
 app.include_router(api_router)
 
 app.add_middleware(
