@@ -1,16 +1,28 @@
-# SignGuy AI MVP (FARM) — UPDATED plan.md
+# SignGuy AI (FARM) — UPDATED plan.md (Permanent Product)
 
 ## Objectives (Updated)
-- ✅ Deliver a working multi-tenant shop-management MVP: **Customer → Quote → Order (+OrderItems) → Work Orders (0..N) → Invoice (0..1) → Payments**, with shared **Documents**, **Email**, **Audit**, **Dashboard**.
+
+- ✅ Deliver a working multi-tenant shop-management **permanent product foundation**: **Customer → Quote → Order (+OrderItems) → Work Orders (0..N) → Invoice (0..1) → Payments**, with shared **Documents**, **Email**, **Audit**, **Dashboard**.
 - ✅ Prove and integrate the two failure-prone integrations first:
   1) **Mongo atomic sequence generator** (race-safe)
   2) **Object storage** upload/download with tenant-scoped storage paths
-- ✅ Enforce non-negotiables throughout: **tenant isolation**, **one permission dependency**, **idempotency guards**, **append-only AuditEvent with REQUIRED actor fields**, **no `_id` in API responses**, **money in integer cents**, correct terminology (**Work Order**, never “Job Ticket”).
-- ✅ Provide a **Dev Auth Bypass** mode to allow UI testing without login when desired (**AUTH_DEV_BYPASS=true**), with a prominent UI banner and an explicit note to disable before production.
-- 🔜 Next hardening steps (post-MVP):
-  - Add real SendGrid keys (Restricted Access / Mail Send only) and validate live sends.
-  - (Optional) Add real binary attachments to SendGrid outbound emails (currently logged only).
-  - (Optional) Add attachment UI widgets on entity detail pages (backend supports).
+- ✅ Enforce non-negotiables throughout: **tenant isolation**, **one permission dependency**, **idempotency guards**, **append-only audit/activity events with REQUIRED actor fields**, **no `_id` in API responses**, **money policy explicitly documented**, correct terminology (**Order / OrderItem / Work Order**, never “Job / Job Ticket”).
+- ✅ Provide a **Dev Auth Bypass** mode to allow UI testing without login when desired (**AUTH_DEV_BYPASS=true**), with a prominent UI banner and an explicit requirement to disable in production.
+- ✅ Complete donor-repo evidence audit and lock the permanent roadmap:
+  - `SIGNGUY_AI_FEATURE_READINESS_MATRIX.md` corrected with rigorous evidence levels (**RV/SV/SS/SO/RS**).
+  - `SIGNGUY_AI_REPOSITORY_AND_ARCHITECTURE_SOURCE_MAP.md` corrected and completed (Parts 1–11).
+  - Confirmed `SIGNGUY-AI-OS` is byte-identical to `SIGNGUY-MVP` (md5 tree match) → retire.
+- 🔜 Next hardening steps (permanent product build-out; not “post-MVP defer”):
+  - Record and sign off the **six standing architecture decisions** in `memory/AGENT_INSTRUCTIONS.md`:
+    1) Money representation policy (FEB boundary compromise vs cents-everywhere)
+    2) Permissions catalog adoption (REB 57-permission enum)
+    3) Repository pattern adoption for new modules
+    4) Canonical terminology map (Order/OrderItem/WorkOrder)
+    5) SendGrid webhook secret enforcement behavior
+    6) Retire `SIGNGUY-AI-OS`
+  - Security production gates: force-fail on `AUTH_DEV_BYPASS=true` in production; rotate JWT secret away from dev placeholder.
+  - Extract REB `upload_validation.py` into MVP for stronger MIME/magic-byte/size/SHA-256 enforcement.
+  - Stage 4/5/6 correctness upgrades (quotes line items, pricing snapshots, `production_required` gate, invoice dual-status + payment reconciliation).
 
 ---
 
@@ -117,7 +129,7 @@
 ---
 
 ## Phase 4 — Orders + Order Items
-**Status:** ✅ Completed
+**Status:** ✅ Completed (baseline) 
 
 **User stories**
 1. As staff, I can create an Order for a customer (from quote or standalone).
@@ -135,10 +147,13 @@
 **Success criteria**
 - ✅ Testing agent verified order item add/update/delete + status transitions.
 
+**Permanent-product upgrade notes (from donor evidence audit)**
+- 🔜 REB model is significantly richer (40+ OrderItem fields, pricing snapshots, `production_required`, entry modes, QC, artwork/proof flags). This is a planned build-out, not an optional defer.
+
 ---
 
 ## Phase 5 — Work Orders (0..N per Order)
-**Status:** ✅ Completed (Multiple per Order enabled)
+**Status:** ✅ Completed (Multiple per Order enabled) 
 
 **User stories**
 1. As staff, I can create multiple Work Orders for one Order.
@@ -157,10 +172,13 @@
 **Success criteria**
 - ✅ Testing agent verified multiple work orders per single order.
 
+**Permanent-product upgrade notes (from donor evidence audit)**
+- 🔜 Stage 5/7 correction required: Work Orders must snapshot only `production_required=True` items (REB `services/order_item_rules.py` provides the canonical default gate).
+
 ---
 
 ## Phase 6 — Invoice (0..1 per Order) + Payments
-**Status:** ✅ Completed (One per Order enforced)
+**Status:** ✅ Completed (baseline) 
 
 **User stories**
 1. As staff, I can create an Invoice from an Order once (idempotent guard).
@@ -180,10 +198,16 @@
 **Success criteria**
 - ✅ Testing agent verified invoice idempotency + payment dedupe + paid status.
 
+**Permanent-product upgrade notes (from donor evidence audit)**
+- 🔜 Stage 6 financial migration is planned and evidence-backed:
+  - FEB `InvoiceService.reconcile_invoice_financials()` is the single authoritative formula.
+  - FEB `PaymentService` supports: integer cents Payment collection, idempotency 409 replay, overpayment reject, void-with-reason (manual only), Stripe two-step (pending → webhook confirm), and independent `document_status` vs `financial_status`.
+- 🔜 Requires explicit sign-off on the money representation policy before porting.
+
 ---
 
 ## Phase 7 — Documents/Files + Attachments (shared)
-**Status:** ✅ Completed
+**Status:** ✅ Completed (baseline) 
 
 **User stories**
 1. As staff, I can upload a file once and attach it to records.
@@ -204,10 +228,14 @@
 **Success criteria**
 - ✅ Testing agent verified unauth download blocked (401) and cross-tenant blocked (404).
 
+**Permanent-product upgrade notes (from donor evidence audit)**
+- 🔜 Extract REB `upload_validation.py` for magic-byte + MIME + size + SHA-256 enforcement.
+- 🔜 Build DocuLink (REB scaffold) on top of this foundation: polymorphic `file_links`, `document_links`, and `document_shares` (with `customer_visible` + `access_level`).
+
 ---
 
-## Phase 8 — SendGrid Email (env wiring now; keys later) + Email Log
-**Status:** ✅ Completed (graceful-failure mode)
+## Phase 8 — SendGrid Email + Email Log
+**Status:** ✅ Completed (live integration) 
 
 **User stories**
 1. As staff, I can draft a custom message and send email for Quote/Invoice/general.
@@ -217,19 +245,18 @@
 
 **Implementation steps (as delivered)**
 - ✅ Shared email service (`app/services/email.py`) with SendGrid SDK.
-- ✅ Env-var config only; when unconfigured, logs `sendgrid_not_configured` and does not crash.
 - ✅ EmailLog stored and queryable from `/api/emails/history`.
 - ✅ Frontend compose modal and Email History page.
 
 **Deliverables**
 - ✅ Email send + templates + log.
 
-**Known gap / next step**
-- 🔜 Binary attachments are not encoded into outbound SendGrid payload yet.
-  - Current behavior: attachment `file_ids` are logged for traceability.
+**Known gap / next step (permanent product)**
+- 🔜 Binary attachments to outbound SendGrid payload.
+- 🔜 SendGrid inbound event webhook + email-activity tracking (REB `routes/communications.py` scaffold) with HMAC signature verification.
 
 **Success criteria**
-- ✅ Testing agent verified email send returns 201 and logs failed when unconfigured.
+- ✅ Testing agent verified email send returns 201 and logs.
 
 ---
 
@@ -254,6 +281,9 @@
 **Success criteria**
 - ✅ Testing agent verified actor fields present for all events.
 
+**Permanent-product upgrade notes (from donor evidence audit)**
+- 🔜 Adopt REB activity-event shape where useful (`module`, `event_type`, `severity`, `changes`, richer filter endpoints).
+
 ---
 
 ## Phase 10 — Full end-to-end test pass
@@ -270,14 +300,14 @@
 - ✅ Frontend smoke: navigation + create/edit flows.
 
 **Deliverables**
-- ✅ Testing report: 100% backend pass (64/64) + frontend flow verification.
+- ✅ Testing report: 100% backend pass + frontend flow verification.
 
 **Success criteria**
 - ✅ Acceptance criteria met end-to-end; no unauthenticated file access; no cross-tenant leakage.
 
 ---
 
-## Post-MVP Addendum — Dev Auth Bypass (per user request)
+## Post-Phase Addendum — Dev Auth Bypass (per user request)
 **Status:** ✅ Completed
 
 **Goal**
@@ -292,20 +322,78 @@ Temporarily disable worrying about login while doing product iteration.
   - Auto-calls dev-login when no token exists and bypass is enabled.
   - Shows an amber banner: “Auth bypass ON… set AUTH_DEV_BYPASS=false before deploying.”
 
-**Safety / Deployment requirement**
-- 🔒 MUST set `AUTH_DEV_BYPASS=false` before any production deployment.
+**Safety / Deployment requirement (updated)**
+- 🔒 MUST set `AUTH_DEV_BYPASS=false` in production.
+- 🔒 Add a startup guard to force-fail if `AUTH_DEV_BYPASS=true` AND `ENV=production`.
 
 ---
 
-## Next Actions / Backlog (Optional Enhancements)
-1. **SendGrid live validation**
-   - Provide `SENDGRID_API_KEY` (Restricted Access, Mail Send only) and `SENDGRID_FROM_EMAIL`.
-2. **Email attachments**
-   - Implement attaching files to outbound SendGrid email (base64 encode per SendGrid spec) while continuing to store files in object storage.
-3. **Entity-level attachment UI**
-   - Add attachment widgets to Quote/Order/WorkOrder/Invoice detail pages using existing backend endpoints:
-     - `POST /api/files/upload` with `parent_type/parent_id`
-     - `POST /api/files/attach` for existing file reuse
-     - `GET /api/files?parent_type=...&parent_id=...`
-4. **UX polish**
-   - Sorting controls, pagination UI, file preview modal, column density tweaks.
+## Documentation/Audit Phase — Donor Repository Evidence Pass (Permanent Roadmap Lock)
+**Status:** ✅ Completed (2026-07-11)
+
+**Goals**
+1. Correct and complete `SIGNGUY_AI_FEATURE_READINESS_MATRIX.md` using direct donor repo inspection (no user file pastes).
+2. Correct and complete `SIGNGUY_AI_REPOSITORY_AND_ARCHITECTURE_SOURCE_MAP.md` in place (preserve Parts 1/3/3A/11 as draft findings, then verify and finish Parts 2/4/5/6/7/8/9/10).
+3. Remove all language implying features are "deferred by MVP scope".
+
+**Implementation steps (as delivered)**
+- ✅ Cloned and inspected 4 donor repos line-by-line:
+  - FEB: `invoice_service.py`, `payment_service.py`, `models/payments.py`, `models/jobs.py`
+  - REB: settings, communications (+ SendGrid webhook), doculink, wrap_lab, quotes, orders, invoices, access, pricing_foundation, pricing_engine, activity, webstores, platform_admin, shared_systems, upload_validation, billing_rules, order_schemas, order_item_rules
+  - ORIG: `object_storage.py`, approvals/signatures/portal (head sections)
+- ✅ Verified `SIGNGUY-AI-OS` byte-identical to MVP (md5 tree match).
+- ✅ Rewrote `SIGNGUY_AI_FEATURE_READINESS_MATRIX.md` with evidence levels and corrected COPY/REF/EXT/RB decisions.
+- ✅ Updated `SIGNGUY_AI_REPOSITORY_AND_ARCHITECTURE_SOURCE_MAP.md` in place:
+  - Updated Parts 1/3/3A/11 against corrected matrix
+  - Completed Parts 2/4/5/6/7/8/9/10
+  - Appended final correction changelog and evidence sufficiency verdict (YES)
+
+**Deliverables**
+- ✅ `/app/SIGNGUY_AI_FEATURE_READINESS_MATRIX.md` (corrected)
+- ✅ `/app/SIGNGUY_AI_REPOSITORY_AND_ARCHITECTURE_SOURCE_MAP.md` (completed)
+
+**Success criteria**
+- ✅ No donor-file pastes requested.
+- ✅ Every prior `UNK` resolved to SV/SS/SO/RS or explicitly bounded.
+- ✅ Audit documents updated in place; no competing architecture doc created.
+
+---
+
+## Next Actions / Backlog (Permanent Product Build-Out)
+
+1. **Retire the mirror repo**
+   - Archive `dnblack323/SIGNGUY-AI-OS` (byte-identical mirror) and point README to `SIGNGUY-MVP`.
+
+2. **Sign off and record the six standing architecture decisions**
+   - Add to `/app/memory/AGENT_INSTRUCTIONS.md`:
+     - Money representation policy (FEB boundary compromise vs cents-everywhere)
+     - REB permission catalog adoption (57-permission enum)
+     - Repository pattern for new modules
+     - Terminology map (Order/OrderItem/WorkOrder)
+     - SendGrid webhook secret enforcement
+     - OS repo retirement plan
+
+3. **Production safety gates**
+   - Force-fail on `AUTH_DEV_BYPASS=true` in production.
+   - Rotate JWT secret away from placeholder.
+
+4. **Shared security hardening**
+   - Extract REB `upload_validation.py` into MVP and enforce for all uploads.
+
+5. **Stage correctness upgrades (per mandated build order)**
+   - Stage 4 upgrade: Quotes with line items + pricing snapshots + expiration + approve/decline metadata (REB model).
+   - Stage 5 fix + Stage 7: Add `production_required` to OrderItem; Work Orders snapshot only production-required items (REB rules).
+   - Stage 6 migration: Port FEB InvoiceService + PaymentService + Payment model; implement dual `document_status`/`financial_status`, void-with-reason, reconciliation; add webhook infra as required.
+
+6. **Shared platform services (Stage 2 build-outs)**
+   - Settings framework (REB scaffold).
+   - Notifications service + email activity + SendGrid inbound webhook (REB scaffold).
+   - Feature entitlements service (needed for add-on modules).
+
+7. **Deferred only by dependency (not by scope)**
+   - Portal auth + Customer Portal (ORIG blueprint).
+   - DocuLink documents/shares (REB scaffold + rewire storage).
+   - Webstores / Order Portal Manager (REB specs + scaffold + ORIG feature map).
+   - Wrap Lab (REB workflow engine).
+   - AI credits + billing (REB billing rules + ORIG credit/billing reference).
+   - Inventory/Purchasing/Vendors, Payroll/Employees/Timeclock, Reports/Analytics.
