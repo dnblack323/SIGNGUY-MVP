@@ -1,0 +1,59 @@
+{
+  "summary": "EC3 frontend-only regression testing completed. Verified functional Quote line-item and Order-item editors (quick + detailed), manual override reason validation (client + backend enforced), production_required category defaults and override, expired-quote convert-with-override UX, revision warning dialog on sent quotes, source-quote link + revision pill on Orders, convert idempotency, sidebar nav + notification bell, backend-authoritative totals. All EC3 acceptance criteria pass except one minor loading-state issue on /quotes/{invalid-id}.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "QuoteDetailPage / OrderDetailPage",
+        "issue": "Navigating to /quotes/nonexistent-id (and /orders/nonexistent-id) does NOT render the [data-testid=\"quote-error\"] / [data-testid=\"order-error\"] state. Page stays stuck on 'Loading quote…' / 'Loading order…' indefinitely. Root cause is likely react-query default retry (3x + backoff) meaning isError is not true within the observation window, plus the id may pass 404 which react-query keeps retrying. Recommend disabling retry for 4xx or explicitly rendering error after a short retry budget.",
+        "selector": "[data-testid=\"quote-error\"], [data-testid=\"order-error\"]",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Quotes list: empty state + create button visible",
+    "Create quote via dialog with customer + job name",
+    "Quote detail page loads with 'Line items' as default tab, Add item button visible",
+    "Detailed add: banners category, 24x36, qty 2, $25 → server derived $50 total matches quote-derived-total",
+    "Quick mode add: description + qty + $15 → server totals updated",
+    "Edit unit price WITHOUT override reason → dialog stays open, toast 'Override reason is required...' shown; supplying reason saves successfully",
+    "Delete line item via trash icon: row removed, totals refresh",
+    "Mark quote 'sent', click Add item → revision-warning-dialog appears; confirm → LineItemDialog opens",
+    "Convert to order (non-expired): confirm without reason navigates to /orders/{id} with success toast",
+    "Order detail: order-source-quote-link (Q-1) and order-source-quote-revision (rev #1) both visible",
+    "Convert idempotency: returning to converted quote shows quote-open-order button; quote-convert-button hidden (after cache refresh, status=Converted pill)",
+    "Expired quote: setting expires_at=2020-01-01 shows expired badge; convert dialog requires override reason; confirm button disabled until reason entered; then converts successfully",
+    "Orders list: new order dialog, creation flow, row appears",
+    "New order detail: order-items-empty state + BOTH order-item-quick-add and order-item-detailed-add buttons visible",
+    "Services category → production switch defaults OFF (aria-checked=false); item saved shows 'no' production pill; total $50 for qty 1 x $50",
+    "Rigid_signs category → production defaults ON; qty 3 x $10 = $30 server-derived; total $80 across items",
+    "Edit rigid_signs item toggling production OFF WITHOUT reason → validation toast 'Production-required override reason is required', dialog stays open; supplying reason saves and pill updates",
+    "Backend authoritative totals: frontend estimate matches server-derived line_total_cents after save",
+    "Sidebar navigation: Home / Shop Operations / Business & Finance / Team & Workflow / Creative Studio / Control Center / Help & Community all visible",
+    "NotificationBell renders top-right without console errors"
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "MEDIUM: Make /quotes/{invalid-id} and /orders/{invalid-id} render the [data-testid=quote-error] / [data-testid=order-error] state promptly (disable react-query retries on 4xx or catch 404 and treat as isError=true so the friendly error string surfaces). Currently the pages hang on the loading indicator.",
+    "LOW/observation: A transient React DOM error ('Failed to execute insertBefore on Node...') was captured once during rapid AlertDialog+LineItemDialog interactions triggered by Escape key + programmatic toast removal. Not reproducible during normal user flow; likely a Radix portal/animation race. Only worth investigating if users report the page blanking after cancelling a revision dialog."
+  ],
+  "critical_code_review_comments": [
+    "OrderDetailPage: 'from Quote Q-…' link uses (order.source_quote_id || order.quote_id) — good defensive fallback. Rev pill only shown when source_quote_revision != null — correct.",
+    "LineItemDialog: client-side override_reason validation is correct but relies on !initial?.manual_override_reason to skip re-prompt. If the initial item already had a saved reason, editing the price again would silently pass without a new reason on the frontend — server should still enforce.",
+    "QuoteDetailPage/LineItemsPanel: guardOrRun triggers revision-warning-dialog for any status !== 'draft'. This is correct per EC3.",
+    "MoneyInput fill via playwright requires an explicit blur (Tab key) to commit cents value; unit tests / manual UX unaffected but worth documenting."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (117/117 per request)", "frontend": "~95% (20/21 scenarios pass; only invalid-id error state not surfacing)"},
+  "seed_data_creation": "Created customer 'EC3 Cust <ts>' via /customers page; created 3 quotes (Q-1 draft→converted, Q-2 expired-sent→converted, Q-… interim) and 2 orders (O-1, O-2, O-3).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "EC3 flows are functional. Main outstanding item is the loading-vs-error state for nonexistent detail routes — a small change in react-query options (retry: false on 404) or explicit 404 handling in the fetcher will fix it.",
+  "rca of the issue": "Loading-forever on /quotes/nonexistent-id: QuoteDetailPage uses useQuery with the default retry policy (retry: 3, exponentialBackoff). For a 404 the request keeps retrying, so isError stays false for tens of seconds and the loading string persists. Same pattern on OrderDetailPage. Fix: add `retry: (failureCount, err) => err?.response?.status < 400 || err?.response?.status >= 500 ? failureCount < 3 : false` (or globally in the QueryClient defaultOptions) so 4xx responses immediately propagate isError=true and render the friendly [data-testid=\"quote-error\"] / [data-testid=\"order-error\"] element."
+}

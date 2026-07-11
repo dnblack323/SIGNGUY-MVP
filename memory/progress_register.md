@@ -13,11 +13,11 @@
 | **EC0** | Owner Decisions and Governance Lock | **COMPLETE** | All 27 owner decisions answered and baked into the owner-approved consolidated master plan (Part 4). Do not rerun. |
 | **EC1** | Security and Permanent App Guardrails | **COMPLETE** | Production startup guards, dev-route protection, terminology guard, money policy contract, extended permission catalog with platform + portal scope separation, LOCKED sidebar + flyout navigation. 34/34 tests pass. Evidence: `/app/evidence/EC1_evidence.md`. |
 | **EC2** | Shared Platform Foundations | **COMPLETE** | 92/92 tests pass (34 EC1 + 58 EC2). Settings framework, Activity feed, Notifications, Email Activity, SendGrid webhook (fail-closed), Upload validation, Polymorphic file/document links, Feature entitlements (tenant read + `require_entitlement` guard), Integration status. Frontend: Company Settings, Integrations, Feature Access, Data & Security pages + NotificationBell. Evidence: `/app/evidence/EC2_evidence.md`. |
-| **EC3** | Core Money and Order Pipeline | **COMPLETE** | 117/117 tests pass (34 EC1 + 58 EC2 + 25 EC3). Quote line items + revisions + expiration + approval-state foundation, rich Order Item schema, backend-derived totals, pricing snapshots, manual-override with reason, `production_required` rule + override, idempotent race-safe Quote-to-Order conversion copying line items + snapshots, Work Order snapshot filters by `production_required`. Evidence: `/app/evidence/EC3_evidence.md`. |
-| EC4 | Documents, Portals, and Customer Workflow | NOT STARTED | Depends on EC3 exit. |
-| EC5 | Inventory, Purchasing, Finance, and Reporting | NOT STARTED | Depends on EC3 exit. |
-| EC6 | Team and Payroll | NOT STARTED | Depends on EC2/EC3 partial + EC4 employee-portal auth. |
-| EC7 | Webstores (add-on + standalone) | NOT STARTED | Depends on EC2/EC3/EC4. |
+| **EC3** | Quotes, Orders, and Pricing Snapshots | **CORRECTIONS REQUIRED** | Backend 117/117 tests pass. Frontend Quote/Order line-item editors, convert-to-order override UX, revision warning, source-quote link now shipped. Frontend regression tests pending. See `/app/evidence/EC3_evidence.md` §Corrections. |
+| EC4 | Invoices, Payments, and Stripe Core | NOT STARTED | Depends on EC3 completion. |
+| EC5 | Production and Work Orders | NOT STARTED | Depends on EC3/EC4. |
+| EC6 | Asset Library, Proofs, Signatures, and Customer Portal | NOT STARTED | Depends on EC2/EC3/EC4. |
+| EC7 | Inventory, Purchasing, Finance, and Reporting | NOT STARTED | Depends on EC3/EC4/EC5. |
 | EC8 | Wrap Lab (add-on; standalone conditional) | NOT STARTED | Standalone remains DEFERRED UNTIL MODULE PREFLIGHT. |
 | EC9 | Creative Studio and AI Foundations | NOT STARTED | AI Credit Ledger must land before AI Tools. |
 | EC10 | AI Tools Catalog and Assistant | NOT STARTED | Per-tool credit costs remain provisional until measured cost audit. |
@@ -32,7 +32,7 @@
 |---|---|---|---|
 | PC1 | Product Rules and Security | COMPLETE | EC0, EC1 |
 | PC2 | Shared Platform Foundations | COMPLETE | EC2 |
-| PC3 | Core Money and Order Pipeline | COMPLETE | EC3 |
+| PC3 | Core Money and Order Pipeline | CORRECTIONS REQUIRED | EC3 |
 | PC4 | Documents, Portals, and Customer Workflow | NOT STARTED | EC4 |
 | PC5 | Inventory, Finance, and Reporting | NOT STARTED | EC5 |
 | PC6 | Team and Workflow | NOT STARTED | EC6 |
@@ -51,12 +51,11 @@
 
 ## Next Action
 
-**Await the owner prompt to begin EC4 — Documents, Portals, and Customer Workflow.**
+**Complete the EC3 frontend corrections** (functional Quote/Order line-item editors, convert override UX, revision warning, frontend tests) and update the evidence package. Then await the owner prompt for **EC4 — Invoices, Payments, and Stripe Core**.
 
-- Do NOT begin EC4 until the EC4 implementation prompt is provided.
+- Do NOT begin EC4 until the corrections are verified.
 - Do NOT invoke or rerun the EC0/EC1/EC2/EC3 implementation prompts.
-- Do NOT surface residual owner-decision questions unless the owner-approved plan explicitly marks a decision as conditional on a future preflight or cost/model audit.
 
 ---
 
-**Register last updated:** 2026-02 — EC0/EC1/EC2/EC3 marked COMPLETE. Awaiting owner prompt to begin EC4.
+**Register last updated:** 2026-02 — EC3 backend COMPLETE, EC3 frontend CORRECTIONS REQUIRED per owner review.
