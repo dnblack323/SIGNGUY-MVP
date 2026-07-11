@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api, { extractError } from "@/lib/api";
 import PageHeader from "@/components/layout/PageHeader";
@@ -36,6 +36,7 @@ const REASON_REQUIRED = new Set(["blocked", "cancelled"]);
 
 export default function WorkOrderDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const { hasPerm } = useAuth();
   const canWrite = hasPerm("work_order:write");
@@ -116,7 +117,7 @@ export default function WorkOrderDetailPage() {
           <AlertTriangle className="size-4" />
           This work order was superseded.
           {w.superseded_by && (
-            <> Current version: <Link className="link-underline" to={`/work-orders/${w.superseded_by}`} data-testid="wo-current-version-link">open</Link>.</>
+            <> Current version: <Link className="link-underline ml-1" to={`/work-orders/${w.superseded_by}`} data-testid="wo-current-version-link">open</Link></>
           )}
         </div>
       )}
@@ -274,7 +275,12 @@ export default function WorkOrderDetailPage() {
           setPending(null);
         }}
       />
-      <RegenerateDialog workOrderId={id} open={regenOpen} onOpenChange={setRegenOpen} />
+      <RegenerateDialog
+        workOrderId={id}
+        open={regenOpen}
+        onOpenChange={setRegenOpen}
+        onDone={(wo) => navigate(`/work-orders/${wo.id}`)}
+      />
       <AssignDialog workOrderId={id} currentUserIds={w.assigned_user_ids || []} open={assignOpen} onOpenChange={setAssignOpen} />
       <PrintSummaryDialog workOrderId={id} open={printOpen} onOpenChange={setPrintOpen} />
     </div>

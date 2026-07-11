@@ -235,7 +235,12 @@ async def get_summary(wo_id: str, user: dict = Depends(require_permission(Perm.W
         raise HTTPException(status_code=404, detail="Work order not found")
     order = await db.orders.find_one({"id": wo["order_id"]}, {"_id": 0}) or {}
     customer = await db.customers.find_one({"id": wo["customer_id"]}, {"_id": 0}) or {}
-    include_pricing = "invoice:read" in (user.get("permissions") or [])
+    from ..core.permissions import permissions_for_role
+    if "permissions" in user:
+        perms = set(user.get("permissions") or [])
+    else:
+        perms = set(permissions_for_role(user.get("role", "staff")))
+    include_pricing = "invoice:read" in perms
     return build_summary(wo, order, customer, include_pricing=include_pricing)
 
 

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import StatusPill from "@/components/common/StatusPill";
 import { AlertTriangle, Calendar, User as UserIcon } from "lucide-react";
@@ -168,6 +168,7 @@ export default function ProductionBoardPage() {
         <DialogContent data-testid="board-reason-dialog">
           <DialogHeader>
             <DialogTitle>Reason required</DialogTitle>
+            <DialogDescription>Blocked and cancelled transitions require a reason.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-2">
             <Label>Why is this work order moving to <span className="capitalize font-medium">{pending?.target}</span>?</Label>

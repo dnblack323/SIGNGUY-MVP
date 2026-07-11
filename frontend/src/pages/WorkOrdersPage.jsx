@@ -43,7 +43,7 @@ export default function WorkOrdersPage() {
       />
       <div className="flex flex-wrap gap-2 items-center">
         {STATUSES.map((s) => (
-          <Button key={s} variant={status === s ? "default" : "outline"} size="sm" onClick={() => setStatus(s)} data-testid={`work-orders-filter-${s}`}>
+          <Button key={s} variant={status === s ? "default" : "outline"} size="sm" onClick={() => setStatus(s)} data-testid={`wo-filter-${s}`}>
             <span className="capitalize">{s.replace(/_/g, " ")}</span>
           </Button>
         ))}

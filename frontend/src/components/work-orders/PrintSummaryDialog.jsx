@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Printer } from "lucide-react";
 import { centsToDollarsString } from "@/lib/format";
 
@@ -38,6 +38,7 @@ export default function PrintSummaryDialog({ workOrderId, open, onOpenChange }) 
       <DialogContent className="max-w-3xl" data-testid="print-summary-dialog">
         <DialogHeader className="no-print">
           <DialogTitle>Printable Work Order Summary</DialogTitle>
+          <DialogDescription>Tenant-safe production summary. Pricing appears only for users with invoice access.</DialogDescription>
         </DialogHeader>
         {isLoading || !summary.work_order_number ? (
           <div className="text-sm text-muted-foreground">Loading summary…</div>

@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Wrench } from "lucide-react";
 
@@ -59,6 +59,7 @@ export default function GenerateWorkOrderDialog({ orderId, open, onOpenChange, o
       <DialogContent data-testid="generate-wo-dialog" className="max-w-lg">
         <DialogHeader>
           <DialogTitle><Wrench className="inline size-4 mr-1" />Generate Work Order</DialogTitle>
+          <DialogDescription>Snapshot production-required items into a new work order.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="grid grid-cols-2 gap-3">
@@ -153,6 +154,7 @@ export function RegenerateDialog({ workOrderId, open, onOpenChange, onDone }) {
       <DialogContent data-testid="regenerate-wo-dialog">
         <DialogHeader>
           <DialogTitle>Regenerate Work Order</DialogTitle>
+          <DialogDescription>Create a new version and mark the current row as superseded.</DialogDescription>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
           This will create a new version and mark the current work order as superseded. The original snapshot is preserved.
@@ -180,6 +182,7 @@ export function TransitionReasonDialog({ open, target, onCancel, onConfirm, pend
       <DialogContent data-testid="transition-reason-dialog">
         <DialogHeader>
           <DialogTitle>Reason required</DialogTitle>
+          <DialogDescription>A reason is required for this transition.</DialogDescription>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
           Moving to <span className="capitalize font-medium">{target}</span> requires a reason.
@@ -222,6 +225,7 @@ export function AssignDialog({ workOrderId, currentUserIds, open, onOpenChange }
       <DialogContent data-testid="assign-wo-dialog">
         <DialogHeader>
           <DialogTitle>Assign work order</DialogTitle>
+          <DialogDescription>Select users in this tenant. Newly assigned users are notified.</DialogDescription>
         </DialogHeader>
         <AssigneePicker users={users || []} value={selected} onChange={setSelected} testIdPrefix="assign-wo" />
         <DialogFooter>
