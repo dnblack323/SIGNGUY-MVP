@@ -1,82 +1,83 @@
-# SignGuy AI — Product Requirements (PRD)
+# SignGuy AI — PRD
 
-**Authority:** `/app/SIGNGUY_AI_FINAL_CONSOLIDATED_MASTER_BUILD_PLAN.md`
-(owner-approved). This PRD is the human-readable summary; the plan document
-is the binding source of truth.
+**Product:** SignGuy AI — the permanent commercial business-management platform for sign, graphics, wrap, print, and apparel shops.
+**Repository:** `dnblack323/SIGNGUY-MVP` (permanent product). Donor repos are read-only reference material.
+**Stack:** FARM (FastAPI + React + MongoDB).
 
-## Product
+## Original problem statement
 
-SignGuy AI is the permanent commercial business-management platform for
-sign & graphics shops. Built on the FARM stack (FastAPI, React, MongoDB)
-as the permanent commercial destination — not an MVP.
+Owner is building SignGuy AI as a permanent commercial application (not an MVP scaffold). Execution proceeds through numbered checkpoints (EC0 → EC14) defined in `SIGNGUY_AI_FINAL_CONSOLIDATED_MASTER_BUILD_PLAN.md`. Each checkpoint requires a preflight, code, tests, evidence package, and explicit stop before the next checkpoint.
 
-## Users
+Constraints:
+- No `Job / Job Item / Job Ticket / Production Ticket / Job Ticket Summary` terminology.
+- Commerce values stored as integer cents with `_cents` suffix; pricing configuration remains float dollars.
+- Fail-closed production guards enforced by `security_guards.py`.
+- Strict tenant isolation on every read/write.
+- Backend enforcement is authoritative for permissions.
+- No wholesale donor copies.
 
-- **Shop Owner / Admin** — full permission set, tenant admin.
-- **Shop Staff** — restricted permission set (customer/quote/order/invoice work).
-- **Customer Portal** — external portal identity (approvals, signatures, payments) [EC4+].
-- **Employee Portal** — external portal identity (time clock, payslips) [EC6+].
-- **Webstore Owner / Manager** — external portal identity [EC7+].
-- **Platform Operator** — cross-tenant scope (SignGuy AI staff) [EC8+].
+## Checkpoint status (2026-02)
 
-## Locked Product Rules
-
-- **Money.** Commerce fields use integer `_cents`. Pricing config stays float decimal.
-- **Terminology.** "Job" / "Job Ticket" is prohibited. Use Order / Work Order.
-- **Tenant isolation.** Every DB read/write filters by `tenant_id`.
-- **Fail-closed production.** JWT + enabled-integration secrets required in production.
-- **Backend authoritative.** Frontend permission checks only affect visibility.
-
-## Checkpoint status
-
-| EC | Name | Status |
+| Checkpoint | Status | Evidence |
 |---|---|---|
-| EC0 | Owner Decisions & Governance Lock | ✅ COMPLETE |
-| EC1 | Security & Permanent Guardrails | ✅ COMPLETE |
-| EC2 | Shared Platform Foundations | ✅ COMPLETE |
-| EC3 | Core Money & Order Pipeline | ⬜ Awaiting owner prompt |
-| EC4 | Documents, Portals, Customer Workflow | ⬜ Pending |
-| EC5 | Inventory, Purchasing, Finance, Reporting | ⬜ Pending |
-| EC6 | Team & Payroll | ⬜ Pending |
-| EC7 | Webstores | ⬜ Pending |
-| EC8 | Wrap Lab | ⬜ Pending |
-| EC9 | Creative Studio & AI Foundations | ⬜ Pending |
-| EC10 | AI Tools Catalog & Assistant | ⬜ Pending |
-| EC11 | Platform Governance & Community | ⬜ Pending |
-| EC12 | Commercial Systems & Billing | ⬜ Pending |
-| EC13 | Marketing & Public Pricing | ⬜ Pending |
-| EC14 | Final Integration & Release Hardening | ⬜ Pending |
+| EC0 — Owner Decisions | COMPLETE | Baked into master plan §4 |
+| EC1 — Security & Guardrails | COMPLETE | `/app/evidence/EC1_evidence.md` |
+| EC2 — Shared Platform Services | COMPLETE | `/app/evidence/EC2_evidence.md` |
+| **EC3 — Quotes, Orders, Order Items, Pricing Snapshots** | **COMPLETE** | `/app/evidence/EC3_evidence.md` |
+| EC4 — Documents, Portals, Customer Workflow | NOT STARTED | pending owner prompt |
+| EC5–EC14 | NOT STARTED | dependency-ordered per master plan |
 
-## Implemented (EC0-EC2)
+## Completed capabilities
 
-- Auth (JWT, dev bypass, password reset), Tenants, Users, Roles/Permissions.
-- Customers, Quotes, Orders (with items), Work Orders, Invoices, Payments.
-- Documents (files + attachments) with tenant-scoped object storage.
-- Emails (SendGrid outbound + 5 templates + history).
-- Audit trail (all mutating actions).
-- Pricing foundation (per-tenant defaults + calculator).
-- Dashboard.
-- EC1 — Startup security guards, terminology guard, money policy contract,
-  module-based permission catalog (staff + platform + portal scopes), locked
-  left-sidebar + flyout navigation.
-- EC2 — Tenant Settings (namespaced key/value), Activity Feed (extends audit),
-  In-App Notifications (staff), Email Activity (internal + SendGrid webhook
-  observability), Shared Webhook Framework (HMAC-verified, replay-safe,
-  fail-closed), Upload Validation (MIME + magic-byte + size + filename),
-  Polymorphic File/Document Links, Document Shares, Feature Entitlements
-  (tenant read + `require_entitlement` dep), Integration Status (no secret
-  leakage). Frontend: Company Settings, Integrations, Feature Access,
-  Data & Security pages + NotificationBell.
+- Auth / Tenants / Users / Permissions (staff + platform + portal scopes) — EC1.
+- Startup guards, terminology guard, money helpers, LOCKED navigation shell — EC1.
+- Settings / Activity / Notifications / SendGrid webhook / Upload validation / File+Document links / Feature entitlements / Integration status — EC2.
+- **Quote line items + revisions + expiration + approval-state foundation** — EC3.
+- **Rich Order Item schema with backend-derived totals, pricing snapshots, manual override with reason** — EC3.
+- **`production_required` rule + override + reason** — EC3.
+- **Idempotent race-safe Quote-to-Order conversion copying line items + snapshots + source revision** — EC3.
+- **Work Order snapshot filters by `production_required`** — EC3.
 
-## Backlog (P0)
+## Testing
 
-- EC3 — Core Money & Order Pipeline (owner prompt required to begin).
+- Backend: `cd /app/backend && python -m pytest tests/ -q` → 117 passed (34 EC1 + 58 EC2 + 25 EC3).
+- Frontend smoke tested via preview URL.
 
-## Reference documents
+## Test credentials
 
-- `/app/SIGNGUY_AI_FINAL_CONSOLIDATED_MASTER_BUILD_PLAN.md` — binding plan.
-- `/app/SIGNGUY_AI_FINAL_SCOPE_AND_DECISION_REGISTER.md` — owner decisions log.
-- `/app/evidence/EC1_evidence.md`, `/app/evidence/EC2_evidence.md` — proof-of-completion.
-- `/app/memory/progress_register.md` — EC/PC live tracker.
-- `/app/memory/completion_register.md` — cumulative completion log.
-- `/app/docs/architecture/`, `/app/docs/integrations/`, `/app/docs/security/`.
+`AUTH_DEV_BYPASS=true` in development; dev-bypass banner visible in UI. No production credentials exist in `.env`.
+
+## Priority backlog (P0/P1/P2)
+
+### P0 — Immediate next checkpoint
+- Await EC4 execution prompt (Documents, Portals, Customer Workflow).
+
+### P1 — After EC4
+- EC5 Inventory, Purchasing, Finance & Reporting.
+- EC6 Team & Payroll.
+
+### P2 — Later
+- EC7 Webstores (add-on + standalone).
+- EC8 Wrap Lab.
+- EC9 Creative Studio + AI foundations.
+- EC10 AI Tools + Assistant.
+- EC11 Platform Governance & Community.
+- EC12 Commercial Systems & Billing.
+- EC13 Marketing & Public Pricing.
+- EC14 Final Integration & Hardening.
+
+## Known deferred items (from EC3)
+
+- Public / portal approval of Quotes → EC4 shared Approvals system.
+- Rich order-item UI editor (category, dimensions, production_required override form) → next frontend iteration (backend already supports it).
+- Invoice dual-status redesign, unified Payments, Stripe → EC4.
+- Production Board → EC5.
+
+## Authority references
+
+- `/app/SIGNGUY_AI_FINAL_CONSOLIDATED_MASTER_BUILD_PLAN.md`
+- `/app/SIGNGUY_AI_FINAL_SCOPE_AND_DECISION_REGISTER.md`
+- `/app/SIGNGUY_AI_FEATURE_READINESS_MATRIX.md`
+- `/app/SIGNGUY_AI_REPOSITORY_AND_ARCHITECTURE_SOURCE_MAP.md`
+- `/app/memory/AGENT_INSTRUCTIONS.md`
+- `/app/memory/progress_register.md`

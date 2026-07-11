@@ -24,9 +24,13 @@ export default function QuoteDetailPage() {
   const navigate = useNavigate();
   const { hasPerm } = useAuth();
 
-  const { data: q } = useQuery({ queryKey: ["quote", id], queryFn: async () => (await api.get(`/quotes/${id}`)).data });
+  const { data: qResp } = useQuery({ queryKey: ["quote", id], queryFn: async () => (await api.get(`/quotes/${id}`)).data });
+  const q = qResp?.quote || qResp; // backwards compat
+  const lineItems = qResp?.line_items || [];
+  const totals = qResp?.totals || {};
   const { data: audit } = useQuery({ queryKey: ["audit-quote", id], queryFn: async () => (await api.get(`/audit`, { params: { entity_type: "quote", entity_id: id } })).data, enabled: !!id });
   const { data: customer } = useQuery({ queryKey: ["customer", q?.customer_id], queryFn: async () => (await api.get(`/customers/${q.customer_id}`)).data, enabled: !!q?.customer_id });
+  const { data: revs } = useQuery({ queryKey: ["quote-revs", id], queryFn: async () => (await api.get(`/quotes/${id}/revisions`)).data, enabled: !!id });
 
   const [form, setForm] = useState({});
   const edit = { ...q, ...form };
@@ -94,6 +98,8 @@ export default function QuoteDetailPage() {
         <Tabs defaultValue="details" data-testid="detail-tabs">
           <TabsList>
             <TabsTrigger value="details" data-testid="detail-tab-details">Details</TabsTrigger>
+            <TabsTrigger value="line-items" data-testid="detail-tab-line-items">Line items ({lineItems.length})</TabsTrigger>
+            <TabsTrigger value="revisions" data-testid="detail-tab-revisions">Revisions ({revs?.items?.length || 0})</TabsTrigger>
             <TabsTrigger value="activity" data-testid="detail-tab-activity">Activity</TabsTrigger>
           </TabsList>
           <TabsContent value="details" className="space-y-4">
@@ -105,6 +111,61 @@ export default function QuoteDetailPage() {
                 <div className="md:col-span-2 grid gap-1.5"><Label>Notes</Label><Textarea disabled={!editable} rows={4} value={edit.notes || ""} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} data-testid="quote-detail-notes-input" /></div>
                 {editable && hasPerm("quote:write") && Object.keys(form).length > 0 && (
                   <div className="md:col-span-2"><Button onClick={() => save.mutate(form)} disabled={save.isPending} data-testid="quote-save-button"><Save className="size-4 mr-1" />Save</Button></div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="line-items" className="space-y-2" data-testid="quote-line-items-tab">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Line items</CardTitle></CardHeader>
+              <CardContent>
+                {lineItems.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No line items yet. Backend totals derive from these.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {lineItems.map((li) => (
+                      <div key={li.id} className="flex items-center justify-between border-b py-1 text-sm" data-testid={`line-item-row-${li.id}`}>
+                        <div>
+                          <div className="font-medium">{li.description}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {li.category || "—"} · qty {li.quantity} · unit {centsToDollarsString(li.unit_price_cents)}
+                          </div>
+                        </div>
+                        <div className="tabular-nums font-medium">{centsToDollarsString(li.line_total_cents)}</div>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <div className="text-sm text-muted-foreground">Total</div>
+                      <div className="tabular-nums font-semibold" data-testid="quote-derived-total">
+                        {centsToDollarsString(totals.total_cents ?? q.total_cents ?? 0)}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="revisions" className="space-y-2" data-testid="quote-revisions-tab">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Revision history</CardTitle></CardHeader>
+              <CardContent>
+                <div className="text-xs text-muted-foreground mb-2">Current revision: <span className="font-medium">{revs?.current_revision || 1}</span></div>
+                {(revs?.items || []).length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No prior revisions. Editing a sent quote creates one automatically.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {(revs?.items || []).map((r) => (
+                      <div key={r.id} className="flex items-center justify-between border-b py-1 text-sm" data-testid={`quote-revision-row-${r.revision_number}`}>
+                        <div>
+                          <div className="font-medium">Revision #{r.revision_number}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {r.actor_email} · {r.reason || "edited"}
+                          </div>
+                        </div>
+                        <div className="tabular-nums">{centsToDollarsString(r.total_cents)}</div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </CardContent>
             </Card>

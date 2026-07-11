@@ -62,14 +62,18 @@ async def create_work_order(payload: WorkOrderCreateIn, user: dict = Depends(req
         assignee = await db.users.find_one({"id": payload.assigned_to, "tenant_id": user["tenant_id"]})
         if not assignee:
             raise HTTPException(status_code=400, detail="Assigned user not found")
-    # Snapshot the current order items
+    # Snapshot only order items requiring production (EC3 §15)
     items_snapshot = []
     async for it in db.order_items.find({"tenant_id": user["tenant_id"], "order_id": order["id"]}, {"_id": 0}).sort("position", 1):
+        if not it.get("production_required", True):
+            continue
         items_snapshot.append({
             "order_item_id": it["id"],
             "description": it["description"],
             "quantity": int(it.get("quantity", 1)),
             "unit_price_cents": int(it.get("unit_price_cents", 0)),
+            "category": it.get("category"),
+            "production_required": True,
         })
     number = await next_number(tenant_id=user["tenant_id"], name="work_order")
     wo = WorkOrder(

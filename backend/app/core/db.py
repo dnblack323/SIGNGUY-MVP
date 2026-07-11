@@ -107,4 +107,29 @@ async def ensure_indexes() -> None:
     await db.feature_entitlements.create_index("id", unique=True)
     await db.feature_entitlements.create_index([("tenant_id", 1), ("feature_key", 1)], unique=True)
 
+    # ---- EC3 — Quotes / Orders / Pricing Snapshots indexes ----
+    # quote_line_items
+    await db.quote_line_items.create_index("id", unique=True)
+    await db.quote_line_items.create_index(
+        [("tenant_id", 1), ("quote_id", 1), ("revision_number", 1), ("position", 1)]
+    )
+    # quote_revisions — one row per (quote, revision_number)
+    await db.quote_revisions.create_index("id", unique=True)
+    await db.quote_revisions.create_index(
+        [("tenant_id", 1), ("quote_id", 1), ("revision_number", 1)], unique=True
+    )
+    # quotes — supplementary lookups
+    await db.quotes.create_index([("tenant_id", 1), ("customer_id", 1), ("created_at", -1)])
+    await db.quotes.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.quotes.create_index([("tenant_id", 1), ("expires_at", 1)])
+    await db.quotes.create_index([("tenant_id", 1), ("converted_order_id", 1)])
+    # orders — supplementary lookups
+    await db.orders.create_index([("tenant_id", 1), ("customer_id", 1), ("created_at", -1)])
+    await db.orders.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.orders.create_index([("tenant_id", 1), ("source_quote_id", 1)])
+    # order_items
+    await db.order_items.create_index("id", unique=True)
+    await db.order_items.create_index([("tenant_id", 1), ("order_id", 1), ("position", 1)])
+    await db.order_items.create_index([("tenant_id", 1), ("production_required", 1)])
+
     logger.info("MongoDB indexes ensured")

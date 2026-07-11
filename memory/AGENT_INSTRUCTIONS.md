@@ -57,6 +57,18 @@ Auth, Tenants, Users, Roles, Customers, Quotes, Orders, Work Orders, Invoices, M
 - Every checkpoint exit ships an evidence package at `/app/evidence/EC<n>_evidence.md`.
 - Update `/app/memory/progress_register.md` at every checkpoint transition.
 
+## EC3 permanent rules (LOCKED)
+
+- All commerce totals (line + document) are backend-derived via `services/commerce_totals.py`. Routers MUST NOT accept client-supplied totals.
+- Quote line items live in `quote_line_items` collection, scoped by `(tenant_id, quote_id, revision_number)`.
+- Editing a `sent` (or later) quote's commercial fields MUST snapshot into `quote_revisions` before mutation. Revisions are immutable.
+- Expired quotes require `allow_expired=true + override_reason` to convert. Expiration is DERIVED from `expires_at`, not persisted.
+- Manual unit-price override on a line item requires `manual_override_reason`.
+- `production_required` on OrderItem defaults from `services/order_item_rules.default_production_required(category)`. Overriding requires a reason.
+- Work Orders snapshot ONLY items where `production_required=True`.
+- Order operational statuses are LOCKED: `draft, confirmed, in_production, ready, completed, cancelled, archived`. Financial statuses (`paid, invoiced, partially_paid, refunded, overpaid, unpaid`) are rejected.
+- Quote-to-Order conversion is idempotent and race-safe via `find_one_and_update` on `converted_order_id`.
+
 ## Test commands
 
 - Backend: `cd /app/backend && python -m pytest tests/ -q`.
