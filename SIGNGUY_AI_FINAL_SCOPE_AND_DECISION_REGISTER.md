@@ -97,7 +97,7 @@ External users:
 
 ## 1.5 How AI Supports the Business
 
-AI supports the business through the Design Studio and the AI Tools grid. AI does not replace professional design or production judgment. Every AI generation is:
+AI supports the business through the Creative Studio and the AI Tools grid. AI does not replace professional design or production judgment. Every AI generation is:
 - Metered against a **tenant AI credit ledger**.
 - Persisted to a **DocuLink-linked `ai_responses` collection** where AI-generated documents are marked `source_type=ai_generated` and `requires_review=True` before customer-facing publication.
 - Provider-abstracted (Emergent LLM key with model-selection rules per tool intensity).
@@ -127,13 +127,13 @@ Customers ─┬── Quotes ── Quote Line Items ────────�
            │
            ├── Pricing (config) ── Materials ── Labor ── Overhead ── Calculators ── Snapshot into Order Items
            │
-           ├── Inventory ── Vendors ── Purchasing
+           ├── Inventory & Purchasing ── Inventory ── Vendors ── Purchasing ── Receiving ── Locations ── Low-stock Alerts
            │
-           ├── Team & Workflow ── Tasks ── Kanban ── Calendar ── Appointments ── Scheduling ── Time Clock ── Timesheets ── Payroll
+           ├── Team & Workflow ── Tasks ── Kanban ── Team Schedule ── Appointments ── Time Clock ── Timesheets ── Payroll
            │
            ├── Reports ── Analytics ── Custom Report Builder
            │
-           └── AI Tools ── Design Studio ── AI Assistant ── AI Credits ── Prompt Library ── AI-Generated Files
+           └── Creative Studio ── AI Tools ── AI Assistant ── AI Credits ── Prompt Library ── AI-Generated Files
 ```
 
 ## 1.7 What Must Be True Before the Product Can Be Commercially Sold
@@ -251,133 +251,180 @@ For every prohibited term, backend fields (`job_id`, `job_ticket_id`), collectio
 
 ## 3.1 Top-Level Navigation Structure (LOCKED direction)
 
-The top-level navigation is a **six-area sidebar** with a **Main Home** icon returning to the overall application dashboard. Each top-level area opens to its own overview/dashboard and exposes its next navigation level across the top of the page. Each major tab may have its own compact Office-style ribbon (icon-above-label, short labels, no duplicate tab name, no unnecessary "More" overflow).
+The application uses a **collapsible left sidebar** as the primary navigation surface. The major areas appear in the left sidebar. Each major area opens a **side flyout submenu** containing its modules. The main second-level module navigation is **NOT** placed permanently across the top of every page.
+
+**Selected module pages may still use:**
+- compact Office-style ribbons
+- page-specific tabs
+- filters
+- view selectors
+- actions
+- breadcrumbs
+
+These page controls must not duplicate the main sidebar or flyout navigation. **Home** remains a simple icon returning to the overall application dashboard.
+
+**Final top-level sidebar labels (LOCKED):**
 
 ```
 [HOME]
 Shop Operations
-Business Management
-Team and Workflow
-Design Studio
+Business & Finance
+Team & Workflow
+Creative Studio
+─── (divider) ───
 Control Center
-Help
+Help & Community
 ```
 
-All product-level modules live under exactly one of these six areas. Individual reports, settings screens, and utility pages **do not become separate top-level modules**.
+All product-level modules live under exactly one of these six flyout areas. Individual reports, settings screens, and utility pages **do not become separate top-level modules**.
 
-## 3.2 Area Definitions
+## 3.2 Area Flyouts
 
-### 3.2.1 Shop Operations
+### 3.2.1 Shop Operations (flyout)
 
 - **Purpose:** Day-to-day sales and production workflow.
 - **Overview/Dashboard:** Cross-module summary (open quotes, active orders, work orders in production, unpaid invoices, recent proofs pending approval, recent portal activity).
-- **Top-level tabs:**
+- **Flyout entries (LOCKED):**
+  - Overview
   - Customers
   - Quotes
   - Orders
-  - Production (Work Orders + Production Board)
-  - DocuLink / Library
-  - Proofs and Approvals
-  - Webstores (add-on gated)
-  - Wrap Lab (add-on gated)
-  - Inventory (later phase, F-checkpoint gated)
-  - Purchasing (later phase)
-  - Vendors (later phase)
+  - Production
+  - Shop Schedule
+  - Asset Library
+  - Inventory & Purchasing
+  - Webstores
+  - Wrap Lab
+- **Rules:**
+  - **Asset Library** is the user-facing navigation label for the broader DocuLink-backed document/library system. **DocuLink** remains the backend/system name where technically appropriate.
+  - **Inventory & Purchasing** combines Inventory, Vendors, Purchasing, Receiving, material quantities, Locations, and low-stock alerts under a single flyout destination.
+  - **Proofs and Approvals** are NOT a permanent sidebar flyout destination. They are connected workflows available within Orders, Production, Customer records, and Asset Library.
+  - **Customer invoices and payments** are operationally connected to Orders — surfaced from Order Detail. Financial analysis of invoices and payments lives in Business & Finance.
+  - **Shop Schedule** covers production, installations, appointments, pickups, and deliveries (shop-facing scheduling).
 - **Portal connections:** Customer Portal, Webstore Owner/Manager Portals.
-- **Shared systems used:** Auth, Tenants, Permissions, Object Storage, Sequences, Audit, SendGrid, Pricing, Documents, Approvals, Signatures, Notifications, Feature Entitlements.
-- **Recommended ribbon purpose:** Row-level and page-level actions (New Customer, Convert to Order, Generate Invoice, Print Work Order Summary, Send Proof, Approve Proof), plus quick filters (Status, Owner, Recency).
-- **Items that should not be separate navigation entries:** Individual per-order screens, per-customer detail screens (drill-in only), per-work-order detail, per-invoice detail, portal-view previews.
+- **Shared systems used:** Auth, Tenants, Permissions, Object Storage, Sequences, Audit, SendGrid, Pricing (calculator surface), Documents, Approvals, Signatures, Notifications, Feature Entitlements.
+- **Recommended ribbon purpose (page-level, non-nav):** row-level and page-level actions (New Customer, Convert to Order, Generate Invoice, Print Work Order Summary, Send Proof, Approve Proof), plus quick filters (Status, Owner, Recency).
+- **Items that must NOT be separate flyout entries:** individual per-order screens, per-customer detail screens, per-work-order detail, per-invoice detail, portal-view previews, Proofs and Approvals.
 - **Legacy routes to consolidate or remove:** All ORIG `/jobs`, `/job-tickets`, `/production-tickets`, `LegacyJobRedirect.js` — removed.
 
-### 3.2.2 Business Management
+### 3.2.2 Business & Finance (flyout)
 
-- **Purpose:** Financial, pricing, and business-wide administration.
-- **Overview/Dashboard:** Financial KPIs (MTD revenue, unpaid balance, expenses, profit), pricing health (last calc runs), subscription health (credits remaining), tax snapshot.
-- **Top-level tabs:**
-  - Pricing (Foundation + Calculators)
-  - Finance (Sales, Revenue, Expenses)
+- **Purpose:** Financial reporting, analysis, and business-wide financial management.
+- **Overview/Dashboard:** Financial KPIs (MTD revenue, unpaid balance, expenses, profit), cash-flow snapshot, tax snapshot, payment-method breakdown.
+- **Flyout entries (LOCKED):**
+  - Overview
+  - Financials
+  - Sales
+  - Expenses
   - Taxes
-  - Payroll (later phase)
   - Reports
-  - Analytics
-  - Subscriptions (Plan/Add-ons/Fees)
-  - AI Credits (usage + top-ups)
-- **Shared systems used:** Auth, Permissions, Audit, Feature Entitlements, Stripe (later), Reports, Payroll modules.
-- **Recommended ribbon purpose:** Report generation, credit top-up, subscription management, tax jurisdiction management.
-- **Items that should not be separate navigation entries:** Individual saved reports (live under Reports), individual invoices/payments (live under Shop Operations → Orders/Invoices).
+  - Business Analytics
+- **Rules:**
+  - **Payroll does NOT belong here** — Payroll lives under Team & Workflow.
+  - **Employee scheduling does NOT belong here** — lives under Team & Workflow.
+  - **Materials, inventory, vendors, and purchasing do NOT belong here** — live under Shop Operations → Inventory & Purchasing.
+  - **The shop's own SignGuy AI subscription and AI-credit purchasing do NOT belong here** — live under Control Center → Subscriptions & AI Credits.
+  - **Financials** includes: revenue; accounts receivable; payments received; unpaid and overdue invoice balances; refunds and voids; gross profit; net-profit estimates; margins; cash-flow snapshots; Webstore revenue; Wrap Lab revenue; tax collected; payment-method breakdown.
+  - **Financials reports on invoices and payments but does not duplicate operational Invoice Detail or Payment History screens** — those remain accessible from Orders / Shop Operations.
+  - **Reports** may contain payroll reports, employee reports, inventory reports, and production reports, **but the management of those systems remains in their proper product areas** (Payroll in Team & Workflow; Inventory in Shop Operations; Employees in Team & Workflow).
+- **Shared systems used:** Auth, Permissions, Audit, Feature Entitlements, Reports, Analytics.
+- **Recommended ribbon purpose (page-level):** report generation, filter by period, export.
+- **Items that must NOT be separate flyout entries:** individual saved reports (live under Reports); individual invoices/payments (live under Shop Operations → Orders/Invoices).
 - **Legacy routes to consolidate or remove:** ORIG `Financials.js`, `PricingPlansV2.js`, `Pricing.js` — reused as reference only; do not persist as separate top-level nav.
 
-### 3.2.3 Team and Workflow
+### 3.2.3 Team & Workflow (flyout)
 
-- **Purpose:** Internal team collaboration, scheduling, and productivity.
-- **Overview/Dashboard:** Team activity, open tasks by owner, calendar heat, time-clock summary, unread internal messages.
-- **Top-level tabs:**
-  - Team Overview
-  - Employees (later phase; roles/permissions live under Control Center)
-  - Tasks + Kanban
-  - Calendar + Appointments
-  - Scheduling (Install + Production)
-  - Time Clock + Timesheets
-  - Internal Notes / Messages / Announcements
-  - Employee Portal administration
+- **Purpose:** Internal team collaboration, employee management, scheduling, time, payroll, and productivity.
+- **Overview/Dashboard:** Team activity, open tasks by owner, calendar heat, time-clock summary, unread internal messages, published schedule.
+- **Flyout entries (LOCKED):**
+  - Overview
+  - Employees
+  - Tasks & Kanban
+  - Team Schedule
+  - Time Clock
+  - Timesheets
+  - Payroll
+  - Messages & Notes
+  - Announcements
+  - Employee Portal
+- **Rules:**
+  - **Payroll permanently belongs under Team & Workflow.** Includes pay periods, pay calculations, advances, adjustments, carryover, payments, history, and exports.
+  - **Employee scheduling permanently belongs under Team & Workflow.**
+  - **Team Schedule** covers employee shifts, availability, time off, and published schedules.
+  - **Time Clock and Timesheets** remain separate flyout entries because they are frequently used operational surfaces.
 - **Shared systems used:** Users, Permissions, Notifications, Audit.
-- **Recommended ribbon purpose:** Assign task, add appointment, punch clock, send announcement.
-- **Items that should not be separate navigation entries:** Per-employee screens (drill-in only).
+- **Recommended ribbon purpose (page-level):** assign task, add appointment, punch clock, send announcement.
+- **Items that must NOT be separate flyout entries:** per-employee screens (drill-in only).
 
-### 3.2.4 Design Studio
+### 3.2.4 Creative Studio (flyout)
 
-- **Purpose:** AI tools, artwork workspace, prompt library, generated assets.
+- **Purpose:** AI-assisted image, design, writing, prompt, artwork, and generated-content workflows. Creative Studio contains more than graphic design.
 - **Overview/Dashboard:** AI credits remaining, recent AI generations, prompt library entries, generated assets awaiting review.
-- **Top-level tabs:**
-  - AI Tools (24-tool grid)
-  - AI Assistant chat
+- **Flyout entries (LOCKED):**
+  - Studio Overview
+  - AI Assistant
+  - Image Tools
+  - Design Tools
+  - Writing Tools
   - Prompt Library
-  - Artwork workspace (design tools)
-  - Generated assets (with `requires_review` markers)
-  - AI Usage History
+  - Artwork Workspace
+  - Generated Assets
+  - AI History
+- **Rules:**
+  - **Renamed** from "Design Studio" to **Creative Studio**.
+  - Creative Studio contains AI image, design, writing, prompt, artwork, and generated-content workflows.
+  - **AI-credit purchasing and plan administration remain in Control Center**, not Creative Studio.
 - **Shared systems used:** AI credit ledger, DocuLink (`source_type=ai_generated → requires_review`), Feature Entitlements, Object Storage.
-- **Recommended ribbon purpose:** Launch tool, buy credits, insert generated asset into current Order Item, mark reviewed.
-- **Items that should not be separate navigation entries:** Individual AI response records.
+- **Recommended ribbon purpose (page-level):** Launch tool, insert generated asset into current Order Item, mark reviewed.
+- **Items that must NOT be separate flyout entries:** individual AI response records.
 
-### 3.2.5 Control Center
+### 3.2.5 Control Center (flyout, below divider)
 
-- **Purpose:** Company settings, users, roles, permissions, branding, integrations, subscriptions, platform admin (where the current user is a Platform Admin).
+- **Purpose:** Company-wide configuration, users/permissions, integrations, pricing defaults, portals, tenant subscription + AI credits, feature access, platform governance (visible only to platform-authorized roles), data & security.
 - **Overview/Dashboard:** Health checks — production readiness, tenant configuration completeness, integration connection status.
-- **Top-level tabs:**
-  - Company settings
-  - Users
-  - Roles
-  - Permissions
-  - Branding
-  - Integrations (Email, SMS/MMS, File storage, AI provider, Tax provider [future])
-  - Portal settings
-  - Webstore settings
-  - Wrap Lab settings
-  - Feature entitlements (per-tenant on/off)
-  - Subscription management
-  - Platform administration (visible only when user has platform_admin role/scope)
+- **Flyout entries (LOCKED):**
+  - Overview
+  - Company Settings
+  - Users & Permissions
+  - Integrations
+  - Pricing Defaults
+  - Portals
+  - Subscriptions & AI Credits
+  - Feature Access
+  - Platform Governance
+  - Data & Security
+- **Rules:**
+  - **Pricing Defaults** contains shop rate, labor rates, materials defaults, markups, minimum charges, category defaults, complexity settings, and formula configuration. Operational Pricing Calculator access may appear as a shortcut elsewhere (e.g., inside Quotes/Orders), but permanent configuration lives here.
+  - **Subscriptions & AI Credits** manages the tenant's own SignGuy AI account: plan, add-ons, credit balance, top-ups, billing history, and payment method. **It does not manage the shop's customer invoices.**
+  - **Platform Governance** is visible ONLY to platform-authorized roles (Platform Creator, Platform Admin). Use "Platform Governance" — never "Platform Governments."
+  - **Data & Security** covers audit log surface, retention, export/deletion tools, key rotation, and security posture.
 - **Shared systems used:** Auth, Permissions, Settings framework, Feature Entitlements, Audit.
-- **Recommended ribbon purpose:** Invite user, edit role, connect integration, rotate secret, view audit trail.
-- **Items that should not be separate navigation entries:** Individual integration screens (subpages of Integrations).
+- **Recommended ribbon purpose (page-level):** invite user, edit role, connect integration, rotate secret, view audit trail.
+- **Items that must NOT be separate flyout entries:** individual integration screens (subpages of Integrations).
 
-### 3.2.6 Help
+### 3.2.6 Help & Community (flyout, below divider)
 
-- **Purpose:** In-app documentation, onboarding, community, feedback.
+- **Purpose:** In-app documentation, onboarding, community, bug reports, feature requests, contact support, and release notes.
 - **Overview/Dashboard:** Getting started tiles, contextual help links, community stats.
-- **Top-level tabs:**
-  - Help Center / Documentation
+- **Flyout entries (LOCKED):**
+  - Help Center
+  - Documentation
   - Onboarding
-  - Community Hub
-  - Bug Reports (via community category filter)
-  - Feature Requests (via community category filter)
-  - Support (contact + ticket submission)
-  - Contextual help links (from Ribbon actions across the app)
-- **Shared systems used:** Community Hub, Audit.
-- **Recommended ribbon purpose:** Search help, submit bug, submit feature request.
+  - Community
+  - Bug Reports
+  - Feature Requests
+  - Contact Support
+  - What's New
+- **Rules:**
+  - **Bug Reports and Feature Requests may share the Community backend** (categorised posts), but they remain **directly accessible flyout destinations**, not buried inside Community.
+  - **Contact Support** is a first-class flyout entry (ticket submission + email path).
+  - **What's New** is the release notes / changelog surface.
+- **Shared systems used:** Community Hub, Audit, SendGrid (for support ticket routing).
+- **Recommended ribbon purpose (page-level):** search help, submit bug, submit feature request.
 
 ## 3.3 Portals and Public Systems
 
-Portals are not top-level nav in the internal app. They are separately-routed, separately-authenticated surfaces sharing the same backend and tenant architecture (see Part 5).
+Portals are not sidebar destinations in the internal app. They are separately-routed, separately-authenticated surfaces sharing the same backend and tenant architecture (see Part 5).
 
 - **Customer Portal** — proof review, signatures, invoice view, payment, messaging.
 - **Employee Portal** — time clock, task view, timesheet review, payroll visibility (payslip view scoped by owner decision, see Part 13).
@@ -393,11 +440,14 @@ Portals are not top-level nav in the internal app. They are separately-routed, s
 
 ## 3.4 Rules That Prevent Nav Bloat
 
-- **No separate top-level modules** for individual reports, individual settings screens, individual utility pages. They live inside a larger bounded area.
+- **No separate top-level modules** for individual reports, individual settings screens, individual utility pages. They live inside a larger bounded area's flyout.
+- **No permanent second-level top navigation** across every page. Second-level navigation lives in the sidebar flyout; page-level tabs/ribbons/filters are page-specific and do not duplicate the flyout.
 - **No duplicate menus** (e.g., no separate "Job Ticket" nav alongside "Work Order").
-- **No duplicate dashboards** (single Shop Ops dashboard, single Business Mgmt dashboard, single Team dashboard).
+- **No duplicate dashboards** (single Shop Ops dashboard, single Business & Finance dashboard, single Team & Workflow dashboard, single Creative Studio dashboard).
 - **No legacy redirect** treated as a permanent nav entry.
 - **No overflow "More" menu** where a ribbon can fit the items compactly.
+- **Pricing configuration lives in Control Center → Pricing Defaults.** The Pricing Calculator may appear as an operational shortcut inside Quotes/Orders when useful, but permanent configuration does not scatter across product areas.
+- **Tenant subscription and AI-credit purchasing live in Control Center → Subscriptions & AI Credits.** They do not sit next to shop-side financial reporting.
 
 ---
 
@@ -490,33 +540,31 @@ Every approved module must be included before commercial release unless explicit
 
 `*` Wrap Lab standalone is conditional — see Part 5. Sold standalone only if shared-core access can be provided without duplicating systems.
 
-## 4.3 Business Management
+**Sidebar flyout note (Shop Operations):** Inventory, Vendors, and Purchasing are grouped under a single sidebar flyout entry **Inventory & Purchasing** (which also surfaces Receiving, Locations, and low-stock alerts). This is a navigation grouping; the three modules remain individually bounded and remain distinct rows in this inventory. Proofs and Artwork Approvals are connected workflows accessible from Orders, Production, Customer records, and Asset Library — they are NOT a permanent sidebar flyout destination.
+
+## 4.3 Business & Finance
+
+**Renamed from "Business Management" — LOCKED navigation change.** Financial reporting, analysis, and business-wide financial management only. Pricing configuration has moved to **Control Center → Pricing Defaults** (section 4.6). Tenant Subscriptions and AI Credit purchasing have moved to **Control Center → Subscriptions & AI Credits** (section 4.6). Payroll, Time Clock, Timesheets, and Employee Scheduling have moved to **Team & Workflow** (section 4.4).
 
 | Module | Sc. | Src. | Ev. | Preflight | CR | Standalone | AI | Msg | OS | Stripe | Audit | Sensitive | Owner |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Pricing Foundation | I | MVP | RV | N | REQ | N | N | N | N | N | Y | N | N |
-| Pricing Setup | I | MVP | RV | N | REQ | N | N | N | N | N | Y | N | N |
-| Shop Rate | I | MVP | RV | N | REQ | N | N | N | N | N | Y | N | N |
-| Labor Rates | I | MVP | RV | N | REQ | N | N | N | N | N | Y | N | N |
-| Material Pricing (tenant catalog editor) | I | ORIG+REB | RS+FSV | N | REQ | N | N | N | N | N | Y | N | N |
-| Pricing Calculators (9 categories) | I | MVP | RV | N | REQ | N | N | N | N | N | Y | N | N |
-| Pricing Administration | I | MVP | RV | N | REQ | N | N | N | N | N | Y | N | N |
 | Finance Dashboard | I | ORIG+New | RS+New | Y | REQ | N | N | N | N | N | Y | Y | N |
+| Financials (revenue, A/R, payments received, unpaid/overdue, refunds/voids, gross/net profit, margins, cash-flow snapshot, Webstore revenue, Wrap Lab revenue, tax collected, payment-method breakdown) | I | ORIG+New | RS+New | Y | REQ | N | N | N | N | N | Y | Y | N |
 | Sales | I | ORIG+New | RS+New | Y | REQ | N | N | N | N | N | Y | Y | N |
-| Revenue | I | ORIG+New | RS+New | Y | REQ | N | N | N | N | N | Y | Y | N |
 | Expenses | I | ORIG+New | RS+New | Y | REQ | N | N | N | N | N | Y | Y | N |
 | Taxes | I | New | New | Y | REQ | N | N | N | N | N | Y | Y | Y |
-| Payroll | I,P | ORIG+FEB | RS | Y | REQ | N | N | N | N | N | Y | Y | Y |
-| Time Clock | I,P | ORIG+FEB | RS | Y | REQ | N | N | N | N | N | Y | N | N |
-| Timesheets | I,P | ORIG+FEB | RS | Y | REQ | N | N | N | N | N | Y | N | N |
-| Employee Scheduling | I | ORIG | RS | Y | REQ | N | N | Y | N | N | Y | N | N |
-| Reports | I | ORIG+New | RS+New | Y | REQ | N | N | N | N | N | Y | Y | Y |
+| Reports (may include payroll / employee / inventory / production reports — management of those systems stays in their product areas) | I | ORIG+New | RS+New | Y | REQ | N | N | N | N | N | Y | Y | Y |
 | Custom Report Builder | I | ORIG+New | RS+New | Y | REQ-DEP | N | N | N | N | N | Y | Y | Y |
-| Analytics | I,Pl | ORIG+New | RS+New | Y | REQ | N | N | N | N | N | Y | Y | N |
-| Subscriptions | I,Pl | REB | FSV | Y | REQ | N | N | Y | N | Y | Y | Y | Y |
-| AI Credits Admin | I,Pl | REB | FSV | Y | REQ-DEP | N | Y | N | N | Y | Y | N | Y |
+| Business Analytics | I,Pl | ORIG+New | RS+New | Y | REQ | N | N | N | N | N | Y | Y | N |
 
-## 4.4 Team and Workflow
+**Flyout rules:**
+- Financials reports on invoices and payments but **does not duplicate operational Invoice Detail or Payment History screens** (those remain under Shop Operations → Orders).
+- Reports may **surface** payroll/employee/inventory/production reports, but **manage** those systems in their proper product areas.
+- Payroll, employee scheduling, materials/inventory/vendors/purchasing, and the tenant's own subscription do NOT belong here.
+
+## 4.4 Team & Workflow
+
+**Renamed from "Team and Workflow" — LOCKED navigation change.** Team collaboration, employee management, scheduling, time, payroll, and productivity. Payroll, Time Clock, Timesheets, and Employee Scheduling permanently live here (moved from Business & Finance).
 
 | Module | Sc. | Src. | Ev. | Preflight | CR | Standalone | AI | Msg | OS | Stripe | Audit | Sensitive | Owner |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -524,32 +572,79 @@ Every approved module must be included before commercial release unless explicit
 | Employees | I,P | ORIG+FEB | RS | Y | REQ | N | N | N | N | N | Y | Y | N |
 | Tasks | I | ORIG+FEB | RS | Y | REQ | N | N | Y | N | N | Y | N | N |
 | Kanban | I | ORIG | RS | Y | REQ | N | N | Y | N | N | Y | N | N |
+| Team Schedule (shifts, availability, time off, published schedules) | I | ORIG+New | RS+New | Y | REQ | N | N | Y | N | N | Y | N | N |
 | Calendar | I | ORIG | RS | Y | REQ | N | N | Y | N | N | Y | N | N |
 | Appointments | I,P | ORIG | RS | Y | REQ | N | N | Y | N | N | Y | N | N |
 | Install Scheduling | I | ORIG | RS | Y | REQ | N | N | Y | N | N | Y | N | N |
 | Production Scheduling | I | ORIG | RS | Y | REQ | N | N | Y | N | N | Y | N | N |
-| Internal Notes | I | REB+ORIG | FSV+RS | N | REQ | N | N | Y | N | N | Y | N | N |
-| Team Communication | I | REB | FSV | N | REQ | N | N | Y | N | N | Y | N | N |
+| Time Clock | I,P | ORIG+FEB | RS | Y | REQ | N | N | N | N | N | Y | N | N |
+| Timesheets | I,P | ORIG+FEB | RS | Y | REQ | N | N | N | N | N | Y | N | N |
+| Payroll (pay periods, calculations, advances, adjustments, carryover, payments, history, exports) | I,P | ORIG+FEB | RS | Y | REQ | N | N | N | N | N | Y | Y | Y |
+| Employee Scheduling | I | ORIG | RS | Y | REQ | N | N | Y | N | N | Y | N | N |
+| Messages & Notes (internal notes + team communication) | I | REB+ORIG | FSV+RS | N | REQ | N | N | Y | N | N | Y | N | N |
 | Announcements | I | ORIG | RS | Y | REQ | N | N | Y | N | N | Y | N | N |
 | Reminders | I | New | New | N | REQ-DEP | N | N | Y | N | N | Y | N | N |
 | Employee Portal | P | ORIG+FEB+New | RS+New | Y | REQ | N | N | Y | Y | N | Y | Y | Y |
 
-## 4.5 Design Studio and AI
+**Flyout rules:**
+- Payroll and Employee Scheduling permanently belong under Team & Workflow.
+- Team Schedule covers employee shifts, availability, time off, and published schedules.
+- Time Clock and Timesheets remain separate flyout entries (frequently used operational surfaces).
+
+## 4.5 Creative Studio and AI
+
+**Renamed from "Design Studio and AI" — LOCKED navigation change.** Creative Studio contains more than graphic design: AI-assisted image, design, writing, prompt, artwork, and generated-content workflows. AI-credit purchasing and plan administration live in Control Center — not here.
 
 | Module | Sc. | Src. | Ev. | Preflight | CR | Standalone | AI | Msg | OS | Stripe | Audit | Sensitive | Owner |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | AI Tools Grid (24 tools) | I | REB | FSV | Y | REQ | N | Y | N | Y | N | Y | N | Y |
 | AI Assistant | I | ORIG+REB | RS+FSV | Y | REQ | N | Y | Y | Y | N | Y | Y | Y |
+| Image Tools (subset of AI Tools Grid) | I | REB+ORIG | FSV+RS | Y | REQ | N | Y | N | Y | N | Y | N | N |
+| Design Tools (subset of AI Tools Grid) | I | REB+ORIG | FSV+RS | Y | REQ | N | Y | N | Y | N | Y | N | N |
+| Writing Tools (subset of AI Tools Grid) | I | REB+ORIG | FSV+RS | Y | REQ | N | Y | N | Y | N | Y | N | N |
 | Prompt Library | I | ORIG | RS | Y | REQ | N | Y | N | N | N | Y | N | N |
-| AI Usage History | I,Pl | REB | FSV | N | REQ | N | Y | N | N | Y | Y | N | N |
+| Artwork Workspace | I | ORIG+New | RS+New | Y | REQ | N | Y | N | Y | N | Y | N | N |
+| Generated Assets (with `requires_review` markers) | I,P | REB | FSV | N | REQ | N | Y | N | Y | N | Y | Y | N |
+| AI History (usage history) | I,Pl | REB | FSV | N | REQ | N | Y | N | N | Y | Y | N | N |
 | AI Generated Files | I,P | REB | FSV | N | REQ | N | Y | N | Y | N | Y | Y | N |
 | AI Generated Documents | I,P | REB | FSV | N | REQ | N | Y | N | Y | N | Y | Y | N |
 | AI Context Retrieval | I | ORIG | RS | Y | REQ-DEP | N | Y | N | N | N | Y | N | Y |
 | AI Result Storage | I,P | REB | FSV | N | REQ | N | Y | N | Y | N | Y | Y | N |
-| Design Studio Workspace | I | ORIG | RS | Y | REQ | N | Y | N | Y | N | Y | N | N |
+| Creative Studio Workspace | I | ORIG | RS | Y | REQ | N | Y | N | Y | N | Y | N | N |
 | Artwork Assets | I | New | New | N | REQ | N | N | N | Y | N | Y | N | N |
 
-## 4.6 Platform and Support
+**Flyout rules:**
+- Image Tools / Design Tools / Writing Tools are curated slices of the 24-tool AI Tools Grid, presented as flyout destinations for common navigation. The underlying tool catalog remains single-source.
+
+## 4.6 Control Center (tenant configuration)
+
+**New product-area section — reflects the sidebar flyout for tenant-level configuration surfaces.** Modules previously listed under other areas that concern tenant configuration (Pricing Defaults, Subscriptions & AI Credits, Portals, Feature Access, Data & Security) live here.
+
+| Module | Sc. | Src. | Ev. | Preflight | CR | Standalone | AI | Msg | OS | Stripe | Audit | Sensitive | Owner |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Company Settings | I | New | New | N | REQ | N | N | N | N | N | Y | N | N |
+| Users & Permissions (surface) | I | MVP+New | RV+New | N | REQ | N | N | N | N | N | Y | Y | N |
+| Integrations (surface: Email, SMS/MMS, File storage, AI provider, Tax provider [future], Stripe) | I | MVP+New | RV+New | N | REQ | N | N | Y | Y | Y | Y | Y | Y |
+| Portals (portal settings + Webstore settings + Wrap Lab settings) | I | New | New | N | REQ | N | N | N | N | N | Y | Y | Y |
+| Feature Access (per-tenant feature entitlement view + toggles per plan) | I | REB+New | FSV+New | N | REQ | N | N | N | N | N | Y | N | Y |
+| Data & Security (audit surface, retention, export/deletion, key rotation, security posture) | I | MVP+New | RV+New | N | REQ | N | N | N | N | N | Y | Y | Y |
+| Pricing Defaults — Pricing Foundation | I | MVP | RV | N | REQ | N | N | N | N | N | Y | N | N |
+| Pricing Defaults — Pricing Setup | I | MVP | RV | N | REQ | N | N | N | N | N | Y | N | N |
+| Pricing Defaults — Shop Rate | I | MVP | RV | N | REQ | N | N | N | N | N | Y | N | N |
+| Pricing Defaults — Labor Rates | I | MVP | RV | N | REQ | N | N | N | N | N | Y | N | N |
+| Pricing Defaults — Material Pricing (tenant catalog editor) | I | ORIG+REB | RS+FSV | N | REQ | N | N | N | N | N | Y | N | N |
+| Pricing Defaults — Pricing Calculators (9 categories) | I | MVP | RV | N | REQ | N | N | N | N | N | Y | N | N |
+| Pricing Defaults — Pricing Administration | I | MVP | RV | N | REQ | N | N | N | N | N | Y | N | N |
+| Subscriptions & AI Credits — Tenant Subscription (plan, add-ons, billing history, payment method) | I,Pl | REB | FSV | Y | REQ | N | N | Y | N | Y | Y | Y | Y |
+| Subscriptions & AI Credits — Tenant AI Credits (balance, top-ups, usage summary) | I,Pl | REB | FSV | Y | REQ-DEP | N | Y | N | N | Y | Y | N | Y |
+| Platform Governance (visible only to platform-authorized roles) | Pl | REB | FSV | Y | REQ | N | N | N | N | N | Y | Y | Y |
+
+**Flyout rules:**
+- Pricing Defaults contains shop rate, labor rates, materials defaults, markups, minimum charges, category defaults, complexity settings, and formula configuration. Operational Pricing Calculator access may appear as a shortcut inside Quotes/Orders, but permanent configuration lives here.
+- Subscriptions & AI Credits manages the tenant's OWN SignGuy AI account (plan, add-ons, credit balance, top-ups, billing history, payment method). It does NOT manage the shop's customer invoices.
+- Platform Governance is visible ONLY to platform-authorized roles. Use "Platform Governance" — never "Platform Governments."
+
+## 4.7 Platform and Support
 
 | Module | Sc. | Src. | Ev. | Preflight | CR | Standalone | AI | Msg | OS | Stripe | Audit | Sensitive | Owner |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -568,7 +663,7 @@ Every approved module must be included before commercial release unless explicit
 | Subscription Administration | Pl | REB | FSV | Y | REQ | N | N | Y | N | Y | Y | Y | Y |
 | AI Credit Administration | Pl | REB | FSV | Y | REQ | N | Y | N | N | Y | Y | N | Y |
 
-## 4.7 Portals and Public Systems
+## 4.8 Portals and Public Systems
 
 | Module | Sc. | Src. | Ev. | Preflight | CR | Standalone | AI | Msg | OS | Stripe | Audit | Sensitive | Owner |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -586,7 +681,7 @@ Every approved module must be included before commercial release unless explicit
 | Marketing Website | Pu | ORIG+FEB | RS | N | REQ | N | N | N | N | N | N | N | N |
 | Public Pricing and Plan Selection | Pu | ORIG+FEB | RS | N | REQ | N | N | N | N | Y | N | N | Y |
 
-## 4.8 Commercial and Billing Systems
+## 4.9 Commercial and Billing Systems
 
 | Module | Sc. | Src. | Ev. | Preflight | CR | Standalone | AI | Msg | OS | Stripe | Audit | Sensitive | Owner |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -656,7 +751,7 @@ Standalone products **do not** get their own parallel domain models. They get an
 | **Wrap Lab add-on** | Yes | Adds Wrap Lab UI + Wrap-Project portal | Standard staff auth + Customer portal (per Wrap Project) | Same tenant | Adds wrap permissions | Turns on `wrap_lab` | Yes | Wrap Projects link to Orders | Yes | Yes | Yes | N/A | N/A | On downgrade: entitlement off; existing wrap projects flagged read-only until re-enabled. Data preserved. | Enforced | Requires Approvals, Signatures, Customer Portal, DocuLink |
 | **Wrap Lab standalone** | Yes (owner-decision conditional) | Only Wrap Lab UI + minimal Customer/Order surface | Standard staff auth (limited role) + Customer Portal | Own tenant | Reduced permission set (wrap + minimal customer + minimal order + payments-view) | Turns on `wrap_lab` ONLY | Yes | Yes | Yes | Yes | Yes | Yes — can upgrade to Core | Upgrade = flip entitlements on | Downgrade = flip entitlements off | Enforced | Requires standalone conditions verified during module preflight |
 | **Complete Bundle (Founders)** | Yes | Full app + Webstores + Wrap Lab | Standard staff auth + portals | Single tenant | Full permission catalog | Turns on all three feature keys | Yes | Yes | Yes | Yes | Yes | N/A | N/A | On plan change: entitlements adjust; data preserved | Enforced | Requires all foundations |
-| **AI Tools / Assistant** (metered) | Yes | Design Studio area | Standard staff auth | Same tenant | Adds AI permissions | Turns on `ai_tools` + per-tool caps | Yes | Yes | Yes | Yes | Yes | N/A | N/A | On credit exhaustion: soft-block AI Tools; core untouched | Enforced | Requires AI credit ledger, provider abstraction |
+| **AI Tools / Assistant** (metered) | Yes | Creative Studio area | Standard staff auth | Same tenant | Adds AI permissions | Turns on `ai_tools` + per-tool caps | Yes | Yes | Yes | Yes | Yes | N/A | N/A | On credit exhaustion: soft-block AI Tools; core untouched | Enforced | Requires AI credit ledger, provider abstraction |
 | **SMS/MMS** (add-on later) | Yes | Notification prefs + Portal messaging | Same | Same tenant | Adds sms permissions | Turns on `sms_mms` | Yes | Yes | Yes | Yes | Yes | N/A | N/A | On downgrade: turn off entitlement | Enforced | Requires SMS provider integration |
 
 ## 5.4 Entitlement Rules (LOCKED)
@@ -992,22 +1087,17 @@ Grouped by module. Every module in Part 4 has at least one permission below. For
 - `webstore:read`, `webstore:write`, `webstore:manage`, `webstore:launch`
 - `wrap_lab:read`, `wrap_lab:write`, `wrap_lab:advance_stage`, `wrap_lab:admin`
 
-### 9.3.3 Business Management
-- `pricing:read`, `pricing:write`, `pricing:calculate`
+### 9.3.3 Business & Finance (permissions surfaced under this product area)
 - `finance:read`, `finance:write`
 - `sales:read`
 - `expense:read`, `expense:write`
 - `tax:read`, `tax:write`
-- `payroll:read`, `payroll:write`, `payroll:admin`
-- `time_clock:read`, `time_clock:write`
-- `timesheet:read`, `timesheet:approve`
-- `schedule:read`, `schedule:write`
 - `report:read`, `report:write`
 - `analytics:read`
-- `subscription:read`, `subscription:manage`
-- `ai_credit:read`, `ai_credit:admin`
 
-### 9.3.4 Team and Workflow
+Note: `payroll:*`, `time_clock:*`, `timesheet:*`, `schedule:*` are enforced but their management surfaces live under **Team & Workflow** (section 9.3.4). `pricing:*` and `subscription:*` and `ai_credit:*` are enforced but their management surfaces live under **Control Center** (section 9.3.6).
+
+### 9.3.4 Team & Workflow (permissions surfaced under this product area)
 - `team:read`
 - `employee:read`, `employee:write`, `employee:admin`
 - `task:read`, `task:write`
@@ -1016,15 +1106,22 @@ Grouped by module. Every module in Part 4 has at least one permission below. For
 - `appointment:read`, `appointment:write`
 - `internal_message:read`, `internal_message:write`
 - `announcement:read`, `announcement:write`
+- `payroll:read`, `payroll:write`, `payroll:admin`
+- `time_clock:read`, `time_clock:write`
+- `timesheet:read`, `timesheet:approve`
+- `schedule:read`, `schedule:write`
 
-### 9.3.5 Design Studio and AI
+### 9.3.5 Creative Studio and AI
 - `ai_tool:use`
 - `ai_assistant:use`
 - `ai_prompt:read`, `ai_prompt:write`
 - `ai_history:read`
 - `ai_context:admin`
 
-### 9.3.6 Control Center / Platform / Support
+### 9.3.6 Control Center / Platform / Help & Community
+- `pricing:read`, `pricing:write`, `pricing:calculate`
+- `subscription:read`, `subscription:manage`
+- `ai_credit:read`, `ai_credit:admin`
 - `integration:read`, `integration:write`
 - `branding:read`, `branding:write`
 - `platform:admin` (superuser bypass)
@@ -1304,7 +1401,7 @@ One consolidated register of every decision still requiring owner approval. Prom
 | 21 | Platform-admin impersonation | (a) No impersonation ever; (b) Read-only view-as; (c) Full impersonation with audit | Standard SaaS | Impersonation = support power but abuse risk | Read-only view-as with audit + tenant notification | Pending | REQUIRES OWNER DECISION | Platform Admin | N | Y (Impersonation feature) | N |
 | 22 | Customer portal payment methods | (a) Stripe only; (b) Stripe + ACH; (c) Multiple | Stripe covers most | ACH = lower fees, slower | Stripe (card) at launch; ACH later | Pending | REQUIRES OWNER DECISION | Customer Portal, Payments | N | Y (Portal payment) | Y |
 | 23 | Employee portal payroll visibility | (a) Full payslip; (b) YTD summary only; (c) None | Legal varies by state | Wrong = legal exposure | Full payslip view with tenant-owner override | Pending | REQUIRES OWNER DECISION | Employee Portal, Payroll | N | Y (Payroll GA) | N (post-launch OK) |
-| 24 | Final navigation labels | (a) Match Part 3.1; (b) Alternative wording | Part 3.1 direction | Wording drift risk | Match Part 3.1 (LOCKED) | LOCKED | LOCKED | Navigation | N | N | N |
+| 24 | Final navigation labels + structure | (a) Left collapsible sidebar with side flyouts per Part 3.1 (LOCKED); (b) Permanent second-level top nav (rejected); (c) Alternative labels (rejected) | Owner directive + Part 3.1 | Wording drift risk | Match Part 3.1 (LOCKED): Home / Shop Operations / Business & Finance / Team & Workflow / Creative Studio / (divider) / Control Center / Help & Community. Flyouts LOCKED per Part 3.2. | LOCKED | LOCKED | Navigation | N | N | N |
 | 25 | Final internal checkpoint order | (a) Part 14 recommended groups; (b) Old 0–17; (c) Custom | Part 14 evidence | Order affects delivery | Adopt Part 14 groups (A–H) | Pending | RECOMMENDED | Master build plan | Y | N | N |
 | 26 | Grace period on subscription payment failure | (a) 7 days; (b) 3 days; (c) 14 days | Industry | Too short = churn, too long = revenue delay | 7 days soft grace → 14 days soft block → hard block | Pending | RECOMMENDED | Subscriptions, Entitlements | N | Y (Billing enable) | Y |
 
@@ -1388,10 +1485,10 @@ This is a **proposed dependency reference**. The final master build plan (Prompt
 - **Required tests:** Portal identity isolation, magic-link single-use, public-token single-action + expiration, cross-tenant portal sweep.
 - **Required documentation:** Portal onboarding docs + terms/policies.
 - **Commercial-release relevance:** Blocker (customer portal is required for commercial release).
-- **Parallel-safe with:** Group E Business Management (some parallelism OK).
+- **Parallel-safe with:** Group E Business & Finance (some parallelism OK).
 - **Risk if out of order:** Portal identity leaks, silent proof approvals.
 
-### Group E — Business Management
+### Group E — Business & Finance
 
 - **Purpose:** Inventory, purchasing, vendors, finance, expenses, taxes, reports, analytics, custom reports.
 - **Included modules:** Inventory; Vendors; Purchasing; Finance dashboard; Expenses; Taxes; Reports; Analytics; Custom Report Builder.
@@ -1407,7 +1504,7 @@ This is a **proposed dependency reference**. The final master build plan (Prompt
 - **Parallel-safe with:** Group D (some), Group F.
 - **Risk if out of order:** Reports read incomplete data.
 
-### Group F — Team and Workflow
+### Group F — Team & Workflow
 
 - **Purpose:** Employees, tasks, calendar, scheduling, time clock, timesheets, payroll, employee portal, internal messaging.
 - **Included modules:** Employees; Tasks; Kanban; Calendar; Appointments; Install + Production Scheduling; Time Clock; Timesheets; Payroll; Employee Portal; Internal Notes/Messages/Announcements.
@@ -1605,19 +1702,35 @@ SignGuy AI is the permanent multi-tenant commercial business-management platform
 
 ## 16.5 Final Top-Level Navigation
 
-Home + Shop Operations + Business Management + Team and Workflow + Design Studio + Control Center + Help. Portals + Public systems live outside the internal nav.
+**Collapsible left sidebar** with side flyouts per major area (no permanent second-level top navigation). Home icon + six flyout areas + divider:
+
+```
+[HOME]
+Shop Operations
+Business & Finance
+Team & Workflow
+Creative Studio
+─── (divider) ───
+Control Center
+Help & Community
+```
+
+Portals + Public systems live outside the internal sidebar (separately-routed).
 
 ## 16.6 Final Module Count
 
-- **Foundation and Shared Systems:** 30 modules (all REQ except SMS/MMS = REQ-DEP).
-- **Shop Operations:** 33 modules (10 ADD or ADD-dep; rest REQ).
-- **Business Management:** 21 modules (all REQ; a few REQ-DEP).
-- **Team and Workflow:** 13 modules.
-- **Design Studio and AI:** 10 modules.
-- **Platform and Support:** 14 modules.
-- **Portals and Public Systems:** 13 modules (Webstore Owner/Manager/Storefront = ADD).
-- **Commercial and Billing Systems:** 5 modules.
-- **Total scoped modules:** 139.
+Updated to reflect the LOCKED sidebar-flyout navigation. Module rows re-grouped without deletion; new rows added for Control Center flyout entries (Company Settings, Users & Permissions surface, Integrations surface, Portals, Feature Access, Data & Security, Platform Governance), Team & Workflow (Team Schedule), Business & Finance (Financials), and Creative Studio flyout subsets (Image Tools / Design Tools / Writing Tools / Artwork Workspace / Generated Assets). No underlying bounded modules removed.
+
+- **Foundation and Shared Systems (4.1):** 31 modules (all REQ except SMS/MMS = REQ-DEP).
+- **Shop Operations (4.2):** 33 modules (10 ADD or ADD-dep; rest REQ). Inventory & Purchasing is a single flyout entry combining Inventory + Vendors + Purchasing.
+- **Business & Finance (4.3):** 8 modules (Finance Dashboard, Financials, Sales, Expenses, Taxes, Reports, Custom Report Builder, Business Analytics).
+- **Team & Workflow (4.4):** 17 modules (adds Payroll, Time Clock, Timesheets, Employee Scheduling, Team Schedule).
+- **Creative Studio and AI (4.5):** 15 modules (renamed from Design Studio; adds Image/Design/Writing Tools flyout subsets + Artwork Workspace + Generated Assets + AI History).
+- **Control Center (4.6):** 16 modules (Company Settings, Users & Permissions, Integrations, Portals, Feature Access, Data & Security, seven Pricing Defaults surfaces, two Subscriptions & AI Credits surfaces, Platform Governance).
+- **Platform and Support (4.7):** 14 modules.
+- **Portals and Public Systems (4.8):** 13 modules (Webstore Owner/Manager/Storefront = ADD).
+- **Commercial and Billing Systems (4.9):** 5 modules.
+- **Total scoped module rows:** ~152 (grew from the prior 139 baseline solely because the new sidebar-flyout structure surfaces additional first-class configuration and Creative Studio destinations; no underlying bounded module was removed).
 
 ## 16.7 Required Modules
 
@@ -1712,7 +1825,7 @@ Portal Auth (F12). Background Jobs (F10). Feature Entitlements (F9 — REB spec 
 
 ## 16.24 Final Recommended Checkpoint Groups
 
-Group A (Product Rules & Security) → Group B (Shared Platform Foundations) → Group C (Core Money & Order Pipeline) → Group D (Document & Customer Workflow) → Group E (Business Management) → Group F (Team & Workflow) → Group G (Add-ons: Webstores + Wrap Lab) → Group H (AI + Platform + Commercial Systems).
+Group A (Product Rules & Security) → Group B (Shared Platform Foundations) → Group C (Core Money & Order Pipeline) → Group D (Document & Customer Workflow) → Group E (Business & Finance) → Group F (Team & Workflow) → Group G (Add-ons: Webstores + Wrap Lab) → Group H (AI + Platform + Commercial Systems).
 
 ## 16.25 Enough Scope Evidence for Master Build Plan?
 
@@ -1744,7 +1857,7 @@ Group A (Product Rules & Security) → Group B (Shared Platform Foundations) →
 - Webhook signature verification mandatory (SendGrid + Stripe).
 - Payment idempotency mandatory; overpayment reject; controlled void with reason.
 - Audit logging mandatory on every write.
-- Six-area top-level navigation (Shop Ops / Business Mgmt / Team & Workflow / Design Studio / Control Center / Help).
+- Collapsible left sidebar with side flyouts (LOCKED): Home / Shop Operations / Business & Finance / Team & Workflow / Creative Studio / (divider) / Control Center / Help & Community. Portals + Public systems separately-routed.
 
 ### Decisions requiring explicit owner approval (Prompt 4)
 
