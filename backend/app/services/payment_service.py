@@ -174,6 +174,25 @@ async def initiate_stripe(
 
     ikey = idempotency_key or f"pi:{invoice_id}:{amount_cents}:{uuid.uuid4().hex}"
 
+    # Server-side dedup: if a pending Stripe payment for this invoice + amount
+    # already exists, reuse it. Protects against dialog re-open creating dupes.
+    existing_pending = await db.payments.find_one(
+        {
+            "tenant_id": tenant_id, "invoice_id": invoice_id,
+            "source": "stripe", "status": "pending",
+            "amount_cents": amount_cents,
+        },
+        {"_id": 0},
+    )
+    if existing_pending:
+        return {
+            "payment_id": existing_pending["id"],
+            "client_secret": existing_pending.get("stripe_client_secret"),
+            "status": "pending",
+            "publishable_key": stripe_core.publishable_key(),
+            "already_exists": True,
+        }
+
     # Return existing pending row if we already initiated this exact amount + ikey.
     existing = await db.payments.find_one(
         {"tenant_id": tenant_id, "invoice_id": invoice_id,

@@ -20,6 +20,12 @@ import ComposeEmailDialog from "@/components/email/ComposeEmailDialog";
 import InvoicePairedStatus from "@/components/invoices/InvoicePairedStatus";
 import { RecordManualPaymentDialog, VoidPaymentButton, InitiateStripePaymentButton, RefundButton } from "@/components/invoices/PaymentDialogs";
 
+// Never render a Stripe intent id verbatim in the DOM. Show only last 4.
+function _maskPi(pi) {
+  if (!pi) return null;
+  return `Stripe ····${String(pi).slice(-4)}`;
+}
+
 export default function InvoiceDetailPage() {
   const { id } = useParams();
   const qc = useQueryClient();
@@ -148,7 +154,7 @@ export default function InvoiceDetailPage() {
                         </div>
                         <div>{p.paid_on ? formatDate(p.paid_on) : (p.confirmed_at ? formatDate(p.confirmed_at) : "—")}</div>
                         <div className="text-right tabular-nums font-medium">{p.refund_of_payment_id ? "−" : ""}{centsToDollarsString(p.amount_cents)}</div>
-                        <div className="text-muted-foreground truncate">{p.reference || p.notes || p.stripe_payment_intent_id || "—"}</div>
+                        <div className="text-muted-foreground truncate">{p.reference || p.notes || _maskPi(p.stripe_payment_intent_id) || "—"}</div>
                         <div className="flex items-center gap-1 justify-end">
                           <VoidPaymentButton payment={p} onDone={invalidate} />
                           <RefundButton payment={p} onDone={invalidate} />

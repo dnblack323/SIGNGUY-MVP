@@ -100,6 +100,20 @@ def create_refund(
     reason: Optional[str] = None,
     idempotency_key: str,
 ) -> dict[str, Any]:
+    from ..core.config import get_settings
+    settings = get_settings()
+    # Dev-placeholder or synthesized intent → short-circuit so preview refunds
+    # exercise our reconciliation without outbound Stripe traffic.
+    if (
+        (_is_dev_placeholder_key(settings.stripe_api_key or "") or payment_intent_id.startswith("pi_dev_"))
+        and settings.auth_dev_bypass
+    ):
+        import uuid
+        return {
+            "id": f"re_dev_{uuid.uuid4().hex[:20]}",
+            "status": "pending",
+            "amount": int(amount_cents or 0),
+        }
     if not _configured():
         raise RuntimeError("stripe_not_configured")
     kwargs: dict[str, Any] = {

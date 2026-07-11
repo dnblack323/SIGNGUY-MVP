@@ -1,0 +1,46 @@
+{
+  "summary": "EC4 CORRECTIONS re-test #2 — 2 of 3 fixes VERIFIED PASSING (dedup + provider_ref masking). Refund flow STILL 500 but with a DIFFERENT root cause than iteration_4: real Stripe test keys are now configured in /app/backend/.env, so initiate_stripe creates a REAL Stripe PaymentIntent (pi_3Try...) rather than a synthesized pi_dev_ one. Then /dev-simulate-confirm flips it to confirmed WITHOUT actually confirming at Stripe — no charge exists on Stripe's side. On refund, stripe_core.create_refund's guard `_is_dev_placeholder_key(key) OR intent_id.startswith('pi_dev_')` evaluates FALSE on BOTH clauses (real key + real pi_ prefix), so it calls Stripe API → Stripe returns 400 'PaymentIntent does not have a successful charge to refund' → uncaught InvalidRequestError → 500 to client. Fix confirmed present in stripe_core.py:108 but does not cover the real-key + dev-simulated-confirm combo. All other checks pass: DOM has zero pi_dev_/re_dev_/cs_test_/pk_test_/client_secret/publishable_key matches, payment row shows 'Stripe ····hxgT' (last 4 masked), duplicate-initiate returns same payment_id with already_exists=true and HTTP 201.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/payments/{id}/refund", "issue": "500 Internal Server Error when refunding a payment that was confirmed via /dev-simulate-confirm while real Stripe test keys are configured. RCA: intent id is pi_3TryiB0ZdYjMF5FY0nmnhxgT (real Stripe), NOT pi_dev_, and _is_dev_placeholder_key returns False for the real sk_test_51T0EDn... key, so the guard at stripe_core.py:108 does not short-circuit. Stripe API then returns 400 InvalidRequestError('This PaymentIntent does not have a successful charge to refund.') which is not handled and bubbles to 500. Traceback: /app/backend/app/services/payment_service.py:353 → /app/backend/app/services/stripe_core.py:128 → stripe._error.InvalidRequestError.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/invoices/{id}/payments", "issue": "Returns 405 Method Not Allowed. Payments are actually embedded/loaded elsewhere (invoice detail); if this endpoint isn't intended to exist it should be removed or corrected. Non-blocking."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Stripe refund", "issue": "Refund dialog submits correctly (POST /api/payments/{id}/refund) with proper payload {amount:5000, reason:'Customer requested refund'}, but backend returns 500 (see backend_issues.critical[0]). Dialog stays open, no refund row is added, no user-visible error/toast is rendered — silent failure.", "affected_selectors": ["refund-dialog", "refund-submit"]},
+      {"flow": "Refund silent failure UX", "issue": "On 500 response the refund-dialog does not display any error toast or inline error message — user sees nothing happen. Recommend catching the error and surfacing 'Refund failed — please try again' toast.", "affected_selectors": ["refund-dialog"]}
+    ],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "DEDUP on duplicate stripe-intents: Two consecutive POST /api/invoices/{id}/stripe-intents with identical amount_cents=10000 returned identical payment_id (5c9ef3d8-8e5e-458d-987c-3fd407cbf84c), HTTP 201 on both, and second response has already_exists=true. Only one payment row exists in DB/UI.",
+    "Provider ref masking: Payment row cell renders 'Stripe ····hxgT' (last 4 of real Stripe pi_3TryiB0ZdYjMF5FY0nmnhxgT) instead of the raw id. DOM scan across entire invoice detail page returns 0 matches for all forbidden patterns: pi_dev_, pi_test_, pi_live_, re_dev_, cs_test_, pk_test_, pk_live_, sk_test_, sk_live_, client_secret, publishable_key.",
+    "dev-simulate-confirm still flips invoice to Paid (invoice-fin-status-paid visible, balance $0.00).",
+    "/invoices/nonexistent-id-abc renders [data-testid='invoice-error'] correctly (regression holds)."
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "CRITICAL: Extend the refund short-circuit in stripe_core.create_refund (or in payment_service.initiate_refund) to also trigger when settings.auth_dev_bypass is True AND the source payment has a 'dev-simulated' confirmation marker (e.g., record a flag on the Payment row when /dev-simulate-confirm runs, or detect that no charge id is set on the payment). Current guard `_is_dev_placeholder_key(key) OR intent_id.startswith('pi_dev_')` misses the real-keys + simulated-confirm combination.",
+    "CRITICAL: Wrap stripe.Refund.create() in try/except stripe.error.InvalidRequestError → convert to HTTP 400 with the user-facing message, NOT bubble as 500. Even after adding the dev-bypass short-circuit, real-mode refunds against un-charged PaymentIntents should return 4xx not 5xx.",
+    "HIGH: Frontend refund-dialog should render an error toast on 4xx/5xx response instead of silently closing / staying open — currently zero user feedback on failure.",
+    "MINOR: Either implement or remove GET /api/invoices/{id}/payments (currently returns 405)."
+  ],
+  "critical_code_review_comments": [
+    "stripe_core.py:108 short-circuit condition `_is_dev_placeholder_key(settings.stripe_api_key or '') or payment_intent_id.startswith('pi_dev_')` — neither clause fires when real test keys are set but the payment was confirmed via dev-simulate-confirm. Needs a 3rd clause: auth_dev_bypass AND payment lacks a real charge id.",
+    "payment_service.py:353 initiate_refund calls stripe_core.create_refund without any error handling — any stripe._error.* exception propagates to a 500. Should catch stripe.error.StripeError → HTTPException(status=400, detail=e.user_message).",
+    "InvoiceDetailPage.jsx _maskPi is correctly applied to p.stripe_payment_intent_id fallback — confirmed no pi_dev_ leaks even with real Stripe intents.",
+    "payment_service.py:179-194 early dedup by (invoice_id, source=stripe, status=pending, amount_cents) is correctly implemented and works as designed."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not re-run per request; refund endpoint remains 500 for dev-simulated payments in real-key mode", "frontend": "~85% (2/3 target flows PASS: dedup + masking; refund still fails)"},
+  "test_credentials": "AUTH_DEV_BYPASS=true — auto-logged in as Dev Shop owner. localStorage key: signguy.token (JWT)",
+  "seed_data_creation": "Reused invoice fcf2c26d-d9a2-4242-aec4-596e66f64804 (EC4 no-payment-test, $100). Created 1 confirmed stripe payment: 5c9ef3d8-8e5e-458d-987c-3fd407cbf84c (real Stripe PI pi_3TryiB0ZdYjMF5FY0nmnhxgT, confirmed via dev-simulate-confirm). Invoice now flipped to Paid, balance $0.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The dedup + masking fixes are confirmed PASSING. Only re-verify refund after main agent addresses the real-keys + dev-simulated-confirm gap. Suggested approach for main agent: (a) mark payment.dev_simulated=true in confirm_stripe_from_webhook when called via /dev-simulate-confirm, (b) in stripe_core.create_refund add `if settings.auth_dev_bypass and payment.dev_simulated: return synthesized re_dev_...`. Also wrap the real-call in try/except StripeError → 400. To reproduce the 500: initiate a stripe intent on any invoice → dev-simulate-confirm → attempt refund. Real Stripe returns 'PaymentIntent does not have a successful charge to refund.'",
+  "rca of the issue": "STRIPE_API_KEY in /app/backend/.env is now the real sk_test_51T0EDn... test key. When /api/invoices/{id}/stripe-intents is called, stripe_core.create_payment_intent's own dev-placeholder check evaluates FALSE (real key), so it calls Stripe and gets back a real intent id pi_3TryiB0ZdYjMF5FY0nmnhxgT (no pi_dev_ prefix). /dev-simulate-confirm then marks the payment confirmed locally WITHOUT going through Stripe's confirm flow — so on Stripe's side the intent is still requires_payment_method and there's no charge. On refund, stripe_core.create_refund line 108 condition `_is_dev_placeholder_key(real_test_key) [False] OR pi_3Try...startswith('pi_dev_') [False]` → falls through to stripe.Refund.create → Stripe 400 InvalidRequestError → uncaught → 500. The refund short-circuit correctly handles the placeholder-key path (no real Stripe traffic) but NOT the mixed path (real key + simulated confirm)."
+}
