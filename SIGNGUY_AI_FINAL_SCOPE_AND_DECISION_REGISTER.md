@@ -1796,7 +1796,7 @@ Customer portal, Employee portal, Signatures, Approvals, Public Forms/Questionna
 
 ## 16.17 Remaining Owner Decisions
 
-See Part 13 open register. 26 decisions enumerated; ~15 marked REQUIRES OWNER DECISION.
+See Part 13 open register. 27 decisions enumerated; ~15 marked REQUIRES OWNER DECISION.
 
 ## 16.18 Commercial-Release Blockers
 
@@ -1865,7 +1865,7 @@ Group A (Product Rules & Security) → Group B (Shared Platform Foundations) →
 
 ### Decisions requiring explicit owner approval (Prompt 4)
 
-Refer Part 13 Open Decision Register — 26 numbered decisions. Highest-priority for master build plan:
+Refer Part 13 Open Decision Register — 27 numbered decisions. Highest-priority for master build plan:
 1. Money policy ratification.
 2. Permission catalog approval.
 3. Repository-class pattern for new modules.
