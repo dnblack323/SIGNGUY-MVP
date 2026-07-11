@@ -481,7 +481,7 @@ Every approved module must be included before commercial release unless explicit
 | Notifications (in-app) | I,P | REB | FSV | N | REQ | N | N | Y | N | N | Y | N | N |
 | Email (SendGrid outbound) | I,P | MVP | RV | N | REQ | N | N | Y | N | N | Y | Y | N |
 | Email Activity Log + Webhook | I,Pl | REB | FSV | N | REQ | N | N | Y | N | N | Y | Y | Y |
-| SMS/MMS | I,P | ORIG | RS | Y | REQ-DEP | N | N | Y | N | N | Y | Y | Y |
+| SMS/MMS | I,P | ORIG | RS | Y | OWNER DECISION — COMMERCIAL RELEASE TIMING (permanent-product scope; timing per Decision 27) | N | N | Y | N | N | Y | Y | Y |
 | Internal Messaging (staff↔staff) | I | ORIG+REB | RS+FSV | N | REQ-DEP | N | N | Y | Y | N | Y | N | N |
 | Object Storage | I,P | MVP | RV | N | REQ | N | N | N | Y | N | Y | Y | N |
 | File Uploads | I,P | MVP | RV | N | REQ | N | N | N | Y | N | Y | Y | N |
@@ -752,7 +752,7 @@ Standalone products **do not** get their own parallel domain models. They get an
 | **Wrap Lab standalone** | Yes (owner-decision conditional) | Only Wrap Lab UI + minimal Customer/Order surface | Standard staff auth (limited role) + Customer Portal | Own tenant | Reduced permission set (wrap + minimal customer + minimal order + payments-view) | Turns on `wrap_lab` ONLY | Yes | Yes | Yes | Yes | Yes | Yes — can upgrade to Core | Upgrade = flip entitlements on | Downgrade = flip entitlements off | Enforced | Requires standalone conditions verified during module preflight |
 | **Complete Bundle (Founders)** | Yes | Full app + Webstores + Wrap Lab | Standard staff auth + portals | Single tenant | Full permission catalog | Turns on all three feature keys | Yes | Yes | Yes | Yes | Yes | N/A | N/A | On plan change: entitlements adjust; data preserved | Enforced | Requires all foundations |
 | **AI Tools / Assistant** (metered) | Yes | Creative Studio area | Standard staff auth | Same tenant | Adds AI permissions | Turns on `ai_tools` + per-tool caps | Yes | Yes | Yes | Yes | Yes | N/A | N/A | On credit exhaustion: soft-block AI Tools; core untouched | Enforced | Requires AI credit ledger, provider abstraction |
-| **SMS/MMS** (add-on later) | Yes | Notification prefs + Portal messaging | Same | Same tenant | Adds sms permissions | Turns on `sms_mms` | Yes | Yes | Yes | Yes | Yes | N/A | N/A | On downgrade: turn off entitlement | Enforced | Requires SMS provider integration |
+| **SMS/MMS** (permanent-product scope; commercial-release timing = Decision 27) | Yes | Notification prefs + Portal messaging | Same | Same tenant | Adds sms permissions | Turns on `sms_mms` | Yes | Yes | Yes | Yes | Yes | N/A | N/A | On downgrade: turn off entitlement | Enforced | Requires SMS provider integration |
 
 ## 5.4 Entitlement Rules (LOCKED)
 
@@ -809,7 +809,7 @@ Every third-party integration in the permanent product is listed below. Every in
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | **SendGrid outbound email** | Transactional email | Emails, Quotes, Invoices, Portal, Documents, Wrap Lab | Required | Live (RV) | MVP `services/email.py` | `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL` | N | Provider-managed | Per-send Idempotency-Key + email_logs dedup | Yes | Per-tenant filter on logs | `email_logs` collection | Rotate keys before commercial release | N | Y | Log failure as `email.send_failed` activity + retry queue | Delivery metrics per tenant | N | KEEP as-is |
 | **SendGrid delivery/event webhook** | Inbound bounces, opens, clicks | Communication history, Portal notifications | Required | Not integrated | REB `POST /communications/webhooks/sendgrid` (FSV) | `SIGNGUYAI_SENDGRID_WEBHOOK_SECRET` (HMAC-SHA256) | Y | Provider-managed | Event ID + replay-safe write | Y | Per-tenant via SendGrid metadata | `email_activity` collection | Force-fail startup if secret unset AND ENV=production | Y | Y | 401 unverified events; alert on repeated failures | Webhook success rate | Y (fail-closed policy) | Adopt REB webhook + activity log |
-| **SMS/MMS provider** | Transactional SMS + inbound reply | Portal, Notifications, Order events, Marketing | Required (post initial launch) | Not integrated | ORIG `routes/sms.py` + `services/sms_service.py` (RS) | Provider API key + webhook secret | Y | Provider-managed | Per-send Idempotency-Key + sms_logs dedup | Y | Per-tenant | `sms_logs` collection | Rotate before enabling; carrier registration required for US 10DLC | Y | Y (once enabled) | Log failure as `sms.send_failed`; retry queue | Deliverability + carrier lookups | Y (provider choice — see Part 13) | Twilio recommended (matches donor); confirm in Prompt 4 |
+| **SMS/MMS provider** | Transactional SMS + inbound reply | Portal, Notifications, Order events, Marketing | Permanent-product scope; **commercial-release timing = OWNER DECISION 27** (before-first-sale vs later commercial release) | Not integrated | ORIG `routes/sms.py` + `services/sms_service.py` (RS) | Provider API key + webhook secret | Y | Provider-managed | Per-send Idempotency-Key + sms_logs dedup | Y | Per-tenant | `sms_logs` collection | Rotate before enabling; carrier registration required for US 10DLC | Y | Timing per Decision 27 | Log failure as `sms.send_failed`; retry queue | Deliverability + carrier lookups | Y (provider choice — see Part 13 Decision 19; release timing — see Part 13 Decision 27) | Twilio recommended (matches donor); confirm in Prompt 4 alongside Decision 27 timing |
 | **Stripe (Core payments)** | Manual payments (recorded), tenant subscription billing | Payments, Subscriptions, AI credit top-ups | Required | Not integrated | FEB `services/payment_service.py` + FEB/ORIG `routes/stripe_connect.py` (FSV+RS) | `STRIPE_API_KEY` (test key already provisioned in pod env), `STRIPE_WEBHOOK_SECRET` | Y | Provider-managed | Idempotency-Key on every write + DuplicateKeyError race handling on webhook confirm | Y | Per-tenant Stripe customer ID | `payments` collection, `subscriptions` collection | Signature verification + replay protection MANDATORY | Y | Y | Never mark payment success without webhook confirmation; refund path tested | Payment success rate + reconciliation deltas | Y (transaction fee bps — see Part 7B) | Adopt FEB pattern verbatim |
 | **Stripe Connect** | Webstore payouts to shop-owned Stripe accounts | Webstores, Payouts | Required for Webstores | Not integrated | FEB + ORIG (FSV+RS) | Same as Stripe Core + Connect onboarding | Y | Provider-managed | Same + payout idempotency | Y | Per-tenant Stripe Connect account | `payouts` collection | Financial-safety review before any port | Y | Y (for Webstores) | Never trust client-computed payout amounts | Payout success + reconciliation deltas | Y (transaction fee bps + payout schedule) | Formal security review + adopt FEB confirm-on-webhook pattern |
 | **Emergent Object Storage** | Private file storage for attachments, DocuLink, AI-generated files, portal-visible assets | Files, DocuLink, Portal, Wrap Lab, AI, Templates | Required | Live (RV) | MVP `services/storage.py` + ORIG `services/object_storage.py` (FSV, 35 lines, clean) | `EMERGENT_LLM_KEY` (used for storage init in MVP) | N | N/A | Per-file UUID | Y | Per-tenant path prefix | File metadata + polymorphic attachment links | Tenant path check on every read/write | N | Y | Fail closed on missing key | Storage error rate | N | KEEP + adopt REB `upload_validation.py` |
@@ -1404,6 +1404,7 @@ One consolidated register of every decision still requiring owner approval. Prom
 | 24 | Final navigation labels + structure | (a) Left collapsible sidebar with side flyouts per Part 3.1 (LOCKED); (b) Permanent second-level top nav (rejected); (c) Alternative labels (rejected) | Owner directive + Part 3.1 | Wording drift risk | Match Part 3.1 (LOCKED): Home / Shop Operations / Business & Finance / Team & Workflow / Creative Studio / (divider) / Control Center / Help & Community. Flyouts LOCKED per Part 3.2. | LOCKED | LOCKED | Navigation | N | N | N |
 | 25 | Final internal checkpoint order | (a) Part 14 recommended groups; (b) Old 0–17; (c) Custom | Part 14 evidence | Order affects delivery | Adopt Part 14 groups (A–H) | Pending | RECOMMENDED | Master build plan | Y | N | N |
 | 26 | Grace period on subscription payment failure | (a) 7 days; (b) 3 days; (c) 14 days | Industry | Too short = churn, too long = revenue delay | 7 days soft grace → 14 days soft block → hard block | Pending | RECOMMENDED | Subscriptions, Entitlements | N | Y (Billing enable) | Y |
+| 27 | SMS/MMS commercial-release timing | (a) Required before the first commercial sale; (b) Approved permanent-product feature scheduled for a later commercial release | Owner has not resolved this in prior statements; ORIG donor `routes/sms.py` + `services/sms_service.py` exist as reference; carrier registration (US 10DLC) requires lead time | (a) delays initial launch by SMS provider integration + carrier registration; (b) launches without SMS which affects portal messaging + order events + marketing | No automatic choice — owner must select | Pending | **OWNER DECISION — COMMERCIAL RELEASE TIMING** (SMS/MMS remains in permanent product scope regardless of choice) | SMS/MMS, Portal, Notifications, Order events, Marketing | N | N | Y if (a); N if (b) |
 
 **Reconciled decisions (already resolved from prior explicit owner statements):**
 - Repository roles (Part 1.9) — LOCKED.
@@ -1485,24 +1486,27 @@ This is a **proposed dependency reference**. The final master build plan (Prompt
 - **Required tests:** Portal identity isolation, magic-link single-use, public-token single-action + expiration, cross-tenant portal sweep.
 - **Required documentation:** Portal onboarding docs + terms/policies.
 - **Commercial-release relevance:** Blocker (customer portal is required for commercial release).
-- **Parallel-safe with:** Group E Business & Finance (some parallelism OK).
+- **Parallel-safe with:** Group E Inventory, Purchasing, Finance, and Reporting (some parallelism OK).
 - **Risk if out of order:** Portal identity leaks, silent proof approvals.
 
-### Group E — Business & Finance
+### Group E — Inventory, Purchasing, Finance, and Reporting
 
-- **Purpose:** Inventory, purchasing, vendors, finance, expenses, taxes, reports, analytics, custom reports.
-- **Included modules:** Inventory; Vendors; Purchasing; Finance dashboard; Expenses; Taxes; Reports; Analytics; Custom Report Builder.
+- **Purpose:** Land Inventory + Vendors + Purchasing operational modules AND Finance + Expenses + Taxes + Reports + Business Analytics in a single implementation checkpoint. These systems share this checkpoint because purchasing costs, inventory valuation, expenses, financial reporting, and analytics all depend on the completed Order, Invoice, and Payment pipeline delivered in Group C. **Checkpoint grouping does NOT change permanent navigation placement.**
+- **Navigation placement (LOCKED — unchanged by this checkpoint grouping):**
+  - Inventory, Vendors, and Purchasing are navigated through **Shop Operations → Inventory & Purchasing** (per Part 3.2.1 / Part 4.2).
+  - Finance, Expenses, Taxes, Reports, and Business Analytics are navigated through **Business & Finance** (per Part 3.2.2 / Part 4.3).
+- **Included modules:** Inventory; Vendors; Purchasing; Finance Dashboard; Financials; Sales; Expenses; Taxes; Reports; Custom Report Builder; Business Analytics.
 - **Dependencies:** Groups A, B, C.
-- **Source repositories:** ORIG (Inventory RS, Vendors RS, Purchasing RS, Finance RS, Reports RS); New (Custom Report Builder).
+- **Source repositories:** ORIG (Inventory RS, Vendors RS, Purchasing RS, Finance RS, Reports RS); New (Custom Report Builder, Business Analytics).
 - **Required module preflights:** Y — Inventory, Vendors, Purchasing, Reports.
 - **Required owner decisions:** Decision 9 (tax strategy), Decision 20 (report scope).
 - **Entry conditions:** Group C exit.
-- **Exit conditions:** Financial dashboards render; tax snapshots stored on invoices; reports pass tenant scoping.
-- **Required tests:** Tax snapshot invariance on historical invoices, report tenant scoping.
-- **Required documentation:** Reports catalog.
-- **Commercial-release relevance:** Blocker (financial reporting is required).
+- **Exit conditions:** Financial dashboards render; inventory valuation feeds finance; tax snapshots stored on invoices; reports pass tenant scoping; purchasing costs flow into finance.
+- **Required tests:** Tax snapshot invariance on historical invoices, report tenant scoping, purchasing→expense flow, inventory valuation consistency.
+- **Required documentation:** Reports catalog; inventory setup guide.
+- **Commercial-release relevance:** Blocker (financial reporting + inventory + purchasing are required).
 - **Parallel-safe with:** Group D (some), Group F.
-- **Risk if out of order:** Reports read incomplete data.
+- **Risk if out of order:** Reports read incomplete data; inventory valuation misaligned with orders/payments.
 
 ### Group F — Team & Workflow
 
@@ -1671,7 +1675,7 @@ The application MUST NOT be sold until every gate below passes. Every gate is a 
 - **Release blocker:** Any gate above unchecked at launch.
 - **Major issue:** Regression in a working module post-launch.
 - **Minor issue:** Non-blocking UX/copy issue.
-- **Accepted limitation:** A pre-launch limitation formally documented and approved by the owner (e.g., "Custom Report Builder is post-launch backlog; curated report library ships at launch.").
+- **Accepted limitation:** A pre-launch limitation formally documented and approved by the owner (e.g., "Google Calendar synchronization is not included at launch; the internal SignGuy AI calendar remains fully functional.").
 
 **No release blocker may remain open at commercial launch.**
 
@@ -1721,7 +1725,7 @@ Portals + Public systems live outside the internal sidebar (separately-routed).
 
 Updated to reflect the LOCKED sidebar-flyout navigation. Module rows re-grouped without deletion; new rows added for Control Center flyout entries (Company Settings, Users & Permissions surface, Integrations surface, Portals, Feature Access, Data & Security, Platform Governance), Team & Workflow (Team Schedule), Business & Finance (Financials), and Creative Studio flyout subsets (Image Tools / Design Tools / Writing Tools / Artwork Workspace / Generated Assets). No underlying bounded modules removed.
 
-- **Foundation and Shared Systems (4.1):** 31 modules (all REQ except SMS/MMS = REQ-DEP).
+- **Foundation and Shared Systems (4.1):** 31 modules (all REQ; SMS/MMS commercial-release timing is Owner Decision 27 — permanent-product scope regardless of timing choice).
 - **Shop Operations (4.2):** 33 modules (10 ADD or ADD-dep; rest REQ). Inventory & Purchasing is a single flyout entry combining Inventory + Vendors + Purchasing.
 - **Business & Finance (4.3):** 8 modules (Finance Dashboard, Financials, Sales, Expenses, Taxes, Reports, Custom Report Builder, Business Analytics).
 - **Team & Workflow (4.4):** 17 modules (adds Payroll, Time Clock, Timesheets, Employee Scheduling, Team Schedule).
@@ -1825,7 +1829,7 @@ Portal Auth (F12). Background Jobs (F10). Feature Entitlements (F9 — REB spec 
 
 ## 16.24 Final Recommended Checkpoint Groups
 
-Group A (Product Rules & Security) → Group B (Shared Platform Foundations) → Group C (Core Money & Order Pipeline) → Group D (Document & Customer Workflow) → Group E (Business & Finance) → Group F (Team & Workflow) → Group G (Add-ons: Webstores + Wrap Lab) → Group H (AI + Platform + Commercial Systems).
+Group A (Product Rules & Security) → Group B (Shared Platform Foundations) → Group C (Core Money & Order Pipeline) → Group D (Document & Customer Workflow) → Group E (Inventory, Purchasing, Finance, and Reporting) → Group F (Team & Workflow) → Group G (Add-ons: Webstores + Wrap Lab) → Group H (AI + Platform + Commercial Systems).
 
 ## 16.25 Enough Scope Evidence for Master Build Plan?
 
