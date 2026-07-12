@@ -61,7 +61,7 @@ This is one module document per master-plan module-standard convention (`docs/ar
 
 ## 4. Purchase Orders & Receiving
 
-Same module as (2). PO detail lifecycle + receiving is documented under Purchasing above.
+Same module as (2). PO lifecycle + receiving is fully documented under Purchasing above. The frontend PO detail page (`/purchase-orders/:id`) is the primary receiving surface: it lists lines with ordered/received/remaining, hosts the Receive dialog (per-line quantities, location picker, packing-slip notes, per-click `Idempotency-Key`, `Fill remaining` shortcut) that handles both partial and complete receiving, and shows the receiving-history + supplier-submission-history tables.
 
 ---
 

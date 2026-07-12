@@ -7,10 +7,26 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertTriangle, Info } from "lucide-react";
+import { AlertTriangle, Info, HelpCircle } from "lucide-react";
 import { money, basisLabel } from "@/lib/ec7";
 
+// Static plain-English explanations of every basis surfaced by the finance
+// service. Displayed via a lightweight click-to-toggle popover (no AI Help
+// in EC7 — EC12 owns documentation-grounded Help and may swap this text out).
+const BASIS_EXPLANATIONS = {
+  issued_invoices: "Sums Invoice.total_cents on invoices whose document_status = 'issued' inside the date range. This is accrual-style — an invoice counts as revenue the day it's issued even if the customer hasn't paid yet. Drafts and voided invoices are excluded.",
+  confirmed_payments_received: "Sums Payment.amount_cents on payments whose status = 'confirmed', excluding refund records. This is cash-basis — money actually received by the shop. Pending and failed payments are excluded.",
+  refunds: "Sums Payment.amount_cents on refund records only. Refunds are shown as their own line and NEVER silently netted from Payments received or Invoice revenue.",
+  outstanding_receivables: "Sums Invoice.balance_due_cents where the invoice is issued and unpaid or partially paid. Aging buckets use due_date when set, otherwise issued_at.",
+  expenses: "Sums Expense.total_cents where state = 'active'. Voided and archived expenses are excluded from this total but stay visible in reports.",
+  tax_collected: "Sums Invoice.tax_cents from the historical snapshot stored on each issued invoice. Changing current tax settings does NOT rewrite these values.",
+  estimated_cost: "Uses only cost inputs that actually exist on the record — Order cost snapshots plus linked active Expenses. Missing costs are counted, not invented.",
+  estimated_gross_profit: "Invoice revenue minus the estimated cost above. Shows 'partial coverage' when any orders lack a cost snapshot; the profit shown is a lower-bound estimate, not audited accounting output.",
+  estimated_net_operating: "Invoice revenue minus active Expenses minus Refunds. Combines accrual-basis revenue with cash-basis refunds and expense-basis costs — labels on each line are authoritative.",
+};
+
 function BasisCard({ title, metric, hint }) {
+  const [open, setOpen] = useState(false);
   if (!metric) return null;
   const empty = metric.empty;
   return (
@@ -21,9 +37,21 @@ function BasisCard({ title, metric, hint }) {
           <Badge variant="outline" data-testid="finance-basis-badge" className="text-[10px] uppercase tracking-wider">
             {basisLabel(metric.basis)}
           </Badge>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            data-testid={`finance-basis-explain-${(metric.basis || "unknown")}`}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label="Explain this basis"
+          ><HelpCircle className="size-3.5" /></button>
         </div>
       </CardHeader>
       <CardContent>
+        {open && (
+          <div className="mb-2 rounded-md border bg-muted/50 p-2 text-[11px] leading-relaxed text-muted-foreground" data-testid="finance-basis-explanation">
+            {BASIS_EXPLANATIONS[metric.basis] || "No explanation registered for this basis."}
+          </div>
+        )}
         <div className="text-2xl font-semibold">
           {typeof metric.value_cents === "number" ? money(metric.value_cents) : "—"}
         </div>

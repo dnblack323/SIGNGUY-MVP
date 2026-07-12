@@ -34,6 +34,7 @@ import PricingCalculatorPage from "@/pages/PricingCalculatorPage";
 import InventoryPage from "@/pages/InventoryPage";
 import SupplyCenterPage from "@/pages/SupplyCenterPage";
 import PurchaseOrdersPage from "@/pages/PurchaseOrdersPage";
+import PurchaseOrderDetailPage from "@/pages/PurchaseOrderDetailPage";
 import ExpensesPage from "@/pages/ExpensesPage";
 import FinanceDashboardPage from "@/pages/FinanceDashboardPage";
 import TaxReportsPage from "@/pages/TaxReportsPage";
@@ -78,6 +79,7 @@ function App() {
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/supply-center" element={<SupplyCenterPage />} />
             <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
+            <Route path="/purchase-orders/:id" element={<PurchaseOrderDetailPage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
             <Route path="/finance" element={<FinanceDashboardPage />} />
             <Route path="/tax" element={<TaxReportsPage />} />

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api, { extractError } from "@/lib/api";
 import PageHeader from "@/components/layout/PageHeader";
@@ -102,7 +103,7 @@ export default function PurchaseOrdersPage() {
             : items.length === 0 ? <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-6">No purchase orders yet.</TableCell></TableRow>
             : items.map((po) => (
               <TableRow key={po.id} data-testid={`po-row-${po.id}`}>
-                <TableCell className="font-medium">#{po.number}</TableCell>
+                <TableCell className="font-medium"><Link to={`/purchase-orders/${po.id}`} className="text-primary hover:underline" data-testid={`po-open-${po.id}`}>#{po.number}</Link></TableCell>
                 <TableCell className="text-sm">{po.vendor_snapshot?.name || po.vendor_id}</TableCell>
                 <TableCell><Badge className={PO_STATUS_TONE[po.status] || ""}>{po.status}</Badge></TableCell>
                 <TableCell className="text-right text-sm">{money(po.total_cents)}</TableCell>

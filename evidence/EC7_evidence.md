@@ -122,7 +122,39 @@ Verified via Playwright screenshot that `FinanceDashboardPage` mounts, the AppSh
 ### `testing_agent_v3_fork` regression — NOT YET RUN
 Owner directive #15 requires a full-stack regression via `testing_agent_v3_fork` at Phase 7d close (frontend workflows for Inventory, Supply Center, POs, Receiving, Expenses, Finance Dashboard, Tax Reports, curated reports, CSV export, custom builder, and full EC1–EC6 regression). This was not run in this session due to context/time budget. **EC7 must remain IN PROGRESS until it passes.**
 
-## Rollback for phase 7d
+## Phase 7d — Closure pass (2nd iteration)
+
+### Files added — frontend
+- `frontend/src/pages/PurchaseOrderDetailPage.jsx` — full PO detail: identity + status badge + tracking, 4 KPI cards (vendor, subtotal, shipping+handling, total with remaining-units-to-receive counter), line table (ordered / received / remaining / unit / extended), **Receive dialog** covering BOTH partial and complete receiving with per-line quantity inputs, `Fill remaining` shortcut, location picker, packing-slip notes field, per-click `Idempotency-Key`, receiving-history table, supplier-submission history table.
+- Route wired at `/purchase-orders/:id`; PO # in the list is now a clickable link into the detail page.
+
+### Files modified — frontend
+- `frontend/src/pages/PurchaseOrdersPage.jsx` — PO number cell now links to the detail page.
+- `frontend/src/pages/FinanceDashboardPage.jsx` — every basis-badged metric card gained an **"Explain this basis" popover** with static plain-English explanations for the 8 basis keys (issued_invoices, confirmed_payments_received, refunds, outstanding_receivables, expenses, tax_collected, estimated_cost, estimated_gross_profit, estimated_net_operating). No AI/LLM Help — static owner-approved text that EC12 can later swap out through documentation-grounded Help.
+- `frontend/src/App.js` — added `/purchase-orders/:id` route.
+
+### Coverage after this iteration
+
+| Required Phase 7d workflow | Status |
+|---|---|
+| Purchase Order detail with lines + status + tracking | ✅ delivered |
+| PO line review (read-only quantities + costs) | ✅ delivered |
+| Partial receiving | ✅ delivered (Receive dialog with per-line quantities) |
+| Complete receiving | ✅ delivered (Fill-remaining shortcut → backend transitions to Received) |
+| Receiving-created inventory-movement visibility | ⚠️ backend produces them + PO detail shows receiving-history; a "movements from this PO" table is NOT yet in the UI (movement rows are available via `/api/inventory/movements`). |
+| Material Cost History access | ⚠️ backend intact (`material_cost_history` collection + `receiving_service` writes it); a dedicated Material detail drawer/tab is NOT yet in the UI. |
+| Vendor detail page | ❌ **NOT DELIVERED THIS ITERATION** — backend endpoint `GET /api/vendors/{vid}` returns everything needed but the frontend page still needs to be built. |
+| Material detail page | ❌ **NOT DELIVERED THIS ITERATION** — same as Vendor: backend supports it, frontend page pending. |
+| Physical count flow (frontend) | ❌ **NOT DELIVERED** — backend supports adjustments; the physical-count-specific wizard is not built. |
+| Inventory transfer flow (frontend) | ❌ **NOT DELIVERED** — backend supports paired transfer-out / transfer-in movements; UI is not built. |
+| "Explain this basis" popover on Finance | ✅ delivered |
+
+### Regression
+- Backend: **215/215 tests green** (0 regressions after 2nd closure iteration).
+- Frontend: lint clean; `/purchase-orders`, `/purchase-orders/:id`, `/finance` all serve.
+- `testing_agent_v3_fork` full-stack regression: **STILL PENDING** per directive #17.
+
+**EC7 remains IN PROGRESS.** The remaining required workflows (Vendor detail, Material detail, Physical count, Inventory transfer) and the `testing_agent_v3_fork` regression must complete before EC7 may be marked COMPLETE.
 Additive. Remove:
 - backend files: `app/services/reports_service.py`, `app/services/csv_export.py`, `app/routers/reports.py`, `tests/test_ec7_reports.py`, and the reports-router registration line in `server.py`.
 - frontend files: `src/lib/ec7.js` and the 7 new pages (`InventoryPage.jsx`, `SupplyCenterPage.jsx`, `PurchaseOrdersPage.jsx`, `ExpensesPage.jsx`, `FinanceDashboardPage.jsx`, `TaxReportsPage.jsx`, `ReportsPage.jsx`), plus the 7 new routes in `App.js` and the flyout enablements in `lib/navigation.js`.
@@ -322,4 +354,4 @@ Additive. Drop `expenses`, `expense_categories`, `expense_attachments`, `tax_exe
 - Phase 7d was NOT started per owner directive.
 
 ## Status
-**EC7 — IN PROGRESS. Phase 7a + Phase 7b + Phase 7c delivered. Phase 7d remains. Backend 210/210 tests green.**
+**EC7 — IN PROGRESS. Phase 7a + 7b + 7c + 7d (backend + partial frontend) delivered. Remaining: Vendor detail, Material detail (incl. Material Cost History drawer), Physical Count flow, Inventory Transfer flow, receiving-created movement visibility inline on PO detail, frontend automated tests, and `testing_agent_v3_fork` full-stack regression. Backend 215/215 tests green.**
