@@ -30,7 +30,7 @@ Constraints:
 | **EC3.1 — Pricing Foundation Verification & Full Calculator Category Coverage** | **REQUIRED — SCHEDULED (permanent scope)** | Master plan Appendix A.2 — every calculator category, formulas, shop rate/labor/materials/waste/markup/margin/minimums/complexity/add-ons/templates, snapshots, tests. Must land before EC14. |
 | **EC6.3 — Order Intake Capture & Visual Markup** | **REQUIRED — SCHEDULED (permanent scope)** | Master plan Appendix A.1 — image + camera + PDF uploads, drawing on images + blank canvas, version history, attach to Proofs/WOs/WOSummaries, controlled portal visibility, in-person signature capture bound to exact target with immutable audit. Reuses EC2 + EC6, no parallel system. Must land before EC14. |
 | EC6.2 — Signed PDF Composite Rendering | DEFERRED (unscheduled) | `/app/memory/product_ideas_register.md` — reconsider during EC14 Final Hardening, or earlier only on a verified customer/compliance/operational requirement. Do NOT schedule during EC7. |
-| **EC7 — Inventory, Purchasing, Finance, Reporting** | READY TO BUILD | pending owner execution prompt |
+| **EC7 — Inventory, Purchasing, Finance, Reporting** | IN PROGRESS (phase 7a + 7b delivered) | `/app/evidence/EC7_evidence.md` — Backend 190/190 green. Phases 7c/7d pending; stop before 7c per owner directive. |
 | EC8–EC14 | NOT STARTED | dependency-ordered per master plan |
 
 ## Completed capabilities
@@ -74,13 +74,15 @@ Constraints:
 - EC9 Webstores + Stripe Connect (add-on + standalone shell).
 - EC10 Wrap Lab.
 
-### P2 — Later
-- EC9 Creative Studio + AI foundations.
-- EC10 AI Tools + Assistant.
-- EC11 Platform Governance & Community.
-- EC12 Commercial Systems & Billing.
-- EC13 Marketing & Public Pricing.
-- EC14 Final Integration & Hardening.
+### P2 — Later (LOCKED per master plan Appendix A.4 — REVISED 2026-07)
+- **EC11 — AI Credits and Usage Ledger** — usage ledger, provider/model cost tracking, included monthly balances (reset), top-up balances (persistent while account active), monthly resets, purchased-credit retention, refunds and adjustments, **configurable, plan-aware** launch guardrails (NOT hardcoded permanent limits), low-credit warnings, zero-balance blocking, provisional credit packs, cost-audit gate.
+- **EC12 — Onboarding, Documentation, Help, and Governance UX** — Quick Setup + Advanced Setup wizards, mini quizzes, setup readiness, documentation registry, module documentation, Help Center, documentation-grounded AI Help, support escalation, documentation-gap reporting, **failed-subscription warning + restriction UX**. May display subscription state but does NOT own billing truth. DIY wizard must work without a paid package. Paid setup purchases must not create a parallel onboarding system.
+- **EC13 — Commercial Billing and Marketing** — Founder eligibility (first 25 shops), $119 for first 3 paid months, $189 Founder monthly renewal, $1,890 Founder annual, Core $149/$1,490, Webstores $89/$890, Wrap $119/$1,190, Complete $279/$2,790, trials, paid extended trial + $20 conversion credit, setup products + add-ons, annual billing, platform fees, Stripe products/prices/coupons, entitlements, grace periods, continuous-active Founder enforcement, public pricing page, marketing website, signup + conversion flows.
+- **EC14 — Final Integration & Hardening** — closes only after EC11 / EC12 / EC13 are COMPLETE.
+
+### Commercial pricing source of truth (LOCKED)
+
+Master plan **Appendix A.4** and `/app/docs/commercial/REVISED_COMMERCIAL_SOURCE_OF_TRUTH_2026-07.md` are the commercial source of truth. All Stripe product setup, marketing copy, entitlement rules, onboarding packages, and billing tests must match A.4. **None of A.4 is implemented during EC7.**
 
 ## Known deferred items (from EC3)
 

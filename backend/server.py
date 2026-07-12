@@ -97,6 +97,14 @@ from app.routers import inventory as inventory_router_module
 api_router.include_router(inventory_router_module.materials_router)
 api_router.include_router(inventory_router_module.inventory_router)
 
+# EC7 — Phase 7b Vendors + Supplier Catalog + Purchase Orders + Receiving
+from app.routers import vendors as vendors_router_module
+from app.routers import supply_center as supply_center_router_module
+from app.routers import purchase_orders as purchase_orders_router_module
+api_router.include_router(vendors_router_module.router)
+api_router.include_router(supply_center_router_module.router)
+api_router.include_router(purchase_orders_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

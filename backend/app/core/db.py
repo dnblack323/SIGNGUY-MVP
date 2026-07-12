@@ -225,4 +225,59 @@ async def ensure_indexes() -> None:
     await db.inventory_reservations.create_index([("tenant_id", 1), ("material_id", 1), ("location_id", 1), ("active", 1)])
     await db.inventory_reservations.create_index([("tenant_id", 1), ("source_entity_type", 1), ("source_entity_id", 1)])
 
+    # ---- EC7 phase 7b — Vendors + Supplier Catalog + Purchase Orders + Receiving ----
+    await db.vendors.create_index("id", unique=True)
+    await db.vendors.create_index([("tenant_id", 1), ("name", 1)])
+    await db.vendors.create_index([("tenant_id", 1), ("active", 1)])
+
+    await db.vendor_materials.create_index("id", unique=True)
+    await db.vendor_materials.create_index(
+        [("tenant_id", 1), ("vendor_id", 1), ("material_id", 1), ("supplier_product_id", 1)],
+        unique=True,
+    )
+    await db.vendor_materials.create_index([("tenant_id", 1), ("material_id", 1)])
+
+    await db.supplier_warehouses.create_index("id", unique=True)
+    await db.supplier_warehouses.create_index([("tenant_id", 1), ("vendor_id", 1), ("code", 1)], unique=True)
+
+    await db.supplier_products.create_index("id", unique=True)
+    await db.supplier_products.create_index(
+        [("tenant_id", 1), ("vendor_id", 1), ("supplier_sku", 1)], unique=True
+    )
+    await db.supplier_products.create_index([("tenant_id", 1), ("category", 1), ("active", 1)])
+    await db.supplier_products.create_index([("tenant_id", 1), ("family", 1)])
+    await db.supplier_products.create_index([("tenant_id", 1), ("compatible_group", 1)])
+
+    await db.supplier_product_stock.create_index("id", unique=True)
+    await db.supplier_product_stock.create_index(
+        [("tenant_id", 1), ("supplier_product_id", 1), ("warehouse_id", 1)], unique=True
+    )
+
+    await db.supplier_order_log.create_index("id", unique=True)
+    await db.supplier_order_log.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)], unique=True
+    )
+    await db.supplier_order_log.create_index([("tenant_id", 1), ("purchase_order_id", 1), ("submitted_at", -1)])
+    await db.supplier_order_log.create_index(
+        "supplier_order_id", unique=True,
+        partialFilterExpression={"supplier_order_id": {"$type": "string"}},
+    )
+
+    await db.purchase_orders.create_index("id", unique=True)
+    await db.purchase_orders.create_index([("tenant_id", 1), ("number", 1)], unique=True)
+    await db.purchase_orders.create_index([("tenant_id", 1), ("vendor_id", 1), ("created_at", -1)])
+    await db.purchase_orders.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
+
+    await db.purchase_order_lines.create_index("id", unique=True)
+    await db.purchase_order_lines.create_index(
+        [("tenant_id", 1), ("purchase_order_id", 1), ("position", 1)]
+    )
+    await db.purchase_order_lines.create_index([("tenant_id", 1), ("material_id", 1)])
+
+    await db.receiving_records.create_index("id", unique=True)
+    await db.receiving_records.create_index(
+        [("tenant_id", 1), ("purchase_order_id", 1), ("idempotency_key", 1)], unique=True
+    )
+    await db.receiving_records.create_index([("tenant_id", 1), ("purchase_order_id", 1), ("received_at", -1)])
+
     logger.info("MongoDB indexes ensured")
