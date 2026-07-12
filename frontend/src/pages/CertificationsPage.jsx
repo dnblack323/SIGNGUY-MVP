@@ -48,6 +48,7 @@ function MatrixTab() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["certification-matrix"], queryFn: async () => (await api.get("/certifications/matrix")).data });
   const [cell, setCell] = useState(null); // {employeeId, employeeName, equipmentId, equipmentName, certification, status}
+  const [issueTarget, setIssueTarget] = useState(null);
   const [issueOpen, setIssueOpen] = useState(false);
   const [revokeOpen, setRevokeOpen] = useState(false);
 
@@ -96,15 +97,15 @@ function MatrixTab() {
       <ManageCertDialog
         cell={cell} employeeName={cell?.employeeName} equipmentName={cell?.equipmentName}
         onOpenChange={(o) => !o && setCell(null)}
-        onRenew={() => setIssueOpen(true)}
+        onRenew={() => { setIssueTarget(cell); setCell(null); setIssueOpen(true); }}
         onRevoke={() => setRevokeOpen(true)}
       />
-      {cell && (
+      {issueTarget && (
         <IssueCertificationDialog
           open={issueOpen} onOpenChange={setIssueOpen}
-          employeeId={cell.employeeId} employeeName={cell.employeeName}
-          equipmentId={cell.equipmentId} equipmentName={cell.equipmentName}
-          renewalOf={cell.certification?.id}
+          employeeId={issueTarget.employeeId} employeeName={issueTarget.employeeName}
+          equipmentId={issueTarget.equipmentId} equipmentName={issueTarget.equipmentName}
+          renewalOf={issueTarget.certification?.id}
         />
       )}
       <RevokeCertificationDialog open={revokeOpen} onOpenChange={setRevokeOpen} pending={revoke.isPending} onConfirm={(reason) => revoke.mutate(reason)} />

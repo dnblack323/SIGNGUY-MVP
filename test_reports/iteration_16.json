@@ -1,0 +1,32 @@
+{
+  "summary": "FOCUSED RETEST of the 3 issues from iteration_15.json, plus light smoke check, per EC8 Phase 8f final closure request. All 3 fixes CONFIRMED WORKING via live browser UI testing. (1) Employee Portal quiz submission on assignment 0f1120be-bc2b-430f-b15f-f2fd3b48eea2 (Laminator Safety Quiz, employee 299a45ee...): wrong-answer attempt correctly scored 0% -> toast 'Scored 0% — failed', status changed to 'Failed', attempt history showed '#1 0%'. Correct retry attempt (same assignment) correctly scored 100% -> toast 'Scored 100% — passed', assignment status transitioned to 'Completed'. No 500 errors on either submission; quiz-retry-after-fail flow fully works end-to-end via UI. (2) Certifications Matrix tab: clicked a 'Missing' cell for TEST_Employee_360d468d/Forklift #1, clicked 'Issue' in ManageCertDialog (immediately opened standalone IssueCertificationDialog), submitted -> dialog closed immediately, toast 'Certification issued', and matrix cell updated live to 'Certified' with NO manual page reload needed. (3) Training AssignmentDetailDialog: opened dialog on a completed assignment - console showed NO 'Missing DialogTitle' warning (the specific warning that was fixed is gone). Note: a different, unrelated, pre-existing minor a11y warning ('Missing Description or aria-describedby for DialogContent') was observed - this is NOT the warning targeted by the fix and is out of scope for this retest, flagging only as an FYI. Light smoke check: 13 EC0-EC7 nav pages (Home, Leads, Quotes, Orders, Invoices, Customers, Work Orders list, Inventory, Team, Schedule, Timesheets, Finance, Settings) all loaded with zero console errors. Work Order AssignDialog on seeded WO (d31305ad.../W-4) block+warning rendering re-verified live: Forklift #1 renders as rose non-overridable hard block ('no valid Certification — this Equipment does not allow manager override'), Laminator A renders as amber overridable warning ('Certification expired — manager override available with a reason'), Save button correctly disabled when a hard block is present, toast 'Assignment blocked — see details below' shown, backend correctly returned 409. All behavior matches iteration_15's original passing spec - no regression.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AssignmentDetailDialog.jsx (Training) - loading-state branch (unrelated to the fix under retest)", "issue": "A different, pre-existing minor a11y console warning was observed when opening the dialog: 'Warning: Missing Description or aria-describedby={undefined} for {DialogContent}'. This is NOT the DialogTitle warning that was fixed (that one is confirmed gone) - it's a separate, lower-priority Radix a11y nicety (missing DialogDescription). Not a functional blocker, not in scope for this retest, flagging as FYI only.", "selector": "[role=\"dialog\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "All 3 retested fixes (quiz 500, Certifications Matrix stale-dialog, Training dialog DialogTitle warning) are CONFIRMED WORKING. No blocking issues found.",
+    "Optional/non-blocking FYI only (do not need to act unless doing further a11y polish later): AssignmentDetailDialog still emits a separate, lower-priority 'Missing Description for DialogContent' Radix warning distinct from the DialogTitle warning that was fixed.",
+    "EC8 Phase 8f can be considered closed from a UI-retest perspective - no new regressions found, all previously-reported issues resolved."
+  ],
+  "critical_code_review_comments": [
+    "The quiz fix (_backfill_quiz_question_ids + defensive q.get('id')) is confirmed effective end-to-end via UI: both fail and pass paths, plus retry-after-fail transition (failed -> completed) work correctly with no 409/500.",
+    "The Certifications Matrix decoupled issueTarget state fix works correctly - dialog closes immediately post-mutation and the matrix invalidates/refetches without a manual reload, consistent with the All Certifications tab's existing refresh pattern (unifying a previously-noted inconsistency)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not re-run (main agent already confirmed 312/312 pytest + curl this session)", "frontend": "100% (3/3 targeted fixes confirmed working, 0 regressions found in smoke pass)"},
+  "test_credentials": "Used AUTH_DEV_BYPASS dev-login for Dev Shop Owner (POST /api/auth/dev-login) + POST /api/dev-tools/mint-employee-portal-login + POST /api/portal/auth/magic-link/verify per /app/memory/test_credentials.md (fresh raw token minted for this run, single-use as documented). No gaps found in test_credentials.md.",
+  "seed_data_creation": "Used pre-existing fresh training assignment 0f1120be-bc2b-430f-b15f-f2fd3b48eea2 (not_started, same definition as the already-completed 561817f0 one) to exercise the quiz UI flow fresh - now left in 'completed' state (100%, 2 attempts) as a permanent record, non-destructive dev sandbox data. Issued a real certification for TEST_Employee_360d468d on Forklift #1 via the Matrix Issue dialog to verify the live-refresh fix (data persisted, left in place, dev sandbox, non-destructive).",
+  "retest_needed": false,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "This was the final EC8 Phase 8f closure retest. All 3 issues from iteration_15.json are now fixed and verified via live browser UI (not just curl): quiz submission (pass/fail/retry-after-fail), Certifications Matrix live refresh, and Training dialog DialogTitle a11y warning. Light EC0-EC7 smoke pass + Work Order AssignDialog block/warning re-check both passed with zero console errors/regressions. No further action needed for EC8 closure. Only a minor unrelated FYI-level a11y warning (DialogDescription, not DialogTitle) remains on AssignmentDetailDialog if the team wants to polish further in a future phase - not a blocker.",
+  "rca_of_the_issue": "N/A for this retest pass - all 3 previously-identified root causes (quiz KeyError, Certifications Matrix stale dialog state, missing DialogTitle) were already fixed by main agent prior to this session and are now confirmed resolved via UI verification."
+}

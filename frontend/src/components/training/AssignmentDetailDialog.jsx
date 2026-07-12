@@ -48,7 +48,10 @@ export default function AssignmentDetailDialog({ assignmentId, open, onOpenChang
 
   if (!a) return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="training-assignment-detail-dialog"><div className="text-sm text-muted-foreground">Loading…</div></DialogContent>
+      <DialogContent data-testid="training-assignment-detail-dialog">
+        <DialogHeader><DialogTitle>Assignment · {employeeName}</DialogTitle></DialogHeader>
+        <div className="text-sm text-muted-foreground">Loading…</div>
+      </DialogContent>
     </Dialog>
   );
 

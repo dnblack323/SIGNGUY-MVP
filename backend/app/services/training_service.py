@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Optional
+from uuid import uuid4
 
 from ..core.db import db
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
@@ -49,7 +50,22 @@ def public_definition_view(defn: dict) -> dict:
 # Training Definitions
 # ---------------------------------------------------------------------------
 
+def _backfill_quiz_question_ids(fields: dict[str, Any]) -> None:
+    """Every stored quiz question must carry a stable `id` so quiz
+    submissions can reference it unambiguously — the field is `list[dict]`
+    with no schema enforcement, so a caller (API client, script, or an
+    older definition) may omit it. Assign one server-side if missing,
+    in place, so scoring never has to guess a key name."""
+    questions = fields.get("quiz_questions")
+    if not questions:
+        return
+    for q in questions:
+        if not q.get("id"):
+            q["id"] = str(uuid4())
+
+
 async def create_training_definition(*, tenant_id: str, actor_user_id: str, actor_email: str, **fields: Any) -> dict:
+    _backfill_quiz_question_ids(fields)
     doc = TrainingDefinition(tenant_id=tenant_id, created_by=actor_user_id, updated_by=actor_user_id, **fields).model_dump()
     await db.training_definitions.insert_one(prepare_for_mongo(dict(doc)))
     await record_activity_with_audit(
@@ -80,6 +96,7 @@ async def list_training_definitions(*, tenant_id: str, equipment_id: Optional[st
 
 async def update_training_definition(*, tenant_id: str, training_definition_id: str, actor_user_id: str, actor_email: str, **fields: Any) -> dict:
     existing = await get_training_definition(tenant_id=tenant_id, training_definition_id=training_definition_id)
+    _backfill_quiz_question_ids(fields)
     fields["updated_by"] = actor_user_id
     fields["updated_at"] = utc_now().isoformat()
     if any(k in fields for k in ("quiz_questions", "required_steps", "passing_score", "practical_signoff_required")):
@@ -268,7 +285,7 @@ async def submit_quiz_attempt(
     if not questions:
         raise TrainingError(400, "This Training has no quiz questions")
     answer_map = {ans["question_id"]: ans.get("selected_index") for ans in answers}
-    correct = sum(1 for q in questions if answer_map.get(q["id"]) == q.get("correct_index"))
+    correct = sum(1 for q in questions if answer_map.get(q.get("id")) == q.get("correct_index"))
     score = round(100 * correct / len(questions))
     passing_score = defn.get("passing_score") or 0
     passed = score >= passing_score
