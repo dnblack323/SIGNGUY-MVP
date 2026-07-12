@@ -1,6 +1,10 @@
-# EC8 Evidence — Phase 8a (Employees & Team Foundation)
+# EC8 Evidence — Phase 8a (Employees & Team Foundation) + Phase 8b (Time Clock & Timesheets)
 
-**Status: EC8 — IN PROGRESS.** Phase 8a complete and tested. Phases 8b–8f not started. EC8 as a whole is NOT complete. EC9 has not begun.
+**Status: EC8 — IN PROGRESS.** Phase 8a DELIVERED. Phase 8b DELIVERED. Phases 8c–8f not started. EC8 as a whole is NOT complete. EC9 has not begun.
+
+---
+
+## Phase 8a — Employees & Team Foundation
 
 ## Files added
 - `backend/app/models/employee.py` — `Employee` model (statuses: active/suspended/inactive/terminated/archived; `linked_user_id` optional pointer to `User`; no sensitive payroll fields per owner directive).
@@ -55,5 +59,54 @@ Every Employee create/update/status-change and every Announcement create/publish
 - Optional cosmetic polish: Hire date field uses a native date input instead of the shadcn Calendar component (not fixed, non-blocking).
 - Employee Portal, Time Clock, Timesheets, Team Schedule, Payroll, Equipment/Training/Certification are all NOT built — Phase 8b onward.
 
-## Remaining Phase 8b scope (not started)
-Time Clock (clock in/out, breaks, duplicate/overlap prevention, manual correction history, missed-clock handling) + Timesheets (daily/weekly/monthly, approval foundation) — per the approved phasing, next only on explicit owner authorization.
+## Remaining Phase 8b scope (delivered — see full detail below)
+
+---
+
+## Phase 8b — Time Clock & Timesheets
+
+### Files added
+- `backend/app/models/time_entry.py` — `TimeEntry` (minute-based, `status` open/completed/void, `breaks` list, `corrections` audit list, `source` self/admin).
+- `backend/app/models/timesheet.py` — `Timesheet` (daily/weekly aggregation, `status` pending/submitted/approved/rejected, `review_history`).
+- `backend/app/core/time_period_utils.py` — Saturday–Friday week-boundary math using `tenant_timezone`.
+- `backend/app/services/time_clock_service.py` — clock-in/out, break start/end, overlap + duplicate-open-entry prevention, admin correction (reason-required), void (reason-required), `team_status`.
+- `backend/app/services/timesheet_service.py` — `period_summary` (daily/weekly/monthly), `get_or_create_weekly_timesheet`, approve/reject/reopen, `refresh_after_time_entry_change` (recomputes aggregates whenever a `TimeEntry` changes).
+- `backend/app/routers/time_clock.py` — `/api/time-clock/*` (self: `/me`, `/clock-in`, `/clock-out`, `/break-start`, `/break-end`, `/entries`; admin: `/team-status`, `/{employee_id}/status`, `/{employee_id}/clock-in|out|break-start|break-end`, `/entries/all`, `/entries/{id}/correct`, `/entries/{id}/void`).
+- `backend/app/routers/timesheets.py` — `/api/timesheets/*` (`/summary`, `/weekly`, list, `/pending-review`, `/{id}/approve|reject|reopen`).
+- `backend/tests/test_ec8b_time_clock.py`, `backend/tests/test_ec8b_timesheets.py` — 17 targeted tests (tenant isolation, self-vs-manager scope, duplicate/overlap prevention, Sat–Fri week boundary).
+- Frontend: `pages/TimeClockPage.jsx` (`/team/time-clock`), `pages/TimesheetsPage.jsx` (`/team/timesheets`).
+- `backend/app/routers/dev_tools.py` — **dev-only, idempotent** fixture: `POST /api/dev-tools/ensure-dev-employee` links the `dev-login` auto-provisioned Owner `User` to an `Employee` record (see "Dev fixture" below).
+
+### Files changed
+- `backend/server.py` — registered `time_clock`, `timesheets`, and `dev_tools` routers.
+- `frontend/src/lib/navigation.js` — enabled `flyout-time-clock`, `flyout-timesheets`.
+- `frontend/src/App.js` — added routes `/team/time-clock`, `/team/timesheets`.
+
+### Dev fixture — `POST /api/dev-tools/ensure-dev-employee` (development-only blocker fix)
+**Problem:** `dev-login` auto-provisions a Dev Shop tenant + Owner `User` but never an `Employee`. Time Clock/Timesheet self-endpoints resolve the acting employee via `Employee.linked_user_id`, so the dev owner got `400/404 "No employee record is linked to your account"` on every clock action — blocking manual verification in a preview environment that may reset its data.
+
+**Fix (narrowly scoped, dev-only):**
+- New endpoint refuses outside `ENV=development` + `AUTH_DEV_BYPASS=true` (identical guard pattern to `auth.py`'s existing `/auth/_dev/last-reset-token` and `/auth/dev-config` — disabled in production even if the bypass flag were somehow set there).
+- **Idempotent**: looks up an existing `Employee` by `linked_user_id` first; only calls `employee_service.create_employee` (the same Phase 8a creation path used by the real Employees API — no parallel creation logic) if none exists. Verified by calling it twice in a row — second call returned `"created": false` with the identical employee `id`.
+- Does **not** modify `dev-login` or any production auth/identity-provisioning code. Normal login still never creates an Employee record. Payroll-domain creation stays fully separate from auth.
+
+**Verified (curl, this session):**
+1. `POST /api/dev-login` → Dev Shop Owner token.
+2. `POST /api/dev-tools/ensure-dev-employee` (call #1) → `created: true`, new Employee `299a45ee-...` (`role_label: "Owner/Admin"`, `status: "active"`).
+3. `POST /api/dev-tools/ensure-dev-employee` (call #2) → `created: false`, same Employee `id` — **no duplicate created**.
+4. Full self clock cycle on that employee: `GET /time-clock/me` (null) → `POST /clock-in` (200, `status: open`) → `POST /break-start` → `POST /break-end` → `POST /clock-out` (200, `status: completed`) → `GET /time-clock/me` (`active_entry: null`).
+5. `GET /timesheets/summary?period=daily&date=2026-07-12` → 200.
+6. `GET /timesheets/weekly?week_start=2026-07-11` → 200, `week_end: 2026-07-17` confirming the Saturday→Friday boundary.
+7. Re-ran targeted pytest: `test_ec8b_time_clock.py` + `test_ec8b_timesheets.py` → **17/17 passing** (includes `test_employee_cannot_manage_another_employee` [403], `test_tenant_isolation_on_entries`, `test_self_view_and_other_employee_privacy` [403] — the isolation/self-access boundary is covered here, not re-derived via curl).
+8. UI smoke: `/team/time-clock` renders with real data — "Dev Owner" card shows live clock state, "Team Time Clock" panel lists employees.
+
+### Targeted tests run (Phase 8b)
+- `backend/tests/test_ec8b_time_clock.py` + `backend/tests/test_ec8b_timesheets.py` — **17/17 passing.**
+- Full EC0–EC7 regression and `testing_agent_v4_fork` intentionally **NOT run** — reserved for Phase 8f per the owner's credit-conservation instruction.
+
+### Known limitations (Phase 8b)
+- Payroll gross-pay figures (`estimated_gross_cents`) are computed from `Employee.hourly_rate_cents` but there is no payroll export/ledger yet — that's Phase 8d.
+- Missed-clock detection exists as a count (`missed_clock_count`) on the timesheet summary; no notification/reminder system yet.
+
+## Remaining Phase 8c scope (not started)
+Scheduling and Employee Portal — per the approved phasing, next only on explicit owner authorization.

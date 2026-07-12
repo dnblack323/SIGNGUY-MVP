@@ -132,6 +132,11 @@ from app.routers import timesheets as timesheets_router_module
 api_router.include_router(time_clock_router_module.router)
 api_router.include_router(timesheets_router_module.router)
 
+# EC8 — Phase 8b dev-only fixture: links dev-login Owner to an Employee record
+# (idempotent, refuses outside development — see routers/dev_tools.py)
+from app.routers import dev_tools as dev_tools_router_module
+api_router.include_router(dev_tools_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(
