@@ -27,6 +27,8 @@ Constraints:
 | EC4 — Invoices, Payments, and Stripe Core | COMPLETE | `/app/evidence/EC4_evidence.md` |
 | EC5 — Production and Work Orders | COMPLETE | `/app/evidence/EC5_evidence.md` |
 | **EC6 — Asset Library, Proofs, Signatures, Customer Portal** | **COMPLETE** | `/app/evidence/EC6_evidence.md` — 161/161 backend + `testing_agent_v3_fork` iteration 9 100% pass |
+| **EC3.1 — Pricing Foundation Verification & Full Calculator Category Coverage** | **REQUIRED — SCHEDULED (permanent scope)** | Master plan Appendix A.2 — every calculator category, formulas, shop rate/labor/materials/waste/markup/margin/minimums/complexity/add-ons/templates, snapshots, tests. Must land before EC14. |
+| **EC6.3 — Order Intake Capture & Visual Markup** | **REQUIRED — SCHEDULED (permanent scope)** | Master plan Appendix A.1 — image + camera + PDF uploads, drawing on images + blank canvas, version history, attach to Proofs/WOs/WOSummaries, controlled portal visibility, in-person signature capture bound to exact target with immutable audit. Reuses EC2 + EC6, no parallel system. Must land before EC14. |
 | EC6.2 — Signed PDF Composite Rendering | DEFERRED (unscheduled) | `/app/memory/product_ideas_register.md` — reconsider during EC14 Final Hardening, or earlier only on a verified customer/compliance/operational requirement. Do NOT schedule during EC7. |
 | **EC7 — Inventory, Purchasing, Finance, Reporting** | READY TO BUILD | pending owner execution prompt |
 | EC8–EC14 | NOT STARTED | dependency-ordered per master plan |
@@ -61,6 +63,10 @@ Constraints:
 
 ### P0 — Immediate next checkpoint
 - Await owner's EC7 execution prompt: **EC7 — Inventory, Purchasing, Finance, and Reporting** (authoritative title per master plan).
+
+### Permanent scope — REQUIRED before EC14 Final Hardening (owner-locked)
+- **EC3.1 Pricing Foundation Verification & Full Calculator Category Coverage** — every calculator category + formulas, shop rate/labor/materials/waste/markup/margin/minimum charges/complexity/add-ons/templates, snapshots, and pytest coverage with known expected pricing examples. Reuses EC3 pricing services; no parallel pricing system. Master plan Appendix A.2.
+- **EC6.3 Order Intake Capture & Visual Markup** — image + camera + PDF uploads bound to Customer/Quote/Order/Order Item, drawing on image + blank canvas, versioned annotations, attach approved markups to Proofs/Work Orders/Work Order Summaries, controlled portal visibility, **in-person customer signature capture** bound to exact Order/Order Item/drawing/image version/measurement/approval content with immutable audit. Reuses EC2 files/links/storage/audit + EC6 Proof/Approval/SignatureRequest/Signature; no parallel file/drawing/approval/signature system. Master plan Appendix A.1.
 
 ### P1 — After EC7
 - EC8 Team, Scheduling, Time, Payroll (+ Employee Portal).

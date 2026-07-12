@@ -2739,3 +2739,62 @@ This consolidated plan was produced from and must remain synchronized with:
 7. `Module Documentation Template.txt` — required module documentation structure.
 
 When this plan is updated, the changes must be reconciled back into the scope register, readiness matrix, source map, and `AGENT_INSTRUCTIONS.md`. No isolated planning fork is allowed.
+
+---
+
+## Appendix A — Owner-locked permanent-scope addenda (post-issue)
+
+The following requirements are **permanent product scope** and must be delivered before EC14 Final Hardening. Neither may be treated as an optional product idea, a deferred nice-to-have, or an implicit capability. Both are assigned to explicit named checkpoints below.
+
+### A.1 EC6.3 — Order Intake Capture and Visual Markup (permanent scope)
+
+**Scope owner:** the Order-taking workflow.
+**Nature:** permanent, required. NOT an optional idea. NOT part of any deferred register.
+**Reuses:** EC2 FileRecord + file-link + object-storage + document-share + audit + activity; EC6 Proof + Approval + Signature Request + Signature + portal-visibility systems.
+**Must not:** create a parallel file, drawing, approval, or signature system.
+
+The Order-taking workflow must support:
+- Uploading one or more images.
+- Taking a photo directly from a supported phone, tablet, or computer camera.
+- Attaching customer artwork, logos, PDFs, and reference files.
+- Linking files to the Customer, Quote, Order, and individual Order Item.
+- Drawing directly on an image.
+- Freehand sketching on a blank canvas.
+- Arrows, circles, boxes, text, notes, and measurement labels.
+- Preserving the original image separately from every marked-up version.
+- Version history for drawings and annotations.
+- Attaching approved marked-up versions to Proofs, Work Orders, and Work Order Summaries.
+- Intentionally controlled Customer Portal visibility.
+- **In-person customer signature capture during Order intake.**
+- Signature binding to the exact Order, Order Item, drawing, image version, measurements, or approval content.
+- Signer name, timestamp, actor, source device or session metadata where appropriate, and immutable audit history.
+- No silent overwrite of previously signed or approved content.
+
+The product requires **both** delivery modes: (a) formal remote Signature Requests through scoped portal or public-token workflows (already delivered by EC6), and (b) fast in-person signature capture while staff are creating or reviewing an Order with a customer (delivered by EC6.3). The EC6.3 in-person capture surface must reuse the EC6 `SignatureRequest` + `Signature` schema — no second signature system.
+
+### A.2 EC3.1 — Pricing Foundation Verification and Full Calculator Category Coverage (permanent scope)
+
+**Scope owner:** the Pricing Foundation.
+**Nature:** permanent, required. Confirms that the complete Pricing Foundation and all custom calculator categories remain required permanent scope even though EC3 shipped the initial subset.
+**Reuses:** EC3 pricing services, Quote and Order Item integration, historical pricing snapshots.
+
+The full Pricing Foundation must include (and be verified by tests using known expected pricing examples):
+- Every calculator category (per master-plan pricing register).
+- Category-specific fields and formulas.
+- Shop rate.
+- Labor.
+- Materials.
+- Waste.
+- Markup and margin.
+- Minimum charges.
+- Complexity.
+- Add-ons.
+- Templates.
+- Quote and Order Item integration.
+- Historical pricing snapshots.
+- Tests using known expected pricing examples for every calculator category.
+
+### Scheduling constraint
+
+Both EC6.3 and EC3.1 must land **before EC14 Final Hardening** and must not be silently absorbed into another checkpoint or dropped. They are visible in the progress register with explicit `REQUIRED — SCHEDULED` status until they are marked COMPLETE. Neither may become an "implied capability" — each must produce its own preflight, evidence, and pytest suite.
+
