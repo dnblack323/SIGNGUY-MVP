@@ -203,6 +203,11 @@ STAFF_PERMS: list[str] = [
     Perm.AUDIT_READ.value,
     Perm.DASHBOARD_READ.value,
     Perm.PRICING_READ.value, Perm.PRICING_CALCULATE.value,
+    # EC8 phase 8b — every staff login may clock themselves in/out and view
+    # their own timesheet (if linked to an Employee record). Viewing/managing
+    # OTHER employees' time remains owner/admin only (timeclock:manage etc.
+    # are granted only via OWNER_ADMIN_PERMS).
+    Perm.TIMECLOCK_SELF.value, Perm.TIMESHEET_SELF.value,
 ]
 
 ROLE_PERMISSIONS: dict[str, list[str]] = {

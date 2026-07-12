@@ -126,6 +126,12 @@ api_router.include_router(employees_router_module.router)
 api_router.include_router(team_dashboard_router_module.router)
 api_router.include_router(announcements_router_module.router)
 
+# EC8 — Phase 8b Time Clock + Timesheets
+from app.routers import time_clock as time_clock_router_module
+from app.routers import timesheets as timesheets_router_module
+api_router.include_router(time_clock_router_module.router)
+api_router.include_router(timesheets_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

@@ -315,4 +315,19 @@ async def ensure_indexes() -> None:
     await db.announcements.create_index("id", unique=True)
     await db.announcements.create_index([("tenant_id", 1), ("status", 1), ("published_at", -1)])
 
+    # ---- EC8 phase 8b — Time Clock + Timesheets ----
+    await db.time_entries.create_index("id", unique=True)
+    await db.time_entries.create_index(
+        [("tenant_id", 1), ("employee_id", 1)],
+        unique=True,
+        partialFilterExpression={"status": "open"},
+    )
+    await db.time_entries.create_index([("tenant_id", 1), ("employee_id", 1), ("clock_in_at", -1)])
+    await db.time_entries.create_index([("tenant_id", 1), ("work_date", 1)])
+    await db.time_entries.create_index([("tenant_id", 1), ("status", 1)])
+
+    await db.timesheets.create_index("id", unique=True)
+    await db.timesheets.create_index([("tenant_id", 1), ("employee_id", 1), ("week_start", 1)], unique=True)
+    await db.timesheets.create_index([("tenant_id", 1), ("status", 1), ("week_start", -1)])
+
     logger.info("MongoDB indexes ensured")

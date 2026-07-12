@@ -49,3 +49,19 @@ export function relativeTime(iso) {
     return iso;
   }
 }
+
+export function formatMinutes(mins) {
+  const total = Math.max(0, Math.round(Number(mins) || 0));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${h}h ${m}m`;
+}
+
+export function formatClockTime(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  } catch {
+    return iso;
+  }
+}

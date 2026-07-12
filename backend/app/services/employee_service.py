@@ -64,6 +64,11 @@ async def get_employee(*, tenant_id: str, employee_id: str) -> dict:
     return serialize_doc(doc)
 
 
+async def get_employee_by_linked_user(*, tenant_id: str, user_id: str) -> Optional[dict]:
+    doc = await db.employees.find_one({"tenant_id": tenant_id, "linked_user_id": user_id}, {"_id": 0})
+    return serialize_doc(doc) if doc else None
+
+
 async def update_employee(*, tenant_id: str, employee_id: str, actor_user_id: str, actor_email: str, payload: dict) -> dict:
     existing = await db.employees.find_one({"id": employee_id, "tenant_id": tenant_id}, {"_id": 0})
     if not existing:

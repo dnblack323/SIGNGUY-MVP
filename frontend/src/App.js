@@ -45,6 +45,8 @@ import TeamDashboardPage from "@/pages/TeamDashboardPage";
 import EmployeesPage from "@/pages/EmployeesPage";
 import EmployeeDetailPage from "@/pages/EmployeeDetailPage";
 import AnnouncementsPage from "@/pages/AnnouncementsPage";
+import TimeClockPage from "@/pages/TimeClockPage";
+import TimesheetsPage from "@/pages/TimesheetsPage";
 import { Toaster } from "sonner";
 
 function LoggedInHome() {
@@ -96,6 +98,8 @@ function App() {
             <Route path="/team/employees" element={<EmployeesPage />} />
             <Route path="/team/employees/:id" element={<EmployeeDetailPage />} />
             <Route path="/team/announcements" element={<AnnouncementsPage />} />
+            <Route path="/team/time-clock" element={<TimeClockPage />} />
+            <Route path="/team/timesheets" element={<TimesheetsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/company" element={<CompanySettingsPage />} />
             <Route path="/settings/integrations" element={<IntegrationsPage />} />
