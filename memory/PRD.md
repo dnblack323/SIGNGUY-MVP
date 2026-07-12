@@ -31,7 +31,7 @@ Constraints:
 | **EC6.3 — Order Intake Capture & Visual Markup** | **REQUIRED — SCHEDULED (permanent scope)** | Master plan Appendix A.1 — image + camera + PDF uploads, drawing on images + blank canvas, version history, attach to Proofs/WOs/WOSummaries, controlled portal visibility, in-person signature capture bound to exact target with immutable audit. Reuses EC2 + EC6, no parallel system. Must land before EC14. |
 | EC6.2 — Signed PDF Composite Rendering | DEFERRED (unscheduled) | `/app/memory/product_ideas_register.md` — reconsider during EC14 Final Hardening, or earlier only on a verified customer/compliance/operational requirement. Do NOT schedule during EC7. |
 | **EC7 — Inventory, Purchasing, Finance, Reporting** | **COMPLETE** (all phases 7a+7b+7c+7d delivered; frontend closure workflows landed; `testing_agent_v3_fork` regression PASS) | `/app/evidence/EC7_evidence.md` + `/app/docs/modules/EC7_INVENTORY_PURCHASING_FINANCE.md`. Backend 215/215 green. Frontend Jest 25/25 green. Regression report `/app/test_reports/iteration_10.json`. |
-| **EC8 — Team, Scheduling, Time, Payroll, Employee Portal, Equipment Training & Certification** | **PREFLIGHT COMPLETE — AWAITING OWNER APPROVAL TO IMPLEMENT** | `/app/preflight/EC8_TEAM_SCHEDULING_TIME_PAYROLL_EMPLOYEE_PORTAL_PREFLIGHT.md`. Documentation-only pass: source map (nothing exists yet in MVP for this domain except unused scaffolded permission enum values + disabled nav placeholders), data model, keep/rebuild/remove, proposed architecture, dependencies, risks, acceptance-test list, permission set, and 8a–8f phasing proposal. Equipment/Training/Certification added as owner-locked permanent EC8 scope — see master plan Appendix A.5. No implementation code written. |
+| **EC8 — Team, Scheduling, Time, Payroll, Employee Portal, Equipment Training & Certification** | **IN PROGRESS — Phase 8a complete (Employees & Team Foundation). Phases 8b–8f not started.** | `/app/evidence/EC8_evidence.md`. Employee CRUD + status transitions, Announcements (draft/publish), Team Dashboard, EC8 permission-catalog rename — all backend-tested (30/30 pytest) and `testing_agent_v4_fork` iteration_11 verified (100% pass, zero bugs). Phase 8b (Time Clock/Timesheets) requires explicit owner authorization before starting. |
 | EC9–EC14 | NOT STARTED | dependency-ordered per master plan |
 
 ## Completed capabilities
@@ -64,10 +64,10 @@ Constraints:
 ## Priority backlog (P0/P1/P2)
 
 ### P0 — Immediate next checkpoint
-- EC8 preflight is COMPLETE. Awaiting owner's answers to the EC8 ask_human gate (existing source findings, reuse/rebuild split, permission set, phasing, repository-class question, migration risks) before any EC8 implementation code is written.
+- EC8 Phase 8a (Employees & Team Foundation) is COMPLETE and tested. Awaiting owner's explicit authorization to begin Phase 8b (Time Clock & Timesheets). Do not start 8b until that prompt arrives.
 
-### P1 — EC8 (preflight complete, implementation not started)
-- Phase 8a — Employees & Team Foundation (+ Tasks & Kanban)
+### P1 — EC8 (Phase 8a complete; 8b–8f not started)
+- Phase 8a — Employees & Team Foundation ✅ DONE
 - Phase 8b — Time Clock & Timesheets
 - Phase 8c — Scheduling & Employee Portal
 - Phase 8d — Payroll (pay periods, transactions ledger, advances/payments/carryover, My Pay, exports)
