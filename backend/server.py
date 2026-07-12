@@ -150,6 +150,14 @@ api_router.include_router(portal_employee_router_module.router)
 from app.routers import payroll as payroll_router_module
 api_router.include_router(payroll_router_module.router)
 
+# EC8 — Phase 8e Equipment, Training & Certification + Work Order enforcement
+from app.routers import equipment as equipment_router_module
+from app.routers import training as training_router_module
+from app.routers import certification as certification_router_module
+api_router.include_router(equipment_router_module.router)
+api_router.include_router(training_router_module.router)
+api_router.include_router(certification_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

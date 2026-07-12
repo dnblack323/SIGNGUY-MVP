@@ -72,6 +72,7 @@ class RegenerateIn(BaseModel):
 
 class AssignIn(BaseModel):
     user_ids: list[str] = Field(default_factory=list)
+    override_reason: Optional[str] = None
 
 
 class PatchIn(BaseModel):
@@ -80,6 +81,14 @@ class PatchIn(BaseModel):
     priority: Optional[Literal["low", "normal", "high", "rush"]] = None
     due_date: Optional[str] = None
     department: Optional[str] = None
+    # EC8 phase 8e — optional assignment-eligibility requirements (advisory/gating metadata only)
+    required_equipment_ids: Optional[list[str]] = None
+    required_skill: Optional[str] = None
+    required_role: Optional[str] = None
+
+
+class AssignmentCheckIn(BaseModel):
+    user_ids: list[str] = Field(default_factory=list)
 
 
 # ---- List / Detail ----
@@ -216,13 +225,30 @@ async def legacy_status(
 
 @router.post("/{wo_id}/assign")
 async def assign_wo(wo_id: str, payload: AssignIn, user: dict = Depends(require_permission(Perm.WORK_ORDER_WRITE))) -> dict:
+    from ..services.certification_service import AssignmentBlockedError, AssignmentWarningError
     try:
         return await assign(
             tenant_id=user["tenant_id"], work_order_id=wo_id, user_ids=payload.user_ids,
-            actor_user_id=user["id"], actor_email=user["email"],
+            actor_user_id=user["id"], actor_email=user["email"], override_reason=payload.override_reason,
         )
+    except AssignmentBlockedError as ex:
+        raise HTTPException(status_code=409, detail={"message": "assignment_blocked", "check": ex.check})
+    except AssignmentWarningError as ex:
+        raise HTTPException(status_code=409, detail={"message": "assignment_warning_override_required", "check": ex.check})
     except ValueError as ex:
         _raise(ex)
+
+
+@router.post("/{wo_id}/assignment-check")
+async def assignment_check_wo(wo_id: str, payload: AssignmentCheckIn, user: dict = Depends(require_permission(Perm.WORK_ORDER_READ))) -> dict:
+    """Backend-authoritative precheck — the SAME function is called again by
+    `assign()` itself, so this is a convenience preview only, never trusted
+    as the sole gate."""
+    from ..services.certification_service import check_work_order_assignment
+    doc = await db.work_orders.find_one({"id": wo_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Work order not found")
+    return await check_work_order_assignment(tenant_id=user["tenant_id"], work_order=doc, user_ids=payload.user_ids)
 
 
 # ---- Summary ----

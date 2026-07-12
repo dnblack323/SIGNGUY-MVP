@@ -376,4 +376,39 @@ async def ensure_indexes() -> None:
     )
     await db.payroll_carryovers.create_index([("tenant_id", 1), ("employee_id", 1), ("source_period_id", 1)])
 
+    # ---- EC8 phase 8e — Equipment, Training & Certification ----
+    await db.equipment.create_index("id", unique=True)
+    await db.equipment.create_index([("tenant_id", 1), ("status", 1)])
+    await db.equipment.create_index([("tenant_id", 1), ("category", 1)])
+
+    await db.training_definitions.create_index("id", unique=True)
+    await db.training_definitions.create_index([("tenant_id", 1), ("active", 1)])
+    await db.training_definitions.create_index([("tenant_id", 1), ("equipment_id", 1)])
+
+    await db.training_assignments.create_index("id", unique=True)
+    await db.training_assignments.create_index([("tenant_id", 1), ("employee_id", 1), ("status", 1)])
+    await db.training_assignments.create_index([("tenant_id", 1), ("due_date", 1)])
+    await db.training_assignments.create_index([("tenant_id", 1), ("equipment_id", 1)])
+    await db.training_assignments.create_index([("tenant_id", 1), ("training_definition_id", 1)])
+
+    await db.quiz_attempts.create_index("id", unique=True)
+    await db.quiz_attempts.create_index([("tenant_id", 1), ("training_assignment_id", 1), ("attempt_number", 1)])
+
+    await db.practical_signoffs.create_index("id", unique=True)
+    await db.practical_signoffs.create_index([("tenant_id", 1), ("training_assignment_id", 1)])
+
+    await db.certifications.create_index("id", unique=True)
+    await db.certifications.create_index([("tenant_id", 1), ("employee_id", 1), ("status", 1)])
+    await db.certifications.create_index([("tenant_id", 1), ("equipment_id", 1), ("status", 1)])
+    await db.certifications.create_index([("tenant_id", 1), ("expiration_date", 1)])
+    # Prevents two simultaneously-"certified" rows for the same Employee+Equipment (duplicate active certification).
+    await db.certifications.create_index(
+        [("tenant_id", 1), ("employee_id", 1), ("equipment_id", 1), ("status", 1)],
+        unique=True,
+        partialFilterExpression={"status": "certified", "equipment_id": {"$type": "string"}},
+    )
+
+    # document_links — first actively wired up in EC8 phase 8e (Equipment/Training docs)
+    await db.document_links.create_index([("tenant_id", 1), ("entity_type", 1), ("entity_id", 1)])
+
     logger.info("MongoDB indexes ensured")

@@ -208,6 +208,10 @@ STAFF_PERMS: list[str] = [
     # OTHER employees' time remains owner/admin only (timeclock:manage etc.
     # are granted only via OWNER_ADMIN_PERMS).
     Perm.TIMECLOCK_SELF.value, Perm.TIMESHEET_SELF.value,
+    # EC8 phase 8e — every staff login may view/complete their OWN assigned
+    # Training (if linked to an Employee record), mirroring the
+    # TIMECLOCK_SELF/TIMESHEET_SELF self-service convention above.
+    Perm.TRAINING_SELF.value,
 ]
 
 ROLE_PERMISSIONS: dict[str, list[str]] = {

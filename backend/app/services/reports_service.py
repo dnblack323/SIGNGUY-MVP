@@ -354,6 +354,72 @@ async def _payroll_by_employee(*, tenant_id: str, filters: dict) -> list[dict]:
     return [{**{k: v for k, v in r.items() if k != "_id"}} for r in result]
 
 
+# -------- Equipment / Training / Certification reports (EC8 phase 8e) --------
+# All 5 reuse `certification_service`/`training_service`/`equipment_service`
+# read logic rather than re-querying raw collections directly — same
+# single-source-of-truth principle as the payroll reports above.
+
+async def _certification_matrix_flat(*, tenant_id: str, filters: dict) -> list[dict]:
+    from . import certification_service as cs
+    from ..core.db import db as _db
+    employees = [serialize_doc(d) async for d in _db.employees.find({"tenant_id": tenant_id, "status": {"$ne": "archived"}}, {"_id": 0})]
+    equipment_map = {e["id"]: e async for e in _db.equipment.find({"tenant_id": tenant_id}, {"_id": 0})}
+    certs = await cs.list_certifications(tenant_id=tenant_id, employee_id=filters.get("employee_id"), equipment_id=filters.get("equipment_id"))
+    emp_names = {e["id"]: e["name"] for e in employees}
+    rows = []
+    for c in certs:
+        eq = equipment_map.get(c.get("equipment_id"), {})
+        rows.append({
+            "employee_name": emp_names.get(c["employee_id"], c["employee_id"]),
+            "equipment_name": eq.get("name") or c.get("certification_type") or "—",
+            "status": cs.effective_status(c), "issued_date": c.get("issued_date"),
+            "expiration_date": c.get("expiration_date"), "expires_soon": c.get("expires_soon", False),
+            "restrictions": c.get("restrictions"),
+        })
+    return rows
+
+
+async def _expiring_certifications(*, tenant_id: str, filters: dict) -> list[dict]:
+    rows = await _certification_matrix_flat(tenant_id=tenant_id, filters=filters)
+    return [r for r in rows if r["expires_soon"] or r["status"] == "expired"]
+
+
+async def _incomplete_training(*, tenant_id: str, filters: dict) -> list[dict]:
+    from ..core.db import db as _db
+    q: dict[str, Any] = {"tenant_id": tenant_id, "status": {"$in": ["not_started", "in_progress", "pending_signoff"]}}
+    if filters.get("employee_id"): q["employee_id"] = filters["employee_id"]
+    employees = {e["id"]: e["name"] async for e in _db.employees.find({"tenant_id": tenant_id}, {"_id": 0, "id": 1, "name": 1})}
+    defs = {d["id"]: d["title"] async for d in _db.training_definitions.find({"tenant_id": tenant_id}, {"_id": 0, "id": 1, "title": 1})}
+    rows = []
+    async for a in _db.training_assignments.find(q, {"_id": 0}):
+        a = serialize_doc(a)
+        rows.append({
+            "employee_name": employees.get(a["employee_id"], a["employee_id"]),
+            "training_title": defs.get(a["training_definition_id"], a["training_definition_id"]),
+            "status": a["status"], "progress_percent": a.get("progress_percent", 0),
+            "due_date": a.get("due_date"), "assigned_at": a.get("assigned_at"),
+        })
+    return rows
+
+
+async def _overdue_training(*, tenant_id: str, filters: dict) -> list[dict]:
+    from . import training_service
+    items = await training_service.list_assignments(tenant_id=tenant_id, employee_id=filters.get("employee_id"))
+    from ..core.db import db as _db
+    employees = {e["id"]: e["name"] async for e in _db.employees.find({"tenant_id": tenant_id}, {"_id": 0, "id": 1, "name": 1})}
+    defs = {d["id"]: d["title"] async for d in _db.training_definitions.find({"tenant_id": tenant_id}, {"_id": 0, "id": 1, "title": 1})}
+    return [{
+        "employee_name": employees.get(a["employee_id"], a["employee_id"]),
+        "training_title": defs.get(a["training_definition_id"], a["training_definition_id"]),
+        "status": a["status"], "due_date": a.get("due_date"),
+    } for a in items if a.get("overdue")]
+
+
+async def _equipment_access_report(*, tenant_id: str, filters: dict) -> list[dict]:
+    from . import equipment_service
+    return await equipment_service.access_report(tenant_id=tenant_id)
+
+
 REPORTS: dict[str, dict[str, Any]] = {
     # -- Inventory --
     "inventory.on_hand": {
@@ -601,6 +667,67 @@ REPORTS: dict[str, dict[str, Any]] = {
             _money_col("total_carryover_in_cents", "Carryover in"), _money_col("total_carryover_out_cents", "Carryover out"),
             _money_col("total_earned_cents", "Total earned"), _money_col("total_remaining_cents", "Balance remaining"),
         ], "run": _payroll_by_employee,
+    },
+    # -- Equipment / Training / Certification (EC8 phase 8e) --
+    "certification.matrix": {
+        "title": "Certification Matrix", "category": "certification",
+        "perm": Perm.CERTIFICATION_READ,
+        "data_source": "certifications+employees+equipment", "date_basis": "issued_date",
+        "calc_basis": "certification_ledger",
+        "limitations": ["shows the most recent Certification per Employee+Equipment only"],
+        "columns": [
+            {"key": "employee_name", "label": "Employee"}, {"key": "equipment_name", "label": "Equipment / Type"},
+            {"key": "status", "label": "Status"}, _date_col("issued_date", "Issued"), _date_col("expiration_date", "Expires"),
+            {"key": "restrictions", "label": "Restrictions"},
+        ], "run": _certification_matrix_flat,
+    },
+    "certification.expiring": {
+        "title": "Expiring Certifications", "category": "certification",
+        "perm": Perm.CERTIFICATION_READ,
+        "data_source": "certifications", "date_basis": "expiration_date",
+        "calc_basis": "certification_ledger",
+        "limitations": ["'expiring soon' window is tenant-configurable (Settings > certification namespace)"],
+        "columns": [
+            {"key": "employee_name", "label": "Employee"}, {"key": "equipment_name", "label": "Equipment / Type"},
+            {"key": "status", "label": "Status"}, _date_col("expiration_date", "Expires"),
+        ], "run": _expiring_certifications,
+    },
+    "training.incomplete": {
+        "title": "Incomplete Training", "category": "training",
+        "perm": Perm.TRAINING_MANAGE,
+        "data_source": "training_assignments", "date_basis": "assigned_at",
+        "calc_basis": "assignment_status",
+        "limitations": ["snapshot at report time — status changes as employees progress"],
+        "columns": [
+            {"key": "employee_name", "label": "Employee"}, {"key": "training_title", "label": "Training"},
+            {"key": "status", "label": "Status"}, {"key": "progress_percent", "label": "Progress %"},
+            _date_col("due_date", "Due"),
+        ], "run": _incomplete_training,
+    },
+    "training.overdue": {
+        "title": "Overdue Training", "category": "training",
+        "perm": Perm.TRAINING_MANAGE,
+        "data_source": "training_assignments", "date_basis": "due_date",
+        "calc_basis": "due_date_past_and_incomplete",
+        "limitations": ["overdue = due_date in the past and not completed/cancelled/failed"],
+        "columns": [
+            {"key": "employee_name", "label": "Employee"}, {"key": "training_title", "label": "Training"},
+            {"key": "status", "label": "Status"}, _date_col("due_date", "Due"),
+        ], "run": _overdue_training,
+    },
+    "equipment.access": {
+        "title": "Equipment Access Report", "category": "equipment",
+        "perm": Perm.EQUIPMENT_READ,
+        "data_source": "equipment+certifications", "date_basis": "n/a",
+        "calc_basis": "current_certification_counts",
+        "limitations": ["counts reflect Certification status at report time"],
+        "columns": [
+            {"key": "equipment_name", "label": "Equipment"}, {"key": "category", "label": "Category"},
+            {"key": "status", "label": "Status"}, {"key": "access_policy", "label": "Access policy"},
+            {"key": "safety_sensitive", "label": "Safety sensitive"},
+            {"key": "certified_employee_count", "label": "Certified"}, {"key": "expiring_soon_count", "label": "Expiring soon"},
+            {"key": "expired_count", "label": "Expired"}, {"key": "revoked_count", "label": "Revoked"},
+        ], "run": _equipment_access_report,
     },
 }
 

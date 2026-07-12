@@ -18,4 +18,9 @@ class DocumentLink(BaseDoc):
     document_id: str        # references the underlying document (file_id)
     entity_type: str
     entity_id: str
+    # EC8 phase 8e — when an entity_type is portal-visible (e.g. "equipment",
+    # "training_definition"), a link is only shown to the Employee/Customer
+    # Portal if this is explicitly True. Defaults to False (private/internal)
+    # so linking a document never silently exposes it.
+    portal_visible: bool = False
     created_by: Optional[str] = None

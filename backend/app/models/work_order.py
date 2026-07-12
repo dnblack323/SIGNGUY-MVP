@@ -55,6 +55,14 @@ class WorkOrder(BaseDoc):
     assigned_user_ids: list[str] = Field(default_factory=list)
     assigned_to: Optional[str] = None    # legacy single-assignee mirror
     department: Optional[str] = None
+    # EC8 phase 8e — optional assignment-eligibility requirements. Purely
+    # advisory metadata on the Work Order itself; the actual gating logic
+    # lives in `services/certification_service.check_work_order_assignment`
+    # (Equipment access_policy + Employee Certification status). None/empty
+    # means "no requirement" — fully backward compatible with EC5 Work Orders.
+    required_equipment_ids: list[str] = Field(default_factory=list)
+    required_skill: Optional[str] = None      # free-text advisory only — never blocks
+    required_role: Optional[str] = None       # compared against Employee.role_label — advisory only
 
     # Versioning
     version: int = 1

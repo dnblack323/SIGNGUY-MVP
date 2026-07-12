@@ -48,6 +48,8 @@ EMPLOYEE_PORTAL_PERMS = [
     "portal:employee_timesheet_view",
     "portal:employee_schedule_view",
     "portal:employee_pay_view",
+    "portal:employee_training_view",
+    "portal:employee_certification_view",
 ]
 
 PRESET_BUNDLES: dict[str, list[str]] = {

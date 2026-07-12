@@ -190,7 +190,7 @@ async def transition(
 
 async def assign(
     *, tenant_id: str, work_order_id: str, user_ids: list[str],
-    actor_user_id: str, actor_email: str,
+    actor_user_id: str, actor_email: str, override_reason: Optional[str] = None,
 ) -> dict:
     doc = await db.work_orders.find_one({"id": work_order_id, "tenant_id": tenant_id})
     if not doc:
@@ -200,6 +200,21 @@ async def assign(
         u = await db.users.find_one({"id": uid, "tenant_id": tenant_id})
         if not u:
             raise ValueError(f"assignee_not_found:{uid}")
+    # EC8 phase 8e — Equipment/Certification assignment-eligibility gate.
+    # SAME check function used by the standalone precheck endpoint, so the
+    # backend always revalidates on commit (nothing trusts only a pre-check).
+    from ..services.certification_service import AssignmentBlockedError, AssignmentWarningError, check_work_order_assignment
+    wo_doc = {k: v for k, v in doc.items() if k != "_id"}
+    check = await check_work_order_assignment(tenant_id=tenant_id, work_order=wo_doc, user_ids=user_ids)
+    if check["any_blocked"]:
+        await record_audit(
+            tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+            action="work_order_assignment_blocked", entity_type="work_order", entity_id=work_order_id,
+            summary=f"Assignment blocked for W-{doc['number']}", diff={"check": check},
+        )
+        raise AssignmentBlockedError(check)
+    if check["any_warning"] and not (override_reason and override_reason.strip()):
+        raise AssignmentWarningError(check)
     await db.work_orders.update_one(
         {"id": work_order_id},
         {"$set": {
@@ -228,6 +243,13 @@ async def assign(
         summary=f"W-{doc['number']} assigned to {len(user_ids)} user(s)",
         diff={"user_ids": user_ids},
     )
+    if check["any_warning"] and override_reason:
+        await record_audit(
+            tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+            action="work_order_certification_override", entity_type="work_order", entity_id=work_order_id,
+            summary=f"Assignment override for W-{doc['number']}: {override_reason}",
+            diff={"check": check, "override_reason": override_reason},
+        )
     doc = await db.work_orders.find_one({"id": work_order_id})
     return serialize_doc({k: v for k, v in doc.items() if k != "_id"})
 

@@ -17,10 +17,11 @@ from pydantic import BaseModel
 from ..core.db import db
 from ..core.time_utils import utc_now
 from ..deps_portal import require_employee_portal_permission
-from ..services import announcement_service, payroll_service, schedule_service, time_clock_service, timesheet_service
+from ..services import announcement_service, certification_service, payroll_service, schedule_service, time_clock_service, timesheet_service, training_service
 from ..services.portal_identity import update_portal_identity
 from ..services.time_clock_service import TimeEntryError
 from ..services.timesheet_service import TimesheetError
+from ..services.training_service import TrainingError, public_definition_view
 
 router = APIRouter(prefix="/portal/employee", tags=["portal_employee"])
 
@@ -29,6 +30,8 @@ CLOCK = require_employee_portal_permission("portal:employee_time_clock")
 TIMESHEET = require_employee_portal_permission("portal:employee_timesheet_view")
 SCHEDULE = require_employee_portal_permission("portal:employee_schedule_view")
 PAY = require_employee_portal_permission("portal:employee_pay_view")
+TRAINING = require_employee_portal_permission("portal:employee_training_view")
+CERTIFICATION = require_employee_portal_permission("portal:employee_certification_view")
 
 
 def _raise(e):
@@ -260,6 +263,94 @@ async def pay_transactions(pay_period_id: Optional[str] = None, identity: dict =
         tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], pay_period_id=pay_period_id,
     )
     return {"items": [_public_txn_view(t) for t in txns]}
+
+
+# ---- My Training (self-scoped, EC8 phase 8e — reuses the Phase 8e training
+# service, no parallel training system). Answer keys are always stripped via
+# `training_service.public_definition_view`; a client-supplied employee_id is
+# never trusted — everything resolves from `identity["employee_id"]`.) ----
+
+_ASSIGNMENT_HIDDEN_FIELDS = {"manager_notes", "created_by", "updated_by", "renewal_of"}
+
+
+def _public_assignment_view(a: dict) -> dict:
+    return {k: v for k, v in a.items() if k not in _ASSIGNMENT_HIDDEN_FIELDS}
+
+
+@router.get("/training/assignments")
+async def my_training_assignments(status: Optional[str] = None, identity: dict = Depends(TRAINING)) -> dict:
+    status_in = [status] if status else None
+    items = await training_service.list_assignments(tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], status_in=status_in)
+    return {"items": [_public_assignment_view(a) for a in items]}
+
+
+@router.get("/training/assignments/{assignment_id}")
+async def my_training_assignment_detail(assignment_id: str, identity: dict = Depends(TRAINING)) -> dict:
+    try:
+        a = await training_service.get_assignment(tenant_id=identity["tenant_id"], assignment_id=assignment_id)
+        if a["employee_id"] != identity["employee_id"]:
+            raise HTTPException(status_code=403, detail="This Training Assignment belongs to a different Employee")
+        defn = await training_service.get_training_definition(tenant_id=identity["tenant_id"], training_definition_id=a["training_definition_id"])
+        docs = await training_service.list_documents(tenant_id=identity["tenant_id"], training_definition_id=a["training_definition_id"], portal_visible_only=True)
+        attempts = await training_service.list_quiz_attempts(tenant_id=identity["tenant_id"], assignment_id=assignment_id)
+        return {
+            **_public_assignment_view(a), "definition": public_definition_view(defn), "documents": docs,
+            "quiz_attempts": [{"attempt_number": at["attempt_number"], "score": at["score"], "passed": at["passed"], "completed_at": at["completed_at"]} for at in attempts],
+        }
+    except TrainingError as e:
+        _raise(e)
+
+
+@router.post("/training/assignments/{assignment_id}/start")
+async def start_my_training(assignment_id: str, identity: dict = Depends(TRAINING)) -> dict:
+    try:
+        return _public_assignment_view(await training_service.start_assignment(tenant_id=identity["tenant_id"], assignment_id=assignment_id, employee_id=identity["employee_id"]))
+    except TrainingError as e:
+        _raise(e)
+
+
+@router.post("/training/assignments/{assignment_id}/complete")
+async def complete_my_training(assignment_id: str, identity: dict = Depends(TRAINING)) -> dict:
+    try:
+        return _public_assignment_view(await training_service.complete_assignment(
+            tenant_id=identity["tenant_id"], assignment_id=assignment_id, employee_id=identity["employee_id"],
+            actor_user_id=f"portal:{identity['id']}", actor_email=identity.get("email", "employee-portal"),
+        ))
+    except TrainingError as e:
+        _raise(e)
+
+
+class QuizSubmitIn(BaseModel):
+    answers: list[dict]
+    started_at: str
+
+
+@router.post("/training/assignments/{assignment_id}/quiz")
+async def submit_my_quiz(assignment_id: str, payload: QuizSubmitIn, identity: dict = Depends(TRAINING)) -> dict:
+    try:
+        attempt = await training_service.submit_quiz_attempt(
+            tenant_id=identity["tenant_id"], assignment_id=assignment_id, employee_id=identity["employee_id"],
+            answers=payload.answers, started_at=payload.started_at,
+            actor_user_id=f"portal:{identity['id']}", actor_email=identity.get("email", "employee-portal"),
+        )
+        return {"score": attempt["score"], "passed": attempt["passed"], "attempt_number": attempt["attempt_number"]}
+    except TrainingError as e:
+        _raise(e)
+
+
+# ---- My Certifications (self-scoped, EC8 phase 8e) ----
+
+_CERT_HIDDEN_FIELDS = {"trainer_user_id", "revoked_by", "created_by", "updated_by"}
+
+
+def _public_certification_view(c: dict) -> dict:
+    return {k: v for k, v in c.items() if k not in _CERT_HIDDEN_FIELDS}
+
+
+@router.get("/certifications")
+async def my_certifications(identity: dict = Depends(CERTIFICATION)) -> dict:
+    items = await certification_service.list_certifications(tenant_id=identity["tenant_id"], employee_id=identity["employee_id"])
+    return {"items": [_public_certification_view(c) for c in items]}
 
 
 # ---- Announcements (reuses Phase 8a Announcement — no second messaging system) ----
