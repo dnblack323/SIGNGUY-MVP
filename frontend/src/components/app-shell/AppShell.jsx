@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { NAV_AREAS, filterFlyoutByPermissions } from "@/lib/navigation";
 import NotificationBell from "@/components/notifications/NotificationBell";
@@ -48,6 +48,10 @@ function FlyoutPanel({ area, permissions, onNavigate }) {
 function SidebarInner({ onNavigate }) {
   const { tenant, permissions, user, logout } = useAuth();
   const [openArea, setOpenArea] = useState(null);
+  const location = useLocation();
+  useEffect(() => {
+    setOpenArea(null);
+  }, [location.pathname]);
   return (
     <div className="flex h-full flex-col relative" data-testid="app-shell-sidebar" onMouseLeave={() => setOpenArea(null)}>
       <div className="px-4 py-4 border-b">
@@ -148,7 +152,7 @@ export default function AppShell() {
         </div>
       )}
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr]">
-        <aside className="hidden lg:flex flex-col border-r bg-[hsl(var(--sidebar))] h-dvh sticky top-0">
+        <aside className="hidden lg:flex flex-col border-r bg-[hsl(var(--sidebar))] h-dvh sticky top-0 z-20">
           <SidebarInner />
         </aside>
 
