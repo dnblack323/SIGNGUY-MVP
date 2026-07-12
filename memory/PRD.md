@@ -26,7 +26,7 @@ Constraints:
 | EC3 — Quotes, Orders, Order Items, Pricing Snapshots | COMPLETE | `/app/evidence/EC3_evidence.md` |
 | EC4 — Invoices, Payments, and Stripe Core | COMPLETE | `/app/evidence/EC4_evidence.md` |
 | EC5 — Production and Work Orders | COMPLETE | `/app/evidence/EC5_evidence.md` |
-| **EC6 — Asset Library, Proofs, Signatures, Customer Portal** | **COMPLETE** | `/app/evidence/EC6_evidence.md` — 154/154 backend + portal shell + public pages |
+| **EC6 — Asset Library, Proofs, Signatures, Customer Portal** | **CORRECTIONS REQUIRED** | `/app/evidence/EC6_evidence.md` — pending: portal Stripe payment page, testing_agent_v3_fork run, signed-PDF boundary decision, staff Asset Library/Proof/Approval/Signature UIs |
 | **EC7 — Inventory, Purchasing, Finance, Reporting** | READY TO BUILD | pending owner execution prompt |
 | EC8–EC14 | NOT STARTED | dependency-ordered per master plan |
 

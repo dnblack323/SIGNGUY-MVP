@@ -17,6 +17,7 @@ from ..services.approvals_signatures_service import record_approval
 from ..services.proofs_service import transition_proof
 from ..services.audit import record_audit
 from ..services.email import send_email
+from ..services.payment_service import initiate_stripe
 
 router = APIRouter(prefix="/portal", tags=["portal_customer"])
 
@@ -107,9 +108,72 @@ async def portal_invoice_detail(iid: str, identity: dict = Depends(require_porta
         raise HTTPException(status_code=404, detail="Invoice not found")
     payments = [serialize_doc(p) async for p in db.payments.find(
         {"tenant_id": identity["tenant_id"], "invoice_id": iid, "status": {"$in": ["confirmed", "refunded"]}},
-        {"_id": 0, "idempotency_key": 0},
+        {"_id": 0, "idempotency_key": 0, "stripe_client_secret": 0},
     ).sort("received_at", -1)]
     return {"invoice": serialize_doc(inv), "payments": payments}
+
+
+class PortalInvoiceIntentIn(BaseModel):
+    amount_cents: int = Field(gt=0)
+
+
+@router.post("/invoices/{iid}/stripe-intents", status_code=201)
+async def portal_initiate_stripe(
+    iid: str, payload: PortalInvoiceIntentIn, request: Request,
+    identity: dict = Depends(require_portal_permission("portal:pay_invoices")),
+) -> dict:
+    """Portal-scoped Stripe intent initiation.
+
+    Reuses EC4 `initiate_stripe` — no parallel Payment system. All authorization
+    (tenant, customer, balance, void guard, dedup) is enforced by the shared
+    service. The publishable_key is returned for Stripe.js consumption only;
+    it is never rendered as visible text (see PortalInvoicePayPage).
+    """
+    inv = await db.invoices.find_one({"id": iid, **_scope(identity)})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    try:
+        result = await initiate_stripe(
+            tenant_id=identity["tenant_id"], invoice_id=iid,
+            amount_cents=payload.amount_cents,
+            actor_user_id=f"portal:{identity['id']}", actor_email=identity["email"],
+            idempotency_key=(request.headers.get("Idempotency-Key") or f"portal:{identity['id']}:{iid}:{payload.amount_cents}"),
+        )
+    except ValueError as ex:
+        msg = str(ex)
+        if msg == "invoice_void": raise HTTPException(status_code=400, detail="Invoice is void")
+        if msg == "overpayment_rejected": raise HTTPException(status_code=400, detail="Amount exceeds current balance")
+        if msg == "stripe_disabled": raise HTTPException(status_code=400, detail="Stripe not configured")
+        if msg.startswith("stripe_error:"): raise HTTPException(status_code=400, detail=msg[len("stripe_error:"):])
+        raise HTTPException(status_code=400, detail=msg)
+    return result
+
+
+@router.post("/payments/{payment_id}/dev-simulate-confirm")
+async def portal_dev_simulate_confirm(payment_id: str,
+                                       identity: dict = Depends(require_portal_permission("portal:pay_invoices"))) -> dict:
+    """DEV-ONLY: simulate a Stripe webhook confirmation from the portal.
+
+    Gated by AUTH_DEV_BYPASS=true. Never available in production.
+    Exercises the real EC4 confirm_stripe_from_webhook reconciliation path.
+    """
+    from ..core.config import get_settings
+    if not get_settings().auth_dev_bypass:
+        raise HTTPException(status_code=404, detail="Not found")
+    doc = await db.payments.find_one({"id": payment_id, "tenant_id": identity["tenant_id"],
+                                       "customer_id": identity["customer_id"]})
+    if not doc or doc.get("source") != "stripe" or not doc.get("stripe_payment_intent_id"):
+        raise HTTPException(status_code=404, detail="Stripe payment not found")
+    if doc.get("status") == "confirmed":
+        return {"already_confirmed": True}
+    from ..services.payment_service import confirm_stripe_from_webhook
+    await confirm_stripe_from_webhook(
+        payment_intent_id=doc["stripe_payment_intent_id"],
+        provider_event_id=f"portal_dev_simulate_{payment_id}",
+        charge_id=f"ch_portal_dev_{payment_id}",
+        dev_simulated=True,
+    )
+    return {"confirmed": True}
 
 
 @router.get("/documents")

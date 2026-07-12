@@ -2,6 +2,7 @@ import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-r
 import { useEffect, useState } from "react";
 import { PortalAuthProvider, usePortalAuth } from "./PortalAuthContext";
 import portalApi, { portalExtractError } from "./portalApi";
+import PortalInvoicePayPage from "./PortalInvoicePayPage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -174,7 +175,8 @@ export default function PortalApp() {
         <Route path="" element={<Guard><Dashboard /></Guard>} />
         <Route path="quotes" element={<Guard><ListPage path="/portal/quotes" title="Quotes" testId="portal-quotes" cols={{title:(q)=>`Q-${q.number} · ${q.status}`, sub:(q)=>q.notes_customer||"", right:(q)=>`$${((q.total_cents||0)/100).toFixed(2)}`}} /></Guard>} />
         <Route path="orders" element={<Guard><ListPage path="/portal/orders" title="Orders" testId="portal-orders" cols={{title:(o)=>`O-${o.number} · ${o.status}`, sub:(o)=>o.job_name||"", right:(o)=>`$${((o.total_cents||0)/100).toFixed(2)}`}} /></Guard>} />
-        <Route path="invoices" element={<Guard><ListPage path="/portal/invoices" title="Invoices" testId="portal-invoices" cols={{title:(i)=>`I-${i.number} · ${i.document_status}/${i.financial_status}`, sub:(i)=>i.title||"", right:(i)=>`Balance $${((i.balance_due_cents||0)/100).toFixed(2)}`}} /></Guard>} />
+        <Route path="invoices" element={<Guard><ListPage path="/portal/invoices" title="Invoices" testId="portal-invoices" cols={{title:(i)=>`I-${i.number} · ${i.document_status}/${i.financial_status}`, sub:(i)=>i.title||"", right:(i)=><a href={`/portal/invoices/${i.id}/pay`} className="underline" data-testid={`portal-invoice-pay-link-${i.id}`}>Pay {`$${((i.balance_due_cents||0)/100).toFixed(2)}`}</a>}} /></Guard>} />
+        <Route path="invoices/:id/pay" element={<Guard><PortalInvoicePayPage /></Guard>} />
         <Route path="proofs" element={<Guard><ListPage path="/portal/proofs" title="Proofs" testId="portal-proofs" cols={{title:(p)=>`P-${p.number} · ${p.status}`, sub:(p)=>p.title||"", right:(p)=>`v${p.current_version}`}} /></Guard>} />
         <Route path="documents" element={<Guard><ListPage path="/portal/documents" title="Documents" testId="portal-documents" cols={{title:(d)=>d.title, sub:(d)=>d.category, right:(d)=>`v${d.version}`}} /></Guard>} />
         <Route path="messages" element={<Guard><ListPage path="/portal/messages" title="Messages" testId="portal-messages" cols={{title:(m)=>m.subject, sub:(m)=>m.status, right:(m)=>m.created_at?.slice(0,10)}} /></Guard>} />

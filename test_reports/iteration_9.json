@@ -1,0 +1,24 @@
+{
+  "summary": "EC6.1 Portal Invoice Payment full backend + frontend E2E regression PASS. 161/161 pytest green (18/18 EC6 tests). 27/27 curl-driven backend E2E checks pass against live preview URL (portal auth separation both directions, portal invoice list scope + non-draft filter, stripe-intent initiate/reuse/overpayment/void/paid/cross-customer/permission-gate, dev-simulate-confirm → real EC4 confirm_stripe_from_webhook → reconciliation → balance_due=0 + financial_status=paid, replay idempotency, portal messages excludes provider IDs, public introspect requires ?t=, magic-link never reveals identity + invalid token 401). 25/26 Playwright UI checks pass: /portal/login card + all 4 testids, portal-shell loads, portal-invoice-pay-link visible, /portal/invoices/:id/pay renders all 7 testids (total/paid/balance/financial-status/amount/full-balance/initiate), Full-balance fills amount, initiate transitions to pending, dev-confirm reaches confirmed, HTML source contains NEITHER client_secret NOR publishable_key, paid invoice shows paid-note, void invoice shows void-note + hides pay panel, /p/quote-request public page renders. The one 'fail' (staff /login page) is actually expected: AUTH_DEV_BYPASS auto-authenticates on preview and redirects to Home dashboard — the dashboard rendered correctly with our Stripe confirmations visible in the activity feed, proving end-to-end reconciliation fired.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_ec6_portal_payment.py",
+    "/app/backend/tests/test_ec6_portal_docs.py",
+    "/app/backend/tests/e2e_portal_pay_curl.py",
+    "/app/backend/tests/_seed_ui_ctx.py",
+    "/app/test_reports/pytest/ec6_pay_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "PortalInvoicePayPage.jsx keeps client_secret + publishable_key in useState (not rendered) — verified via HTML source inspection during pending state; no leak in DOM. Good.",
+    "Portal messages GET returns empty list in this seed; provider-ID exclusion verified by field-shape assertion but coverage would be stronger with a seeded message row containing sendgrid_message_id to prove strip. Non-blocking (pytest suite covers this pathway)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (161/161 pytest + 27/27 curl E2E)", "frontend": "100% (25/25 relevant portal + public UI checks; the 1 'fail' was staff auto-login redirect, which is expected preview behavior)"},
+  "test_credentials": "AUTH_DEV_BYPASS=true. Staff: POST /api/auth/dev-login → owner token. Portal: seed identity via POST /api/portal-identities then mint JWT locally via app.core.portal_security.create_portal_token (JWT_SECRET matches backend/.env). Recipe in /app/backend/tests/_seed_ui_ctx.py.",
+  "seed_data_creation": "E2E curl script self-cleans. UI script seeded (and did NOT clean) portal identity pi-ui-*, customer 'UI E2E *', invoices inv-ui-e5040a (paid via dev-confirm), inv-uip-bd6db6 (paid), inv-uiv-1aecc4 (void) in the dev tenant. These are safe to leave for future iterations or can be purged by tenant_id filter.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "EC6.1 verified complete. Portal payment surface reuses EC4 payment_service end-to-end (confirmed via activity feed showing 'Stripe payment confirmed ($250.00)' after dev-simulate-confirm). No parallel payment system detected. Staff↔portal token isolation is strict. Two reusable test artifacts: (1) /app/backend/tests/e2e_portal_pay_curl.py — 27 assertions, runs standalone with `python`, cleans up after itself. (2) /app/backend/tests/_seed_ui_ctx.py — seeds a portal identity + writes portal JWT to /tmp/portal_ui_ctx.json for UI tests. To restore parity for future runs, delete residual UI-seeded rows: pymongo.MongoClient(MONGO_URL)[DB_NAME].{invoices,payments,customers,portal_identities} filter by id-prefix 'inv-ui'/'inv-uip'/'inv-uiv'/'pi-ui'."
+}
