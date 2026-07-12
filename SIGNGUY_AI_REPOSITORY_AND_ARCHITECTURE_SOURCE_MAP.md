@@ -37,7 +37,7 @@
 
 - **URL:** https://github.com/dnblack323/SIGNGUY-MVP
 - **Original intended purpose:** Fresh MVP repository per the migration instructions doc; permanent production application.
-- **Current actual purpose:** Same. Live app deployed to https://production-launch-11.emergent.host and previewing at https://signguy-ec2.preview.emergentagent.com.
+- **Current actual purpose:** Same. Live app deployed to https://production-launch-11.emergent.host and previewing at https://fulfillment-flow-10.preview.emergentagent.com.
 - **Development status:** Active. Last push 2026-07-08; live production deployment exists.
 - **Architecture:** FastAPI + Motor async Mongo backend; React 19 + Tailwind + shadcn/ui frontend; JWT auth; single-dependency permission model; Emergent object storage; SendGrid (live); UUID string IDs; server-side tenant filtering everywhere; atomic Mongo sequences.
 - **Main technologies:** Python 3.11, FastAPI, Motor, Pydantic v2, PyJWT, bcrypt, sendgrid; React 19, react-router-dom, @tanstack/react-query, axios, sonner, lucide-react, shadcn/ui.
