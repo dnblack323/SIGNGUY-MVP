@@ -1,0 +1,29 @@
+{
+  "summary": "RETEST of 2 CRITICAL bugs + 2 LOW cosmetic fixes from iteration_12, frontend-only via browser (no backend changes were made). ALL 4 FIXES VERIFIED WORKING. FIX 1: Opened an existing Dev Owner shift chip on TeamSchedulePage -> Start/End inputs pre-populated '09:00'/'17:00' (24h format) -> clicked Save without touching times -> got 'Shift updated' success toast, dialog closed, NO RangeError/red overlay. FIX 2: Minted a fresh single-use magic-link token via POST /api/dev-tools/mint-employee-portal-login, navigated the real browser to /portal/employee/verify?t=<raw_token> (no localStorage injection) -> network tab confirmed exactly ONE POST to /api/portal/auth/magic-link/verify fired -> landed directly on /portal/employee dashboard, no 'invalid or expired' message. FIX 3: Time Clock card shows 'Clocked in at 09:03 AM' with no stray trailing '0'. FIX 4: No '<div> cannot be a descendant of <p>' (or validateDOMNesting) console warnings observed on Dashboard or My Timesheet pages. QUICK REGRESSION SANITY: Add Shift dialog opens correctly (defaults 09:00 start), Republish button present (schedule for that week was already published), Employees admin page renders all employees/statuses correctly, Customer Portal login page (/portal/login) renders its form unchanged. No regressions found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "to24hTime() correctly derives 'HH:MM' via toISOString().slice(11,16), and combineDateTime() reconstructs the same UTC ISO string on submit -- the round-trip is consistent so no timezone drift is introduced by the fix.",
+    "VerifyPage's firedRef (useRef guard, initialized false, set true before the async call) correctly prevents the double-invoke issue from React 18 StrictMode/dev double-effect; this is a standard and correct pattern.",
+    "onBreak now uses !!() boolean coercion before being used in the '{onBreak && <Badge>}' JSX expression, correctly avoiding React's known 0-render-as-text gotcha with falsy-but-not-boolean values in && expressions -- root cause of the old stray '0' is fully addressed.",
+    "All 3 previously-flagged Badge-in-<p> nestings (Time Clock 'Clocked in at' line, dashboard 'This Week' timesheet status, My Timesheet 'Status' line) are now wrapped in <div> instead of <p> -- verified no hydration warning fires.",
+    "Note: while testing FIX 1, encountered the pre-existing (expected, not a regression) 409 availability_conflict flow on shifts dated 2026-07-20 for both Dev Owner and TEST_Employee_677ae44c, due to seed data from iteration_12 (an 'unavailable' availability block for that date). This is intended feature behavior (confirmed in iteration_12), not a bug -- had to pick a different shift (2026-07-22) to isolate and verify the plain no-conflict Save-without-touching-times path, which succeeded cleanly."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not retested per scope, backend already 39/39 in iteration_12)", "frontend": "100% of requested fix-verification and regression items passed"},
+  "test_credentials": "Used dev-login (AUTH_DEV_BYPASS) + POST /api/dev-tools/ensure-dev-employee for staff bearer token; POST /api/dev-tools/mint-employee-portal-login?employee_id=299a45ee-8020-4583-9324-36b159b18682 for a fresh single-use raw magic-link token, exactly per /app/memory/test_credentials.md.",
+  "seed_data_creation": "None new; reused existing dev tenant / seeded employees and shifts from iteration_12 (disposable dev tenant, not cleaned up).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All 4 fixes from iteration_12 (2 CRITICAL + 2 LOW) are confirmed fixed and working via real browser flows (no localStorage injection workarounds needed this time). Quick regression sanity on Add Shift, Publish/Republish, Employee Portal Access admin page, and Customer Portal login all look fine (light touch only, not full re-test per main agent's scope note). EC8 Phase 8c can be considered feature-complete and verified from a frontend standpoint. Only remaining known cosmetic/low item from iteration_12 not in this fix round's scope: native browser date/time pickers on Add/Edit Shift dialog instead of shadcn pickers (previously flagged as LOW/optional polish, not re-flagged as blocking here).",
+  "rca of the issue": "N/A - this iteration is a fix-verification pass, no new bugs found. Both critical bugs from iteration_12 were fixed exactly per their documented RCA: (1) to24hTime() helper added for form prefill instead of reusing the 12-hour fmtTime() display helper; (2) firedRef useRef guard added to VerifyPage's effect to prevent double-invocation consuming the single-use magic-link token twice."
+}

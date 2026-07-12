@@ -28,6 +28,12 @@ function fmtTime(iso) {
   if (!iso) return "";
   try { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; }
 }
+// 24-hour "HH:MM" — required by <input type="time"> value/prefill (fmtTime's
+// 12-hour "09:00 AM" format is invalid for that input and silently renders blank).
+function to24hTime(iso) {
+  if (!iso) return "";
+  try { return new Date(iso).toISOString().slice(11, 16); } catch { return ""; }
+}
 function combineDateTime(dateStr, timeStr) {
   return new Date(`${dateStr}T${timeStr}:00Z`).toISOString();
 }
@@ -45,8 +51,8 @@ const DAY_LABELS = ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"];
 function ShiftForm({ employees, initial, onSubmit, onCancel, busy }) {
   const [employeeId, setEmployeeId] = useState(initial?.employee_id || "");
   const [shiftDate, setShiftDate] = useState(initial?.shift_date || "");
-  const [startTime, setStartTime] = useState(initial?.start_at ? fmtTime(initial.start_at) : "09:00");
-  const [endTime, setEndTime] = useState(initial?.end_at ? fmtTime(initial.end_at) : "17:00");
+  const [startTime, setStartTime] = useState(initial?.start_at ? to24hTime(initial.start_at) : "09:00");
+  const [endTime, setEndTime] = useState(initial?.end_at ? to24hTime(initial.end_at) : "17:00");
   const [title, setTitle] = useState(initial?.title || "");
   const [location, setLocation] = useState(initial?.location || "");
   const [notes, setNotes] = useState(initial?.notes || "");
@@ -59,6 +65,7 @@ function ShiftForm({ employees, initial, onSubmit, onCancel, busy }) {
 
   async function submit(force) {
     if (!employeeId || !shiftDate) return toast.error("Employee and date are required");
+    if (!startTime || !endTime) return toast.error("Start and end time are required");
     const { start_at, end_at } = toStartEnd();
     const payload = { employee_id: employeeId, shift_date: shiftDate, start_at, end_at, title, location, notes };
     if (force && overrideReason) payload.override_reason = overrideReason;

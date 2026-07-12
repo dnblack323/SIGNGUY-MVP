@@ -1,5 +1,5 @@
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EmployeePortalAuthProvider, useEmployeePortalAuth } from "./EmployeePortalAuthContext";
 import employeePortalApi, { employeePortalExtractError } from "./employeePortalApi";
 import { Button } from "@/components/ui/button";
@@ -87,7 +87,10 @@ function VerifyPage() {
   const { verifyMagicLink } = useEmployeePortalAuth();
   const nav = useNavigate();
   const [status, setStatus] = useState("verifying");
+  const firedRef = useRef(false);
   useEffect(() => {
+    if (firedRef.current) return;
+    firedRef.current = true;
     const t = new URLSearchParams(window.location.search).get("t");
     if (!t) { setStatus("invalid"); return; }
     verifyMagicLink(t).then(() => { setStatus("ok"); nav("/portal/employee"); })
@@ -132,7 +135,7 @@ function TimeClockCard({ compact }) {
     setBusy(false);
   }
 
-  const onBreak = status?.breaks?.length && !status.breaks[status.breaks.length - 1].end_at;
+  const onBreak = !!(status?.breaks?.length && !status.breaks[status.breaks.length - 1].end_at);
   return (
     <Card data-testid="employee-portal-time-clock-card">
       <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Clock className="h-4 w-4" /> Time Clock</CardTitle></CardHeader>
@@ -144,7 +147,7 @@ function TimeClockCard({ compact }) {
           </>
         ) : (
           <>
-            <p className="text-sm">Clocked in at <span className="font-medium">{fmtTime(status.clock_in_at)}</span>{onBreak && <Badge variant="outline" className="ml-2">On break</Badge>}</p>
+            <div className="text-sm flex items-center gap-2">Clocked in at <span className="font-medium">{fmtTime(status.clock_in_at)}</span>{onBreak && <Badge variant="outline">On break</Badge>}</div>
             <div className="flex gap-2 flex-wrap">
               {!onBreak ? (
                 <Button variant="outline" onClick={() => act("break-start")} disabled={busy} data-testid="employee-portal-break-start-btn">Start Break</Button>
@@ -192,7 +195,7 @@ function Dashboard() {
           <CardHeader><CardTitle className="flex items-center gap-2 text-base"><FileClock className="h-4 w-4" /> This Week</CardTitle></CardHeader>
           <CardContent>
             {!data ? <p className="text-sm text-slate-500">Loading…</p> : (
-              <p className="text-sm">{fmtHours(data.week_hours?.worked_minutes)} worked · Timesheet: <Badge variant="outline">{data.timesheet_status}</Badge></p>
+              <div className="text-sm flex items-center gap-1.5">{fmtHours(data.week_hours?.worked_minutes)} worked · Timesheet: <Badge variant="outline">{data.timesheet_status}</Badge></div>
             )}
           </CardContent>
         </Card>
@@ -279,7 +282,7 @@ function MyTimesheetPage() {
             <p>Week: {data.week_start} – {data.week_end}</p>
             <p>Worked: <span className="font-medium">{fmtHours(data.worked_minutes)}</span></p>
             <p>Breaks: {fmtHours(data.break_minutes)}</p>
-            <p>Status: <Badge variant="outline" data-testid="employee-portal-timesheet-status">{data.status}</Badge></p>
+            <div className="flex items-center gap-1.5">Status: <Badge variant="outline" data-testid="employee-portal-timesheet-status">{data.status}</Badge></div>
           </CardContent>
         </Card>
       )}
