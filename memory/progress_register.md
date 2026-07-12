@@ -64,4 +64,4 @@
 
 ---
 
-**Register last updated:** 2026-02 — EC6 corrections closed. Two owner-locked permanent-scope items added: **EC3.1 Pricing Foundation Verification & Full Calculator Category Coverage** and **EC6.3 Order Intake Capture & Visual Markup** — both REQUIRED, must land before EC14. Awaiting owner prompt to begin EC7.
+**Register last updated:** 2026-02 — EC7 phase 7a delivered (Materials + Locations + Items + Movements + Reservations + Adjustments + Low-stock backend + 11 pytest scenarios + race-safe / idempotent / immutable-ledger properties). Backend 172/172 green. EC7 remains **IN PROGRESS**; phases 7b / 7c / 7d remain. EC3.1 + EC6.3 still visible + pending. EC8 not started.

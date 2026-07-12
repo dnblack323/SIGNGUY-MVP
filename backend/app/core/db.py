@@ -199,4 +199,30 @@ async def ensure_indexes() -> None:
     await db.customer_intakes.create_index("id", unique=True)
     await db.customer_intakes.create_index([("tenant_id", 1), ("customer_id", 1), ("status", 1)])
 
+    # ---- EC7 phase 7a — Materials + Inventory ----
+    await db.materials.create_index("id", unique=True)
+    await db.materials.create_index([("tenant_id", 1), ("sku", 1)], unique=True, sparse=True)
+    await db.materials.create_index([("tenant_id", 1), ("category", 1), ("active", 1)])
+    await db.materials.create_index([("tenant_id", 1), ("name", 1)])
+    await db.material_cost_history.create_index("id", unique=True)
+    await db.material_cost_history.create_index([("tenant_id", 1), ("material_id", 1), ("effective_at", -1)])
+    await db.inventory_locations.create_index("id", unique=True)
+    await db.inventory_locations.create_index([("tenant_id", 1), ("name", 1)])
+    await db.inventory_items.create_index("id", unique=True)
+    await db.inventory_items.create_index(
+        [("tenant_id", 1), ("material_id", 1), ("location_id", 1)], unique=True
+    )
+    await db.inventory_movements.create_index("id", unique=True)
+    await db.inventory_movements.create_index([("tenant_id", 1), ("material_id", 1), ("created_at", -1)])
+    await db.inventory_movements.create_index([("tenant_id", 1), ("location_id", 1), ("created_at", -1)])
+    await db.inventory_movements.create_index([("tenant_id", 1), ("source_entity_type", 1), ("source_entity_id", 1)])
+    await db.inventory_movements.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.inventory_reservations.create_index("id", unique=True)
+    await db.inventory_reservations.create_index([("tenant_id", 1), ("material_id", 1), ("location_id", 1), ("active", 1)])
+    await db.inventory_reservations.create_index([("tenant_id", 1), ("source_entity_type", 1), ("source_entity_id", 1)])
+
     logger.info("MongoDB indexes ensured")

@@ -92,6 +92,11 @@ api_router.include_router(proofs_router.router)
 api_router.include_router(signatures_router.router)
 api_router.include_router(signatures_router.approvals_router)
 
+# EC7 — Phase 7a Inventory foundation
+from app.routers import inventory as inventory_router_module
+api_router.include_router(inventory_router_module.materials_router)
+api_router.include_router(inventory_router_module.inventory_router)
+
 app.include_router(api_router)
 
 app.add_middleware(

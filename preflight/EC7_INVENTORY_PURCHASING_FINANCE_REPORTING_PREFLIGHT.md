@@ -135,8 +135,6 @@ Additive. Drop new collections + remove new routers + remove new frontend routes
 ## 11. Delivery integrity note (raised to owner)
 EC7 as scoped is the largest single checkpoint in the plan — roughly 12 backend routers, 9 services, 6 model families, ~15 frontend pages, ~150 pytest scenarios, plus documentation and evidence. Prior fork sessions produced ~1000 lines of production code per session before context exhaustion. **Owner acknowledgment requested before code starts** — see §12.
 
-## 12. Owner acknowledgment gate
-
 ### 12A. Supplier Catalog, Price Comparison & Integrated Purchasing (LOCKED — added to EC7)
 
 Per master plan Appendix A.3. Authoritative for EC7. Not optional.
@@ -178,9 +176,31 @@ Per master plan Appendix A.3. Authoritative for EC7. Not optional.
 - `backend/app/routers/supply_center.py` — staff routes for catalog search, recommend, cart, submit.
 - Frontend: `SupplyCenterPage.jsx`, `SupplierComparisonView.jsx`, `PurchasingCartPage.jsx`, `SupplierConnectionsPage.jsx`.
 
-**Phase mapping:** this requirement lands inside **phase 7b (Vendors + Purchasing)** and extends into **phase 7d (evidence)**. Phases stay four total.
+## 12. Owner decisions (LOCKED for EC7)
 
----
+**Phasing:** approved 7a → 7b → 7c → 7d. Pytest after every phase. Evidence updated every phase. `testing_agent_v3_fork` runs at 7d close. EC7 marked COMPLETE only when all four phases + all exit conditions pass. If context runs low, report **EC7 — IN PROGRESS**, exact phase completed, tests run, remaining scope. Do not begin EC8.
+
+**First connector — Option A.** Build the deterministic full-capability supplier **test adapter** first. It must demonstrate: catalog search, product details, variants, account pricing, warehouse availability, shipping estimate, supplier comparison, shortage recommendation, purchasing cart, PO creation, **idempotent** supplier-order submission, order acknowledgement, tracking status, partial + complete receiving into Inventory. Do not build a real vendor connector during the first EC7 implementation unless verified public or account-approved technical documentation becomes available. The connector architecture must make the first real supplier integration additive rather than requiring Purchasing to be redesigned.
+
+### 12B. Supplier Integration Inventory (owner-provided seed)
+
+All vendor capabilities below are recorded verbatim from the owner. Every technical capability is marked **PENDING VENDOR CONFIRMATION** — no capability claimed as verified. Tenant administrators must be able to add other regional suppliers later without code changes.
+
+| Vendor | Categories | API | EDI | Catalog feed | Account pricing | Live inventory | Order submission | Auth | Partnership | Overall status |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **Grimco** | vinyl, laminate, printable media, substrates, banner, inks, hardware, equipment & supplies | unknown | unknown | unknown | likely via account (integration unverified) | visible on vendor site (integration unverified) | unknown | normal customer account | existing/expected supplier; integration not requested | **PENDING VENDOR CONFIRMATION** |
+| **Fellers** | wrap vinyl, cut vinyl, laminate, application tape, printable media, tools, installation supplies | unknown | unknown | unknown | expected via account (unverified) | expected on site (unverified) | unknown | normal customer account | expected supplier; integration not requested | **PENDING VENDOR CONFIRMATION** |
+| **SanMar** | blank apparel — shirts, hoodies, polos, jackets, hats, bags & accessories | unknown, must be verified | unknown | unknown | expected via approved account (unverified) | expected via account (unverified) | unknown | supplier account | expected apparel supplier; integration approval not requested | **PENDING VENDOR CONFIRMATION** |
+| **AlphaBroder** | blank apparel — shirts, hoodies, polos, outerwear, hats, bags & accessories | unknown, must be verified | unknown | unknown | expected via supplier account (unverified) | expected via supplier account (unverified) | unknown | supplier account | expected apparel supplier; integration approval not requested | **PENDING VENDOR CONFIRMATION** |
+| **Stahls'** | heat-transfer materials, transfers, apparel-decoration supplies, heat presses, related equipment & accessories | unknown | unknown | unknown | unknown | unknown | unknown | normal customer account where applicable | possible supplier; integration not requested | **PENDING VENDOR CONFIRMATION** |
+| **Uline** | packaging, shipping supplies, boxes, tape, shop supplies, racks & storage, safety supplies | unknown | unknown | unknown | unknown | unknown | unknown | normal customer account | possible/existing purchasing source; integration not requested | **PENDING VENDOR CONFIRMATION** |
+
+**Material manufacturers and brands (NOT direct-purchasing vendors):** Orafol / Oracal, Avery Dennison, 3M, Siser. Represented through `manufacturer`, `brand`, `series`, material specifications, compatible substitutes, supplier product mappings. The actual distributor per product may be Grimco, Fellers, another regional supplier, or a manually configured vendor. Do NOT wire any of these as direct-purchasing connectors.
+
+**Tenant admin extensibility.** Tenant administrators must be able to add other local or regional suppliers later without code changes — supplier records + connection tier + credentials (via EC2 integration secrets) are all data-driven via the supplier connector interface.
+
+## 13. Sign-off gate — CLEARED
+Owner approved phasing (§12), first connector = test adapter (§12), supplier integration inventory recorded (§12B). Phase 7a begins immediately.
 
 
 Per the "unless a genuine conflict is found" clause, I raise **one** integrity concern before writing any code:
