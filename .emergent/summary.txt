@@ -1,37 +1,41 @@
 <analysis>**original_problem_statement**: 
-The user is building SignGuy AI using the FARM stack, strictly following an authoritative . The previous objective was to perform a final closure pass for **EC7 — Inventory, Purchasing, Finance, and Reporting**. This required finishing missing frontend workflows (Vendor Detail, Material Detail, Physical Count, Inventory Transfer, PO movements), adding automated frontend test coverage (Jest + React Testing Library), running a full regression with the testing agent, and officially marking EC7 as complete. 
+The user is building SignGuy AI using the FARM stack. Following the completion of EC7, the objective is to implement **EC8 — Team, Scheduling, Time, Payroll, Employee Portal, Equipment Training, and Certification**. The implementation must strictly follow credit conservation rules (reuse systems, run targeted tests only, no full regressions until the final Phase 8f). Phase 8a (Employees and Team Foundation) and **Phase 8b (Time Clock and Timesheets)** are now successfully completed. The agent is waiting for user authorization to proceed to Phase 8c.
 
 **User's preferred language**: English (INSTRUCT next agent to respond in English only)
 
 **what currently exists?** 
-A full-stack application (FARM stack) with complete foundations for EC0 through EC7. **EC7 is now 100% COMPLETE.** This includes the backend foundations for Inventory, Purchasing, Finance, and Reports, as well as a fully wired React frontend, backend Pytest suite (215 tests), and a frontend Jest test suite (25 tests). 
+A full-stack application (FARM stack) with EC0 through EC7 100% COMPLETE. EC8 Phase 8a and Phase 8b are fully coded, tested (targeted tests, curl, UI screenshots), and documented as DELIVERED. An idempotent dev-tools route exists to securely seed an  link for the developer user, unblocking E2E UI verification.
 
 **Last working item**:
-    - Last item agent was working: Executing the final EC7 closure pass. The agent successfully built the missing frontend pages and dialogs, set up the frontend Jest testing infrastructure, wrote component tests, ran the , and updated all documentation (, , ) to formally close EC7. 
+    - Last item agent was working: Wrapping up Phase 8b. The agent successfully built the  fixture, executed targeted E2E API checks (clock in, breaks, clock out, timesheets), confirmed UI rendering with a screenshot of the Time Clock page, updated all project documentation (, , ), and formally used  to request user permission to begin Phase 8c.
     - Status: USER VERIFICATION PENDING
     - Agent Testing Done: Y
-    - Which testing method agent to use? NA (Testing is completed; backend passed, frontend passed, testing subagent passed).
+    - Which testing method agent to use? manual testing by curl / screenshot tool (Do NOT use testing subagent yet per strict credit-conservation rules).
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:  
-  *No active issues. The application is completely green and EC7 is fully delivered.*
+  *None.* All issues for Phase 8b have been resolved.
 
 **In progress Task List**:
-  *No active tasks. Awaiting the user's explicit instruction to begin EC8.*
+  *None.* Phase 8b is finished. 
 
 **Upcoming and Future Tasks**
-  - P0: Receive the explicit execution prompt from the user for **EC8 (Core Production and Order Fulfillment)**. Do NOT start EC8 or modify code until the user provides this prompt.
-  - P1: Implement EC8 following the user's instructions and the Consolidated Master Build Plan.
-  - Future Tasks: EC11 (AI Credits Ledger), EC12 (Onboarding/Help), EC13 (Billing/Marketing).
+  *Upcoming Tasks:*
+  - P0: Phase 8c — Scheduling and Employee Portal (AWAITING EXPLICIT USER AUTHORIZATION. DO NOT START WITHOUT APPROVAL).
+  - P1: Phase 8d — Payroll
+  - P2: Phase 8e — Equipment, Training, and Certification
+  - P3: Phase 8f — Final frontend regression, backend test suite, testing_agent_v4_fork execution, and phase closure.
+  
+  *Future Tasks:*
+  - EC9+ (Wait for user instruction after EC8 is fully completed).
 
 **Completed work in this session**
-- Created  (Vendor Detail) and  (Material Detail) React pages. (DONE)
-- Implemented  and  modal dialog workflows on the . (DONE)
-- Added PO receiving movement visibility to the . (DONE)
-- Initialized and configured frontend Jest testing framework via CRA/Craco, resolving module export and polyfill issues. (DONE)
-- Authored frontend component tests for all key EC7 screens (25 tests passing). (DONE)
-- Executed  iteration 10, achieving a 100% pass rate with zero UI bugs and zero regressions. (DONE)
-- Updated PRD, Progress Register, and Evidence documents to mark EC7 as COMPLETE. (DONE)
+- Built idempotent  endpoint to safely seed Employee data for the dev-admin user. (DONE)
+- Registered  router in  for E2E testing. (DONE)
+- Ran full lifecycle E2E API tests via curl covering clock-in, break-start, break-end, clock-out, and timesheet retrieval. (DONE)
+- Validated UI via screenshot tool on  with real dev data and injected session token. (DONE)
+- Updated documentation (, , ) to officially mark Phase 8b as DELIVERED. (DONE)
+- Triggered  to request permission to begin Phase 8c. (DONE)
 
 **Earlier issues found/mentioned but not fixed**
    *None.*
@@ -45,30 +49,27 @@ A full-stack application (FARM stack) with complete foundations for EC0 through 
 
 
 **Key Technical Concepts**
-- **FARM Stack**: FastAPI backend, React frontend, MongoDB.
-- **Tenant Isolation**: Backend strictly filters all database queries by .
-- **Terminology Strictness**: Job or Job Ticket is explicitly banned; use Order or Work Order.
-- **Money Representation**: Commerce values strictly use  (integer) for the DB/Backend.
-- **Frontend Testing**: Uses Jest via  (Craco) with . Tests run via .
+- **Strict Credit Conservation Rule**: Do NOT run the full backend test suite or full frontend test suite. Do NOT run  during interim phases (8a, 8b, 8c, etc.). Only run *targeted* test files.
+- **Tenant Isolation & Permissions**: Backend strictly filters all database queries by .  enforces manager-vs-self access boundaries.
+- **Idempotency**: Dev-seeding logic handles repeated executions safely without creating duplicates.
 
 **key DB schema**
-  -  & : {tenant_id, name, status, capabilities}
-  - : {tenant_id, type, quantity, reason, linked_record}
-  - : {tenant_id, vendor_id, state, lines, tracking}
-  - : {tenant_id, amount_cents, category}
+  - : {tenant_id, user_id, name, role, status, hourly_rate_cents}
+  - : {tenant_id, employee_id, work_date, clock_in_at, clock_out_at, total_worked_minutes, state}
+  - : {tenant_id, employee_id, start_date, end_date, status, total_regular_minutes}
 
 **changes in tech stack**
-  - Configured and activated the React frontend Jest testing framework via Craco ().
+  - None.
 
 **All files of reference**
-  -  (Authoritative instructions)
+  - 
   - 
   - 
   - 
   - 
 
 **Areas that need refactoring**:
-  *None. Code is stable and heavily tested.*
+  *None.*
 
 **key api endpoints**
   - 
@@ -76,27 +77,25 @@ A full-stack application (FARM stack) with complete foundations for EC0 through 
   - 
   - 
   - 
+  - 
+  - 
 
 **Critical Info for New Agent**
-1. **WAIT FOR EC8 PROMPT**: EC7 is officially finished. Your very first action should be reading the user's prompt to confirm they are initiating **EC8**, and reviewing the Master Build Plan accordingly. Do not write code until they say go.
-2. **Frontend Tests**: Frontend tests are located at . You can execute them via yarn run v1.22.22
-info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.. 
-3. **Strict Boundaries**: Continue to respect the architecture, tenant isolation logic, and the rule forbidding any commercial/billing code (reserved for EC11-EC13) from leaking into earlier phases.
+1. **PENDING USER AUTHORIZATION:** The last agent just completed Phase 8b and called  to request permission to begin **Phase 8c**. **DO NOT write any implementation code until the user explicitly authorizes Phase 8c.**
+2. **Testing Restrictions**: The user has mandated a strict credit conservation and reuse rule. **Do not** run full test suites and **do not** call the testing agent until Phase 8f unless absolutely blocked.
+3. Development seeding is handled via  (called implicitly via curl scripts during agent testing; not meant for production UI integration).
 
 **documents and test reports created in this job**
-  - 
   -  (Updated)
   -  (Updated)
   -  (Updated)
 
 **Last 10 User Messages and any pending HUMAN messages** 
-1. *(User)* Detailed that EC7 7d was missing Vendor/Material pages, Physical Count/Transfer dialogs, and frontend tests. Demanded a Final EC7 closure pass to implement these, run the testing agent, and close EC7. (DONE)
-2. *(User)* Please use ask_human tool and confirm your plan now. (DONE)
-3. *(User)* Responded to : Selected Jest via react-scripts for frontend tests, smoke + happy path + error path testing scope, Modal dialogs from Inventory page for counts/transfers, and limited testing agent scope to EC7. (DONE)
+1. *(User)* Detailed instructions: Use idempotent dev-only seed helper to link dev user to an Employee. Run targeted checks via curl. Take ONE useful Time Clock screenshot with real dev data. Update docs (, , ). Stop and request approval before starting Phase 8c. -> Agent COMPLETED all steps, validated via screenshot, updated docs, and submitted the  query. *Response is pending.*
 
 **Project Health Check:**
-Broken: None. Backend tests (215/215), Frontend tests (25/25), and Testing Subagent regression all passing.
-Mocked: Supplier integrations use deterministic test adapters per Phase 7b spec.
+- Broken: None. Codebase is green, and Phase 8b is fully operational.
+- Mocked: None.
 
 **3rd Party Integrations** 
   - Stripe (Payments) — requires User API Key
@@ -104,16 +103,13 @@ Mocked: Supplier integrations use deterministic test adapters per Phase 7b spec.
   - Object Storage — Integrated
 
 **Testing status**
-  - Testing agent used after significant changes: YES (iteration 10)
+  - Testing agent used after significant changes: NO (By strict user decree, testing agent is reserved for Phase 8f).
   - Troubleshoot agent used after agent stuck in loop: NO
-  - Test files created: , , , , , .
-  - Known regressions: None. All 215 backend and 25 frontend tests pass. Testing agent found zero regressions.
+  - Test files created: Previously existing targeted EC8 tests.
+  - Known regressions: None.
 
 **Credentials to test flow:**
- is enabled in backend . Dev-login mints tokens automatically without real credentials.
+ is enabled in backend . Dev-login mints tokens automatically without real credentials. The  endpoint safely provisions the required  link for this bypassed token.
 
 **What agent forgot to execute**
-Nothing. The EC7 closure pass was executed flawlessly.
-
-**Debugging checklist for current issue**
-N/A - Wait for the user to provide the EC8 execution prompt.</analysis>
+Nothing. The agent successfully fulfilled all explicit user instructions for wrapping up Phase 8b.</analysis>
