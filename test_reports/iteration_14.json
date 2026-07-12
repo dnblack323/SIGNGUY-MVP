@@ -1,0 +1,38 @@
+{
+  "summary": "Tested EC8 Phase 8d Payroll feature (backend + frontend). Backend: all 12 new pytest tests pass + 60 pre-existing EC8/EC7 regression tests pass (72/72, 100%). Frontend: found and FIXED one CRITICAL crash bug in the Employee Ledger tab (Radix Select.Item with empty-string value), then re-verified the full flow end-to-end via Playwright: Pay Periods tab (Sat-Fri boundary + Friday payday verified via python date check, prev/next nav, Recalculate, blocked Approve with warnings + override-reason approve, Reopen/Close/Void dialogs, no manual partially_paid/paid control), Employee Ledger (record payment, void with reversal row, no crash), Settings tab (toggle/persist on reload), Team Dashboard Payroll card + 'Open Payroll' link, Employee Detail Payroll tab (empty state for no-history employee, no crash), Reports page (both new payroll report keys render + CSV export downloads), Employee Portal My Pay (dashboard card + nav + full My Pay page, verified via raw API response that no employee_id/employee_name/notes/warnings/linked_user_id leak), and RBAC (staff role gets 403 on /api/payroll/periods, and nav item is perm-gated by payroll:read in navigation.js so staff won't see it in UI). Light regression smoke of Team Schedule and Timesheets pages showed no console/runtime errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PayrollPage.jsx - EmployeeLedgerTab", "issue": "CRITICAL (FIXED): Clicking the 'Employee Ledger' tab crashed the entire app with an uncaught runtime error 'A <Select.Item /> must have a value prop that is not an empty string' because the 'All periods' SelectItem used value=\"\". Fixed by using a sentinel value '__all__' mapped back to empty string in state. Re-tested and confirmed working post-fix.", "selector": "[data-testid=\"payroll-ledger-period-select\"]", "priority": "CRITICAL - FIXED"},
+      {"component": "PayrollPage.jsx - Reopen/Void/Close dialogs", "issue": "Minor: the submit button (data-testid=payroll-reason-submit-button) is NOT actually disabled when the reason textarea is empty (is_disabled() returned False in Playwright before and after typing). It relies on the native HTML5 'required' attribute validation ('Please fill out this field' browser tooltip) to block submission, which does functionally block the request, but deviates from the review spec's expectation that the button itself be disabled. Cosmetic/UX gap, not a functional blocker.", "selector": "[data-testid=\"payroll-reason-submit-button\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Employee Ledger - Record transaction form", "issues": ["Effective date field uses a native browser date input (type=date) instead of the shadcn Calendar/DatePicker component used elsewhere in the app - minor visual inconsistency, not a functional bug."]},
+      {"screen": "Pay Period status pill edge case", "issues": ["Observed a pay period with $0.00 gross and $0.00 paid showing status 'Paid' (should arguably be 'Approved' when there's nothing to pay) — this happened for an employee whose weekly timesheet had 0 logged hours. Not covered by the 12 pytest tests (which all use non-zero gross scenarios). Worth a business-rule check: should a period with gross_cents=0 ever auto-derive to 'paid'?"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_ec8d_payroll.py"],
+  "action_items": [
+    "Consider adding disabled={!reason.trim()} to the Reopen/Close/Void dialog submit buttons in PayrollPage.jsx to match spec exactly (currently relies on native HTML5 required-field validation, which does work but isn't a real 'disabled' state).",
+    "Review whether a Pay Period with $0 gross / $0 paid should derive to 'paid' status, or remain 'approved' until there's an actual balance to reconcile.",
+    "No other action items - all core Phase 8d flows (periods, ledger, settings, dashboard card, employee detail tab, reports, My Pay portal, RBAC) work correctly after the Employee Ledger crash fix."
+  ],
+  "critical_code_review_comments": [
+    "app/routers/payroll.py list_transactions correctly defaults include_voided=False so the UI naturally hides voided originals and shows only the void reversal row - this matches the append-only ledger design intent, not a bug.",
+    "portal_employee.py's field allow-list for My Pay is correctly enforced - verified via raw curl that forbidden fields (employee_id, employee_name, notes, warnings, linked_user_id) are absent from both /api/portal/employee/pay/periods and /api/portal/employee/dashboard responses.",
+    "navigation.js Payroll entry is correctly perm-gated (perm: 'payroll:read') rather than hardcoded disabled - confirms RBAC by role, not just a static flag.",
+    "The one bug found (empty-string SelectItem) is a common Radix UI pitfall; recommend a lint rule or code-review checklist item to always use a non-empty sentinel value for 'all/none' filter options."
+  ],
+  "updated_files": ["/app/frontend/src/pages/PayrollPage.jsx"],
+  "success_rate": {"backend": "100% (72/72: 12 new + 60 regression)", "frontend": "~95% (1 critical bug found and fixed during testing; all flows pass post-fix)"},
+  "test_credentials": "Used AUTH_DEV_BYPASS dev-login for Dev Shop Owner (dev@signguy-dev.example.com), and DEV-ONLY mint-employee-portal-login + magic-link/verify flow for Employee Portal testing (employee id 299a45ee-8020-4583-9324-36b159b18682), per /app/memory/test_credentials.md.",
+  "seed_data_creation": "Created one 'Payment' transaction ($50) on the Jul 11-17, 2026 period (later voided), approved/reopened/re-approved/closed that period, and approved+voided the Jul 18-24, 2026 period during testing. This is test/demo data on the Dev Shop tenant, left in place (no destructive cleanup needed since it's a dev sandbox).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 8d Payroll fully tested. One critical frontend bug (empty-string Select.Item crash on Employee Ledger tab) was found and fixed in this session in /app/frontend/src/pages/PayrollPage.jsx. All other flows (Pay Periods lifecycle, Employee Ledger, Settings, Team Dashboard card, Employee Detail Payroll tab, Reports/CSV export, Employee Portal My Pay, RBAC) verified working end-to-end. Two low-priority items remain open for main agent's discretion: (1) reason-required dialogs rely on native HTML5 validation rather than a truly disabled submit button, (2) a $0 gross/$0 paid period showed 'Paid' status rather than 'Approved' - worth a business-rule review but not blocking.",
+  "rca_of_the_issue": "The Employee Ledger tab crash was caused by <SelectItem value=\"\">All periods</SelectItem> inside a Radix UI Select component. Radix explicitly disallows empty-string values for SelectItem because it reserves the empty string internally to represent 'no selection / show placeholder'. Any time this component rendered (i.e., whenever a user opened the Employee Ledger tab), React threw an uncaught error and crashed the whole page (white screen with React error overlay). Fix: introduced a sentinel string '__all__' as the SelectItem value, translating it back to an empty string in the onValueChange handler and vice-versa when computing the Select's controlled value."
+}

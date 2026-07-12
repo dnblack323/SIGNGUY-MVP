@@ -350,4 +350,30 @@ async def ensure_indexes() -> None:
     )
     await db.portal_identities.create_index([("tenant_id", 1), ("portal_type", 1), ("status", 1)])
 
+    # ---- EC8 phase 8d — Payroll (Pay Periods, Snapshots, Ledger Transactions) ----
+    await db.pay_periods.create_index("id", unique=True)
+    await db.pay_periods.create_index([("tenant_id", 1), ("start_date", 1)], unique=True)
+    await db.pay_periods.create_index([("tenant_id", 1), ("status", 1), ("start_date", -1)])
+
+    await db.payroll_snapshots.create_index("id", unique=True)
+    await db.payroll_snapshots.create_index([("tenant_id", 1), ("pay_period_id", 1), ("employee_id", 1)], unique=True)
+    await db.payroll_snapshots.create_index([("tenant_id", 1), ("employee_id", 1)])
+
+    await db.payroll_transactions.create_index("id", unique=True)
+    await db.payroll_transactions.create_index([("tenant_id", 1), ("employee_id", 1), ("pay_period_id", 1)])
+    await db.payroll_transactions.create_index([("tenant_id", 1), ("pay_period_id", 1), ("type", 1), ("voided", 1)])
+    await db.payroll_transactions.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+
+    # payroll_carryovers — pending carryover ledger bridge (only exists between
+    # a period's close and the creation of its eligible next period).
+    await db.payroll_carryovers.create_index("id", unique=True)
+    await db.payroll_carryovers.create_index(
+        [("tenant_id", 1), ("linked", 1), ("source_period_end_date_plus_one", 1)]
+    )
+    await db.payroll_carryovers.create_index([("tenant_id", 1), ("employee_id", 1), ("source_period_id", 1)])
+
     logger.info("MongoDB indexes ensured")

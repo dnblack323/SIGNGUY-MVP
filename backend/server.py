@@ -146,6 +146,10 @@ api_router.include_router(schedule_router_module.shifts_router)
 api_router.include_router(employee_portal_admin_router_module.router)
 api_router.include_router(portal_employee_router_module.router)
 
+# EC8 — Phase 8d Payroll (Pay Periods, ledger transactions, My Pay, reports)
+from app.routers import payroll as payroll_router_module
+api_router.include_router(payroll_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

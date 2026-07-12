@@ -8,7 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Clock, Calendar, FileClock, Megaphone, User } from "lucide-react";
+import { Clock, Calendar, FileClock, Megaphone, User, Wallet } from "lucide-react";
+
+function fmtCents(cents) {
+  const n = Number(cents || 0) / 100;
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
 
 function Shell({ children }) {
   const { identity, logout } = useEmployeePortalAuth();
@@ -21,6 +26,7 @@ function Shell({ children }) {
             <Link to="/portal/employee/time-clock" data-testid="employee-portal-nav-time-clock">Time Clock</Link>
             <Link to="/portal/employee/schedule" data-testid="employee-portal-nav-schedule">My Schedule</Link>
             <Link to="/portal/employee/timesheet" data-testid="employee-portal-nav-timesheet">My Timesheet</Link>
+            <Link to="/portal/employee/pay" data-testid="employee-portal-nav-pay">My Pay</Link>
             <span className="text-slate-400 cursor-not-allowed" title="Coming later" data-testid="employee-portal-nav-tasks-disabled">My Tasks</span>
             <Link to="/portal/employee/announcements" data-testid="employee-portal-nav-announcements">Announcements</Link>
             <Link to="/portal/employee/profile" data-testid="employee-portal-nav-profile">Profile</Link>
@@ -209,6 +215,22 @@ function Dashboard() {
             ))}
           </CardContent>
         </Card>
+        <Card data-testid="employee-portal-pay-card">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Wallet className="h-4 w-4" /> My Pay</CardTitle></CardHeader>
+          <CardContent>
+            {!data ? <p className="text-sm text-slate-500">Loading…</p> : !data.pay ? (
+              <p className="text-sm text-slate-500 italic">No pay history yet.</p>
+            ) : (
+              <div className="text-sm space-y-1">
+                <div>Latest Pay Period: <span className="font-medium">{data.pay.period_start} – {data.pay.period_end}</span></div>
+                <div className="flex items-center gap-2">
+                  Gross: <span className="font-medium">{fmtCents(data.pay.gross_regular_cents + data.pay.gross_overtime_cents)}</span>
+                  <Badge variant="outline">{data.pay.period_status}</Badge>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
       <Card data-testid="employee-portal-quick-links-card">
         <CardHeader><CardTitle className="text-base">Quick Links</CardTitle></CardHeader>
@@ -216,6 +238,7 @@ function Dashboard() {
           <Link className="underline" to="/portal/employee/time-clock">Clock In/Out</Link>
           <Link className="underline" to="/portal/employee/schedule">My Schedule</Link>
           <Link className="underline" to="/portal/employee/timesheet">My Timesheet</Link>
+          <Link className="underline" to="/portal/employee/pay">My Pay</Link>
           <span className="text-slate-400 cursor-not-allowed" title="Coming later">My Tasks</span>
           <Link className="underline" to="/portal/employee/announcements">Announcements</Link>
           <Link className="underline" to="/portal/employee/profile">Profile</Link>
@@ -352,6 +375,92 @@ function ProfilePage() {
   );
 }
 
+function MyPayPage() {
+  const [items, setItems] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [txns, setTxns] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    employeePortalApi.get("/portal/employee/pay/periods").then((r) => {
+      setItems(r.data.items);
+      if (r.data.items.length > 0) setSelected(r.data.items[0]);
+    }).catch((e) => setErr(employeePortalExtractError(e)));
+  }, []);
+  useEffect(() => {
+    if (!selected) return;
+    employeePortalApi.get("/portal/employee/pay/transactions", { params: { pay_period_id: selected.pay_period_id } })
+      .then((r) => setTxns(r.data.items))
+      .catch((e) => setErr(employeePortalExtractError(e)));
+  }, [selected]);
+
+  return (
+    <div className="space-y-4" data-testid="employee-portal-pay-page">
+      <h1 className="text-xl font-semibold flex items-center gap-2"><Wallet className="h-5 w-5" /> My Pay</h1>
+      <p className="text-xs text-slate-500">Internal gross-pay record — hours, advances, payments and carryover. This is not a tax document.</p>
+      {err && <div className="text-sm text-rose-700">{err}</div>}
+      {!items ? <p className="text-sm text-slate-500">Loading…</p> : items.length === 0 ? (
+        <p className="text-sm text-slate-500 italic" data-testid="employee-portal-pay-empty">No pay history yet.</p>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-[220px_1fr]">
+          <div className="rounded border bg-white divide-y" data-testid="employee-portal-pay-period-list">
+            {items.map((p) => (
+              <button
+                key={p.pay_period_id}
+                onClick={() => setSelected(p)}
+                className={`w-full text-left p-3 text-sm ${selected?.pay_period_id === p.pay_period_id ? "bg-slate-100" : ""}`}
+                data-testid={`employee-portal-pay-period-${p.pay_period_id}`}
+              >
+                <div className="font-medium">{p.period_start} – {p.period_end}</div>
+                <Badge variant="outline" className="mt-1">{p.period_status}</Badge>
+              </button>
+            ))}
+          </div>
+          {selected && (
+            <Card data-testid="employee-portal-pay-detail-card">
+              <CardHeader><CardTitle className="text-base">Payday {selected.payday}</CardTitle></CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>Hours: <span className="font-medium">{fmtHours(selected.regular_minutes)} regular, {fmtHours(selected.overtime_minutes)} OT</span></div>
+                  <div>Rate: <span className="font-medium">{fmtCents(selected.hourly_rate_cents)}/hr</span></div>
+                  <div>Regular pay: <span className="font-medium">{fmtCents(selected.gross_regular_cents)}</span></div>
+                  <div>Overtime pay: <span className="font-medium">{fmtCents(selected.gross_overtime_cents)}</span></div>
+                  <div>Adjustments: <span className="font-medium">{fmtCents(selected.adjustment_total_cents)}</span></div>
+                  <div>Advances: <span className="font-medium">{fmtCents(selected.advance_total_cents)}</span></div>
+                  <div>Repayments: <span className="font-medium">{fmtCents(selected.repayment_total_cents)}</span></div>
+                  <div>Payments: <span className="font-medium">{fmtCents(selected.payment_total_cents)}</span></div>
+                  <div>Carryover in: <span className="font-medium">{fmtCents(selected.carryover_in_cents)}</span></div>
+                  <div>Carryover out: <span className="font-medium">{fmtCents(selected.carryover_out_cents)}</span></div>
+                  <div>Total paid: <span className="font-medium">{fmtCents(selected.total_paid_cents)}</span></div>
+                  <div>Balance remaining: <span className="font-semibold">{fmtCents(selected.remaining_balance_cents)}</span></div>
+                </div>
+                <div className="pt-2 border-t">
+                  <div className="text-xs text-slate-500 mb-2">Transactions</div>
+                  {!txns?.length ? <p className="text-sm text-slate-500 italic">No transactions recorded for this Pay Period.</p> : (
+                    <div className="divide-y" data-testid="employee-portal-pay-transactions">
+                      {txns.map((t, i) => (
+                        <div key={i} className="py-1.5 flex items-center justify-between text-sm">
+                          <span className="capitalize">{t.type.replace(/_/g, " ")}</span>
+                          <span className="text-slate-500">{t.effective_date}{t.reference ? ` · ${t.reference}` : ""}</span>
+                          <span className="font-medium">{fmtCents(t.amount_cents)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+      <div className="flex gap-3 text-sm">
+        <Link className="underline" to="/portal/employee">Dashboard</Link>
+        <Link className="underline" to="/portal/employee/time-clock">Time Clock</Link>
+        <Link className="underline" to="/portal/employee/timesheet">My Timesheet</Link>
+      </div>
+    </div>
+  );
+}
+
 export default function EmployeePortalApp() {
   return (
     <EmployeePortalAuthProvider>
@@ -362,6 +471,7 @@ export default function EmployeePortalApp() {
         <Route path="time-clock" element={<Guard><TimeClockPage /></Guard>} />
         <Route path="schedule" element={<Guard><MySchedulePage /></Guard>} />
         <Route path="timesheet" element={<Guard><MyTimesheetPage /></Guard>} />
+        <Route path="pay" element={<Guard><MyPayPage /></Guard>} />
         <Route path="announcements" element={<Guard><AnnouncementsPage /></Guard>} />
         <Route path="profile" element={<Guard><ProfilePage /></Guard>} />
       </Routes>

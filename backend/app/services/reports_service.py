@@ -294,6 +294,66 @@ async def _exempt_customers_flat(*, tenant_id: str, filters: dict) -> list[dict]
     return r.get("items", [])
 
 
+# -------- payroll reports (EC8 phase 8d) --------
+# Both reports read the `payroll_snapshots` read-model (itself derived live
+# from the `payroll_transactions` ledger — see `services/payroll_service.py`)
+# joined against `pay_periods` for the date/status filter. The registry is
+# intentionally left open for later payroll report keys (advances, payments,
+# carryover, unpaid balances, regular-vs-overtime, trends) — no second
+# report/CSV system is introduced here.
+async def _payroll_period_ids_in_range(*, tenant_id: str, filters: dict) -> list[str]:
+    q: dict[str, Any] = {"tenant_id": tenant_id}
+    if filters.get("period_status"): q["status"] = filters["period_status"]
+    rng: dict[str, Any] = {}
+    if filters.get("date_from"): rng["$gte"] = filters["date_from"]
+    if filters.get("date_to"): rng["$lte"] = filters["date_to"]
+    if rng: q["start_date"] = rng
+    return [p["id"] async for p in db.pay_periods.find(q, {"_id": 0, "id": 1})]
+
+
+async def _payroll_by_period(*, tenant_id: str, filters: dict) -> list[dict]:
+    period_ids = await _payroll_period_ids_in_range(tenant_id=tenant_id, filters=filters)
+    periods = {p["id"]: p async for p in db.pay_periods.find({"tenant_id": tenant_id, "id": {"$in": period_ids}}, {"_id": 0})}
+    q: dict[str, Any] = {"tenant_id": tenant_id, "pay_period_id": {"$in": period_ids}}
+    if filters.get("employee_id"): q["employee_id"] = filters["employee_id"]
+    cur = db.payroll_snapshots.find(q, {"_id": 0}).limit(25000)
+    rows: list[dict] = []
+    async for s in cur:
+        p = periods.get(s["pay_period_id"], {})
+        rows.append({
+            "period_start": p.get("start_date"), "period_end": p.get("end_date"), "payday": p.get("payday"),
+            "period_status": p.get("status"), "employee_name": s.get("employee_name"),
+            "regular_minutes": s.get("regular_minutes", 0), "overtime_minutes": s.get("overtime_minutes", 0),
+            "gross_regular_cents": int(s.get("gross_regular_cents", 0)), "gross_overtime_cents": int(s.get("gross_overtime_cents", 0)),
+            "adjustment_total_cents": int(s.get("adjustment_total_cents", 0)), "advance_total_cents": int(s.get("advance_total_cents", 0)),
+            "repayment_total_cents": int(s.get("repayment_total_cents", 0)), "payment_total_cents": int(s.get("payment_total_cents", 0)),
+            "carryover_in_cents": int(s.get("carryover_in_cents", 0)), "carryover_out_cents": int(s.get("carryover_out_cents", 0)),
+            "total_earned_cents": int(s.get("total_earned_cents", 0)), "total_paid_cents": int(s.get("total_paid_cents", 0)),
+            "remaining_balance_cents": int(s.get("remaining_balance_cents", 0)),
+        })
+    rows.sort(key=lambda r: (r["period_start"] or "", r["employee_name"] or ""), reverse=True)
+    return rows
+
+
+async def _payroll_by_employee(*, tenant_id: str, filters: dict) -> list[dict]:
+    period_ids = await _payroll_period_ids_in_range(tenant_id=tenant_id, filters=filters)
+    pipeline = [
+        {"$match": {"tenant_id": tenant_id, "pay_period_id": {"$in": period_ids}}},
+        {"$group": {
+            "_id": "$employee_id", "employee_name": {"$first": "$employee_name"},
+            "period_count": {"$sum": 1},
+            "total_regular_cents": {"$sum": "$gross_regular_cents"}, "total_overtime_cents": {"$sum": "$gross_overtime_cents"},
+            "total_adjustments_cents": {"$sum": "$adjustment_total_cents"}, "total_advances_cents": {"$sum": "$advance_total_cents"},
+            "total_repayments_cents": {"$sum": "$repayment_total_cents"}, "total_payments_cents": {"$sum": "$payment_total_cents"},
+            "total_carryover_in_cents": {"$sum": "$carryover_in_cents"}, "total_carryover_out_cents": {"$sum": "$carryover_out_cents"},
+            "total_earned_cents": {"$sum": "$total_earned_cents"}, "total_remaining_cents": {"$sum": "$remaining_balance_cents"},
+        }},
+        {"$sort": {"total_earned_cents": -1}},
+    ]
+    result = await db.payroll_snapshots.aggregate(pipeline).to_list(length=25000)
+    return [{**{k: v for k, v in r.items() if k != "_id"}} for r in result]
+
+
 REPORTS: dict[str, dict[str, Any]] = {
     # -- Inventory --
     "inventory.on_hand": {
@@ -504,6 +564,43 @@ REPORTS: dict[str, dict[str, Any]] = {
             _money_col("subtotal_cents", "Subtotal"),
             _money_col("tax_cents", "Tax charged"),
         ], "run": _exempt_customers_flat,
+    },
+    # -- Payroll (EC8 phase 8d) --
+    "payroll.by_period": {
+        "title": "Payroll by Pay Period", "category": "payroll",
+        "perm": Perm.PAYROLL_READ,
+        "data_source": "payroll_snapshots+pay_periods", "date_basis": "period_start",
+        "calc_basis": "payroll_ledger_derived",
+        "limitations": ["gross-pay ledger only — no tax withholding or statutory deductions",
+                        "figures reflect the ledger at report time; a still-open period may change"],
+        "columns": [
+            _date_col("period_start", "Week start"), _date_col("period_end", "Week end"),
+            _date_col("payday", "Payday"), {"key": "period_status", "label": "Status"},
+            {"key": "employee_name", "label": "Employee"},
+            {"key": "regular_minutes", "label": "Regular min"}, {"key": "overtime_minutes", "label": "OT min"},
+            _money_col("gross_regular_cents", "Regular pay"), _money_col("gross_overtime_cents", "OT pay"),
+            _money_col("adjustment_total_cents", "Adjustments"), _money_col("advance_total_cents", "Advances"),
+            _money_col("repayment_total_cents", "Repayments"), _money_col("payment_total_cents", "Payments"),
+            _money_col("carryover_in_cents", "Carryover in"), _money_col("carryover_out_cents", "Carryover out"),
+            _money_col("total_earned_cents", "Total earned"), _money_col("total_paid_cents", "Total paid"),
+            _money_col("remaining_balance_cents", "Balance remaining"),
+        ], "run": _payroll_by_period,
+    },
+    "payroll.by_employee": {
+        "title": "Payroll by Employee", "category": "payroll",
+        "perm": Perm.PAYROLL_READ,
+        "data_source": "payroll_snapshots+pay_periods", "date_basis": "period_start",
+        "calc_basis": "payroll_ledger_derived",
+        "limitations": ["gross-pay ledger only — no tax withholding or statutory deductions",
+                        "totals span every Pay Period matching the date filter"],
+        "columns": [
+            {"key": "employee_name", "label": "Employee"}, {"key": "period_count", "label": "Periods"},
+            _money_col("total_regular_cents", "Regular pay"), _money_col("total_overtime_cents", "OT pay"),
+            _money_col("total_adjustments_cents", "Adjustments"), _money_col("total_advances_cents", "Advances"),
+            _money_col("total_repayments_cents", "Repayments"), _money_col("total_payments_cents", "Payments"),
+            _money_col("total_carryover_in_cents", "Carryover in"), _money_col("total_carryover_out_cents", "Carryover out"),
+            _money_col("total_earned_cents", "Total earned"), _money_col("total_remaining_cents", "Balance remaining"),
+        ], "run": _payroll_by_employee,
     },
 }
 

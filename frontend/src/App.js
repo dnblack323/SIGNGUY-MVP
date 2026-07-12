@@ -48,6 +48,7 @@ import AnnouncementsPage from "@/pages/AnnouncementsPage";
 import TimeClockPage from "@/pages/TimeClockPage";
 import TimesheetsPage from "@/pages/TimesheetsPage";
 import TeamSchedulePage from "@/pages/TeamSchedulePage";
+import PayrollPage from "@/pages/PayrollPage";
 import EmployeePortalAccessPage from "@/pages/EmployeePortalAccessPage";
 import EmployeePortalApp from "@/portal/employee/EmployeePortalApp";
 import { Toaster } from "sonner";
@@ -106,6 +107,7 @@ function App() {
             <Route path="/team/employee-portal" element={<EmployeePortalAccessPage />} />
             <Route path="/team/time-clock" element={<TimeClockPage />} />
             <Route path="/team/timesheets" element={<TimesheetsPage />} />
+            <Route path="/team/payroll" element={<PayrollPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/company" element={<CompanySettingsPage />} />
             <Route path="/settings/integrations" element={<IntegrationsPage />} />

@@ -4,13 +4,17 @@ import api from "@/lib/api";
 import PageHeader from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Clock, Coffee, FileText, Megaphone, Users } from "lucide-react";
-import { relativeTime } from "@/lib/format";
+import { Clock, Coffee, DollarSign, FileText, Megaphone, Users } from "lucide-react";
+import { relativeTime, centsToDollarsString, formatDate } from "@/lib/format";
 import EmptyState from "@/components/common/EmptyState";
+import StatusPill from "@/components/common/StatusPill";
+import { useAuth } from "@/auth/AuthContext";
 
 const STATUS_LABELS = { active: "Active", suspended: "Suspended", inactive: "Inactive", terminated: "Terminated", archived: "Archived" };
 
 export default function TeamDashboardPage() {
+  const { hasPerm } = useAuth();
+  const canViewPayroll = hasPerm("payroll:read");
   const { data, isLoading } = useQuery({
     queryKey: ["team-dashboard"],
     queryFn: async () => (await api.get("/team/dashboard")).data,
@@ -24,6 +28,12 @@ export default function TeamDashboardPage() {
   const { data: pendingReview } = useQuery({
     queryKey: ["timesheets-pending"],
     queryFn: async () => (await api.get("/timesheets/pending-review")).data,
+    retry: false,
+  });
+  const { data: payrollPeriod } = useQuery({
+    queryKey: ["team-dashboard-payroll-current"],
+    queryFn: async () => (await api.get("/payroll/periods/current")).data,
+    enabled: canViewPayroll,
     retry: false,
   });
 
@@ -94,6 +104,25 @@ export default function TeamDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {canViewPayroll && payrollPeriod && (
+        <Card data-testid="team-dashboard-payroll-card">
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2"><DollarSign className="size-4" />Payroll</CardTitle>
+            <Button asChild variant="ghost" size="sm" data-testid="team-dashboard-payroll-link"><Link to="/team/payroll">Open Payroll</Link></Button>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between text-sm flex-wrap gap-2">
+            <div>
+              Current Pay Period: <span className="font-medium">{formatDate(payrollPeriod.period.start_date)} – {formatDate(payrollPeriod.period.end_date)}</span>
+              <span className="text-muted-foreground"> · Payday {formatDate(payrollPeriod.period.payday)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Balance remaining: {centsToDollarsString(payrollPeriod.summary.total_remaining_cents)}</span>
+              <StatusPill kind="payroll" value={payrollPeriod.period.status} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

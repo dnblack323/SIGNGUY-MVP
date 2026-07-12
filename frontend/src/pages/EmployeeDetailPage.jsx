@@ -15,11 +15,50 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import StatusPill from "@/components/common/StatusPill";
-import { relativeTime } from "@/lib/format";
-import { ArrowLeft, Save, UserCog, KeyRound, Ban, Send } from "lucide-react";
+import EmptyState from "@/components/common/EmptyState";
+import { centsToDollarsString, formatDate, formatMinutes, relativeTime } from "@/lib/format";
+import { ArrowLeft, Save, UserCog, KeyRound, Ban, Send, Wallet } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 
 const STATUSES = ["active", "suspended", "inactive", "terminated", "archived"];
+
+function PayrollHistoryTab({ employeeId }) {
+  const { hasPerm } = useAuth();
+  const canView = hasPerm("payroll:read");
+  const { data } = useQuery({
+    queryKey: ["employee-payroll-snapshots", employeeId],
+    queryFn: async () => (await api.get(`/payroll/employees/${employeeId}/snapshots`)).data,
+    enabled: !!employeeId && canView,
+  });
+  if (!canView) return <EmptyState icon={Wallet} title="No access" description="You don't have permission to view Payroll." />;
+  if (!data) return <div className="text-sm text-muted-foreground">Loading…</div>;
+  if (!data.items.length) return <EmptyState icon={Wallet} title="No pay history yet" description="This employee hasn't been included in a Payroll recalculation yet." />;
+  return (
+    <Card>
+      <CardHeader><CardTitle>Pay history</CardTitle></CardHeader>
+      <CardContent className="overflow-x-auto">
+        <table className="w-full text-sm" data-testid="employee-payroll-history-table">
+          <thead className="text-left text-xs text-muted-foreground border-b">
+            <tr><th className="py-2 pr-3">Pay Period</th><th className="py-2 pr-3">Regular</th><th className="py-2 pr-3">Overtime</th><th className="py-2 pr-3">Gross</th><th className="py-2 pr-3">Paid</th><th className="py-2 pr-3">Balance</th><th className="py-2">Status</th></tr>
+          </thead>
+          <tbody>
+            {data.items.map((s) => (
+              <tr key={s.pay_period_id} className="border-b last:border-0" data-testid={`employee-payroll-row-${s.pay_period_id}`}>
+                <td className="py-2 pr-3">{formatDate(s.period_start)} – {formatDate(s.period_end)}</td>
+                <td className="py-2 pr-3">{formatMinutes(s.regular_minutes)}</td>
+                <td className="py-2 pr-3">{formatMinutes(s.overtime_minutes)}</td>
+                <td className="py-2 pr-3">{centsToDollarsString(s.gross_regular_cents + s.gross_overtime_cents)}</td>
+                <td className="py-2 pr-3">{centsToDollarsString(s.total_paid_cents)}</td>
+                <td className="py-2 pr-3 font-medium">{centsToDollarsString(s.remaining_balance_cents)}</td>
+                <td className="py-2"><StatusPill kind="payroll" value={s.period_status} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
+  );
+}
 
 function Field({ label, value, onChange, textarea, type = "text", testId }) {
   const Comp = textarea ? Textarea : Input;
@@ -161,6 +200,7 @@ export default function EmployeeDetailPage() {
       <Tabs defaultValue="details" data-testid="detail-tabs">
         <TabsList>
           <TabsTrigger value="details" data-testid="detail-tab-details">Details</TabsTrigger>
+          <TabsTrigger value="payroll" data-testid="detail-tab-payroll">Payroll</TabsTrigger>
           <TabsTrigger value="activity" data-testid="detail-tab-activity">Activity</TabsTrigger>
         </TabsList>
         <TabsContent value="details" className="space-y-4">
@@ -229,6 +269,9 @@ export default function EmployeeDetailPage() {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+        <TabsContent value="payroll">
+          <PayrollHistoryTab employeeId={id} />
         </TabsContent>
         <TabsContent value="activity">
           <AuditTimeline events={audit?.items || []} />

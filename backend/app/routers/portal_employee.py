@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from ..core.db import db
 from ..core.time_utils import utc_now
 from ..deps_portal import require_employee_portal_permission
-from ..services import announcement_service, schedule_service, time_clock_service, timesheet_service
+from ..services import announcement_service, payroll_service, schedule_service, time_clock_service, timesheet_service
 from ..services.portal_identity import update_portal_identity
 from ..services.time_clock_service import TimeEntryError
 from ..services.timesheet_service import TimesheetError
@@ -28,6 +28,7 @@ VIEW = require_employee_portal_permission("portal:employee_view")
 CLOCK = require_employee_portal_permission("portal:employee_time_clock")
 TIMESHEET = require_employee_portal_permission("portal:employee_timesheet_view")
 SCHEDULE = require_employee_portal_permission("portal:employee_schedule_view")
+PAY = require_employee_portal_permission("portal:employee_pay_view")
 
 
 def _raise(e):
@@ -77,6 +78,7 @@ async def dashboard(identity: dict = Depends(VIEW)) -> dict:
     visible_announcements = [
         a for a in announcements if a.get("audience") == "all" or employee_id in (a.get("employee_ids") or [])
     ]
+    latest_pay = await _latest_pay_summary(tenant_id, employee_id)
     return {
         "employee": _public_employee_view(emp),
         "active_entry": active_entry,
@@ -87,6 +89,7 @@ async def dashboard(identity: dict = Depends(VIEW)) -> dict:
         "timesheet_status": week_summary["status"],
         "announcements": visible_announcements,
         "tasks": {"available": False, "items": []},
+        "pay": latest_pay,
     }
 
 
@@ -207,6 +210,56 @@ async def timesheet_weekly(week_start: str, identity: dict = Depends(TIMESHEET))
         tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], week_start=week_start,
     )
     return _public_timesheet_view(result)
+
+
+# ---- My Pay (self-scoped, EC8 phase 8d — reuses the Phase 8d payroll ledger,
+# no parallel pay system). Strict allow-list of fields: never manager notes,
+# other employees, audit internals, bank info, or tax data.) ----
+
+_PAY_SNAPSHOT_FIELDS = (
+    "pay_period_id", "period_start", "period_end", "payday", "period_status",
+    "regular_minutes", "overtime_minutes", "hourly_rate_cents",
+    "gross_regular_cents", "gross_overtime_cents", "adjustment_total_cents",
+    "advance_total_cents", "repayment_total_cents", "payment_total_cents",
+    "carryover_in_cents", "carryover_out_cents", "total_earned_cents",
+    "total_paid_cents", "remaining_balance_cents",
+)
+_PAY_TXN_FIELDS = ("pay_period_id", "type", "amount_cents", "effective_date", "reference", "payment_method", "payment_date")
+
+
+def _public_pay_view(snapshot: dict) -> dict:
+    return {k: snapshot.get(k) for k in _PAY_SNAPSHOT_FIELDS}
+
+
+def _public_txn_view(txn: dict) -> dict:
+    return {k: txn.get(k) for k in _PAY_TXN_FIELDS}
+
+
+async def _latest_pay_summary(tenant_id: str, employee_id: str) -> Optional[dict]:
+    snaps = await payroll_service.list_employee_snapshots(tenant_id=tenant_id, employee_id=employee_id, limit=1)
+    if not snaps:
+        return None
+    return _public_pay_view(snaps[0])
+
+
+@router.get("/pay/summary")
+async def pay_summary(identity: dict = Depends(PAY)) -> dict:
+    latest = await _latest_pay_summary(identity["tenant_id"], identity["employee_id"])
+    return {"latest_period": latest}
+
+
+@router.get("/pay/periods")
+async def pay_periods(identity: dict = Depends(PAY)) -> dict:
+    snaps = await payroll_service.list_employee_snapshots(tenant_id=identity["tenant_id"], employee_id=identity["employee_id"])
+    return {"items": [_public_pay_view(s) for s in snaps]}
+
+
+@router.get("/pay/transactions")
+async def pay_transactions(pay_period_id: Optional[str] = None, identity: dict = Depends(PAY)) -> dict:
+    txns = await payroll_service.list_transactions(
+        tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], pay_period_id=pay_period_id,
+    )
+    return {"items": [_public_txn_view(t) for t in txns]}
 
 
 # ---- Announcements (reuses Phase 8a Announcement — no second messaging system) ----
