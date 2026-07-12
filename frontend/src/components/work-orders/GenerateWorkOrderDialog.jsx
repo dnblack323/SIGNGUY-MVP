@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Wrench } from "lucide-react";
+import { Wrench, Ban, AlertTriangle } from "lucide-react";
 
 export default function GenerateWorkOrderDialog({ orderId, open, onOpenChange, onCreated }) {
   const qc = useQueryClient();
@@ -207,30 +207,78 @@ export function AssignDialog({ workOrderId, currentUserIds, open, onOpenChange }
     enabled: open,
   });
   const [selected, setSelected] = useState(currentUserIds || []);
-  useEffect(() => { if (open) setSelected(currentUserIds || []); }, [open, currentUserIds]);
+  const [checkResult, setCheckResult] = useState(null);
+  const [overrideReason, setOverrideReason] = useState("");
+  useEffect(() => { if (open) { setSelected(currentUserIds || []); setCheckResult(null); setOverrideReason(""); } }, [open, currentUserIds]);
+
+  const usersById = useMemo(() => {
+    const m = {};
+    (users || []).forEach((u) => { m[u.id] = u; });
+    return m;
+  }, [users]);
 
   const save = useMutation({
-    mutationFn: async () => (await api.post(`/work-orders/${workOrderId}/assign`, { user_ids: selected })).data,
+    mutationFn: async (reason) => (await api.post(`/work-orders/${workOrderId}/assign`, { user_ids: selected, override_reason: reason || undefined })).data,
     onSuccess: () => {
       toast.success("Assignments updated");
       qc.invalidateQueries({ queryKey: ["work-order", workOrderId] });
       qc.invalidateQueries({ queryKey: ["prod-board"] });
+      setCheckResult(null); setOverrideReason("");
       onOpenChange(false);
     },
-    onError: (e) => toast.error(extractError(e)),
+    onError: (e) => {
+      const detail = e?.response?.data?.detail;
+      if (detail && typeof detail === "object" && detail.check) {
+        setCheckResult(detail.check);
+        toast.error(detail.message === "assignment_blocked" ? "Assignment blocked — see details below" : "Certification warning — an override reason is required");
+      } else {
+        toast.error(extractError(e));
+      }
+    },
   });
+
+  const flagged = (checkResult?.results || []).filter((r) => r.blocked.length || r.warnings.length);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-testid="assign-wo-dialog">
         <DialogHeader>
           <DialogTitle>Assign work order</DialogTitle>
-          <DialogDescription>Select users in this tenant. Newly assigned users are notified.</DialogDescription>
+          <DialogDescription>Select users in this tenant. Equipment/Certification requirements are enforced by the backend.</DialogDescription>
         </DialogHeader>
-        <AssigneePicker users={users || []} value={selected} onChange={setSelected} testIdPrefix="assign-wo" />
+        <AssigneePicker users={users || []} value={selected} onChange={(v) => { setSelected(v); setCheckResult(null); setOverrideReason(""); }} testIdPrefix="assign-wo" />
+
+        {flagged.length > 0 && (
+          <div className="rounded-md border p-3 space-y-2 text-sm" data-testid="assign-wo-check-results">
+            {flagged.map((r) => (
+              <div key={r.user_id} data-testid={`assign-wo-check-user-${r.user_id}`}>
+                <div className="font-medium">{usersById[r.user_id]?.full_name || usersById[r.user_id]?.email || r.user_id}</div>
+                {r.blocked.map((b, i) => (
+                  <div key={i} className="flex items-center gap-1.5 text-rose-700" data-testid={`assign-wo-blocked-${r.user_id}-${i}`}><Ban className="size-3.5" />{b.message}</div>
+                ))}
+                {r.warnings.map((w, i) => (
+                  <div key={i} className="flex items-center gap-1.5 text-amber-700" data-testid={`assign-wo-warning-${r.user_id}-${i}`}><AlertTriangle className="size-3.5" />{w.message}</div>
+                ))}
+              </div>
+            ))}
+            {checkResult.any_blocked ? (
+              <div className="text-xs text-rose-700 italic">Blocked items cannot be overridden here. Remove this assignee or the required Equipment/role to continue.</div>
+            ) : (
+              <div className="grid gap-1.5 pt-2 border-t">
+                <Label>Override reason*</Label>
+                <Textarea rows={2} value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} data-testid="assign-wo-override-reason" />
+              </div>
+            )}
+          </div>
+        )}
+
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="assign-wo-cancel">Cancel</Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending} data-testid="assign-wo-submit">Save</Button>
+          {checkResult && !checkResult.any_blocked && checkResult.any_warning ? (
+            <Button onClick={() => save.mutate(overrideReason)} disabled={save.isPending || !overrideReason.trim()} data-testid="assign-wo-override-submit">Assign anyway</Button>
+          ) : (
+            <Button onClick={() => save.mutate()} disabled={save.isPending || checkResult?.any_blocked} data-testid="assign-wo-submit">Save</Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

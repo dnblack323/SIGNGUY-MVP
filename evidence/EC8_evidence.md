@@ -1,6 +1,6 @@
-# EC8 Evidence — Phase 8a (Employees & Team Foundation) + Phase 8b (Time Clock & Timesheets) + Phase 8c (Scheduling & Employee Portal)
+# EC8 Evidence — Phase 8a (Employees & Team Foundation) + Phase 8b (Time Clock & Timesheets) + Phase 8c (Scheduling & Employee Portal) + Phase 8d (Payroll) + Phase 8e (Equipment/Training/Certification)
 
-**Status: EC8 — IN PROGRESS.** Phase 8a DELIVERED. Phase 8b DELIVERED. Phase 8c DELIVERED. Phases 8d–8f not started. EC8 as a whole is NOT complete. EC9 has not begun.
+**Status: EC8 — IN PROGRESS.** Phase 8a DELIVERED. Phase 8b DELIVERED. Phase 8c DELIVERED. Phase 8d DELIVERED. Phase 8e DELIVERED. Phase 8f (final closure/regression) NOT started. EC8 as a whole is NOT complete. EC9 has not begun.
 
 ---
 
@@ -175,5 +175,92 @@ SendGrid is configured with a real key in this environment but the dev-login-pro
 - "Open shifts today" (unassigned shift) Team Dashboard card was intentionally omitted — the `Shift` model requires an `employee_id` at creation time; there is no "unassigned shift" concept to count.
 - Advanced Production Stage Tracking & Bottleneck Analytics (owner-locked future paid add-on, explicitly out of EC8 scope) is documented at `/app/docs/production_stage_timer_boundary.md` — reserved route `/portal/employee/production` is NOT wired into `EmployeePortalApp.jsx`, no timer collections/models/routes exist.
 
-## Remaining Phase 8d scope (not started)
-Payroll — pay periods, transactions ledger, advances, My Pay, exports. Requires explicit owner authorization before starting.
+## Remaining Phase 8d scope (delivered — see detail below)
+
+---
+
+## Phase 8d — Payroll
+
+### Scope boundary (LOCKED)
+Internal workforce gross-pay ledger only — explicitly NOT a payroll-processing, tax-filing, or banking service. No ACH/direct deposit, no SSN/bank storage, no tax withholding/statutory deductions, no W-2/1099 generation. Overtime math is a configurable internal estimate, never represented as legal/compliance payroll.
+
+### Files added
+- `backend/app/models/pay_period.py` — `PayPeriod` (one per tenant per Saturday–Friday week; payday = end_date/Friday; unique `(tenant_id, start_date)`).
+- `backend/app/models/payroll_snapshot.py` — `PayrollSnapshot` (one per period × employee; a read model recomputed from the ledger).
+- `backend/app/models/payroll_transaction.py` — `PayrollTransaction` (append-only ledger; corrections/voids add an offsetting row and flip `voided=True` on the original — never mutate historical `amount_cents`).
+- `backend/app/services/payroll_service.py` — period open/close, snapshot recompute from `TimeEntry`/`Timesheet` (Phase 8b) hours × `Employee.hourly_rate_cents`, manual adjustment/advance transactions, void (reason-required), `_refresh_period_financial_status` (financial status is always derived from the ledger, never set directly by a caller).
+- `backend/app/routers/payroll.py` — `/api/payroll/*` (periods list/get/open/close, snapshots, transactions add/void, `/export` CSV).
+- `backend/app/routers/portal_employee.py` — added `/portal/employee/pay` (self-scoped, payroll-rate/internal-note fields stripped).
+- `backend/tests/test_ec8d_payroll.py` — 13 targeted tests.
+- Frontend: `pages/PayrollPage.jsx` (`/team/payroll` — periods list, snapshot table, add/void transaction dialogs with reason-required void, CSV export), `portal/employee/MyPayPage.jsx` (`/portal/employee/pay`).
+
+### Files changed
+- `backend/app/core/permissions.py` — `payroll:self/read/manage/export` (already added to the canonical EC8 permission catalog in Phase 8a preflight; wired to enforcement in Phase 8d routers).
+- `backend/server.py` — registered `payroll` router.
+- `frontend/src/lib/navigation.js` — enabled `flyout-payroll`.
+- `frontend/src/App.js` — added `/team/payroll` and `/portal/employee/pay`.
+- `frontend/src/portal/employee/EmployeePortalApp.jsx` — added "My Pay" nav link + Dashboard pay summary card.
+
+### Targeted tests run (Phase 8d)
+- `backend/tests/test_ec8d_payroll.py` — **13/13 passing.**
+- Full EC0–EC7 + Phase 8a/8b/8c regression and `testing_agent_v4_fork` intentionally **NOT run** — reserved for Phase 8f per the owner's credit-conservation instruction.
+
+### Known limitations (Phase 8d)
+- No ACH/direct deposit, tax withholding, or W-2/1099 generation (explicitly out of scope, LOCKED).
+- Advances/adjustments are manual ledger entries only — no external accounting-system sync.
+
+---
+
+## Phase 8e — Equipment, Training, Certification & Work Order Access Enforcement
+
+### Scope
+Track Equipment (machines/safety-sensitive assets), assign bounded Training (reading/video/sop_review/quiz/practical_demonstration/manager_signoff/retraining) with quizzes and practical-signoff workflows, issue/renew/revoke per-Equipment Certifications per Employee, and enforce all of this at Work Order assignment time (hard block / warn-with-override / advisory role match).
+
+### Files added
+- `backend/app/models/equipment.py`, `training_definition.py`, `training_assignment.py`, `quiz_attempt.py`, `practical_signoff.py`, `certification.py`.
+- `backend/app/services/equipment_service.py` — CRUD, archive, `equipment_detail` (composite: equipment + linked documents + required Training + pending Training assignments + Certifications + active/expiring counts).
+- `backend/app/services/training_service.py` — Training Definition CRUD/archive (with quiz question authoring), Assignment lifecycle (`assign → start → complete | quiz → (pending_signoff) → signoff | fail | cancel`), quiz scoring against `passing_score` (attempt history preserved, never overwritten — a passing retry after a prior failed attempt correctly re-opens the assignment rather than hitting a terminal-status guard), `list_assignments`/`list_certifications` enriched with denormalized `training_title`/`equipment_name` for list UIs (both manager and portal).
+- `backend/app/services/certification_service.py` — issue/renew/revoke (revoke reason required, permanent history retained), `effective_status` (auto-expiry by date), `expires_soon` window flag, `check_work_order_assignment` (the enforcement decision engine — see below), Employee × Equipment matrix builder.
+- `backend/app/routers/equipment.py`, `training.py`, `certification.py` — `/api/equipment/*`, `/api/training/definitions/*` + `/api/training/assignments/*` (+ self-service `/start`, `/quiz`, `/complete`, `/signoff`, `/fail`, `/cancel`), `/api/certifications/*` (+ `/matrix`, `/{id}/renew`, `/{id}/revoke`).
+- `backend/app/routers/portal_employee.py` — added self-scoped `/portal/employee/training/assignments` (+ `/{id}`, `/{id}/start`, `/{id}/quiz`, `/{id}/complete`) and `/portal/employee/certifications` — never accepts an Employee ID from the client; always resolves from the authenticated portal identity. Strips quiz `correct_index`, manager notes, and override/audit detail from every portal-facing response.
+- `backend/tests/test_ec8e_equipment_training.py` — 15 targeted tests (Equipment CRUD/archive, Training Definition + quiz authoring, Assignment lifecycle incl. quiz retry-after-fail, practical signoff, Certification issue/renew/revoke/expiry, matrix, Work Order enforcement — no-cert hard block, expired/override-allowed warning + override success, cross-tenant assignee rejection, advisory role-mismatch warning-only).
+- Frontend (manager, under **Team & Workflow**): `pages/EquipmentPage.jsx` (`/team/equipment`), `pages/EquipmentDetailPage.jsx` (`/team/equipment/:id` — Overview/Training/Certifications tabs), `pages/TrainingPage.jsx` (`/team/training` — Definitions tab incl. quiz builder, Assignments tab), `pages/CertificationsPage.jsx` (`/team/certifications` — Employee × Equipment Matrix tab + All Certifications tab), plus `components/training/{TrainingDefinitionDialog,AssignTrainingDialog,AssignmentDetailDialog}.jsx` and `components/certifications/{IssueCertificationDialog,RevokeCertificationDialog}.jsx`.
+- Frontend (Employee Portal): `portal/employee/MyTrainingPage.jsx` (`/portal/employee/training`), `portal/employee/MyTrainingAssignmentDetailPage.jsx` (`/portal/employee/training/:assignmentId` — quiz-taking UI, materials, signoff/completion state), `portal/employee/MyCertificationsPage.jsx` (`/portal/employee/certifications` — read-only, renewal-needed flag).
+- Frontend (Work Order integration): `components/work-orders/RequirementsDialog.jsx` (manager sets `required_equipment_ids`/`required_role` on a Work Order).
+
+### Files changed
+- `backend/app/services/work_order_service.py` / `backend/app/routers/work_orders.py` — `assign()` now runs `certification_service.check_work_order_assignment` against every proposed assignee before persisting; returns `409 {"message": "assignment_blocked"|"assignment_warning_override_required", "check": {...}}` on failure so the exact backend decision (per-user `blocked[]`/`warnings[]` with `code`+`message`+`equipment_id`) reaches the frontend unmodified — the frontend never re-implements the enforcement rule, it only renders `check.results`.
+- `backend/app/services/training_service.py` (`list_assignments`) / `certification_service.py` (`list_certifications`) — additive `training_title`/`training_type` and `equipment_name` batch-join enrichment (small, directly-frontend-motivated backend adjustment; verified additive/non-breaking by re-running the full targeted suite after each change).
+- `backend/app/services/employee_portal_service.py` (`invite_employee`) — re-inviting an Employee (active or reactivating a disabled identity) now always re-syncs `permissions` to the current `EMPLOYEE_PORTAL_PERMS` set. **Bug found and fixed this phase:** pre-existing Employee Portal identities created before the Training/Certification permissions existed had stale `permissions` arrays and would have gotten silently 403'd on the new self-service endpoints; re-invite now heals this without a separate migration script.
+- `frontend/src/components/common/StatusPill.jsx` — added `equipment_status`, `access_policy`, `certification`, `training_assignment` color maps (reused the existing badge pattern, no new component).
+- `frontend/src/pages/WorkOrderDetailPage.jsx` — added an "Assignment requirements" card (read-only badges + Edit dialog) and wired `RequirementsDialog`.
+- `frontend/src/components/work-orders/GenerateWorkOrderDialog.jsx` (`AssignDialog`) — renders `check.results` per assignee (blocked = rose, non-overridable; warning = amber, override-reason-gated); `Save` is disabled while any assignee is hard-blocked; `Assign anyway` only appears when every flagged item is override-eligible and a reason has been entered.
+- `frontend/src/lib/navigation.js` — enabled `flyout-equipment` (`equipment:read`), `flyout-training` (`training:manage`), `flyout-certifications` (`certification:read`).
+- `frontend/src/App.js` — added `/team/equipment(+/:id)`, `/team/training`, `/team/certifications`, `/portal/employee/training(+/:assignmentId)`, `/portal/employee/certifications`.
+- `frontend/src/portal/employee/EmployeePortalApp.jsx` — added "My Training"/"My Certifications" nav links + Dashboard cards (Training due/overdue/pending-signoff counts, Certifications expiring-soon/expired counts, both derived client-side from the existing self-scoped list endpoints — no new aggregate endpoint added).
+
+### Work Order enforcement decision engine
+`check_work_order_assignment` evaluates, per proposed assignee, every `Equipment` in the Work Order's `required_equipment_ids`:
+- `access_policy=no_required` / `recommended` → never blocks or warns.
+- `required_no_override` + no valid (active, unexpired, unrevoked) Certification → **hard block** (`certification_missing`/`certification_expired`/`certification_revoked`), not overridable.
+- `required_override_allowed` + no valid Certification → **warning**, assignable only with a non-empty `override_reason` (persisted on the assignment audit trail).
+- `required_role` mismatch → **advisory warning only**, never blocks, never requires an override reason (it does not gate on Certification data).
+Verified end-to-end via both the pytest suite and live curl during this session:
+- No-cert + `required_no_override` Equipment → `409 assignment_blocked`.
+- Expired-cert + `required_override_allowed` Equipment → `409 assignment_warning_override_required`; resubmission with `override_reason` → `200`.
+- Frontend `AssignDialog` screenshot-verified rendering both the block reason (rose, non-overridable) and the warning reason (amber, override-reason-gated) for the same multi-requirement Work Order in one dialog.
+
+### Targeted tests run (Phase 8e)
+- `backend/tests/test_ec8e_equipment_training.py` — **15/15 passing** (6 initially failed on stale test-fixture Quote API shape + a real quiz-retry-after-fail bug in `training_service.py`; both root-caused and fixed, then verified green).
+- Re-ran `backend/tests/test_work_orders_ec5.py` + `backend/tests/test_quotes_ec3.py` after the Work Order/training/certification service changes — both green, no regressions.
+- Manual curl E2E (documented above) for the hard-block and warning-override Work Order assignment paths, plus the Employee Portal permission-backfill fix.
+- Frontend smoke: Certification Matrix (`/team/certifications`), Employee Portal My Training list + assignment detail + quiz-taking form (`/portal/employee/training`), Work Order Detail "Assignment requirements" card + `AssignDialog` block/warning rendering — all screenshot-verified with real seeded data.
+- Full EC0–EC7 + Phase 8a–8d regression and `testing_agent_v4_fork` intentionally **NOT run** — reserved for Phase 8f per the owner's explicit credit-conservation instruction for this phase.
+
+### Known limitations (Phase 8e)
+- Equipment/Training Definition "linked documents" are surfaced read-only (equipment detail Overview tab, portal assignment detail "Materials" list) — no manager-facing link/unlink UI was built this phase (not explicitly requested; avoids inventing scope beyond the given plan).
+- Employee Portal document "Materials" list shows titles only (no download/view action) — no new portal-facing file-download endpoint was added; wiring a safe self-scoped download path is deferred.
+- `required_role` on a Work Order is advisory-only by design (never blocks) — this was an explicit design choice in `check_work_order_assignment`, not a gap.
+
+## Remaining Phase 8f scope (not started)
+Final EC8 closure: full backend regression (all EC0–EC8 targeted suites), full frontend regression via `testing_agent_v4_fork`, and formal EC8 closure sign-off. Requires explicit owner authorization before starting.

@@ -14,9 +14,10 @@ import { toast } from "sonner";
 import StatusPill from "@/components/common/StatusPill";
 import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import { centsToDollarsString } from "@/lib/format";
-import { ArrowLeft, Save, RefreshCw, Users as UsersIcon, Printer, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Save, RefreshCw, Users as UsersIcon, Printer, AlertTriangle, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { RegenerateDialog, TransitionReasonDialog, AssignDialog } from "@/components/work-orders/GenerateWorkOrderDialog";
+import RequirementsDialog from "@/components/work-orders/RequirementsDialog";
 import PrintSummaryDialog from "@/components/work-orders/PrintSummaryDialog";
 
 const ALLOWED = {
@@ -44,18 +45,25 @@ export default function WorkOrderDetailPage() {
   const { data: w } = useQuery({ queryKey: ["work-order", id], queryFn: async () => (await api.get(`/work-orders/${id}`)).data });
   const { data: audit } = useQuery({ queryKey: ["audit-wo", id], queryFn: async () => (await api.get(`/audit`, { params: { entity_type: "work_order", entity_id: id } })).data, enabled: !!id });
   const { data: users } = useQuery({ queryKey: ["users"], queryFn: async () => (await api.get(`/users`)).data });
+  const { data: equipment } = useQuery({ queryKey: ["equipment-for-wo"], queryFn: async () => (await api.get("/equipment")).data.items, retry: false });
 
   const [form, setForm] = useState({});
   const [pending, setPending] = useState(null); // {target}
   const [regenOpen, setRegenOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
+  const [reqOpen, setReqOpen] = useState(false);
 
   const usersById = useMemo(() => {
     const m = {};
     (users || []).forEach((u) => { m[u.id] = u; });
     return m;
   }, [users]);
+  const equipmentById = useMemo(() => {
+    const m = {};
+    (equipment || []).forEach((eq) => { m[eq.id] = eq; });
+    return m;
+  }, [equipment]);
 
   const save = useMutation({
     mutationFn: async (payload) => (await api.patch(`/work-orders/${id}`, payload)).data,
@@ -261,6 +269,33 @@ export default function WorkOrderDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-base">Assignment requirements</CardTitle>
+              {canWrite && (
+                <Button variant="ghost" size="sm" onClick={() => setReqOpen(true)} data-testid="wo-open-requirements-button">
+                  <ShieldCheck className="size-4 mr-1" />Edit
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {((w.required_equipment_ids || []).length === 0 && !w.required_role) ? (
+                <div className="text-muted-foreground" data-testid="wo-requirements-empty">No Equipment or role requirements set.</div>
+              ) : (
+                <>
+                  {(w.required_equipment_ids || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1" data-testid="wo-required-equipment-list">
+                      {w.required_equipment_ids.map((eid) => (
+                        <span key={eid} className="rounded-full bg-muted px-2 py-0.5 text-xs" data-testid={`wo-required-equipment-${eid}`}>{equipmentById[eid]?.name || eid}</span>
+                      ))}
+                    </div>
+                  )}
+                  {w.required_role && <div>Required role: <span className="font-medium">{w.required_role}</span></div>}
+                </>
+              )}
+            </CardContent>
+          </Card>
         </aside>
       </div>
 
@@ -282,6 +317,7 @@ export default function WorkOrderDetailPage() {
         onDone={(wo) => navigate(`/work-orders/${wo.id}`)}
       />
       <AssignDialog workOrderId={id} currentUserIds={w.assigned_user_ids || []} open={assignOpen} onOpenChange={setAssignOpen} />
+      <RequirementsDialog workOrderId={id} currentEquipmentIds={w.required_equipment_ids || []} currentRole={w.required_role} open={reqOpen} onOpenChange={setReqOpen} />
       <PrintSummaryDialog workOrderId={id} open={printOpen} onOpenChange={setPrintOpen} />
     </div>
   );

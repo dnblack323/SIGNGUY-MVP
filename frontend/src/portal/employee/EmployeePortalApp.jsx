@@ -2,13 +2,16 @@ import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-r
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EmployeePortalAuthProvider, useEmployeePortalAuth } from "./EmployeePortalAuthContext";
 import employeePortalApi, { employeePortalExtractError } from "./employeePortalApi";
+import MyTrainingPage from "./MyTrainingPage";
+import MyTrainingAssignmentDetailPage from "./MyTrainingAssignmentDetailPage";
+import MyCertificationsPage from "./MyCertificationsPage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Clock, Calendar, FileClock, Megaphone, User, Wallet } from "lucide-react";
+import { Clock, Calendar, FileClock, GraduationCap, Megaphone, ShieldCheck, User, Wallet } from "lucide-react";
 
 function fmtCents(cents) {
   const n = Number(cents || 0) / 100;
@@ -27,6 +30,8 @@ function Shell({ children }) {
             <Link to="/portal/employee/schedule" data-testid="employee-portal-nav-schedule">My Schedule</Link>
             <Link to="/portal/employee/timesheet" data-testid="employee-portal-nav-timesheet">My Timesheet</Link>
             <Link to="/portal/employee/pay" data-testid="employee-portal-nav-pay">My Pay</Link>
+            <Link to="/portal/employee/training" data-testid="employee-portal-nav-training">My Training</Link>
+            <Link to="/portal/employee/certifications" data-testid="employee-portal-nav-certifications">My Certifications</Link>
             <span className="text-slate-400 cursor-not-allowed" title="Coming later" data-testid="employee-portal-nav-tasks-disabled">My Tasks</span>
             <Link to="/portal/employee/announcements" data-testid="employee-portal-nav-announcements">Announcements</Link>
             <Link to="/portal/employee/profile" data-testid="employee-portal-nav-profile">Profile</Link>
@@ -173,10 +178,19 @@ function Dashboard() {
   const { identity } = useEmployeePortalAuth();
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
+  const [training, setTraining] = useState(null);
+  const [certs, setCerts] = useState(null);
   useEffect(() => {
     employeePortalApi.get("/portal/employee/dashboard").then((r) => setData(r.data))
       .catch((e) => setErr(employeePortalExtractError(e)));
+    employeePortalApi.get("/portal/employee/training/assignments").then((r) => setTraining(r.data.items)).catch(() => {});
+    employeePortalApi.get("/portal/employee/certifications").then((r) => setCerts(r.data.items)).catch(() => {});
   }, []);
+  const trainingDue = (training || []).filter((a) => !["completed", "cancelled", "failed"].includes(a.status) && !a.overdue).length;
+  const trainingOverdue = (training || []).filter((a) => a.overdue).length;
+  const pendingSignoff = (training || []).filter((a) => a.status === "pending_signoff").length;
+  const certsExpiringSoon = (certs || []).filter((c) => c.expires_soon).length;
+  const certsExpired = (certs || []).filter((c) => c.status === "expired").length;
   return (
     <div className="space-y-4" data-testid="employee-portal-dashboard">
       <h1 className="text-2xl font-semibold">Welcome, {identity?.full_name || identity?.email}</h1>
@@ -231,6 +245,31 @@ function Dashboard() {
             )}
           </CardContent>
         </Card>
+        <Card data-testid="employee-portal-training-card">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><GraduationCap className="h-4 w-4" /> Training</CardTitle></CardHeader>
+          <CardContent>
+            {!training ? <p className="text-sm text-slate-500">Loading…</p> : (
+              <div className="text-sm flex items-center gap-3 flex-wrap">
+                <span data-testid="employee-portal-training-due-count"><span className="font-semibold">{trainingDue}</span> due</span>
+                <span className={trainingOverdue > 0 ? "text-rose-700" : ""} data-testid="employee-portal-training-overdue-count"><span className="font-semibold">{trainingOverdue}</span> overdue</span>
+                <span data-testid="employee-portal-training-pending-signoff-count"><span className="font-semibold">{pendingSignoff}</span> pending signoff</span>
+                <Link className="underline text-xs ml-auto" to="/portal/employee/training">View all</Link>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        <Card data-testid="employee-portal-certifications-card">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><ShieldCheck className="h-4 w-4" /> Certifications</CardTitle></CardHeader>
+          <CardContent>
+            {!certs ? <p className="text-sm text-slate-500">Loading…</p> : (
+              <div className="text-sm flex items-center gap-3 flex-wrap">
+                <span className={certsExpiringSoon > 0 ? "text-amber-700" : ""} data-testid="employee-portal-certs-expiring-count"><span className="font-semibold">{certsExpiringSoon}</span> expiring soon</span>
+                <span className={certsExpired > 0 ? "text-rose-700" : ""} data-testid="employee-portal-certs-expired-count"><span className="font-semibold">{certsExpired}</span> expired</span>
+                <Link className="underline text-xs ml-auto" to="/portal/employee/certifications">View all</Link>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
       <Card data-testid="employee-portal-quick-links-card">
         <CardHeader><CardTitle className="text-base">Quick Links</CardTitle></CardHeader>
@@ -239,6 +278,8 @@ function Dashboard() {
           <Link className="underline" to="/portal/employee/schedule">My Schedule</Link>
           <Link className="underline" to="/portal/employee/timesheet">My Timesheet</Link>
           <Link className="underline" to="/portal/employee/pay">My Pay</Link>
+          <Link className="underline" to="/portal/employee/training">My Training</Link>
+          <Link className="underline" to="/portal/employee/certifications">My Certifications</Link>
           <span className="text-slate-400 cursor-not-allowed" title="Coming later">My Tasks</span>
           <Link className="underline" to="/portal/employee/announcements">Announcements</Link>
           <Link className="underline" to="/portal/employee/profile">Profile</Link>
@@ -472,6 +513,9 @@ export default function EmployeePortalApp() {
         <Route path="schedule" element={<Guard><MySchedulePage /></Guard>} />
         <Route path="timesheet" element={<Guard><MyTimesheetPage /></Guard>} />
         <Route path="pay" element={<Guard><MyPayPage /></Guard>} />
+        <Route path="training" element={<Guard><MyTrainingPage /></Guard>} />
+        <Route path="training/:assignmentId" element={<Guard><MyTrainingAssignmentDetailPage /></Guard>} />
+        <Route path="certifications" element={<Guard><MyCertificationsPage /></Guard>} />
         <Route path="announcements" element={<Guard><AnnouncementsPage /></Guard>} />
         <Route path="profile" element={<Guard><ProfilePage /></Guard>} />
       </Routes>

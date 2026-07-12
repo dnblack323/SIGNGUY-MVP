@@ -98,12 +98,22 @@ async def list_certifications(
     settings = await get_certification_settings(tenant_id=tenant_id)
     windows = settings["expiring_alert_windows_days"]
     today = _today()
+    docs = [d async for d in db.certifications.find(q, {"_id": 0})]
+    eq_ids = list({d["equipment_id"] for d in docs if d.get("equipment_id")})
+    equipment_map: dict[str, dict] = {}
+    if eq_ids:
+        equipment_map = {
+            e["id"]: e async for e in
+            db.equipment.find({"tenant_id": tenant_id, "id": {"$in": eq_ids}}, {"_id": 0, "id": 1, "name": 1})
+        }
     out = []
-    async for d in db.certifications.find(q, {"_id": 0}):
+    for d in docs:
         d = serialize_doc(await _refresh_expired_status(tenant_id, d))
         if status and effective_status(d, today) != status:
             continue
         d["expires_soon"] = _expires_soon(d, windows, today)
+        eq = equipment_map.get(d.get("equipment_id"))
+        d["equipment_name"] = eq["name"] if eq else None
         out.append(d)
     return out
 

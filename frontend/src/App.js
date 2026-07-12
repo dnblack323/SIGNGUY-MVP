@@ -44,6 +44,10 @@ import ReportsPage from "@/pages/ReportsPage";
 import TeamDashboardPage from "@/pages/TeamDashboardPage";
 import EmployeesPage from "@/pages/EmployeesPage";
 import EmployeeDetailPage from "@/pages/EmployeeDetailPage";
+import EquipmentPage from "@/pages/EquipmentPage";
+import EquipmentDetailPage from "@/pages/EquipmentDetailPage";
+import TrainingPage from "@/pages/TrainingPage";
+import CertificationsPage from "@/pages/CertificationsPage";
 import AnnouncementsPage from "@/pages/AnnouncementsPage";
 import TimeClockPage from "@/pages/TimeClockPage";
 import TimesheetsPage from "@/pages/TimesheetsPage";
@@ -102,6 +106,10 @@ function App() {
             <Route path="/team" element={<TeamDashboardPage />} />
             <Route path="/team/employees" element={<EmployeesPage />} />
             <Route path="/team/employees/:id" element={<EmployeeDetailPage />} />
+            <Route path="/team/equipment" element={<EquipmentPage />} />
+            <Route path="/team/equipment/:id" element={<EquipmentDetailPage />} />
+            <Route path="/team/training" element={<TrainingPage />} />
+            <Route path="/team/certifications" element={<CertificationsPage />} />
             <Route path="/team/announcements" element={<AnnouncementsPage />} />
             <Route path="/team/schedule" element={<TeamSchedulePage />} />
             <Route path="/team/employee-portal" element={<EmployeePortalAccessPage />} />

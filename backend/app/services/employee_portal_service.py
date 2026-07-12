@@ -15,7 +15,7 @@ from ..core.db import db
 from ..core.time_utils import serialize_doc, utc_now
 from .audit import record_audit
 from .email import send_email
-from .portal_identity import create_portal_identity
+from .portal_identity import create_portal_identity, EMPLOYEE_PORTAL_PERMS
 from .portal_tokens import mint_magic_link_token
 
 INVITE_TTL_MINUTES = 60 * 24 * 3  # 3 days — an invitation, not a quick re-login link
@@ -60,13 +60,18 @@ async def invite_employee(*, tenant_id: str, employee_id: str, request_ip: Optio
         raise EmployeePortalError(400, "Employee has no email on file — add one before inviting")
 
     identity = await _get_identity(tenant_id, employee_id)
-    if identity and identity["status"] == "disabled":
-        await db.portal_identities.update_one(
-            {"id": identity["id"], "tenant_id": tenant_id},
-            {"$set": {"status": "active", "updated_at": utc_now().isoformat()}},
-        )
-        identity["status"] = "active"
-    elif not identity:
+    if identity:
+        # Re-inviting always re-syncs permissions to the current Employee
+        # Portal grant set — protects against identities created before a
+        # permission (e.g. Training/Certification self-service) was added.
+        updates: dict = {"updated_at": utc_now().isoformat()}
+        if identity["status"] == "disabled":
+            updates["status"] = "active"
+        if set(identity.get("permissions") or []) != set(EMPLOYEE_PORTAL_PERMS):
+            updates["permissions"] = list(EMPLOYEE_PORTAL_PERMS)
+        await db.portal_identities.update_one({"id": identity["id"], "tenant_id": tenant_id}, {"$set": updates})
+        identity.update(updates)
+    else:
         try:
             identity = await create_portal_identity(
                 tenant_id=tenant_id, portal_type="employee", employee_id=employee_id,

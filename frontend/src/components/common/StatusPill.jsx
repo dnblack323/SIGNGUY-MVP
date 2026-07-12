@@ -72,7 +72,45 @@ const PAYROLL = {
   voided: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
 };
 
-const MAPS = { quote: QUOTE, order: ORDER, production: PROD, priority: PRIORITY, invoice: INV, email: EMAIL, employee: EMPLOYEE, announcement: ANNOUNCEMENT, payroll: PAYROLL };
+// EC8 phase 8e — Equipment / Training / Certification
+const EQUIPMENT_STATUS = {
+  active: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  inactive: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+  maintenance: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  retired: "bg-slate-200 text-slate-600 ring-1 ring-slate-300",
+  archived: "bg-slate-200 text-slate-500 ring-1 ring-slate-300 line-through",
+};
+const ACCESS_POLICY = {
+  no_required: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+  recommended: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
+  required_override_allowed: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  required_no_override: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+};
+const CERTIFICATION = {
+  not_started: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+  in_progress: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  pending_signoff: "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
+  certified: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  expired: "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
+  revoked: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+  failed: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+  missing: "bg-slate-100 text-slate-500 ring-1 ring-slate-200",
+};
+const TRAINING_ASSIGNMENT = {
+  not_started: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+  in_progress: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  pending_signoff: "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
+  completed: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  failed: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+  expired: "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
+  cancelled: "bg-slate-200 text-slate-600 ring-1 ring-slate-300",
+};
+
+const MAPS = {
+  quote: QUOTE, order: ORDER, production: PROD, priority: PRIORITY, invoice: INV, email: EMAIL,
+  employee: EMPLOYEE, announcement: ANNOUNCEMENT, payroll: PAYROLL, equipment_status: EQUIPMENT_STATUS,
+  access_policy: ACCESS_POLICY, certification: CERTIFICATION, training_assignment: TRAINING_ASSIGNMENT,
+};
 
 export function StatusPill({ kind, value, className }) {
   const map = MAPS[kind] || QUOTE;

@@ -168,11 +168,21 @@ async def list_assignments(
         q["equipment_id"] = equipment_id
     if status_in:
         q["status"] = {"$in": status_in}
-    cur = db.training_assignments.find(q, {"_id": 0}).sort("due_date", 1)
+    docs = [d async for d in db.training_assignments.find(q, {"_id": 0}).sort("due_date", 1)]
+    defn_ids = list({d["training_definition_id"] for d in docs})
+    defns: dict[str, dict] = {}
+    if defn_ids:
+        defns = {
+            d["id"]: d async for d in
+            db.training_definitions.find({"tenant_id": tenant_id, "id": {"$in": defn_ids}}, {"_id": 0, "id": 1, "title": 1, "training_type": 1})
+        }
     out = []
-    async for d in cur:
+    for d in docs:
         d = serialize_doc(d)
         d["overdue"] = bool(d.get("due_date") and d["due_date"] < _today() and d["status"] not in ("completed", "cancelled", "failed"))
+        defn = defns.get(d["training_definition_id"])
+        d["training_title"] = defn.get("title") if defn else None
+        d["training_type"] = defn.get("training_type") if defn else None
         out.append(d)
     return out
 
