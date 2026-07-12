@@ -31,7 +31,7 @@ Constraints:
 | **EC6.3 — Order Intake Capture & Visual Markup** | **REQUIRED — SCHEDULED (permanent scope)** | Master plan Appendix A.1 — image + camera + PDF uploads, drawing on images + blank canvas, version history, attach to Proofs/WOs/WOSummaries, controlled portal visibility, in-person signature capture bound to exact target with immutable audit. Reuses EC2 + EC6, no parallel system. Must land before EC14. |
 | EC6.2 — Signed PDF Composite Rendering | DEFERRED (unscheduled) | `/app/memory/product_ideas_register.md` — reconsider during EC14 Final Hardening, or earlier only on a verified customer/compliance/operational requirement. Do NOT schedule during EC7. |
 | **EC7 — Inventory, Purchasing, Finance, Reporting** | **COMPLETE** (all phases 7a+7b+7c+7d delivered; frontend closure workflows landed; `testing_agent_v3_fork` regression PASS) | `/app/evidence/EC7_evidence.md` + `/app/docs/modules/EC7_INVENTORY_PURCHASING_FINANCE.md`. Backend 215/215 green. Frontend Jest 25/25 green. Regression report `/app/test_reports/iteration_10.json`. |
-| **EC8 — Team, Scheduling, Time, Payroll, Employee Portal, Equipment Training & Certification** | **IN PROGRESS — Phase 8a + 8b delivered. Phases 8c–8f not started.** | `/app/evidence/EC8_evidence.md`. Employee CRUD + status transitions, Announcements, Team Dashboard (8a) + Time Clock (clock-in/out, breaks, corrections/void) + Timesheets (daily/weekly/monthly, Sat–Fri boundary, approve/reject/reopen) (8b) — 30/30 backend pytest green cumulative, `testing_agent_v4_fork` iteration_11 verified 8a (100% pass). Phase 8b verified via targeted pytest (17/17) + curl E2E + UI smoke (testing_agent deferred to Phase 8f per credit-conservation instruction). Phase 8c (Scheduling/Employee Portal) requires explicit owner authorization before starting. |
+| **EC8 — Team, Scheduling, Time, Payroll, Employee Portal, Equipment Training & Certification** | **IN PROGRESS — Phase 8a + 8b + 8c delivered. Phases 8d–8f not started.** | `/app/evidence/EC8_evidence.md`. Employee CRUD + status transitions, Announcements, Team Dashboard (8a) + Time Clock + Timesheets (8b) + Scheduling & Employee Portal (8c) — 73/73 backend pytest green cumulative. Phase 8c verified via `testing_agent_v4_fork` iteration_12 (2 critical + 2 low bugs found) → fixed → iteration_13 100% pass. Phase 8d (Payroll) requires explicit owner authorization before starting. |
 | EC9–EC14 | NOT STARTED | dependency-ordered per master plan |
 
 ## Completed capabilities
@@ -51,6 +51,8 @@ Constraints:
 - **Production frontend (EC5):** Production Board (Kanban + HTML5 drag-drop + reason-required modal), rebuilt Work Order Detail (version banners, priority/due, allowed-transitions sidebar, assign dialog, in-page Print Summary), Generate WO dialog on Order Detail, Regenerate on both Order + WO detail, 9-state WO list filters + current-version toggle, Production Board sidebar link, all controls permission-gated via `/auth/me`.
 - **Asset Library + Portal (EC6):** Documents metadata + versioning layered over existing FileRecord; scoped public-action tokens (single-purpose, expiring, revocable, hashed at rest); magic-link portal login (hashed, single-use, audience-scoped); portal JWT separation (`sub_scope="portal"`, disjoint dependency graph); Portal Identity n:1 mapping to Customer with 5 backend-authoritative permission-bundle presets; staff surfaces for Proofs (create/version/transition), Approvals (dual-parent incl. WOS), Signature Requests + Signatures; Public single-action endpoints (proof approve, sign, quote_view, invoice_view, public quote request, customer intake with staged-changes review); Portal customer routes (Quotes/Orders/Invoices/Documents/Proofs/Messages/Profile) with tenant+customer scope on every query; Portal messages via existing email service (no new messaging schema); Portal shell + login/magic-link/verify + list pages at `/portal/*` and public token pages at `/p/*`, both mounted OUTSIDE the staff `<AppShell>`.
 
+- **Scheduling + Employee Portal (EC8 Phase 8c):** `Schedule`/`Shift` models (one Schedule per tenant per Sat–Fri week), manager Team Schedule builder (add/edit/cancel/copy shift/copy day/copy week/assign multiple/publish/republish), hard conflict blocks (duplicate/overlap/invalid/inactive/cross-tenant) + soft availability-warning with authorized override (audited). Employee Portal is additive on EC6's `PortalIdentity` (new `portal_type` discriminator — no second identity/token system) covering Dashboard, Time Clock (reused from 8b, zero duplicated logic), My Schedule (published-only, self-scoped), My Timesheet (self, payroll-rate-derived fields stripped), Announcements (audience/target-filtered), Profile — with a documented "My Tasks" boundary placeholder (no Task system exists). Separate `/portal/employee/*` shell + `sg_employee_portal_token` localStorage key from the Customer Portal.
+
 ## Testing
 
 - Backend: `cd /app/backend && python -m pytest tests/ -q` → **215 passed** (through EC7 phase 7d).
@@ -64,12 +66,12 @@ Constraints:
 ## Priority backlog (P0/P1/P2)
 
 ### P0 — Immediate next checkpoint
-- EC8 Phase 8b (Time Clock & Timesheets) is COMPLETE and tested. Awaiting owner's explicit authorization to begin Phase 8c (Scheduling & Employee Portal). Do not start 8c until that prompt arrives.
+- EC8 Phase 8c (Scheduling & Employee Portal) is COMPLETE and tested. Awaiting owner's explicit authorization to begin Phase 8d (Payroll). Do not start 8d until that prompt arrives.
 
-### P1 — EC8 (Phases 8a + 8b complete; 8c–8f not started)
+### P1 — EC8 (Phases 8a + 8b + 8c complete; 8d–8f not started)
 - Phase 8a — Employees & Team Foundation ✅ DONE
 - Phase 8b — Time Clock & Timesheets ✅ DONE
-- Phase 8c — Scheduling & Employee Portal
+- Phase 8c — Scheduling & Employee Portal ✅ DONE
 - Phase 8d — Payroll (pay periods, transactions ledger, advances/payments/carryover, My Pay, exports)
 - Phase 8e — Equipment, Training & Certification (owner-locked addendum, master plan Appendix A.5) + Work Order assignment enforcement
 - Phase 8f — Full EC8 frontend regression, targeted EC1–EC7 regression, closure evidence
@@ -92,6 +94,10 @@ Constraints:
 ### Commercial pricing source of truth (LOCKED)
 
 Master plan **Appendix A.4** and `/app/docs/commercial/REVISED_COMMERCIAL_SOURCE_OF_TRUTH_2026-07.md` are the commercial source of truth. All Stripe product setup, marketing copy, entitlement rules, onboarding packages, and billing tests must match A.4. **None of A.4 is implemented during EC7.**
+
+### Permanent future-scope register — configurable paid add-ons
+
+- **Advanced Production Tracking & Bottleneck Analytics Add-On** (owner-locked, added 2026-07 during EC8 Phase 8c) — Production Stage Timer tracking Employee time against Work Order/Order Item/production stage/Equipment, distinct from and never merged with EC8's Payroll Time Clock. Append-only timer sessions/events, duplicate-timer/overlap/cross-tenant/unauthorized-WO prevention, no silent historical edits, no automatic production-time→payroll-time conversion without an explicit policy. Required analytics: estimated vs actual, average time by stage/category/employee, wait time, WIP age, queue length, stalled WOs, bottleneck stages, rework frequency, first-pass completion rate, equipment delays, throughput trends. Employee Portal integration reserves `/portal/employee/production` (not built, not wired into nav/routes). Gated through the shared plan/feature-entitlement system — **never** hardcoded as always-on. Full boundary contract documented at `/app/docs/production_stage_timer_boundary.md`. **NOT scheduled for implementation during EC8** — no code, routes, models, or placeholder data exist.
 
 ## Known deferred items (from EC3)
 

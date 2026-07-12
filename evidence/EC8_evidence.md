@@ -1,6 +1,6 @@
-# EC8 Evidence — Phase 8a (Employees & Team Foundation) + Phase 8b (Time Clock & Timesheets)
+# EC8 Evidence — Phase 8a (Employees & Team Foundation) + Phase 8b (Time Clock & Timesheets) + Phase 8c (Scheduling & Employee Portal)
 
-**Status: EC8 — IN PROGRESS.** Phase 8a DELIVERED. Phase 8b DELIVERED. Phases 8c–8f not started. EC8 as a whole is NOT complete. EC9 has not begun.
+**Status: EC8 — IN PROGRESS.** Phase 8a DELIVERED. Phase 8b DELIVERED. Phase 8c DELIVERED. Phases 8d–8f not started. EC8 as a whole is NOT complete. EC9 has not begun.
 
 ---
 
@@ -110,3 +110,70 @@ Every Employee create/update/status-change and every Announcement create/publish
 
 ## Remaining Phase 8c scope (not started)
 Scheduling and Employee Portal — per the approved phasing, next only on explicit owner authorization.
+
+---
+
+## Phase 8c — Scheduling & Employee Portal
+
+### Files added
+- `backend/app/models/schedule.py` — `Schedule` (one per tenant per Saturday–Friday week; `status` draft/published/archived; `version`; `published_at/by`; `last_notified_at` watermark for idempotent republish notifications).
+- `backend/app/models/shift.py` — `Shift` (single authoritative assignment record; `status` scheduled/cancelled/completed; `conflict_override_reason`; opaque `work_order_id`/`order_id` links only — never resolved to full objects for the portal).
+- `backend/app/services/schedule_service.py` — hard-conflict checks (duplicate, overlap, invalid start/end, inactive/cross-tenant employee), availability-warning check (soft, overridable with a reason, audited as `schedule_conflict_overridden`), `create/update/cancel_shift`, `copy_shift/copy_day/copy_week/assign_multiple_employees` (all skip-on-conflict, not hard-fail-the-batch), `publish_schedule` (idempotent no-op if already published), `republish_schedule` (400 if no shift changes since last publish — the idempotency guard), `today_snapshot` (compact Team Dashboard scheduling counters).
+- `backend/app/services/employee_portal_service.py` — staff-side invite/suspend (additive on the EC6 `create_portal_identity`/`mint_magic_link_token`/`send_email`, no parallel invitation system); idempotent invite (existing active identity reused, disabled identity reactivated).
+- `backend/app/routers/schedule.py` — `/api/schedules/*` (get-or-create week, get, shifts/assign/copy-day/copy-week/publish/republish/archive) + `/api/schedule-shifts/*` (list/patch/cancel/copy), gated `schedule:read`/`schedule:manage`.
+- `backend/app/routers/employee_portal_admin.py` — `/api/employee-portal/*` (list, status, invite, suspend), gated `employee:read`/`employee:manage`.
+- `backend/app/routers/portal_employee.py` — `/api/portal/employee/*` (dashboard, time-clock/* thin wrappers over Phase 8b's `time_clock_service`, schedule/today+week published-only, timesheet/summary+weekly self-scoped with payroll-rate-derived fields stripped, announcements filtered by audience/targeting, tasks placeholder, profile get/patch).
+- `backend/app/routers/dev_tools.py` — added dev-only `POST /api/dev-tools/mint-employee-portal-login` (same guard pattern as Phase 8b's `ensure-dev-employee`) — mints a raw, usable magic-link token bypassing SendGrid for E2E verification without a real inbox.
+- Frontend: `pages/TeamSchedulePage.jsx` (`/team/schedule` — week grid, Add/Edit Shift dialog with inline availability-conflict override flow, cancel, copy-to-next-week, publish/republish), `pages/EmployeePortalAccessPage.jsx` (`/team/employee-portal` — invite/resend/suspend list).
+- Frontend: `portal/employee/employeePortalApi.js`, `EmployeePortalAuthContext.jsx`, `EmployeePortalApp.jsx` — a **separate** Employee Portal shell at `/portal/employee/*` with its own `localStorage` token key (`sg_employee_portal_token`, distinct from the Customer Portal's `sg_portal_token`) so both portal sessions can coexist in one browser. Pages: Dashboard, Time Clock, My Schedule, My Timesheet, Announcements, Profile. "My Tasks" nav rendered as a disabled `<span>` (not a `<Link>`) — no Task system exists yet.
+- `backend/tests/test_ec8c_schedule.py` (13 tests), `backend/tests/test_ec8c_employee_portal.py` (10 tests) — 23 targeted tests, all main-agent authored.
+
+### Files changed
+- `backend/app/models/portal_identity.py` — added `portal_type` (`"customer"|"employee"`, default `"customer"` for backward compatibility), `employee_id` (nullable), `EMPLOYEE_PORTAL_PERMS` constant. `customer_id` made nullable. Existing `PORTAL_PERMS`/preset-bundle logic for customers is completely untouched.
+- `backend/app/services/portal_identity.py` — `create_portal_identity()` gained optional `portal_type`/`employee_id` kwargs (default behavior for existing customer callers unchanged); `issue_portal_jwt()` now forwards `portal_type`/`employee_id` into the token.
+- `backend/app/core/portal_security.py` — `create_portal_token()` gained optional `portal_type` (default `"customer"`) and `employee_id` kwargs; `customer_id` made optional. Existing customer call sites unaffected.
+- `backend/app/deps_portal.py` — `get_current_portal_identity()` is now portal-type-aware: resolves the identity by `id`+`tenant_id`+`status=active` first, then compares the **stored doc's** `portal_type` (defaulting missing/legacy field to `"customer"`) against the **token's** `portal_type` claim, and checks `customer_id`/`employee_id` accordingly — this keeps every pre-existing Customer Portal identity working with zero migration. Added `require_employee_portal_permission()` — defense-in-depth guard that (a) hard-rejects non-employee-typed identities even if permission strings somehow matched, and (b) re-checks the linked `Employee.status == "active"` on every single request (not just at invite time), auditing `employee_portal_access_denied` on failure.
+- `backend/app/routers/portal_auth.py` — login/magic-link-verify now record `employee_portal_login`/`employee_portal_activated` (first-login only) instead of the generic `portal.login`/`portal.magic_link_login` action name when `identity.portal_type == "employee"`; customer-identity audit action names are unchanged.
+- `backend/app/services/employee_service.py` — added `add_availability_block`/`remove_availability_block` (structured `Employee.availability_blocks`, feeds the schedule conflict-warning check; the old free-text `availability` field is left in place, unreferenced by new code).
+- `backend/app/models/employee.py` — added `availability_blocks: list[dict]` field.
+- `backend/app/routers/employees.py` — added `/{id}/availability` POST/DELETE (manager-only).
+- `backend/app/routers/team_dashboard.py` — `GET /api/team/dashboard` gained a compact `scheduling` sub-object (`employees_scheduled_today`, `scheduled_not_clocked_in`, `unpublished_draft_schedules`, `conflicts_overridden`) — no full calendar widget added, per the owner's "Team Schedule page owns the detailed grid" instruction.
+- `backend/app/core/db.py` — indexes for `schedules` (unique `id`; unique `(tenant_id, period_start)`; `(tenant_id, status)`), `shifts` (unique `id`; `(tenant_id, schedule_id)`; `(tenant_id, employee_id, shift_date)`; `(tenant_id, employee_id, start_at, end_at)`), and a unique **partial** index on `portal_identities` — `(tenant_id, employee_id)` where `portal_type == "employee"` — guaranteeing at most one Employee Portal identity per Employee without touching the existing customer-side unique `(tenant_id, email)` index.
+- `backend/server.py` — registered `schedule` (both sub-routers), `employee_portal_admin`, `portal_employee` routers.
+- `frontend/src/lib/navigation.js` — enabled `flyout-team-schedule` and `flyout-employee-portal` (removed `disabled: true`). All other Team & Workflow entries (Payroll, Equipment Training, Certifications, Tasks & Kanban) remain disabled — out of Phase 8c scope.
+- `frontend/src/App.js` — added `/team/schedule`, `/team/employee-portal`, and `/portal/employee/*` (mounted **before** the existing `/portal/*` wildcard so React Router's path-ranking resolves it correctly; verified no Customer Portal route regression).
+- `frontend/src/pages/EmployeeDetailPage.jsx` — added an "Employee Portal access" card (invite/resend/suspend), gated behind `employee:manage`, alongside the existing status-history card.
+
+### Additive Employee Portal identity architecture (no second identity/token system)
+Exactly one `portal_identities` collection, exactly one JWT scheme (`sub_scope="portal"`), distinguished by a `portal_type` discriminator. An Employee Portal token carries `portal_type="employee"` + `employee_id` (both `null` on customer tokens, and `customer_id` is `null` on employee tokens) — `get_current_portal_identity` cross-checks the **stored identity document's** type against the **token's claimed** type on every request, so a customer token can never satisfy an employee route (or vice versa) even if the underlying JWT secret/algorithm/verification code path is 100% shared. Verified directly:
+- `test_employee_token_cannot_access_customer_portal_and_vice_versa` (pytest) — employee token → `GET /api/portal/quotes` → 403; customer token → `GET /api/portal/employee/dashboard` → 403.
+- Manual curl during this session: minted a legacy-style (no `portal_type` field, simulating a pre-8c document) customer identity's magic link → verified login still succeeds and `GET /api/portal/quotes` still works unchanged; then created a brand-new employee identity and confirmed cross-403 both directions.
+
+### Conflict detection and override
+Hard blocks (409/400, never bypassable): exact duplicate shift, overlapping shift for the same employee, invalid start/end, inactive employee, cross-tenant employee. Soft warning (409 with a machine-parseable `availability_conflict:<message>` detail, resubmit with `override_reason` to proceed): shift falls inside an employee's structured `availability_blocks` "unavailable" window. Every override is separately audited as `schedule_conflict_overridden` with the reason text, in addition to the normal `shift_created`/`shift_updated` audit entry.
+
+### Draft/publish workflow
+A `Schedule` is a single row per tenant per week; employees never see it via `/api/portal/employee/schedule/*` until `status` flips to `published` (`published_only=True` filter joins on `db.schedules` with `status="published"`). Publishing is idempotent (second call on an already-published schedule is a silent no-op — no duplicate notifications). Editing shifts after publish does **not** revert the schedule to draft; each individual post-publish create/update/cancel fires its own targeted notification (`shift.added`/`shift.changed`/`shift.cancelled`) to just that employee. A separate `republish` action bumps `version` and re-notifies every employee with a shift changed since the last publish/republish — but only if at least one shift actually changed (`400` otherwise), which is the mechanism verified by `test_publish_draft_hidden_then_visible_and_republish_requires_change`.
+
+### Notifications
+Reuses `services/notifications.py` (in-app, only if the Employee happens to have a `linked_user_id`) and `services/email.py` (SendGrid, keyed to `Employee.email`) — no parallel messaging system. No SMS was added (out of scope for this phase).
+
+### Dev fixture — `POST /api/dev-tools/mint-employee-portal-login` (development-only, mirrors Phase 8b's `ensure-dev-employee` guard)
+SendGrid is configured with a real key in this environment but the dev-login-provisioned owner's email (`dev@signguy-dev.example.com`) is not a real inbox, so E2E-verifying the actual magic-link click-through required a way to obtain a usable raw token without waiting on email delivery. This endpoint mints a fresh, unconsumed magic-link token for an existing Employee Portal identity and returns the raw token directly — refuses outside `ENV=development`+`AUTH_DEV_BYPASS=true`, reuses the exact same `mint_magic_link_token` the real invite flow uses (no parallel token logic).
+
+### Targeted tests run (Phase 8c)
+- `backend/tests/test_ec8c_schedule.py` — 13/13 passing (create/edit/cancel shift, duplicate+overlap hard-block, invalid start/end, inactive/cross-tenant employee rejection, availability warning + authorized override, copy-with-skip-on-duplicate idempotency, multi-employee assign, copy-day, publish→draft-hidden→published-visible→idempotent-republish-guard→version-bump-on-change, schedule:read permission boundary).
+- `backend/tests/test_ec8c_employee_portal.py` — 10/10 passing (idempotent invite, magic-link activation + untouched pre-existing customer identity, bidirectional cross-portal-type 403, self-scope with no arbitrary employee_id acceptance, suspended-identity 401, inactive-Employee-live-denial 403 with audit record, expired-invitation 401, cross-tenant-token 401, draft-hidden/published-visible via the portal endpoint, announcement targeting).
+- Full 8b + 8a + EC6 regression re-run in the same session: `test_ec8b_time_clock.py`, `test_ec8b_timesheets.py`, `test_ec8_employees.py`, `test_ec8_team_foundation.py`, `test_ec6_portal_docs.py`, `test_ec6_portal_payment.py` — all green, **73/73 total** including the 23 new Phase 8c tests. Zero regressions from the additive `PortalIdentity`/`deps_portal.py`/`portal_security.py` changes.
+- `testing_agent_v4_fork` iteration_12 (full feature matrix) → found 2 CRITICAL frontend bugs (Edit Shift dialog didn't prefill Start/End time inputs, causing a crash on Save; Employee Portal magic-link verify page double-fired the verify call, burning the single-use token on the first of two identical requests) + 2 LOW cosmetic issues (stray "0" after clock-in time; Badge-inside-`<p>` HTML nesting warnings). Both CRITICAL bugs fixed same-session (dedicated `to24hTime()` prefill helper; `useRef` double-invoke guard on the verify page's effect) and LOW issues fixed (`!!()` boolean coercion; Badge wrappers moved from `<p>` to `<div>`).
+- `testing_agent_v4_fork` iteration_13 (fix-verification retest, frontend-only) → **100% pass, zero remaining issues.** Both critical fixes and both low fixes confirmed working via real browser click-through (no localStorage-injection workaround needed this time); light regression sanity on Add Shift/Publish/Republish/Employee Portal Access admin/Customer Portal login all unaffected.
+
+### Known limitations (Phase 8c)
+- "My Tasks" is a documented boundary/placeholder only (`{"available": false, "items": []}`) — no Task system exists anywhere in this codebase yet, per the same finding from Phase 8a.
+- Team Schedule's Add/Edit Shift dialog uses native `<input type="date">`/`<input type="time">` instead of the shadcn Calendar/time picker (cosmetic, flagged LOW by testing agent, not fixed — consistent with the same previously-accepted cosmetic deferral on Employee Detail's Hire date field from Phase 8a).
+- Employee self-editable availability requests are deferred (owner explicitly allowed postponing this); only manager-side availability CRUD exists this phase.
+- "Open shifts today" (unassigned shift) Team Dashboard card was intentionally omitted — the `Shift` model requires an `employee_id` at creation time; there is no "unassigned shift" concept to count.
+- Advanced Production Stage Tracking & Bottleneck Analytics (owner-locked future paid add-on, explicitly out of EC8 scope) is documented at `/app/docs/production_stage_timer_boundary.md` — reserved route `/portal/employee/production` is NOT wired into `EmployeePortalApp.jsx`, no timer collections/models/routes exist.
+
+## Remaining Phase 8d scope (not started)
+Payroll — pay periods, transactions ledger, advances, My Pay, exports. Requires explicit owner authorization before starting.
