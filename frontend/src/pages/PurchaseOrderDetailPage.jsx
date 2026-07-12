@@ -127,6 +127,12 @@ export default function PurchaseOrderDetailPage() {
     queryKey: ["po-supplier-orders", id],
     queryFn: async () => (await api.get("/supply/supplier-orders", { params: { purchase_order_id: id } })).data,
   });
+  // Inventory movements linked to this PO (source_entity_id = PO id) — every
+  // receive action writes one immutable movement per line via inventory_service.
+  const movementsQ = useQuery({
+    queryKey: ["po-movements", id],
+    queryFn: async () => (await api.get("/inventory/movements", { params: { source_entity_id: id, limit: 200 } })).data,
+  });
   if (detail.isLoading) return <div className="text-sm text-muted-foreground" data-testid="po-detail-loading">Loading…</div>;
   if (!detail.data) return <div className="text-sm text-muted-foreground">Not found.</div>;
   const po = detail.data.purchase_order;
@@ -146,7 +152,7 @@ export default function PurchaseOrderDetailPage() {
       />
 
       <div className="grid md:grid-cols-4 gap-3">
-        <Card><CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Vendor</CardTitle></CardHeader><CardContent><div className="text-sm font-medium">{po.vendor_snapshot?.name || po.vendor_id}</div></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Vendor</CardTitle></CardHeader><CardContent><div className="text-sm font-medium"><Link to={`/vendors/${po.vendor_id}`} className="text-primary hover:underline" data-testid="po-vendor-link">{po.vendor_snapshot?.name || po.vendor_id}</Link></div></CardContent></Card>
         <Card><CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Subtotal</CardTitle></CardHeader><CardContent><div className="text-lg font-semibold">{money(po.subtotal_cents)}</div></CardContent></Card>
         <Card><CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Shipping + handling</CardTitle></CardHeader><CardContent><div className="text-lg font-semibold">{money((po.shipping_cents || 0) + (po.handling_cents || 0))}</div></CardContent></Card>
         <Card><CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Total</CardTitle></CardHeader><CardContent><div className="text-lg font-semibold">{money(po.total_cents)}</div><div className="text-[10px] text-muted-foreground mt-1">{remaining} unit(s) remaining to receive</div></CardContent></Card>
@@ -221,6 +227,40 @@ export default function PurchaseOrderDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm">Inventory movements from this PO</CardTitle></CardHeader>
+        <CardContent>
+          <div className="rounded-lg border overflow-hidden">
+            <Table data-testid="po-movements-table">
+              <TableHeader><TableRow>
+                <TableHead>Timestamp</TableHead><TableHead>Type</TableHead>
+                <TableHead>Direction</TableHead>
+                <TableHead className="text-right">Qty</TableHead>
+                <TableHead>Material</TableHead>
+                <TableHead>Location</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {movementsQ.isLoading ? <TableRow><TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-4">Loading…</TableCell></TableRow>
+                : (movementsQ.data?.items || []).length === 0 ? <TableRow><TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-4">No movements from this PO yet. Movements appear here once a receiving action is recorded.</TableCell></TableRow>
+                : movementsQ.data.items.map((m) => (
+                  <TableRow key={m.id} data-testid={`po-movement-row-${m.id}`}>
+                    <TableCell className="text-xs text-muted-foreground">{relativeTime(m.created_at)}</TableCell>
+                    <TableCell className="text-sm">{m.movement_type}</TableCell>
+                    <TableCell className="text-xs">{m.direction}</TableCell>
+                    <TableCell className="text-right text-sm">{m.quantity}</TableCell>
+                    <TableCell className="text-sm">
+                      <Link to={`/materials/${m.material_id}`} className="text-primary hover:underline">{m.material_id}</Link>
+                    </TableCell>
+                    <TableCell className="text-sm">{m.location_id}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-2">Movements are immutable and linked to this PO by `source_entity_id`. Cost changes on receiving also append to Material Cost History.</p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

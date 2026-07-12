@@ -32,9 +32,11 @@ import NotFoundPage from "@/pages/NotFoundPage";
 import PricingFoundationPage from "@/pages/PricingFoundationPage";
 import PricingCalculatorPage from "@/pages/PricingCalculatorPage";
 import InventoryPage from "@/pages/InventoryPage";
+import MaterialDetailPage from "@/pages/MaterialDetailPage";
 import SupplyCenterPage from "@/pages/SupplyCenterPage";
 import PurchaseOrdersPage from "@/pages/PurchaseOrdersPage";
 import PurchaseOrderDetailPage from "@/pages/PurchaseOrderDetailPage";
+import VendorDetailPage from "@/pages/VendorDetailPage";
 import ExpensesPage from "@/pages/ExpensesPage";
 import FinanceDashboardPage from "@/pages/FinanceDashboardPage";
 import TaxReportsPage from "@/pages/TaxReportsPage";
@@ -77,9 +79,11 @@ function App() {
             <Route path="/pricing-foundation" element={<PricingFoundationPage />} />
             <Route path="/pricing-calculator" element={<PricingCalculatorPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/materials/:id" element={<MaterialDetailPage />} />
             <Route path="/supply-center" element={<SupplyCenterPage />} />
             <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
             <Route path="/purchase-orders/:id" element={<PurchaseOrderDetailPage />} />
+            <Route path="/vendors/:id" element={<VendorDetailPage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
             <Route path="/finance" element={<FinanceDashboardPage />} />
             <Route path="/tax" element={<TaxReportsPage />} />

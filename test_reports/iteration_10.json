@@ -1,0 +1,31 @@
+{
+  "summary": "EC7 phase 7d closure — frontend validation complete. All newly-added flows work end-to-end: Inventory page shows Physical count + Transfer stock action buttons; both dialogs validate correctly (reason required for physical count, from!=to required for transfer) and POST with Idempotency-Key on success. Material Detail page renders header, SKU/category badges, balances-by-location, metric cards, and the immutable Cost History drawer. Material name links from Inventory > Materials and material_id column from Items tab both link to /materials/:id. Vendor Detail renders identity, contact/account/website cards, categories, warehouses, linked materials, and PO history; PO history rows navigate back to the PO. PO Detail shows vendor name as a link (`po-vendor-link`) and a new `Inventory movements from this PO` section with correct empty-state text. PO Detail Receive dialog still works (opens, per-line quantity, Fill remaining shortcut, posts to /receive with Idempotency-Key). No regressions on /supply-center, /purchase-orders, /expenses, /finance, /tax, /reports.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "MaterialDetailPage balances table + Items tab", "issues": ["Location and Material columns display raw UUIDs (e.g. 9fbb71cf-fcad-…) instead of human-readable names — the API returns location_id but the UI does not resolve it against the locations list. Cosmetic but hurts usability."]},
+      {"screen": "InventoryPage — Physical count / Transfer dialogs", "issues": ["Material selection uses a free-text 'Paste material id from Inventory > Materials' input. Consider a searchable material picker to reduce copy-paste friction."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(Optional polish) Resolve location_id → location name on MaterialDetailPage balances table, MaterialDetailPage movements table, and InventoryPage Items tab (Material column already links but shows raw UUID).",
+    "(Optional polish) Add a searchable material picker to Physical count and Transfer dialogs instead of a free-text material-id input."
+  ],
+  "critical_code_review_comments": [
+    "InventoryPage.jsx PhysicalCountDialog + TransferDialog correctly generate crypto.randomUUID() Idempotency-Keys per submission — verified in network traffic.",
+    "MaterialDetailPage.jsx correctly renders GET /api/materials/{id} response shape ({material, balances, cost_history}); no client-side pricing math; money() used consistently.",
+    "VendorDetailPage.jsx uses three independent queries (vendor, vendor-materials, vendor-pos) — acceptable; PO history rows correctly deep-link back to /purchase-orders/:id.",
+    "PurchaseOrderDetailPage vendor link uses vendor_snapshot.name from the PO document; that snapshot is preserved even if vendor is later archived — good behaviour.",
+    "Empty-state copy 'No movements from this PO yet.' matches the request spec verbatim."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not-tested (already 215/215 per instructions)", "frontend": "100% of requested EC7 flows"},
+  "test_credentials": "AUTH_DEV_BYPASS=true — no manual login. Backend token obtained via POST /api/auth/dev-login (dev-only endpoint) for seeding.",
+  "seed_data_creation": "Created via public API using dev-login token: (1) POST /api/vendors/seed/test-adapter?reset=true → 4 vendors, 8 warehouses, 80 supplier products. (2) POST /api/inventory/locations → 'Main Warehouse' + 'Shop Floor'. (3) POST /api/materials → 'Test Vinyl Roll' (SKU VNL-651). (4) POST /api/purchase-orders → PO #1 vs Cascadia Wrap Distributors (material_id=eeca220f-…, deliver_to=Main Warehouse) — later submitted via POST /api/purchase-orders/{id}/submit to progress it to acknowledged so the Receive dialog could be exercised. Physical count moved qty to 7; transfer moved 1 unit from Main→Shop Floor.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Tenant 'Dev Shop' (slug dev-shop) already has seeded vendors, one material (id eeca220f-0998-441c-88c0-d7c14ff5938d, SKU VNL-651), two locations, and PO #1 (id f25a271a-aa6d-4f0d-8d92-3ab23b84734f, status=acknowledged) with inventory movements recorded. Backend requires a bearer token even under AUTH_DEV_BYPASS; use POST /api/auth/dev-login to mint one. The frontend auto-logs in as the dev owner via the dev-config endpoint, so browser-driven tests need no manual auth. All EC7 phase 7d flows verified passing; no bugs found."
+}
