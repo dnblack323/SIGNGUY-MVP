@@ -27,7 +27,7 @@ Constraints:
 | EC4 — Invoices, Payments, and Stripe Core | COMPLETE | `/app/evidence/EC4_evidence.md` |
 | EC5 — Production and Work Orders | COMPLETE | `/app/evidence/EC5_evidence.md` |
 | **EC6 — Asset Library, Proofs, Signatures, Customer Portal** | **COMPLETE** | `/app/evidence/EC6_evidence.md` — 161/161 backend + `testing_agent_v3_fork` iteration 9 100% pass |
-| EC6.2 — Signed PDF Composite Rendering | DEFERRED | `/app/docs/architecture/signed_pdf_boundary.md` — named later checkpoint |
+| EC6.2 — Signed PDF Composite Rendering | DEFERRED (unscheduled) | `/app/memory/product_ideas_register.md` — reconsider during EC14 Final Hardening, or earlier only on a verified customer/compliance/operational requirement. Do NOT schedule during EC7. |
 | **EC7 — Inventory, Purchasing, Finance, Reporting** | READY TO BUILD | pending owner execution prompt |
 | EC8–EC14 | NOT STARTED | dependency-ordered per master plan |
 
