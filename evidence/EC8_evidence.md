@@ -1,6 +1,6 @@
-# EC8 Evidence — Phase 8a (Employees & Team Foundation) + Phase 8b (Time Clock & Timesheets) + Phase 8c (Scheduling & Employee Portal) + Phase 8d (Payroll) + Phase 8e (Equipment/Training/Certification)
+# EC8 Evidence — Phase 8a (Employees & Team Foundation) + Phase 8b (Time Clock & Timesheets) + Phase 8c (Scheduling & Employee Portal) + Phase 8d (Payroll) + Phase 8e (Equipment/Training/Certification) + Phase 8f (Final Closure)
 
-**Status: EC8 — IN PROGRESS.** Phase 8a DELIVERED. Phase 8b DELIVERED. Phase 8c DELIVERED. Phase 8d DELIVERED. Phase 8e DELIVERED. Phase 8f (final closure/regression) NOT started. EC8 as a whole is NOT complete. EC9 has not begun.
+**Status: EC8 — DELIVERED / CLOSED (2026-07).** Phases 8a, 8b, 8c, 8d, 8e, 8f all DELIVERED. EC8 as a whole is COMPLETE. EC9 has not begun.
 
 ---
 
@@ -262,5 +262,41 @@ Verified end-to-end via both the pytest suite and live curl during this session:
 - Employee Portal document "Materials" list shows titles only (no download/view action) — no new portal-facing file-download endpoint was added; wiring a safe self-scoped download path is deferred.
 - `required_role` on a Work Order is advisory-only by design (never blocks) — this was an explicit design choice in `check_work_order_assignment`, not a gap.
 
-## Remaining Phase 8f scope (not started)
-Final EC8 closure: full backend regression (all EC0–EC8 targeted suites), full frontend regression via `testing_agent_v4_fork`, and formal EC8 closure sign-off. Requires explicit owner authorization before starting.
+## Remaining Phase 8f scope (delivered — see detail below)
+
+---
+
+## Phase 8f — Final EC8 Closure (Full Regression)
+
+### Scope
+Full backend regression (all EC0–EC8 targeted suites, not just Phase 8e), full frontend regression via `testing_agent_v4` (first time Phase 8e gets automated UI coverage), verified defect fixes, and formal EC8 closure. No new features in scope for this phase.
+
+### Backend regression
+- `python -m pytest backend/tests/` (all suites, `REACT_APP_BACKEND_URL` exported for `test_ec8_api_spotcheck.py`) — **312/312 passing**, zero failures.
+- `python -m app.core.terminology_guard /app` — **OK**.
+- Confirmed no regression in EC0–EC7 or Phase 8a–8d from the Phase 8e service edits (`work_order_service.py` assign(), `training_service.py`/`certification_service.py` list-enrichment, `employee_portal_service.py` permission-resync).
+
+### Frontend regression — `testing_agent_v4`, iteration_15 (full pass)
+Full EC0–EC7 + Phase 8a–8e frontend regression, first automated UI coverage for Phase 8e. Result: 3 issues found, all in Phase 8e UI (nothing else regressed):
+1. **CRITICAL** — `POST /portal/employee/training/assignments/{id}/quiz` returned `500` on every submission. RCA: `training_service.py` line ~271 did `q["id"]` (unsafe bracket access) against quiz-question dicts that have no schema enforcement (`quiz_questions: list[dict]`); any question created without a client-supplied `id` (e.g. via raw API/curl, as happened with the dev-seeded "Laminator Safety Quiz") had no `id` key at all, so this crashed on every attempt — a 100% blocker on the entire quiz-taking flow (score/pass-fail/attempt-history/retry-after-fail could never be exercised).
+2. **MEDIUM** — Certifications Matrix "Issue" dialog didn't refresh after a successful issue; matrix cell + dialog kept showing stale "Missing" until a manual page reload (data was persisted correctly server-side — display-only bug).
+3. **LOW** — Missing `DialogTitle` in the loading-state branch of `AssignmentDetailDialog.jsx` (Training) triggered a Radix a11y console warning.
+
+### Fixes applied
+- `backend/app/services/training_service.py` — added `_backfill_quiz_question_ids()` (assigns a server-side `uuid4` to any quiz question missing an `id`, called from both `create_training_definition` and `update_training_definition`) so every stored quiz question is guaranteed a stable identifier regardless of how the definition was created; changed the unsafe `q["id"]` lookup in `submit_quiz_attempt` to a defensive `q.get("id")`.
+- `frontend/src/pages/CertificationsPage.jsx` — decoupled the Matrix tab's Issue/Renew target from the `ManageCertDialog` display state (`issueTarget` vs `cell`) so clicking "Renew"/"Issue" closes the stale overlay immediately instead of leaving it open on top of the freshly-refetched matrix.
+- `frontend/src/components/training/AssignmentDetailDialog.jsx` — added `DialogHeader`+`DialogTitle` to the loading-state branch.
+- Repaired the one pre-existing dev-seed Training Definition ("Laminator Safety Quiz", created via curl during Phase 8e smoke testing without a question `id`) via a `PATCH` that triggers the new backfill, so the fix could be exercised end-to-end without leaving broken sandbox data behind.
+
+### Verification of fixes
+- Backend regression re-run post-fix — **312/312 passing**, no new failures.
+- Live curl E2E (main agent): fresh assignment, wrong-answer attempt → `200 {"score":0,"passed":false,"attempt_number":1}`, assignment status `failed`; correct retry → `200 {"score":100,"passed":true,"attempt_number":2}` (no `409`), assignment status transitioned to `completed`, both attempts preserved in `quiz_attempts` history — confirms the retry-after-fail fix from Phase 8e works end-to-end once the `id` bug was removed.
+- `testing_agent_v4`, iteration_16 (focused retest): all 3 fixes **confirmed working live in the browser** — quiz fail→retry→pass flow via My Training UI (toasts, status transitions, attempt history all correct, no 500/409), Certifications Matrix issue-then-live-refresh with no reload needed, Training assignment dialog no longer emits the DialogTitle warning. Re-verified Work Order `AssignDialog` block/warning rendering and a 13-page EC0–EC7 smoke pass — zero regressions, zero console errors. `retest_needed: false`.
+- One FYI-only, non-blocking, out-of-scope observation remains: `AssignmentDetailDialog.jsx` still emits an unrelated low-priority Radix "missing `DialogDescription`" a11y warning (distinct from the fixed `DialogTitle` warning). Not a functional defect; left as-is per the owner's "do not add optional features" instruction for this phase — candidate for a future a11y polish pass only.
+
+### Final EC8 Phase 8e/8f test tally
+- Backend: **312/312** pytest passing (full suite, all EC0–EC8 targeted tests) + terminology guard OK.
+- Frontend: **2 full `testing_agent_v4` passes** (iteration_15 full regression, iteration_16 focused retest) — 100% pass on retest, 0 open defects, 1 non-blocking FYI item logged.
+
+## EC8 Closure Statement
+EC8 (Team, Scheduling, Time, Payroll, Employee Portal, Equipment Training & Certification) is **DELIVERED / CLOSED** as of this Phase 8f pass. All six phases (8a–8f) are complete, tested, and verified with zero open blocking defects. Per the owner's explicit instruction, no new checkpoint (EC9 or otherwise) begins following this closure.
