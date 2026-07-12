@@ -21,9 +21,9 @@
 | **EC6.3** | **Order Intake Capture & Visual Markup** | **REQUIRED — SCHEDULED (permanent scope, unscheduled to a specific date, must land before EC14)** | Order-taking workflow: image + camera + PDF uploads bound to Customer/Quote/Order/Order Item; drawing on images and blank canvas (arrows, circles, boxes, text, notes, measurement labels); original preserved separately; version history; approved markups attach to Proofs/Work Orders/Work Order Summaries; controlled portal visibility; **in-person customer signature capture during Order intake** bound to the exact Order / Order Item / drawing / image version / measurement / approval content, with signer name + timestamp + actor + device metadata + immutable audit; **no silent overwrite** of signed/approved content. Reuses EC2 FileRecord + file-link + object-storage + document-share + audit + activity, and EC6 Proof/Approval/SignatureRequest/Signature/portal-visibility. NO parallel file/drawing/approval/signature system. Requires its own preflight, evidence, and pytest suite. Authority: master plan Appendix A.1. |
 | **EC7** | (next per master plan) | **READY TO BUILD** | Awaiting explicit owner execution prompt. |
 | **EC7** | (next per master plan) | **READY TO BUILD** | Awaiting explicit owner execution prompt. |
-| EC5 | Production and Work Orders | NOT STARTED | Depends on EC3/EC4. |
-| EC6 | Asset Library, Proofs, Signatures, and Customer Portal | NOT STARTED | Depends on EC2/EC3/EC4. |
-| EC7 | Inventory, Purchasing, Finance, and Reporting | NOT STARTED | Depends on EC3/EC4/EC5. |
+| EC5 | Production and Work Orders | superseded by row above | Legacy row retained for provenance |
+| EC6 | Asset Library, Proofs, Signatures, and Customer Portal | superseded by row above | Legacy row retained for provenance |
+| EC7 | Inventory, Purchasing, Finance, and Reporting | superseded by row above | Legacy row retained for provenance |
 | EC8 | Wrap Lab (add-on; standalone conditional) | NOT STARTED | Standalone remains DEFERRED UNTIL MODULE PREFLIGHT. |
 | EC9 | Creative Studio and AI Foundations | NOT STARTED | AI Credit Ledger must land before AI Tools. |
 | EC10 | AI Tools Catalog and Assistant | NOT STARTED | Per-tool credit costs remain provisional until measured cost audit. |

@@ -137,6 +137,52 @@ EC7 as scoped is the largest single checkpoint in the plan — roughly 12 backen
 
 ## 12. Owner acknowledgment gate
 
+### 12A. Supplier Catalog, Price Comparison & Integrated Purchasing (LOCKED — added to EC7)
+
+Per master plan Appendix A.3. Authoritative for EC7. Not optional.
+
+**Delivered inside EC7:**
+- Normalized supplier-product model (supplier, product_id, manufacturer, brand, family, SKU, UPC, description, category, variant attributes, pkg qty, purchase unit, warehouse, available qty, account price in **cents**, list price, effective_at, lead time, MOQ, freight class, active state, source + sync timestamps). Raw supplier identifiers preserved + mapped to internal Materials.
+- Reusable **supplier connector interface** with per-connector capability advertisement. Interface operations: `search_catalog`, `get_product`, `get_variants`, `get_account_price`, `get_inventory`, `get_shipping_quote`, `create_supplier_order`, `retrieve_supplier_order`, `retrieve_tracking`, `cancel_order`.
+- Three connection tiers:
+  - **Direct API / EDI** (full catalog + account pricing + inventory + submission + acknowledgement + tracking).
+  - **Catalog feed** (CSV / XML / JSON / SFTP, scheduled sync; PO creation only, no electronic submission).
+  - **Manual supplier** (URL + prepared PO + authorized vendor-site handoff).
+- Catalog import + sync foundation; category-aware variant support (apparel size/color; vinyl width/length/finish/adhesive; substrates thickness/sheet dims; hardware SKU). Never force apparel + non-apparel into one variant structure.
+- Vendor-to-Material mapping (extends the EC7 `vendor_materials` collection).
+- **Shortage calculation** from Order Items vs current Inventory (batched, tenant-scoped, cost-aware).
+- **Purchasing recommendation service** with priorities: lowest delivered cost / fastest arrival / preferred supplier / fewest warehouse splits / all-items-available / best combined score. Comparison uses **delivered cost** (item + breaks + account pricing + package qty + shipping + freight + handling + MOQ surcharge + warehouse split + expected arrival + tax where relevant). Estimates labeled when live freight is unavailable.
+- **Supply Center** staff UI (supplier comparison + purchasing cart + draft-PO flow).
+- Secure connection settings via EC2 integration-secret storage (no credential ever reaches the frontend).
+- **Idempotent supplier-order submission** — Idempotency-Key required on every `create_supplier_order` call; replay never places a duplicate order.
+- Full audit of every supplier order (actor + supplier + products + amount + timestamp + request_id + response status).
+- At least **one realistic end-to-end connector OR deterministic supplier test adapter** demonstrating catalog search → variant → price → availability → shortage recommendation → PO creation → idempotent submission → receiving into inventory. Static mock cards alone do NOT satisfy EC7.
+
+**LOCKED rules:**
+- Supplier account credentials use EC2 integration-secret storage. Never exposed to frontend.
+- Cross-tenant supplier pricing leakage forbidden.
+- Explicit user confirmation on every electronic submission.
+- No card storage; use supplier account terms, hosted checkout, or tokenized providers.
+- No supplier scraping; no automated checkout unless the vendor explicitly authorizes it.
+- Never silently substitute apparel brand/style/color/size.
+- Never compare incompatible products as equivalent (vinyl cast vs calendared, adhesive types, etc.).
+
+**Required EC7 preflight artifact — Supplier Integration Inventory.** Owner must supply the vendor list. For each supplier the preflight will document: categories carried, API availability, EDI availability, catalog-feed availability, account-pricing availability, inventory availability, order-submission availability, auth method, approval / partnership requirements, rate limits, ToS restrictions, and fallback integration method. Every capability marked **verified / unavailable / pending vendor confirmation** — no guessing.
+
+**Files to add during EC7 (in addition to §6 above):**
+- `backend/app/models/supplier.py` — `Supplier`, `SupplierProduct`, `SupplierWarehouse`, `SupplierOrderLog`.
+- `backend/app/services/supplier_connectors/` — `base.py` (ABC), `manual.py`, `feed_csv.py`, plus one seeded test adapter (`test_adapter.py`).
+- `backend/app/services/supplier_catalog.py` — catalog import + sync.
+- `backend/app/services/shortage_service.py` — Order-Items vs Inventory shortage calculation.
+- `backend/app/services/purchasing_recommendation.py` — comparison + priority-driven recommendation.
+- `backend/app/routers/supply_center.py` — staff routes for catalog search, recommend, cart, submit.
+- Frontend: `SupplyCenterPage.jsx`, `SupplierComparisonView.jsx`, `PurchasingCartPage.jsx`, `SupplierConnectionsPage.jsx`.
+
+**Phase mapping:** this requirement lands inside **phase 7b (Vendors + Purchasing)** and extends into **phase 7d (evidence)**. Phases stay four total.
+
+---
+
+
 Per the "unless a genuine conflict is found" clause, I raise **one** integrity concern before writing any code:
 
 **Delivery reality.** EC5 and EC6 were both rejected by you the first time because the agent over-marked completion when frontend or E2E was incomplete. EC7's scope is larger than EC5 + EC6 combined. To keep EC7 to the same integrity bar you enforced, I plan to deliver it in **four internal implementation phases inside this single execution checkpoint** (no sub-checkpointing; EC7 stays one checkpoint):

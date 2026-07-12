@@ -2798,3 +2798,38 @@ The full Pricing Foundation must include (and be verified by tests using known e
 
 Both EC6.3 and EC3.1 must land **before EC14 Final Hardening** and must not be silently absorbed into another checkpoint or dropped. They are visible in the progress register with explicit `REQUIRED — SCHEDULED` status until they are marked COMPLETE. Neither may become an "implied capability" — each must produce its own preflight, evidence, and pytest suite.
 
+### A.3 EC7 — Supplier Catalog, Price Comparison, and Integrated Purchasing (permanent scope, added to EC7)
+
+**Scope owner:** EC7 Inventory + Purchasing + Finance + Reporting.
+**Nature:** permanent, required. NOT an optional product idea. Assigned to **EC7**.
+**Reuses:** EC2 Settings + integration-secret storage, EC7 Materials + Inventory + Vendors + Purchase Orders + Receiving. Do NOT create a parallel PO or inventory system.
+
+The Order-taking workflow must be able to:
+- Determine required products + quantities; compare against current shop inventory; calculate shortages.
+- Search connected supplier catalogs; show supplier-specific products, variants, prices, and availability.
+- Compare total delivered cost (shipping/freight/MOQ/warehouse splits/lead times/expected arrival).
+- Recommend purchasing options (lowest delivered cost / fastest arrival / preferred supplier / fewest splits / all-items-available / best combined score).
+- Let the user select a supplier + product; create a purchasing cart or Purchase Order.
+- Electronically submit when supported; otherwise prepare a PO + authorized vendor-site handoff.
+- Link the supplier PO to the originating customer Order + Order Items; update expected + received inventory via EC7 receiving.
+
+**Categories:** blank apparel (shirts/hoodies/hats), vinyl, laminate, application tape, substrates (boards/sheets), banner material, ink + print supplies, mounting hardware, installation supplies, other tenant-configured categories. Do NOT force apparel and non-apparel into one variant structure.
+
+**Connection levels (reusable connector):** Direct API / EDI; catalog feed (CSV/XML/JSON/SFTP); Manual supplier (URL + handoff). No scraping. No automated checkout without explicit vendor authorization.
+
+**Normalized supplier-product model:** supplier, supplier_product_id, manufacturer, brand, product family, SKU, UPC, description, category, variant attributes (color/size/width/length/thickness/finish), package quantity, purchase unit, warehouse, available quantity, account price (cents), list price, effective timestamp, lead time, minimum order, freight class, active/discontinued, source + sync timestamps. Raw supplier identifiers preserved and mapped to internal Materials.
+
+**Price comparison:** most complete delivered cost (item + quantity breaks + account pricing + package quantity + shipping + freight + handling + MOQ surcharge + warehouse split + expected arrival + tax where relevant). Estimates labeled when live freight is unavailable. Never claim cheapest on unit price alone.
+
+**Apparel workflow:** style + brand + color + size + qty-per-size + supplier SKU mapping + shop stock + variant-level shortage + supplier warehouse inventory + explicit substitutes only. Never silently substitute apparel brand/style/color/size.
+
+**Vinyl/substrate workflow:** brand + series + color + finish + cast/calendared + adhesive + air-release + roll dims + sheet dims + thickness + cost per roll/sheet/lf/sqft + freight/regional availability. Never compare incompatible products as equivalent.
+
+**Security:** supplier API keys + account credentials use EC2 integration-secret system; never exposed to frontend. Tenant-scoped account pricing (no cross-tenant leak). Every electronic order submission requires explicit user confirmation. Actor + supplier + products + amount + timestamp + request ID + response status audited. **Idempotency-Key** on every supplier-order submission (retry never double-orders). No PCI card storage.
+
+**Reusable connector interface** ops: `search_catalog`, `get_product`, `get_variants`, `get_account_price`, `get_inventory`, `get_shipping_quote`, `create_supplier_order`, `retrieve_supplier_order`, `retrieve_tracking`, `cancel_order` (where supported). Each connector reports its supported capabilities. Foundation must work when a supplier supports only part of the list.
+
+**EC7 scope boundary for this requirement:** normalized supplier catalog model; supplier connector contract; catalog import + sync foundation; vendor-to-material mapping; shortage calculation (Order Items vs Inventory); purchasing recommendation service; Supply Center staff interface; supplier comparison view; purchasing cart / draft-PO flow; secure connection settings; **at least one realistic end-to-end connector OR deterministic supplier test adapter** demonstrating catalog search → variant → price → availability → shortage recommendation → PO creation → idempotent supplier-order simulation → receiving into inventory; tests + documentation + evidence. Connecting every real supplier is NOT required before EC7 closes; static mock cards alone do NOT satisfy EC7.
+
+**Preflight requirement:** produce a Supplier Integration Inventory listing every supplier the owner currently uses or expects to use. For each vendor document: categories carried; API availability; EDI availability; catalog-feed availability; account-pricing availability; inventory availability; order-submission availability; auth method; approval / partnership requirements; rate limits; ToS restrictions; fallback integration method. Every capability marked **verified / unavailable / pending vendor confirmation** — never guessed.
+
