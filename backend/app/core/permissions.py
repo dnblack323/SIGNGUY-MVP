@@ -29,8 +29,9 @@ class Perm(str, Enum):
     Grouped by module namespace: customer, lead, quote, order, order_item,
     work_order, invoice, payment, document, email, audit, user, dashboard,
     pricing, inventory, vendor, purchasing, employee, task, schedule,
-    time_clock, timesheet, payroll, report, webstore, wrap_lab, ai, settings,
-    integration, subscription, community, ai_credit.
+    timeclock, timesheet, payroll, equipment, training, certification,
+    report, webstore, wrap_lab, ai, settings, integration, subscription,
+    community, ai_credit.
     """
     # Customers / Leads
     CUSTOMER_READ = "customer:read"
@@ -102,21 +103,32 @@ class Perm(str, Enum):
     # Finance dashboard + tax reports (EC7 phase 7c — canonical labeled-basis metrics)
     FINANCE_READ = "finance:read"
     TAX_REPORT_READ = "tax_report:read"
-    # Team & Workflow
+    # Team & Workflow (EC8 — canonical set, approved 2026-07 EC8 preflight gate.
+    # Superseded values EMPLOYEE_WRITE/EMPLOYEE_ADMIN/TIME_CLOCK_READ/
+    # TIME_CLOCK_WRITE/TIMESHEET_APPROVE/PAYROLL_WRITE/PAYROLL_ADMIN were
+    # declared in EC1 but never consumed by any route — safe, non-breaking
+    # rename performed before EC8 implementation depends on them.)
     EMPLOYEE_READ = "employee:read"
-    EMPLOYEE_WRITE = "employee:write"
-    EMPLOYEE_ADMIN = "employee:admin"
+    EMPLOYEE_MANAGE = "employee:manage"
     TASK_READ = "task:read"
     TASK_WRITE = "task:write"
     SCHEDULE_READ = "schedule:read"
-    SCHEDULE_WRITE = "schedule:write"
-    TIME_CLOCK_READ = "time_clock:read"
-    TIME_CLOCK_WRITE = "time_clock:write"
+    SCHEDULE_MANAGE = "schedule:manage"
+    TIMECLOCK_SELF = "timeclock:self"
+    TIMECLOCK_MANAGE = "timeclock:manage"
+    TIMESHEET_SELF = "timesheet:self"
     TIMESHEET_READ = "timesheet:read"
-    TIMESHEET_APPROVE = "timesheet:approve"
+    TIMESHEET_MANAGE = "timesheet:manage"
+    PAYROLL_SELF = "payroll:self"
     PAYROLL_READ = "payroll:read"
-    PAYROLL_WRITE = "payroll:write"
-    PAYROLL_ADMIN = "payroll:admin"
+    PAYROLL_MANAGE = "payroll:manage"
+    PAYROLL_EXPORT = "payroll:export"
+    EQUIPMENT_READ = "equipment:read"
+    EQUIPMENT_MANAGE = "equipment:manage"
+    TRAINING_SELF = "training:self"
+    TRAINING_MANAGE = "training:manage"
+    CERTIFICATION_READ = "certification:read"
+    CERTIFICATION_MANAGE = "certification:manage"
     # Reports / Analytics
     REPORT_READ = "report:read"
     REPORT_WRITE = "report:write"
@@ -168,7 +180,10 @@ class PortalPerm(str, Enum):
     PORTAL_EMPLOYEE_VIEW = "portal:employee_view"
     PORTAL_EMPLOYEE_TIME_CLOCK = "portal:employee_time_clock"
     PORTAL_EMPLOYEE_TIMESHEET_VIEW = "portal:employee_timesheet_view"
-    PORTAL_EMPLOYEE_PAYSLIP_VIEW = "portal:employee_payslip_view"
+    PORTAL_EMPLOYEE_PAY_VIEW = "portal:employee_pay_view"
+    PORTAL_EMPLOYEE_SCHEDULE_VIEW = "portal:employee_schedule_view"
+    PORTAL_EMPLOYEE_TRAINING_VIEW = "portal:employee_training_view"
+    PORTAL_EMPLOYEE_CERTIFICATION_VIEW = "portal:employee_certification_view"
     PORTAL_WEBSTORE_OWNER_ADMIN = "portal:webstore_owner_admin"
     PORTAL_WEBSTORE_MANAGER_OPS = "portal:webstore_manager_ops"
 

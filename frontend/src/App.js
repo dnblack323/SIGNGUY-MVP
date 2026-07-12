@@ -41,6 +41,10 @@ import ExpensesPage from "@/pages/ExpensesPage";
 import FinanceDashboardPage from "@/pages/FinanceDashboardPage";
 import TaxReportsPage from "@/pages/TaxReportsPage";
 import ReportsPage from "@/pages/ReportsPage";
+import TeamDashboardPage from "@/pages/TeamDashboardPage";
+import EmployeesPage from "@/pages/EmployeesPage";
+import EmployeeDetailPage from "@/pages/EmployeeDetailPage";
+import AnnouncementsPage from "@/pages/AnnouncementsPage";
 import { Toaster } from "sonner";
 
 function LoggedInHome() {
@@ -88,6 +92,10 @@ function App() {
             <Route path="/finance" element={<FinanceDashboardPage />} />
             <Route path="/tax" element={<TaxReportsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/team" element={<TeamDashboardPage />} />
+            <Route path="/team/employees" element={<EmployeesPage />} />
+            <Route path="/team/employees/:id" element={<EmployeeDetailPage />} />
+            <Route path="/team/announcements" element={<AnnouncementsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/company" element={<CompanySettingsPage />} />
             <Route path="/settings/integrations" element={<IntegrationsPage />} />

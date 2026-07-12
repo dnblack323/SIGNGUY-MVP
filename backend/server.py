@@ -118,6 +118,14 @@ api_router.include_router(tax_reports_router_module.router)
 from app.routers import reports as reports_router_module
 api_router.include_router(reports_router_module.router)
 
+# EC8 — Phase 8a Employees + Team Dashboard + Announcements
+from app.routers import employees as employees_router_module
+from app.routers import team_dashboard as team_dashboard_router_module
+from app.routers import announcements as announcements_router_module
+api_router.include_router(employees_router_module.router)
+api_router.include_router(team_dashboard_router_module.router)
+api_router.include_router(announcements_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

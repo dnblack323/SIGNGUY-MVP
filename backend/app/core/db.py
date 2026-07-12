@@ -303,4 +303,16 @@ async def ensure_indexes() -> None:
     )
     await db.tax_exemptions.create_index([("tenant_id", 1), ("jurisdiction", 1), ("archived", 1)])
 
+    # ---- EC8 phase 8a — Employees + Announcements ----
+    await db.employees.create_index("id", unique=True)
+    await db.employees.create_index([("tenant_id", 1), ("status", 1), ("name", 1)])
+    await db.employees.create_index(
+        [("tenant_id", 1), ("linked_user_id", 1)],
+        unique=True,
+        partialFilterExpression={"linked_user_id": {"$type": "string"}},
+    )
+
+    await db.announcements.create_index("id", unique=True)
+    await db.announcements.create_index([("tenant_id", 1), ("status", 1), ("published_at", -1)])
+
     logger.info("MongoDB indexes ensured")

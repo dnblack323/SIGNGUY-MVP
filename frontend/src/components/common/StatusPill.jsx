@@ -50,7 +50,20 @@ const EMAIL = {
   skipped: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
 };
 
-const MAPS = { quote: QUOTE, order: ORDER, production: PROD, priority: PRIORITY, invoice: INV, email: EMAIL };
+const EMPLOYEE = {
+  active: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  suspended: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  inactive: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+  terminated: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+  archived: "bg-slate-200 text-slate-600 ring-1 ring-slate-300",
+};
+const ANNOUNCEMENT = {
+  draft: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+  published: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  expired: "bg-slate-200 text-slate-600 ring-1 ring-slate-300",
+};
+
+const MAPS = { quote: QUOTE, order: ORDER, production: PROD, priority: PRIORITY, invoice: INV, email: EMAIL, employee: EMPLOYEE, announcement: ANNOUNCEMENT };
 
 export function StatusPill({ kind, value, className }) {
   const map = MAPS[kind] || QUOTE;
