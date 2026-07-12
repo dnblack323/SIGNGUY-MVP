@@ -2833,8 +2833,20 @@ The Order-taking workflow must be able to:
 
 **Preflight requirement:** produce a Supplier Integration Inventory listing every supplier the owner currently uses or expects to use. For each vendor document: categories carried; API availability; EDI availability; catalog-feed availability; account-pricing availability; inventory availability; order-submission availability; auth method; approval / partnership requirements; rate limits; ToS restrictions; fallback integration method. Every capability marked **verified / unavailable / pending vendor confirmation** — never guessed.
 
+### A.5 EC8 — Equipment, Training, and Certification (permanent scope, added to EC8)
 
+**Scope owner:** EC8 Team, Scheduling, Time, and Payroll.
+**Nature:** owner-locked, permanent, required. Added to EC8 by explicit owner directive (2026-07, EC8 preflight). NOT an optional idea, NOT a separate checkpoint — assigned to **EC8**, delivered in EC8 phase 8e.
+**Reuses:** EC2 Files + Documents (training materials: manuals/videos/SOPs); EC1 audit/activity; EC5 Work Order assignment (extended, not duplicated). Do NOT create a parallel file-storage or approval system.
 
+EC8 must additionally deliver:
+- **Equipment** records (printers, laminators, plotters, cutters, heat presses, embroidery machines, lifts, vehicles, specialty tools, other safety-sensitive or expensive equipment) with category, location, status, `safety_sensitive` flag, `certification_required` flag, and linked training materials/manuals/videos/procedures/maintenance references (via existing Files/Documents).
+- **Training** assignments per employee (reading, video, SOP review, quiz, practical demonstration, manager signoff, retraining) with due date, progress, completion, quiz score, attempt history, acknowledgement, manager approval, and audit trail.
+- **Certification** records per employee per Equipment (`not_started/in_progress/pending_signoff/certified/expired/revoked/failed`) with issued/expiration dates, trainer/approver, required vs. actual score, practical signoff, restrictions, renewal, and revocation — all audited, never overwritten in place.
+- **Work Order assignment enforcement:** Work Orders may declare required equipment/certification/skill/role. Assignment lacking the required certification for `safety_sensitive` equipment is **hard-blocked by default** at the backend service layer (never frontend-only); a manager may override only with a required reason, which is always audited. Non-safety-sensitive skill/role gaps produce a warning, not a hard block. See `/app/preflight/EC8_TEAM_SCHEDULING_TIME_PAYROLL_EMPLOYEE_PORTAL_PREFLIGHT.md` §6.11 for the full warning/hard-block/override matrix.
+- **Reporting:** certification matrix, expiring certifications, incomplete training, equipment access report — delivered through the existing EC7 report/export foundation, not a second report builder.
+
+**EC8 scope boundary:** this addendum does not change EC8's dependency ordering relative to EC1–EC7, does not reopen EC7, and does not introduce a second Files/Documents/Audit/Reports system. It is delivered as EC8 phase 8e, after Employees (8a) and before EC8 closure (8f).
 
 ### A.4 Commercial Authority — Revised Pricing, Fees, Onboarding, Trials, Annual, AI Credits (REVISED 2026-07)
 

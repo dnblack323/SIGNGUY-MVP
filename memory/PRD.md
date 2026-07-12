@@ -31,7 +31,8 @@ Constraints:
 | **EC6.3 — Order Intake Capture & Visual Markup** | **REQUIRED — SCHEDULED (permanent scope)** | Master plan Appendix A.1 — image + camera + PDF uploads, drawing on images + blank canvas, version history, attach to Proofs/WOs/WOSummaries, controlled portal visibility, in-person signature capture bound to exact target with immutable audit. Reuses EC2 + EC6, no parallel system. Must land before EC14. |
 | EC6.2 — Signed PDF Composite Rendering | DEFERRED (unscheduled) | `/app/memory/product_ideas_register.md` — reconsider during EC14 Final Hardening, or earlier only on a verified customer/compliance/operational requirement. Do NOT schedule during EC7. |
 | **EC7 — Inventory, Purchasing, Finance, Reporting** | **COMPLETE** (all phases 7a+7b+7c+7d delivered; frontend closure workflows landed; `testing_agent_v3_fork` regression PASS) | `/app/evidence/EC7_evidence.md` + `/app/docs/modules/EC7_INVENTORY_PURCHASING_FINANCE.md`. Backend 215/215 green. Frontend Jest 25/25 green. Regression report `/app/test_reports/iteration_10.json`. |
-| EC8–EC14 | NOT STARTED | dependency-ordered per master plan |
+| **EC8 — Team, Scheduling, Time, Payroll, Employee Portal, Equipment Training & Certification** | **PREFLIGHT COMPLETE — AWAITING OWNER APPROVAL TO IMPLEMENT** | `/app/preflight/EC8_TEAM_SCHEDULING_TIME_PAYROLL_EMPLOYEE_PORTAL_PREFLIGHT.md`. Documentation-only pass: source map (nothing exists yet in MVP for this domain except unused scaffolded permission enum values + disabled nav placeholders), data model, keep/rebuild/remove, proposed architecture, dependencies, risks, acceptance-test list, permission set, and 8a–8f phasing proposal. Equipment/Training/Certification added as owner-locked permanent EC8 scope — see master plan Appendix A.5. No implementation code written. |
+| EC9–EC14 | NOT STARTED | dependency-ordered per master plan |
 
 ## Completed capabilities
 
@@ -63,15 +64,22 @@ Constraints:
 ## Priority backlog (P0/P1/P2)
 
 ### P0 — Immediate next checkpoint
-- Await owner's **EC8 execution prompt**. EC7 is now COMPLETE. Do NOT begin EC8 until the owner provides the explicit EC8 prompt.
+- EC8 preflight is COMPLETE. Awaiting owner's answers to the EC8 ask_human gate (existing source findings, reuse/rebuild split, permission set, phasing, repository-class question, migration risks) before any EC8 implementation code is written.
+
+### P1 — EC8 (preflight complete, implementation not started)
+- Phase 8a — Employees & Team Foundation (+ Tasks & Kanban)
+- Phase 8b — Time Clock & Timesheets
+- Phase 8c — Scheduling & Employee Portal
+- Phase 8d — Payroll (pay periods, transactions ledger, advances/payments/carryover, My Pay, exports)
+- Phase 8e — Equipment, Training & Certification (owner-locked addendum, master plan Appendix A.5) + Work Order assignment enforcement
+- Phase 8f — Full EC8 frontend regression, targeted EC1–EC7 regression, closure evidence
 
 ### Permanent scope — REQUIRED before EC14 Final Hardening (owner-locked)
 - **EC3.1 Pricing Foundation Verification & Full Calculator Category Coverage** — every calculator category + formulas, shop rate/labor/materials/waste/markup/margin/minimum charges/complexity/add-ons/templates, snapshots, and pytest coverage with known expected pricing examples. Reuses EC3 pricing services; no parallel pricing system. Master plan Appendix A.2.
 - **EC6.3 Order Intake Capture & Visual Markup** — image + camera + PDF uploads bound to Customer/Quote/Order/Order Item, drawing on image + blank canvas, versioned annotations, attach approved markups to Proofs/Work Orders/Work Order Summaries, controlled portal visibility, **in-person customer signature capture** bound to exact Order/Order Item/drawing/image version/measurement/approval content with immutable audit. Reuses EC2 files/links/storage/audit + EC6 Proof/Approval/SignatureRequest/Signature; no parallel file/drawing/approval/signature system. Master plan Appendix A.1.
 - **EC7 A.3 Supplier Catalog, Price Comparison & Integrated Purchasing** — normalized supplier-product model, reusable connector interface (search_catalog/get_product/get_variants/get_account_price/get_inventory/get_shipping_quote/create_supplier_order/retrieve_supplier_order/retrieve_tracking/cancel_order), three connection tiers (API/EDI, catalog feed, manual+handoff), shortage calc, purchasing recommendation with delivered-cost comparison, Supply Center staff UI, idempotent supplier-order submission via EC2 integration-secret storage, at least one realistic end-to-end connector or deterministic test adapter demonstrating catalog→variant→price→availability→shortage→PO→submission→receiving. Master plan Appendix A.3. **Assigned to and delivered inside EC7.**
 
-### P1 — After EC7
-- EC8 Team, Scheduling, Time, Payroll (+ Employee Portal).
+### P1 — After EC8
 - EC9 Webstores + Stripe Connect (add-on + standalone shell).
 - EC10 Wrap Lab.
 
