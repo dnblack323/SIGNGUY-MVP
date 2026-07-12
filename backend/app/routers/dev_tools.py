@@ -60,3 +60,32 @@ async def ensure_dev_employee() -> dict:
         },
     )
     return {"created": True, "employee": employee}
+
+
+@router.post("/mint-employee-portal-login")
+async def mint_employee_portal_login(employee_id: str) -> dict:
+    """DEV-ONLY (EC8 phase 8c): mint a fresh, unconsumed Employee Portal
+    magic-link token for a given employee_id and return the RAW token
+    directly in the response — bypassing email delivery entirely.
+
+    Reuses the exact same invite/identity path as the real
+    `/api/employee-portal/{id}/invite` flow (`employee_portal_service`); it
+    just skips SendGrid so E2E verification doesn't depend on a real inbox.
+    Refuses outside development, same guard as `ensure-dev-employee`.
+    """
+    if _settings.env != "development" or not _settings.auth_dev_bypass:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    from ..services.employee_portal_service import _get_identity
+    from ..services.portal_tokens import mint_magic_link_token
+
+    tenant = await db.tenants.find_one({"slug": DEV_TENANT_SLUG})
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Dev tenant not provisioned yet")
+    identity = await _get_identity(tenant["id"], employee_id)
+    if not identity:
+        raise HTTPException(status_code=404, detail="No Employee Portal identity for this employee — invite first")
+    raw, _ = await mint_magic_link_token(
+        tenant_id=tenant["id"], portal_identity_id=identity["id"], email=identity["email"],
+    )
+    return {"token": raw, "identity_id": identity["id"], "verify_path": "/api/portal/auth/magic-link/verify"}

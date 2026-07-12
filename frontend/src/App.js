@@ -47,6 +47,9 @@ import EmployeeDetailPage from "@/pages/EmployeeDetailPage";
 import AnnouncementsPage from "@/pages/AnnouncementsPage";
 import TimeClockPage from "@/pages/TimeClockPage";
 import TimesheetsPage from "@/pages/TimesheetsPage";
+import TeamSchedulePage from "@/pages/TeamSchedulePage";
+import EmployeePortalAccessPage from "@/pages/EmployeePortalAccessPage";
+import EmployeePortalApp from "@/portal/employee/EmployeePortalApp";
 import { Toaster } from "sonner";
 
 function LoggedInHome() {
@@ -65,6 +68,7 @@ function App() {
           <Route path="/register" element={<RegisterTenantPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/portal/employee/*" element={<EmployeePortalApp />} />
           <Route path="/portal/*" element={<PortalApp />} />
           <Route path="/p/*" element={<PublicApp />} />
           <Route element={<RequireAuth><AppShell /></RequireAuth>}>
@@ -98,6 +102,8 @@ function App() {
             <Route path="/team/employees" element={<EmployeesPage />} />
             <Route path="/team/employees/:id" element={<EmployeeDetailPage />} />
             <Route path="/team/announcements" element={<AnnouncementsPage />} />
+            <Route path="/team/schedule" element={<TeamSchedulePage />} />
+            <Route path="/team/employee-portal" element={<EmployeePortalAccessPage />} />
             <Route path="/team/time-clock" element={<TimeClockPage />} />
             <Route path="/team/timesheets" element={<TimesheetsPage />} />
             <Route path="/settings" element={<SettingsPage />} />

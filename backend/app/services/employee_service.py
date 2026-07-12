@@ -129,3 +129,59 @@ async def status_counts(*, tenant_id: str) -> dict[str, int]:
     async for row in cursor:
         counts[row["_id"]] = row["count"]
     return counts
+
+
+# ---- EC8 phase 8c — Employee availability (structured; feeds Schedule conflict warnings) ----
+
+VALID_AVAILABILITY_KINDS = {"unavailable", "preferred"}
+
+
+async def add_availability_block(*, tenant_id: str, employee_id: str, actor_user_id: str, actor_email: str,
+                                  block: dict) -> dict:
+    import uuid
+    if block.get("kind") not in VALID_AVAILABILITY_KINDS:
+        raise EmployeeError(400, f"kind must be one of {sorted(VALID_AVAILABILITY_KINDS)}")
+    existing = await db.employees.find_one({"id": employee_id, "tenant_id": tenant_id}, {"_id": 0})
+    if not existing:
+        raise EmployeeError(404, "Employee not found")
+    entry = {
+        "id": str(uuid.uuid4()),
+        "kind": block["kind"],
+        "day_of_week": block.get("day_of_week"),
+        "date_from": block.get("date_from"),
+        "date_to": block.get("date_to"),
+        "start_time": block.get("start_time"),
+        "end_time": block.get("end_time"),
+        "note": block.get("note"),
+        "created_at": utc_now().isoformat(),
+        "created_by": actor_user_id,
+    }
+    await db.employees.update_one(
+        {"id": employee_id, "tenant_id": tenant_id},
+        {"$push": {"availability_blocks": entry}, "$set": {"updated_at": utc_now().isoformat()}},
+    )
+    await record_activity_with_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+        module="team", action="employee.availability_added", entity_type="employee", entity_id=employee_id,
+        summary=f"Availability block added for '{existing['name']}' ({entry['kind']})",
+    )
+    doc = await db.employees.find_one({"id": employee_id, "tenant_id": tenant_id}, {"_id": 0})
+    return serialize_doc(doc or {})
+
+
+async def remove_availability_block(*, tenant_id: str, employee_id: str, block_id: str,
+                                     actor_user_id: str, actor_email: str) -> dict:
+    existing = await db.employees.find_one({"id": employee_id, "tenant_id": tenant_id}, {"_id": 0})
+    if not existing:
+        raise EmployeeError(404, "Employee not found")
+    await db.employees.update_one(
+        {"id": employee_id, "tenant_id": tenant_id},
+        {"$pull": {"availability_blocks": {"id": block_id}}, "$set": {"updated_at": utc_now().isoformat()}},
+    )
+    await record_activity_with_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+        module="team", action="employee.availability_removed", entity_type="employee", entity_id=employee_id,
+        summary=f"Availability block removed for '{existing['name']}'",
+    )
+    doc = await db.employees.find_one({"id": employee_id, "tenant_id": tenant_id}, {"_id": 0})
+    return serialize_doc(doc or {})

@@ -39,7 +39,13 @@ class Employee(BaseDoc):
     termination_date: Optional[str] = None
     hourly_rate_cents: int = 1500          # locked default baseline: $15.00/hr, configurable per employee
     overtime_policy: Optional[str] = None  # foundation field only — no calculation logic in v1
-    availability: Optional[str] = None     # free-text until Phase 8c scheduling model lands
+    availability: Optional[str] = None     # free-text notes; superseded by availability_blocks below (8c)
+    # EC8 phase 8c — structured availability for the Team Schedule builder's
+    # conflict warnings. Each block: {id, kind: "unavailable"|"preferred",
+    # day_of_week: 0-6 (Mon=0) | None, date_from, date_to, start_time,
+    # end_time, note, created_at, created_by}. Deliberately NOT a PTO/accrual
+    # ledger — just enough structure to warn a manager before double-booking.
+    availability_blocks: list[dict] = Field(default_factory=list)
     portal_access: bool = False            # entitlement flag for Phase 8c Employee Portal — no behavior yet
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None

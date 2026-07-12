@@ -11,11 +11,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import StatusPill from "@/components/common/StatusPill";
 import { relativeTime } from "@/lib/format";
-import { ArrowLeft, Save, UserCog } from "lucide-react";
+import { ArrowLeft, Save, UserCog, KeyRound, Ban, Send } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 
 const STATUSES = ["active", "suspended", "inactive", "terminated", "archived"];
@@ -97,6 +98,11 @@ export default function EmployeeDetailPage() {
     queryFn: async () => (await api.get(`/audit`, { params: { entity_type: "employee", entity_id: id, limit: 50 } })).data,
     enabled: !!id,
   });
+  const { data: portalStatus } = useQuery({
+    queryKey: ["employee-portal-status", id],
+    queryFn: async () => (await api.get(`/employee-portal/${id}`)).data,
+    enabled: !!id && canManage,
+  });
 
   const [form, setForm] = useState({});
   const editForm = { ...emp, ...form };
@@ -108,6 +114,24 @@ export default function EmployeeDetailPage() {
       qc.invalidateQueries({ queryKey: ["employee", id] });
       qc.invalidateQueries({ queryKey: ["employee-audit", id] });
       setForm({});
+    },
+    onError: (e) => toast.error(extractError(e)),
+  });
+
+  const invitePortal = useMutation({
+    mutationFn: async () => (await api.post(`/employee-portal/${id}/invite`)).data,
+    onSuccess: () => {
+      toast.success("Employee Portal invitation sent");
+      qc.invalidateQueries({ queryKey: ["employee-portal-status", id] });
+    },
+    onError: (e) => toast.error(extractError(e)),
+  });
+
+  const suspendPortal = useMutation({
+    mutationFn: async () => (await api.post(`/employee-portal/${id}/suspend`)).data,
+    onSuccess: () => {
+      toast.success("Employee Portal access suspended");
+      qc.invalidateQueries({ queryKey: ["employee-portal-status", id] });
     },
     onError: (e) => toast.error(extractError(e)),
   });
@@ -166,6 +190,42 @@ export default function EmployeeDetailPage() {
                     </li>
                   ))}
                 </ul>
+              </CardContent>
+            </Card>
+          )}
+          {canManage && (
+            <Card>
+              <CardHeader><CardTitle>Employee Portal access</CardTitle></CardHeader>
+              <CardContent className="flex items-center justify-between gap-3 text-sm">
+                {!portalStatus?.invited ? (
+                  <>
+                    <span className="text-muted-foreground">Not yet invited to the Employee Portal.</span>
+                    <Button size="sm" onClick={() => invitePortal.mutate()} disabled={invitePortal.isPending} data-testid="employee-portal-invite-button">
+                      <Send className="size-4 mr-1" />Invite to Portal
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={portalStatus.identity.status === "active" ? "default" : "secondary"} data-testid="employee-portal-identity-status">
+                        {portalStatus.identity.status === "active" ? "Portal active" : "Portal suspended"}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {portalStatus.identity.last_login_at ? `Last login ${relativeTime(portalStatus.identity.last_login_at)}` : "Never signed in yet"}
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => invitePortal.mutate()} disabled={invitePortal.isPending} data-testid="employee-portal-resend-button">
+                        <KeyRound className="size-4 mr-1" />Resend invite
+                      </Button>
+                      {portalStatus.identity.status === "active" && (
+                        <Button size="sm" variant="destructive" onClick={() => suspendPortal.mutate()} disabled={suspendPortal.isPending} data-testid="employee-portal-suspend-button">
+                          <Ban className="size-4 mr-1" />Suspend
+                        </Button>
+                      )}
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           )}

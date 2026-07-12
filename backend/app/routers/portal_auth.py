@@ -78,13 +78,21 @@ async def login(payload: LoginIn, request: Request) -> dict:
     identity = await authenticate_password(tenant_id=tid, email=str(payload.email), password=payload.password)
     if not identity:
         raise HTTPException(status_code=401, detail="Invalid credentials or magic-link-only identity")
+    was_first_login = identity.get("portal_type") == "employee" and not identity.get("last_login_at")
     token = issue_portal_jwt(identity)
     identity.pop("password_hash", None)
+    action = "employee_portal_login" if identity.get("portal_type") == "employee" else "portal.login"
     await record_audit(
         tenant_id=tid, actor_user_id=f"portal:{identity['id']}", actor_email=identity["email"],
-        action="portal.login", entity_type="portal_identity", entity_id=identity["id"],
+        action=action, entity_type="portal_identity", entity_id=identity["id"],
         summary="Portal password login",
     )
+    if was_first_login:
+        await record_audit(
+            tenant_id=tid, actor_user_id=f"portal:{identity['id']}", actor_email=identity["email"],
+            action="employee_portal_activated", entity_type="portal_identity", entity_id=identity["id"],
+            summary="Employee Portal identity activated (first login)",
+        )
     return {"token": token, "identity": identity}
 
 
@@ -122,16 +130,24 @@ async def verify_magic_link(payload: MagicLinkVerifyIn, request: Request) -> dic
     )
     if not identity:
         raise HTTPException(status_code=401, detail="Portal identity inactive")
+    was_first_login = identity.get("portal_type") == "employee" and not identity.get("last_login_at")
     from ..core.time_utils import utc_now
     await db.portal_identities.update_one(
         {"id": identity["id"]}, {"$set": {"last_login_at": utc_now().isoformat()}},
     )
     token = issue_portal_jwt(identity)
+    action = "employee_portal_login" if identity.get("portal_type") == "employee" else "portal.magic_link_login"
     await record_audit(
         tenant_id=identity["tenant_id"], actor_user_id=f"portal:{identity['id']}", actor_email=identity["email"],
-        action="portal.magic_link_login", entity_type="portal_identity",
+        action=action, entity_type="portal_identity",
         entity_id=identity["id"], summary="Portal magic-link login",
     )
+    if was_first_login:
+        await record_audit(
+            tenant_id=identity["tenant_id"], actor_user_id=f"portal:{identity['id']}", actor_email=identity["email"],
+            action="employee_portal_activated", entity_type="portal_identity", entity_id=identity["id"],
+            summary="Employee Portal identity activated (first login)",
+        )
     return {"token": token, "identity": identity}
 
 

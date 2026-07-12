@@ -7,7 +7,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Optional
 
 import jwt
 
@@ -18,13 +18,19 @@ _settings = get_settings()
 PORTAL_TOKEN_TTL_MINUTES = 60 * 12  # 12 hours
 
 
-def create_portal_token(*, portal_identity_id: str, tenant_id: str, customer_id: str) -> str:
+def create_portal_token(
+    *, portal_identity_id: str, tenant_id: str,
+    customer_id: Optional[str] = None, portal_type: str = "customer",
+    employee_id: Optional[str] = None,
+) -> str:
     now = datetime.now(timezone.utc)
     payload: dict[str, Any] = {
         "sub": portal_identity_id,
         "sub_scope": "portal",
         "tenant_id": tenant_id,
+        "portal_type": portal_type,
         "customer_id": customer_id,
+        "employee_id": employee_id,
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=PORTAL_TOKEN_TTL_MINUTES)).timestamp()),
         "typ": "portal_access",

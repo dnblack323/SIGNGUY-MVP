@@ -137,6 +137,15 @@ api_router.include_router(timesheets_router_module.router)
 from app.routers import dev_tools as dev_tools_router_module
 api_router.include_router(dev_tools_router_module.router)
 
+# EC8 — Phase 8c Scheduling + Employee Portal (additive on EC6 Portal Identity)
+from app.routers import schedule as schedule_router_module
+from app.routers import employee_portal_admin as employee_portal_admin_router_module
+from app.routers import portal_employee as portal_employee_router_module
+api_router.include_router(schedule_router_module.router)
+api_router.include_router(schedule_router_module.shifts_router)
+api_router.include_router(employee_portal_admin_router_module.router)
+api_router.include_router(portal_employee_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

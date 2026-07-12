@@ -330,4 +330,24 @@ async def ensure_indexes() -> None:
     await db.timesheets.create_index([("tenant_id", 1), ("employee_id", 1), ("week_start", 1)], unique=True)
     await db.timesheets.create_index([("tenant_id", 1), ("status", 1), ("week_start", -1)])
 
+    # ---- EC8 phase 8c — Scheduling + Employee Portal ----
+    await db.schedules.create_index("id", unique=True)
+    await db.schedules.create_index([("tenant_id", 1), ("period_start", 1)], unique=True)
+    await db.schedules.create_index([("tenant_id", 1), ("status", 1)])
+
+    await db.shifts.create_index("id", unique=True)
+    await db.shifts.create_index([("tenant_id", 1), ("schedule_id", 1)])
+    await db.shifts.create_index([("tenant_id", 1), ("employee_id", 1), ("shift_date", 1)])
+    await db.shifts.create_index([("tenant_id", 1), ("employee_id", 1), ("start_at", 1), ("end_at", 1)])
+
+    # portal_identities — EC8c employee-typed identities: 1:1 with Employee.
+    # (Existing (tenant_id, email) unique index already prevents any duplicate
+    # regardless of type.)
+    await db.portal_identities.create_index(
+        [("tenant_id", 1), ("employee_id", 1)],
+        unique=True,
+        partialFilterExpression={"portal_type": "employee"},
+    )
+    await db.portal_identities.create_index([("tenant_id", 1), ("portal_type", 1), ("status", 1)])
+
     logger.info("MongoDB indexes ensured")

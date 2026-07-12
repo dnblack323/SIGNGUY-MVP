@@ -51,6 +51,16 @@ class StatusChangeIn(BaseModel):
     reason: str
 
 
+class AvailabilityBlockIn(BaseModel):
+    kind: str  # "unavailable" | "preferred"
+    day_of_week: Optional[int] = None
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    note: Optional[str] = None
+
+
 def _raise(e: EmployeeError):
     raise HTTPException(status_code=e.status_code, detail=e.detail)
 
@@ -106,6 +116,30 @@ async def change_status(employee_id: str, payload: StatusChangeIn,
             tenant_id=user["tenant_id"], employee_id=employee_id,
             actor_user_id=user["id"], actor_email=user["email"],
             new_status=payload.status, reason=payload.reason,
+        )
+    except EmployeeError as e:
+        _raise(e)
+
+
+@router.post("/{employee_id}/availability", status_code=201)
+async def add_availability(employee_id: str, payload: AvailabilityBlockIn,
+                            user: dict = Depends(require_permission(Perm.EMPLOYEE_MANAGE))) -> dict:
+    try:
+        return await employee_service.add_availability_block(
+            tenant_id=user["tenant_id"], employee_id=employee_id,
+            actor_user_id=user["id"], actor_email=user["email"], block=payload.model_dump(),
+        )
+    except EmployeeError as e:
+        _raise(e)
+
+
+@router.delete("/{employee_id}/availability/{block_id}")
+async def remove_availability(employee_id: str, block_id: str,
+                               user: dict = Depends(require_permission(Perm.EMPLOYEE_MANAGE))) -> dict:
+    try:
+        return await employee_service.remove_availability_block(
+            tenant_id=user["tenant_id"], employee_id=employee_id, block_id=block_id,
+            actor_user_id=user["id"], actor_email=user["email"],
         )
     except EmployeeError as e:
         _raise(e)

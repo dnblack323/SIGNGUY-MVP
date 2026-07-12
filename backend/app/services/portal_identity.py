@@ -15,7 +15,7 @@ from ..core.db import db
 from ..core.security import hash_password, verify_password
 from ..core.portal_security import create_portal_token
 from ..core.time_utils import serialize_doc, utc_now
-from ..models.portal_identity import PortalIdentity, PRESET_BUNDLES, PORTAL_PERMS
+from ..models.portal_identity import PortalIdentity, PRESET_BUNDLES, PORTAL_PERMS, EMPLOYEE_PORTAL_PERMS
 
 MAX_FAILED = 5
 LOCK_MINUTES = 15
@@ -24,7 +24,9 @@ LOCK_MINUTES = 15
 async def create_portal_identity(
     *,
     tenant_id: str,
-    customer_id: str,
+    customer_id: Optional[str] = None,
+    portal_type: str = "customer",
+    employee_id: Optional[str] = None,
     email: str,
     full_name: Optional[str] = None,
     phone: Optional[str] = None,
@@ -40,14 +42,22 @@ async def create_portal_identity(
     existing = await db.portal_identities.find_one({"tenant_id": tenant_id, "email": email})
     if existing:
         raise ValueError("email_already_exists")
-    perms = list(PRESET_BUNDLES.get(permissions_preset, []))
-    if permissions_preset == "custom":
-        # Whitelist against PORTAL_PERMS
-        perms = [p for p in (custom_permissions or []) if p in PORTAL_PERMS]
+    if portal_type == "employee":
+        # Employee Portal identities always get the full self-scope grant —
+        # there is no per-identity preset like the customer role_label bundles.
+        perms = list(EMPLOYEE_PORTAL_PERMS)
+        permissions_preset = "custom"
+    else:
+        perms = list(PRESET_BUNDLES.get(permissions_preset, []))
+        if permissions_preset == "custom":
+            # Whitelist against PORTAL_PERMS
+            perms = [p for p in (custom_permissions or []) if p in PORTAL_PERMS]
     pw_hash = hash_password(initial_password) if (initial_password and not magic_link_only) else None
     identity = PortalIdentity(
         tenant_id=tenant_id,
+        portal_type=portal_type,  # type: ignore[arg-type]
         customer_id=customer_id,
+        employee_id=employee_id,
         email=email,
         full_name=full_name,
         phone=phone,
@@ -141,5 +151,7 @@ def issue_portal_jwt(identity: dict) -> str:
     return create_portal_token(
         portal_identity_id=identity["id"],
         tenant_id=identity["tenant_id"],
-        customer_id=identity["customer_id"],
+        customer_id=identity.get("customer_id"),
+        portal_type=identity.get("portal_type") or "customer",
+        employee_id=identity.get("employee_id"),
     )
