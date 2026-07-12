@@ -361,6 +361,33 @@ async def test_reports_registry_includes_payroll_and_export_reuses_ec7_infra(ec8
 
 
 @pytest.mark.asyncio
+async def test_zero_gross_period_does_not_derive_to_paid(ec8d_ctx):
+    """Business-rule fix (found by testing agent): an approved Pay Period with
+    zero earned/zero paid must stay 'approved', never auto-derive to 'paid' —
+    there is no balance to consider 'satisfied'."""
+    owner_a, staff_a, emp2 = ec8d_ctx["owner_a"], ec8d_ctx["staff_a"], ec8d_ctx["emp2"]
+    # emp2 has no logged hours and no approved timesheet this week — recalculating
+    # still creates a snapshot with 0 gross (candidate via payroll_transactions
+    # lookup is empty, so we add a manual $0-neutralizing adjustment isn't needed;
+    # instead directly recompute a zero snapshot then approve with override).
+    period = await _get_or_create_period(owner_a, "2026-06-02")
+    async with await _client(owner_a) as co:
+        # Force a snapshot to exist for emp2 with zero activity by recording and
+        # then voiding a $1 adjustment (net zero ledger, snapshot row created).
+        r = await co.post("/api/payroll/transactions", json={
+            "employee_id": emp2["id"], "pay_period_id": period["id"], "type": "adjustment",
+            "amount_cents": 100, "effective_date": "2026-06-02",
+        })
+        txn = r.json()
+        await co.post(f"/api/payroll/transactions/{txn['id']}/void", json={"reason": "test cleanup"})
+        r2 = await co.post(f"/api/payroll/periods/{period['id']}/approve", json={"override_reason": "no hours this week"})
+        assert r2.status_code == 200
+        assert r2.json()["period"]["status"] == "approved"
+    detail = await _get_period(owner_a, period["id"])
+    assert detail["period"]["status"] == "approved"  # NOT "paid"
+
+
+@pytest.mark.asyncio
 async def test_my_pay_self_scoped_and_field_allowlist(ec8d_ctx):
     owner_a, staff_a, emp1, emp2, ta = ec8d_ctx["owner_a"], ec8d_ctx["staff_a"], ec8d_ctx["emp1"], ec8d_ctx["emp2"], ec8d_ctx["ta"]
     await _log_hours(staff_a, owner_a, "2026-05-19", 8)

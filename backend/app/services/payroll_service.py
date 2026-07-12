@@ -596,7 +596,12 @@ async def _refresh_period_financial_status(tenant_id: str, period_id: str) -> No
         return
     total_remaining = sum(s["remaining_balance_cents"] for s in snapshots)
     total_paid_activity = sum(s["advance_total_cents"] + s["payment_total_cents"] for s in snapshots)
-    if total_remaining <= 0:
+    total_earned_activity = sum(s["total_earned_cents"] for s in snapshots)
+    if total_earned_activity <= 0:
+        # Nothing was ever owed this period (e.g. zero logged hours) — there is
+        # no balance to "satisfy", so this must not be reported as paid/settled.
+        new_status = "approved"
+    elif total_remaining <= 0:
         new_status = "paid"
     elif total_paid_activity > 0:
         new_status = "partially_paid"

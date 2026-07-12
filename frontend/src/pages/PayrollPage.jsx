@@ -53,7 +53,7 @@ function ReasonDialog({ trigger, title, description, submitLabel, onSubmit, requ
           </div>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" disabled={busy} data-testid="payroll-reason-submit-button">{busy ? "Working…" : submitLabel}</Button>
+            <Button type="submit" disabled={busy || (requireReason && !reason.trim())} data-testid="payroll-reason-submit-button">{busy ? "Working…" : submitLabel}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

@@ -31,7 +31,7 @@ Constraints:
 | **EC6.3 — Order Intake Capture & Visual Markup** | **REQUIRED — SCHEDULED (permanent scope)** | Master plan Appendix A.1 — image + camera + PDF uploads, drawing on images + blank canvas, version history, attach to Proofs/WOs/WOSummaries, controlled portal visibility, in-person signature capture bound to exact target with immutable audit. Reuses EC2 + EC6, no parallel system. Must land before EC14. |
 | EC6.2 — Signed PDF Composite Rendering | DEFERRED (unscheduled) | `/app/memory/product_ideas_register.md` — reconsider during EC14 Final Hardening, or earlier only on a verified customer/compliance/operational requirement. Do NOT schedule during EC7. |
 | **EC7 — Inventory, Purchasing, Finance, Reporting** | **COMPLETE** (all phases 7a+7b+7c+7d delivered; frontend closure workflows landed; `testing_agent_v3_fork` regression PASS) | `/app/evidence/EC7_evidence.md` + `/app/docs/modules/EC7_INVENTORY_PURCHASING_FINANCE.md`. Backend 215/215 green. Frontend Jest 25/25 green. Regression report `/app/test_reports/iteration_10.json`. |
-| **EC8 — Team, Scheduling, Time, Payroll, Employee Portal, Equipment Training & Certification** | **IN PROGRESS — Phase 8a + 8b + 8c delivered. Phases 8d–8f not started.** | `/app/evidence/EC8_evidence.md`. Employee CRUD + status transitions, Announcements, Team Dashboard (8a) + Time Clock + Timesheets (8b) + Scheduling & Employee Portal (8c) — 73/73 backend pytest green cumulative. Phase 8c verified via `testing_agent_v4_fork` iteration_12 (2 critical + 2 low bugs found) → fixed → iteration_13 100% pass. Phase 8d (Payroll) requires explicit owner authorization before starting. |
+| **EC8 — Team, Scheduling, Time, Payroll, Employee Portal, Equipment Training & Certification** | **IN PROGRESS — Phase 8a + 8b + 8c + 8d delivered. Phases 8e–8f not started.** | `/app/evidence/EC8_evidence.md`. Employee CRUD + status transitions, Announcements, Team Dashboard (8a) + Time Clock + Timesheets (8b) + Scheduling & Employee Portal (8c) + Payroll (8d) — 73/73 backend pytest green cumulative. Phase 8c verified via `testing_agent_v4_fork` iteration_12 (2 critical + 2 low bugs found) → fixed → iteration_13 100% pass. Phase 8d verified via `testing_agent_v4_fork` iteration_14 (1 critical frontend bug found + fixed live, 2 low-priority items fixed post-report) — 72/72 then 73/73 backend green. Phase 8e (Equipment/Training/Certification) requires explicit owner authorization before starting. |
 | EC9–EC14 | NOT STARTED | dependency-ordered per master plan |
 
 ## Completed capabilities
@@ -53,6 +53,8 @@ Constraints:
 
 - **Scheduling + Employee Portal (EC8 Phase 8c):** `Schedule`/`Shift` models (one Schedule per tenant per Sat–Fri week), manager Team Schedule builder (add/edit/cancel/copy shift/copy day/copy week/assign multiple/publish/republish), hard conflict blocks (duplicate/overlap/invalid/inactive/cross-tenant) + soft availability-warning with authorized override (audited). Employee Portal is additive on EC6's `PortalIdentity` (new `portal_type` discriminator — no second identity/token system) covering Dashboard, Time Clock (reused from 8b, zero duplicated logic), My Schedule (published-only, self-scoped), My Timesheet (self, payroll-rate-derived fields stripped), Announcements (audience/target-filtered), Profile — with a documented "My Tasks" boundary placeholder (no Task system exists). Separate `/portal/employee/*` shell + `sg_employee_portal_token` localStorage key from the Customer Portal.
 
+- **Payroll (EC8 Phase 8d, 2026-07):** Internal gross-pay ledger only — NOT payroll-processing/tax-filing/banking (no ACH, no bank/SSN storage, no tax withholding, no W-2/1099). `PayPeriod` (one per tenant per Sat–Fri week, Friday payday, structurally overlap-free via unique `(tenant_id, start_date)` index) with statuses `open→review→approved→partially_paid→paid→closed` (+`voided`) — `partially_paid`/`paid` are ALWAYS derived from the append-only `PayrollTransaction` ledger (`_refresh_period_financial_status`), never directly settable. `PayrollSnapshot` is a pure read-model recomputed from the ledger (`_sum_ledger`/`_money_totals`); recalculation while open/review is idempotent (never duplicates `earning`/`overtime_earning` rows — only regenerates when the computed amount changes) and freezes on approval (reopen requires `payroll:manage` + a mandatory audited reason). Blocking-warning gate (`missing_rate`/`timesheet_not_approved`/`open_time_entries`/`overlapping_entries`/`not_recalculated`) on approve/close, overridable with a required reason (audited). Overtime: 40hr/week + 1.5x tenant default via the existing Settings `payroll` namespace, with per-Employee override. Carryover on close: immediate `carryover_in` if the next Pay Period exists, else a `payroll_carryovers` pending record that auto-links (idempotent, no duplicate creation) when that period is later created. Manual ledger entry types exposed to managers: `adjustment`/`advance`/`advance_repayment`/`payment` (idempotency-key support); voids/corrections always append an offsetting `void` row, never mutate history. Reuses EC7 Reports registry + generic CSV export for 2 new report keys (`payroll.by_period`, `payroll.by_employee`) — no parallel export system. Employee Portal "My Pay" added to the existing `portal_employee.py` router (no new router file) with a strict field allow-list (never other employees/manager notes/audit internals/bank/tax data). Manager UI: `/team/payroll` (Pay Periods / Employee Ledger / Settings tabs), Payroll tab on Employee Detail, Payroll card on Team Dashboard. 13 targeted backend pytest tests (`tests/test_ec8d_payroll.py`) + 60-test regression, all green.
+
 ## Testing
 
 - Backend: `cd /app/backend && python -m pytest tests/ -q` → **215 passed** (through EC7 phase 7d).
@@ -66,13 +68,13 @@ Constraints:
 ## Priority backlog (P0/P1/P2)
 
 ### P0 — Immediate next checkpoint
-- EC8 Phase 8c (Scheduling & Employee Portal) is COMPLETE and tested. Awaiting owner's explicit authorization to begin Phase 8d (Payroll). Do not start 8d until that prompt arrives.
+- EC8 Phase 8d (Payroll) is COMPLETE and tested. Awaiting owner's explicit authorization to begin Phase 8e (Equipment, Training & Certification). Do not start 8e until that prompt arrives.
 
-### P1 — EC8 (Phases 8a + 8b + 8c complete; 8d–8f not started)
+### P1 — EC8 (Phases 8a + 8b + 8c + 8d complete; 8e–8f not started)
 - Phase 8a — Employees & Team Foundation ✅ DONE
 - Phase 8b — Time Clock & Timesheets ✅ DONE
 - Phase 8c — Scheduling & Employee Portal ✅ DONE
-- Phase 8d — Payroll (pay periods, transactions ledger, advances/payments/carryover, My Pay, exports)
+- Phase 8d — Payroll (pay periods, transactions ledger, advances/payments/carryover, My Pay, exports) ✅ DONE
 - Phase 8e — Equipment, Training & Certification (owner-locked addendum, master plan Appendix A.5) + Work Order assignment enforcement
 - Phase 8f — Full EC8 frontend regression, targeted EC1–EC7 regression, closure evidence
 
