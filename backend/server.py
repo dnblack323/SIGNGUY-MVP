@@ -114,6 +114,10 @@ api_router.include_router(expenses_router_module.expenses_router)
 api_router.include_router(finance_router_module.router)
 api_router.include_router(tax_reports_router_module.router)
 
+# EC7 — Phase 7d Curated Reports + CSV export + Custom Report Builder
+from app.routers import reports as reports_router_module
+api_router.include_router(reports_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

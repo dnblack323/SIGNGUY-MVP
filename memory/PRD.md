@@ -30,7 +30,7 @@ Constraints:
 | **EC3.1 — Pricing Foundation Verification & Full Calculator Category Coverage** | **REQUIRED — SCHEDULED (permanent scope)** | Master plan Appendix A.2 — every calculator category, formulas, shop rate/labor/materials/waste/markup/margin/minimums/complexity/add-ons/templates, snapshots, tests. Must land before EC14. |
 | **EC6.3 — Order Intake Capture & Visual Markup** | **REQUIRED — SCHEDULED (permanent scope)** | Master plan Appendix A.1 — image + camera + PDF uploads, drawing on images + blank canvas, version history, attach to Proofs/WOs/WOSummaries, controlled portal visibility, in-person signature capture bound to exact target with immutable audit. Reuses EC2 + EC6, no parallel system. Must land before EC14. |
 | EC6.2 — Signed PDF Composite Rendering | DEFERRED (unscheduled) | `/app/memory/product_ideas_register.md` — reconsider during EC14 Final Hardening, or earlier only on a verified customer/compliance/operational requirement. Do NOT schedule during EC7. |
-| **EC7 — Inventory, Purchasing, Finance, Reporting** | IN PROGRESS (phase 7a + 7b + 7c delivered) | `/app/evidence/EC7_evidence.md` — Backend 210/210 green. Phase 7d pending; stop before 7d per owner directive. |
+| **EC7 — Inventory, Purchasing, Finance, Reporting** | IN PROGRESS (7a+7b+7c+7d backend+frontend delivered; regression pending) | `/app/evidence/EC7_evidence.md` + `/app/docs/modules/EC7_INVENTORY_PURCHASING_FINANCE.md`. Backend 215/215 green. Full-stack `testing_agent_v3_fork` regression PENDING before EC7 COMPLETE. |
 | EC8–EC14 | NOT STARTED | dependency-ordered per master plan |
 
 ## Completed capabilities

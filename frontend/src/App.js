@@ -31,6 +31,13 @@ import DataSecurityPage from "@/pages/DataSecurityPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 import PricingFoundationPage from "@/pages/PricingFoundationPage";
 import PricingCalculatorPage from "@/pages/PricingCalculatorPage";
+import InventoryPage from "@/pages/InventoryPage";
+import SupplyCenterPage from "@/pages/SupplyCenterPage";
+import PurchaseOrdersPage from "@/pages/PurchaseOrdersPage";
+import ExpensesPage from "@/pages/ExpensesPage";
+import FinanceDashboardPage from "@/pages/FinanceDashboardPage";
+import TaxReportsPage from "@/pages/TaxReportsPage";
+import ReportsPage from "@/pages/ReportsPage";
 import { Toaster } from "sonner";
 
 function LoggedInHome() {
@@ -68,6 +75,13 @@ function App() {
             <Route path="/email-history" element={<EmailHistoryPage />} />
             <Route path="/pricing-foundation" element={<PricingFoundationPage />} />
             <Route path="/pricing-calculator" element={<PricingCalculatorPage />} />
+            <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/supply-center" element={<SupplyCenterPage />} />
+            <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
+            <Route path="/expenses" element={<ExpensesPage />} />
+            <Route path="/finance" element={<FinanceDashboardPage />} />
+            <Route path="/tax" element={<TaxReportsPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/company" element={<CompanySettingsPage />} />
             <Route path="/settings/integrations" element={<IntegrationsPage />} />

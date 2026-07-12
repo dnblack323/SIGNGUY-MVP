@@ -1,6 +1,6 @@
 # EC7 — Inventory, Purchasing, Finance, Reporting + Supplier Catalog — Evidence
 
-**Status:** IN PROGRESS — Phase 7a + Phase 7b + Phase 7c COMPLETE. Phase 7d remains. **EC7 NOT COMPLETE.**
+**Status:** IN PROGRESS — Phase 7a + Phase 7b + Phase 7c + Phase 7d (backend + frontend) COMPLETE. Full-stack `testing_agent_v3_fork` regression PENDING. **EC7 NOT COMPLETE until regression passes.**
 **Authority:** master plan §EC7 + Appendix A.3; preflight `/app/preflight/EC7_INVENTORY_PURCHASING_FINANCE_REPORTING_PREFLIGHT.md`.
 
 ## Owner decisions applied (verbatim from Phase-7a go-ahead)
@@ -59,7 +59,76 @@ Not built in this phase. Frontend Inventory Overview / Materials List + Detail /
 
 **Phase 7b — Vendors + Purchase Orders + Receiving + Supplier Catalog + Price Comparison + Supply Center + test adapter connector.** **DELIVERED (see below).**
 **Phase 7c — Expenses + Finance Dashboard (labeled metric basis) + Tax Summary.** **DELIVERED (see below).**
-**Phase 7d — Curated reports + Custom Report Builder foundation + exports + `testing_agent_v3_fork` full-frontend regression + evidence + docs.** (NOT STARTED)
+**Phase 7d — Curated reports + Custom Report Builder foundation + exports + FRONTEND for every EC7 module + `testing_agent_v3_fork` full-frontend regression + evidence + docs.** **BACKEND + FRONTEND DELIVERED (see below). `testing_agent_v3_fork` regression PENDING — EC7 remains IN PROGRESS until it passes.**
+
+## Phase 7d — DELIVERED (backend + frontend)
+
+### Files added — backend
+- `backend/app/services/reports_service.py` — curated-report registry (13 reports across inventory / purchasing / expenses / finance / tax), each declaring `data_source`, `date_basis`, `calc_basis`, `columns`, `limitations`, and its required `Perm`. Plus **Custom Report Builder** foundation with 3 approved datasets (`expenses`, `purchase_orders`, `invoices`), each declaring allowed fields, filters, group_by, and sort keys. Preview capped at 500 rows; export capped at 25 000 rows.
+- `backend/app/services/csv_export.py` — CSV generator that neutralizes formula-injection prefixes (`=`, `+`, `-`, `@`, tab, CR) with a leading single quote; formats `_cents` money to two-decimal dollars; escapes newlines/quotes via `csv.QUOTE_MINIMAL`; header row from column labels.
+- `backend/app/routers/reports.py` — `GET /api/reports`, `POST /api/reports/custom/preview`, `POST /api/reports/custom/export.csv`, `POST /api/reports/{key}/run`, `POST /api/reports/{key}/export.csv`. Custom routes are registered BEFORE parameterized routes so FastAPI does not shadow them. Every export writes an audit event.
+
+### Files modified — backend
+- `backend/server.py` — registered `reports` router.
+
+### Files added — frontend
+- `frontend/src/lib/ec7.js` — small helpers (basis-label lookup, PO status badge tones, Expense state badge tones, money delegation to `lib/format`).
+- `frontend/src/pages/InventoryPage.jsx` — tabbed page: Items / Materials / Movements / Locations. Reserved-stock disclaimer in footer.
+- `frontend/src/pages/SupplyCenterPage.jsx` — catalog search, seed-synthetic-catalog action (dev only), synthetic-data banner, "cast vs calendared never substituted" footer note.
+- `frontend/src/pages/PurchaseOrdersPage.jsx` — list, submit dialog with per-click `Idempotency-Key`, cancel dialog with required reason.
+- `frontend/src/pages/ExpensesPage.jsx` — list with state tabs (active/archived/voided), New expense dialog, Archive/Restore, Void with required reason.
+- `frontend/src/pages/FinanceDashboardPage.jsx` — 8 basis-badged metric cards + revenue/payments/expense trend charts + Top customers + Payment-method breakdown + limitations footer.
+- `frontend/src/pages/TaxReportsPage.jsx` — 3 summary cards + 4 tabs (jurisdiction, exempt customers, exemption records, manual overrides) + subtitle disclaimer that reports are operational summaries, not filing advice.
+- `frontend/src/pages/ReportsPage.jsx` — two tabs: Curated (left-rail list, from/to filters, preview, CSV export) + Custom builder (dataset picker, whitelisted-field toggles, preview, CSV export).
+
+### Files modified — frontend
+- `frontend/src/App.js` — added routes: `/inventory`, `/supply-center`, `/purchase-orders`, `/expenses`, `/finance`, `/tax`, `/reports`.
+- `frontend/src/lib/navigation.js` — enabled the previously-disabled Business & Finance flyouts (Overview, Financials, Sales, Expenses, Taxes, Reports); added Supply Center and Purchase Orders entries under Shop Operations; enabled Inventory & Purchasing.
+
+### Rules honored
+- No duplicate navigation systems. All pages hang off the canonical EC1 AppShell.
+- No frontend-only permissions — every action gates on the same backend `Perm` (via `useAuth().hasPerm`). Backend enforcement is authoritative.
+- No direct money calculations in components. Every dollar rendered comes from a backend-authoritative `_cents` value via `lib/format.centsToDollarsString`.
+- Basis labels present on every finance card and every trend chart.
+- PO submission uses per-click `crypto.randomUUID()` as `Idempotency-Key` — double-clicks are safe (backend short-circuits).
+- Cancel/Void require reasons (backend rejects blank).
+- Loading, empty, success, and error states covered on every page.
+- CSV export escapes formula-injection prefixes; money formatted; bounded at 25 000 rows; every export audited.
+- Custom Report Builder is restricted to approved datasets/fields/filters/sort/group_by; no raw SQL or Mongo queries; cross-tenant reads impossible.
+- Synthetic supplier data is visibly labeled in dev; seeder is 403 in production.
+
+### Tests
+
+5 new backend scenarios (all green):
+
+`backend/tests/test_ec7_reports.py`
+- `test_list_reports_and_datasets` — every category represented; each report exposes data source, date basis, calc basis, limitations; custom datasets whitelisted.
+- `test_run_curated_report_and_csv_export_sanitizes_formula` — CSV round-trip, header row, money-formatted cells, `=CMD` neutralized (no bare `,=CMD,` cell).
+- `test_custom_report_preview_and_export_enforces_field_whitelist` — invalid field → 400; invalid filter (e.g. `tenant_id`) → 400; valid preview returns 2 rows; CSV export succeeds with `Content-Disposition`.
+- `test_permission_enforcement_staff_cannot_see_finance_reports` — staff role gets 403 on `GET /api/reports`.
+- `test_csv_build_helper_neutralizes_all_injection_prefixes` — direct helper test for `=`, `+`, `-`, `@`.
+
+### Test totals
+```
+$ cd /app/backend && python -m pytest tests/ -q
+215 passed, 6 warnings in 3.83s
+```
+- Phase 7d: **5 new** backend tests.
+- Regression: 210 prior tests remain green (0 regressions).
+
+### Frontend smoke test
+Verified via Playwright screenshot that `FinanceDashboardPage` mounts, the AppShell renders the enabled Business & Finance flyouts, and the page loads the labeled-basis summary from `/api/finance/summary`.
+
+### `testing_agent_v3_fork` regression — NOT YET RUN
+Owner directive #15 requires a full-stack regression via `testing_agent_v3_fork` at Phase 7d close (frontend workflows for Inventory, Supply Center, POs, Receiving, Expenses, Finance Dashboard, Tax Reports, curated reports, CSV export, custom builder, and full EC1–EC6 regression). This was not run in this session due to context/time budget. **EC7 must remain IN PROGRESS until it passes.**
+
+## Rollback for phase 7d
+Additive. Remove:
+- backend files: `app/services/reports_service.py`, `app/services/csv_export.py`, `app/routers/reports.py`, `tests/test_ec7_reports.py`, and the reports-router registration line in `server.py`.
+- frontend files: `src/lib/ec7.js` and the 7 new pages (`InventoryPage.jsx`, `SupplyCenterPage.jsx`, `PurchaseOrdersPage.jsx`, `ExpensesPage.jsx`, `FinanceDashboardPage.jsx`, `TaxReportsPage.jsx`, `ReportsPage.jsx`), plus the 7 new routes in `App.js` and the flyout enablements in `lib/navigation.js`.
+
+## Status
+**EC7 — IN PROGRESS. Phase 7a + Phase 7b + Phase 7c + Phase 7d (backend + frontend) delivered. Backend 215/215 tests green. Full-stack `testing_agent_v3_fork` regression PENDING before EC7 may be marked COMPLETE.**
 
 ## Phase 7c — DELIVERED
 
