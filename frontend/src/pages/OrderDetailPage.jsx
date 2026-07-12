@@ -17,6 +17,7 @@ import { ArrowLeft, Plus, Pencil, Trash2, Wrench, Receipt, Zap, RefreshCw } from
 import { useAuth } from "@/auth/AuthContext";
 import LineItemDialog from "@/components/commerce/LineItemDialog";
 import GenerateWorkOrderDialog, { RegenerateDialog } from "@/components/work-orders/GenerateWorkOrderDialog";
+import ProofsPanel from "@/components/proofs/ProofsPanel";
 
 function ItemsPanel({ orderId, items, totals, canWrite, orderStatus }) {
   const qc = useQueryClient();
@@ -308,6 +309,8 @@ export default function OrderDetailPage() {
           </Card>
         </aside>
       </div>
+
+      <ProofsPanel orderId={id} customerId={order?.customer_id} />
 
       <GenerateWorkOrderDialog
         orderId={id}

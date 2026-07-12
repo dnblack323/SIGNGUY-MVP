@@ -26,7 +26,8 @@ Constraints:
 | EC3 — Quotes, Orders, Order Items, Pricing Snapshots | COMPLETE | `/app/evidence/EC3_evidence.md` |
 | EC4 — Invoices, Payments, and Stripe Core | COMPLETE | `/app/evidence/EC4_evidence.md` |
 | EC5 — Production and Work Orders | COMPLETE | `/app/evidence/EC5_evidence.md` |
-| **EC6 — Asset Library, Proofs, Signatures, Customer Portal** | **CORRECTIONS REQUIRED** | `/app/evidence/EC6_evidence.md` — pending: portal Stripe payment page, testing_agent_v3_fork run, signed-PDF boundary decision, staff Asset Library/Proof/Approval/Signature UIs |
+| **EC6 — Asset Library, Proofs, Signatures, Customer Portal** | **COMPLETE** | `/app/evidence/EC6_evidence.md` — 161/161 backend + `testing_agent_v3_fork` iteration 9 100% pass |
+| EC6.2 — Signed PDF Composite Rendering | DEFERRED | `/app/docs/architecture/signed_pdf_boundary.md` — named later checkpoint |
 | **EC7 — Inventory, Purchasing, Finance, Reporting** | READY TO BUILD | pending owner execution prompt |
 | EC8–EC14 | NOT STARTED | dependency-ordered per master plan |
 
@@ -49,8 +50,8 @@ Constraints:
 
 ## Testing
 
-- Backend: `cd /app/backend && python -m pytest tests/ -q` → **154 passed** (34 EC1 + 58 EC2 + 25 EC3 + 17 EC4 + 9 EC5 + 11 EC6).
-- Frontend: `testing_agent_v3_fork` iteration 8 (EC5) 100% pass. EC6 portal + public pages: pytest-covered end-to-end; frontend automated regression deferred to next session (has not been executed).
+- Backend: `cd /app/backend && python -m pytest tests/ -q` → **161 passed** (34 EC1 + 58 EC2 + 25 EC3 + 17 EC4 + 9 EC5 + 18 EC6/EC6.1).
+- Frontend: `testing_agent_v3_fork` iteration 9 (EC6 corrections): 100% pass (27/27 backend curl E2E + 25/25 Playwright UI, no action items, no retest). Prior EC5 iteration 8: 100% pass.
 
 ## Test credentials
 
