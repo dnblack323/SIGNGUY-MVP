@@ -147,7 +147,15 @@ Same module as (2). PO lifecycle + receiving is fully documented under Purchasin
 
 Backend under `/api`: `materials`, `inventory/*`, `vendors`, `vendors/materials`, `vendors/seed/test-adapter`, `supply/*`, `purchase-orders/*`, `expenses`, `expense-categories`, `finance/*`, `tax/*`, `reports/*`.
 
-Frontend routes: `/inventory`, `/supply-center`, `/purchase-orders`, `/expenses`, `/finance`, `/tax`, `/reports`.
+Frontend routes: `/inventory`, `/materials/:id`, `/supply-center`, `/purchase-orders`, `/purchase-orders/:id`, `/vendors/:id`, `/expenses`, `/finance`, `/tax`, `/reports`.
+
+**Phase 7d closure — frontend workflows delivered**
+- `/vendors/:id` — Vendor identity, warehouses, linked materials, PO history.
+- `/materials/:id` — Material metadata, per-location balances, recent movements, and an immutable **Material Cost History** drawer.
+- `/inventory` — **Physical count** wizard (delta-preview, reason-required, Idempotency-Key) and **Inventory Transfer** dialog (paired transfer_out/transfer_in with Idempotency-Key).
+- `/purchase-orders/:id` — vendor name links to Vendor Detail; **Inventory movements from this PO** table renders receiving-generated movements linked via `source_entity_id`.
+
+**Frontend automated tests** — Jest (via `react-scripts`) + `@testing-library/react@16` + `@testing-library/user-event@14`. 6 suites / 25 tests cover the new workflows and smoke the remaining EC7 pages. See `/app/frontend/src/__tests__/`.
 
 ## Collection & index inventory (EC7)
 

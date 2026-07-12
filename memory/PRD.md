@@ -30,7 +30,7 @@ Constraints:
 | **EC3.1 — Pricing Foundation Verification & Full Calculator Category Coverage** | **REQUIRED — SCHEDULED (permanent scope)** | Master plan Appendix A.2 — every calculator category, formulas, shop rate/labor/materials/waste/markup/margin/minimums/complexity/add-ons/templates, snapshots, tests. Must land before EC14. |
 | **EC6.3 — Order Intake Capture & Visual Markup** | **REQUIRED — SCHEDULED (permanent scope)** | Master plan Appendix A.1 — image + camera + PDF uploads, drawing on images + blank canvas, version history, attach to Proofs/WOs/WOSummaries, controlled portal visibility, in-person signature capture bound to exact target with immutable audit. Reuses EC2 + EC6, no parallel system. Must land before EC14. |
 | EC6.2 — Signed PDF Composite Rendering | DEFERRED (unscheduled) | `/app/memory/product_ideas_register.md` — reconsider during EC14 Final Hardening, or earlier only on a verified customer/compliance/operational requirement. Do NOT schedule during EC7. |
-| **EC7 — Inventory, Purchasing, Finance, Reporting** | IN PROGRESS (7a+7b+7c+7d backend + partial 7d frontend; Vendor+Material detail + Physical Count + Transfer + regression remain) | `/app/evidence/EC7_evidence.md` + `/app/docs/modules/EC7_INVENTORY_PURCHASING_FINANCE.md`. Backend 215/215 green. PO detail with partial+complete Receive dialog delivered. |
+| **EC7 — Inventory, Purchasing, Finance, Reporting** | **COMPLETE** (all phases 7a+7b+7c+7d delivered; frontend closure workflows landed; `testing_agent_v3_fork` regression PASS) | `/app/evidence/EC7_evidence.md` + `/app/docs/modules/EC7_INVENTORY_PURCHASING_FINANCE.md`. Backend 215/215 green. Frontend Jest 25/25 green. Regression report `/app/test_reports/iteration_10.json`. |
 | EC8–EC14 | NOT STARTED | dependency-ordered per master plan |
 
 ## Completed capabilities
@@ -52,8 +52,9 @@ Constraints:
 
 ## Testing
 
-- Backend: `cd /app/backend && python -m pytest tests/ -q` → **161 passed** (34 EC1 + 58 EC2 + 25 EC3 + 17 EC4 + 9 EC5 + 18 EC6/EC6.1).
-- Frontend: `testing_agent_v3_fork` iteration 9 (EC6 corrections): 100% pass (27/27 backend curl E2E + 25/25 Playwright UI, no action items, no retest). Prior EC5 iteration 8: 100% pass.
+- Backend: `cd /app/backend && python -m pytest tests/ -q` → **215 passed** (through EC7 phase 7d).
+- Frontend Jest: `cd /app/frontend && CI=true yarn test --watchAll=false` → **6 suites / 25 tests passed** (EC7 closure — Physical Count, Transfer, Material Detail, Vendor Detail, PO Detail, EC7 smoke).
+- Frontend E2E: `testing_agent_v3_fork` iteration 10 (EC7 closure) → **PASS** — all newly-added flows verified, zero regressions on `/supply-center`, `/purchase-orders`, `/expenses`, `/finance`, `/tax`, `/reports`. Prior iteration 9 (EC6 corrections): 100% pass. Iteration 8 (EC5): 100% pass.
 
 ## Test credentials
 
@@ -62,7 +63,7 @@ Constraints:
 ## Priority backlog (P0/P1/P2)
 
 ### P0 — Immediate next checkpoint
-- Await owner's EC7 execution prompt: **EC7 — Inventory, Purchasing, Finance, and Reporting** (authoritative title per master plan).
+- Await owner's **EC8 execution prompt**. EC7 is now COMPLETE. Do NOT begin EC8 until the owner provides the explicit EC8 prompt.
 
 ### Permanent scope — REQUIRED before EC14 Final Hardening (owner-locked)
 - **EC3.1 Pricing Foundation Verification & Full Calculator Category Coverage** — every calculator category + formulas, shop rate/labor/materials/waste/markup/margin/minimum charges/complexity/add-ons/templates, snapshots, and pytest coverage with known expected pricing examples. Reuses EC3 pricing services; no parallel pricing system. Master plan Appendix A.2.

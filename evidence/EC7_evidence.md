@@ -353,5 +353,53 @@ Additive. Drop `expenses`, `expense_categories`, `expense_attachments`, `tax_exe
 - EC8 was NOT started.
 - Phase 7d was NOT started per owner directive.
 
+## Phase 7d — Frontend closure (final pass)
+
+### New pages
+- `frontend/src/pages/VendorDetailPage.jsx` — Vendor identity (connector, tier, preferred/active badges), account/contact/website cards, categories, warehouses table, linked-materials table, PO history table. Deep-links back to materials and POs.
+- `frontend/src/pages/MaterialDetailPage.jsx` — Material metadata, per-location balance table, metric cards (Current cost, On hand, Reserved, Available), recent-movement table, and a **Material Cost History drawer** rendering the immutable append-only ledger.
+
+### Modified pages
+- `frontend/src/pages/InventoryPage.jsx`
+  - Added **Physical count** dialog wizard (location + material + observed → delta preview against current on-hand → reason-required submit). Uses `crypto.randomUUID()` Idempotency-Key.
+  - Added **Transfer stock** dialog (material + from-location + to-location + qty → paired transfer_out/transfer_in movements). Same-location transfer is client-side rejected. Idempotency-Key on submit.
+  - Material name on Materials tab and material_id on Items tab now link to `/materials/:id`.
+- `frontend/src/pages/PurchaseOrderDetailPage.jsx`
+  - Vendor card renders vendor name as a link to `/vendors/:id` (test-id `po-vendor-link`).
+  - New **Inventory movements from this PO** table (`po-movements-table`) below receiving/supplier history — driven by `GET /api/inventory/movements?source_entity_id=<po_id>`.
+- `frontend/src/App.js` — routes `/materials/:id` and `/vendors/:id`.
+
+### Automated frontend test suite (new)
+Wired **Jest** (via `react-scripts`, no framework migration) + `@testing-library/react@16` + `@testing-library/user-event@14` + `@testing-library/jest-dom@6`. Alias `@/` and React-Router-7 `exports` map handled through `craco.config.js` `jest.configure`. jsdom polyfills for `TextEncoder`/`TextDecoder` and `crypto.randomUUID` in `src/setupTests.js`.
+
+Test files:
+- `src/__tests__/ec7.helpers.test.js` — pure helpers (`basisLabel`, `money`, tone maps, `debounce`).
+- `src/__tests__/InventoryPage.test.jsx` — Physical count reason-required error path + happy path; Transfer same-location error path + happy path; both assert `Idempotency-Key` header.
+- `src/__tests__/MaterialDetailPage.test.jsx` — metadata + balances + cost history drawer + not-found.
+- `src/__tests__/VendorDetailPage.test.jsx` — vendor identity, warehouses, linked materials, PO history, not-found.
+- `src/__tests__/PurchaseOrderDetailPage.test.jsx` — renders identity + lines + movements-from-PO; receive dialog zero-across-all-lines error path; receive happy path posts with `Idempotency-Key`.
+- `src/__tests__/ec7-screens.smoke.test.jsx` — smoke for SupplyCenter, PurchaseOrders, Expenses, Finance, TaxReports, Reports.
+
+### Test totals
+```
+Frontend
+$ CI=true yarn test --watchAll=false
+Test Suites: 6 passed, 6 total
+Tests:       25 passed, 25 total
+
+Backend
+$ cd /app/backend && python -m pytest tests/ -q
+215 passed, 6 warnings
+```
+
+### `testing_agent_v3_fork` regression — `/app/test_reports/iteration_10.json`
+- Backend: not-tested (already 215/215 per instructions).
+- Frontend: **100% of requested EC7 flows verified.**
+- Zero UI bugs, zero integration issues, zero regressions on `/supply-center`, `/purchase-orders`, `/expenses`, `/finance`, `/tax`, `/reports`.
+- Only feedback recorded is two optional polish suggestions (raw UUIDs in Location/Material columns, and a searchable material picker for the count/transfer dialogs). These are usability polish, not scope blockers.
+
+## Rollback for phase 7d (frontend closure)
+Additive. Delete `VendorDetailPage.jsx`, `MaterialDetailPage.jsx`, `src/__tests__/*`, `src/test-utils.jsx`, `src/setupTests.js`. Revert the two routes in `App.js`, the header actions + material links in `InventoryPage.jsx`, and the vendor link + movements table in `PurchaseOrderDetailPage.jsx`. Remove the `@testing-library/*` devDependencies and the `jest.configure` block in `craco.config.js`.
+
 ## Status
-**EC7 — IN PROGRESS. Phase 7a + 7b + 7c + 7d (backend + partial frontend) delivered. Remaining: Vendor detail, Material detail (incl. Material Cost History drawer), Physical Count flow, Inventory Transfer flow, receiving-created movement visibility inline on PO detail, frontend automated tests, and `testing_agent_v3_fork` full-stack regression. Backend 215/215 tests green.**
+**EC7 — COMPLETE.** All phases 7a–7d delivered end-to-end. Backend 215/215 green. Frontend 25/25 Jest green. `testing_agent_v3_fork` iteration_10 regression: **PASS**. EC8 has NOT been started per owner directive.
