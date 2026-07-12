@@ -47,6 +47,11 @@ class Employee(BaseDoc):
     # ledger — just enough structure to warn a manager before double-booking.
     availability_blocks: list[dict] = Field(default_factory=list)
     portal_access: bool = False            # entitlement flag for Phase 8c Employee Portal — no behavior yet
+    # EC8 phase 8d — optional per-employee override of the tenant default
+    # overtime policy. Shape: {enabled: bool, weekly_threshold_minutes: int,
+    # multiplier: float}. None = use the tenant default (settings namespace
+    # "payroll"). Never legal/tax advice — informational configurability only.
+    overtime_override: Optional[dict] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
     notes: Optional[str] = None

@@ -47,6 +47,7 @@ EMPLOYEE_PORTAL_PERMS = [
     "portal:employee_time_clock",
     "portal:employee_timesheet_view",
     "portal:employee_schedule_view",
+    "portal:employee_pay_view",
 ]
 
 PRESET_BUNDLES: dict[str, list[str]] = {

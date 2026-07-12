@@ -77,7 +77,14 @@ def require_employee_portal_permission(*required: str) -> Callable:
     async def _dep(identity: dict = Depends(get_current_portal_identity)) -> dict:
         if identity.get("portal_type") != "employee" or not identity.get("employee_id"):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Employee portal access required")
-        perms = set(identity.get("permissions") or [])
+        # Employee Portal scope is never per-identity customizable (unlike the
+        # Customer Portal's role_label presets) — always evaluate against the
+        # CURRENT canonical grant set rather than the identity's persisted
+        # `permissions` snapshot, so adding a new self-service area (e.g. My
+        # Pay in Phase 8d) doesn't require a backfill migration on every
+        # already-invited Employee Portal identity.
+        from .models.portal_identity import EMPLOYEE_PORTAL_PERMS
+        perms = set(EMPLOYEE_PORTAL_PERMS)
         missing = [p for p in required if p not in perms]
         if missing:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Missing portal permission: {missing[0]}")
