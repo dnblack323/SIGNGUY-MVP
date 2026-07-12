@@ -95,6 +95,13 @@ class Perm(str, Enum):
     VENDOR_WRITE = "vendor:write"
     PURCHASING_READ = "purchasing:read"
     PURCHASING_WRITE = "purchasing:write"
+    # Expenses (EC7 phase 7c — operational expense system, distinct from customer payments)
+    EXPENSE_READ = "expense:read"
+    EXPENSE_WRITE = "expense:write"
+    EXPENSE_ARCHIVE = "expense:archive"
+    # Finance dashboard + tax reports (EC7 phase 7c — canonical labeled-basis metrics)
+    FINANCE_READ = "finance:read"
+    TAX_REPORT_READ = "tax_report:read"
     # Team & Workflow
     EMPLOYEE_READ = "employee:read"
     EMPLOYEE_WRITE = "employee:write"

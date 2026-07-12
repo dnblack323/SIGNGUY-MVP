@@ -105,6 +105,15 @@ api_router.include_router(vendors_router_module.router)
 api_router.include_router(supply_center_router_module.router)
 api_router.include_router(purchase_orders_router_module.router)
 
+# EC7 — Phase 7c Expenses + Finance Dashboard + Tax Reports
+from app.routers import expenses as expenses_router_module
+from app.routers import finance as finance_router_module
+from app.routers import tax_reports as tax_reports_router_module
+api_router.include_router(expenses_router_module.categories_router)
+api_router.include_router(expenses_router_module.expenses_router)
+api_router.include_router(finance_router_module.router)
+api_router.include_router(tax_reports_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

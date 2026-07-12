@@ -1,6 +1,6 @@
 # EC7 — Inventory, Purchasing, Finance, Reporting + Supplier Catalog — Evidence
 
-**Status:** IN PROGRESS — Phase 7a COMPLETE + Phase 7b COMPLETE. Phases 7c, 7d remain. **EC7 NOT COMPLETE.**
+**Status:** IN PROGRESS — Phase 7a + Phase 7b + Phase 7c COMPLETE. Phase 7d remains. **EC7 NOT COMPLETE.**
 **Authority:** master plan §EC7 + Appendix A.3; preflight `/app/preflight/EC7_INVENTORY_PURCHASING_FINANCE_REPORTING_PREFLIGHT.md`.
 
 ## Owner decisions applied (verbatim from Phase-7a go-ahead)
@@ -58,8 +58,82 @@ Not built in this phase. Frontend Inventory Overview / Materials List + Detail /
 ## Remaining work in EC7
 
 **Phase 7b — Vendors + Purchase Orders + Receiving + Supplier Catalog + Price Comparison + Supply Center + test adapter connector.** **DELIVERED (see below).**
-**Phase 7c — Expenses + Finance Dashboard (labeled metric basis) + Tax Summary.** (NOT STARTED)
+**Phase 7c — Expenses + Finance Dashboard (labeled metric basis) + Tax Summary.** **DELIVERED (see below).**
 **Phase 7d — Curated reports + Custom Report Builder foundation + exports + `testing_agent_v3_fork` full-frontend regression + evidence + docs.** (NOT STARTED)
+
+## Phase 7c — DELIVERED
+
+### Files added — backend
+- `backend/app/models/expense.py` — `Expense` (integer cents, backend-derived `total_cents = amount_cents + tax_cents`, ISO expense date, category snapshot label, optional vendor/PO/order/customer/project links, recurring flag foundation, deductible classification, payment method, state = active|archived|voided). `ExpenseCategory` (stable `key`, customizable `label`, `system` flag, archivable). `ExpenseAttachment` (link table to EC2 `FileRecord`).
+- `backend/app/models/tax_exemption.py` — `TaxExemption` (tenant-scoped, per-customer, per-jurisdiction, effective_from/effective_to, reference, archivable).
+- `backend/app/services/expense_categories.py` — idempotent seed of the 16 initial categories (materials, equipment, vehicle, fuel, rent, utilities, software, advertising, subcontractor, office, insurance, taxes, fees, shipping, maintenance, miscellaneous), create/rename/archive/unarchive. **Rename never rewrites past Expense rows.**
+- `backend/app/services/expense_service.py` — create/update/archive/restore/void (reason required), receipt attachment via existing EC2 `FileRecord` reuse, list with filters + pagination, sanity checks on every linked entity (vendor/PO/customer/order), audit event on every write.
+- `backend/app/services/finance_service.py` — **canonical labeled-basis metrics service**. Every returned metric carries an explicit `basis` field. Delivered metrics: `invoice_revenue`, `outstanding_receivables` (with 30/60/90/91+ aging buckets), `tax_collected` (invoice tax snapshots), `payments_received`, `refunds` (never silently netted), `payment_method_breakdown`, `top_customers_by_revenue`, `expenses_total`, `expenses_by_category`, `revenue_trend`, `payments_received_trend`, `expense_trend` (monthly buckets, empty months filled), `average_order_value`, `average_invoice_value`, `estimated_gross_profit` (warns on partial cost coverage), `estimated_net_operating`, `dashboard_summary` (composite).
+- `backend/app/services/tax_service.py` — TaxExemption CRUD (upsert, archive, check-at-date), `tax_collected_by_range`, `tax_collected_by_jurisdiction` (resolves via `Invoice.tax_jurisdiction_snapshot` else `Customer.state`), `manual_tax_override_report`, `exempt_customer_report`. LOCKED per master plan §12F — Invoice tax snapshots always drive historical reports.
+- `backend/app/routers/expenses.py` — two sub-routers: `/api/expense-categories/*` (list, create, rename, archive/unarchive; auto-seeds defaults on first list/create) and `/api/expenses/*` (list w/ filters, create, get with attachments, patch, archive/restore, void, attach/archive attachment).
+- `backend/app/routers/finance.py` — 15 endpoints under `/api/finance/*` — every response preserves the `basis` label.
+- `backend/app/routers/tax_reports.py` — `/api/tax/exemptions*` CRUD + check; `/api/tax/collected`, `/api/tax/collected-by-jurisdiction`, `/api/tax/manual-overrides`, `/api/tax/exempt-customers`.
+
+### Files modified — backend
+- `backend/app/core/permissions.py` — added `EXPENSE_READ`, `EXPENSE_WRITE`, `EXPENSE_ARCHIVE`, `FINANCE_READ`, `TAX_REPORT_READ`. Owner/admin roles include all Perm values (unchanged), so no role wiring is needed for existing tenants.
+- `backend/server.py` — registered `expense_categories`, `expenses`, `finance`, `tax_reports` routers.
+- `backend/app/core/db.py::ensure_indexes` — 12 phase-7c indexes: `expense_categories` unique (tenant, key); `expenses` unique (tenant, number) + per (state, expense_date) + per (category_key, expense_date) + per vendor + per order + per PO + per customer; `expense_attachments` per (tenant, expense_id, archived); `tax_exemptions` per (tenant, customer, jurisdiction, effective_from desc) + per (tenant, jurisdiction, archived).
+
+### Rules honored
+- **Integer cents only** — no floats in the Expense schema; `total_cents` is backend-derived on every write.
+- **No customer Payment reuse** — Expenses live in `expenses` collection; no shared model with `payments`.
+- **No full accounts-payable system** — the Expense state machine is `active → archived → active` or `active → voided`. No vendor invoice queue, no scheduled pay-run, no AP aging.
+- **Tenant isolation** — every collection filtered by `tenant_id` on every query.
+- **Backend authorization** — three-tier perms (`EXPENSE_READ`, `EXPENSE_WRITE`, `EXPENSE_ARCHIVE`); finance dashboard requires `FINANCE_READ`; tax reports require `TAX_REPORT_READ`.
+- **Audit on every write** — expense.create / update / archive / restore / void / attach all record audit events.
+- **Historical records preserved** — category rename NEVER rewrites past Expenses (verified by test); archived categories still resolve for historical rows; archived Expenses are hidden from default list but retrievable.
+- **Every metric carries a `basis` label** — `issued_invoices`, `confirmed_payments_received`, `refunds`, `outstanding_receivables`, `expenses`, `tax_collected`, `estimated_gross_profit`, `estimated_net_operating`. Refunds returned separately, never silently netted against payments.
+- **Profit uses only available evidence** — `estimated_gross_profit` counts orders with `cost_snapshot_cents` and reports every order missing a cost snapshot as `orders_missing_cost`; a warning `partial_cost_coverage` is emitted and `coverage_label` is set to `partial_coverage`. Never invents a fallback cost; never recomputes historical Quote/Order/Invoice prices; explicitly labeled "not audited accounting output".
+- **Tax snapshots preserved** — every tax report reads `Invoice.tax_cents` snapshots; current settings do NOT retroactively rewrite historical Invoices.
+- **Cash vs Accrual labels** — Invoice revenue (accrual-style) and Payment receipts (cash) returned as two distinct labeled lines; `estimated_net_operating` documents the mix in its `limitations` list.
+- **Bounded aggregation** — every aggregation pipeline starts with `$match` for index use; trends capped at 24 months; top-N capped at `limit`; no full-collection sweeps.
+- **Safe empty states** — every metric returns zeros + `empty: true` when the range is empty. No crashes.
+
+### Tests
+
+20 new scenarios (all green):
+
+`backend/tests/test_ec7_expenses.py` (6)
+- `test_categories_seed_and_rename_does_not_rewrite_history` — 16 seeded categories on first read, idempotent re-read, rename updates label but historical Expense keeps `category_label_snapshot`.
+- `test_archived_category_still_usable_historically` — archive hides from default list, `include_archived=true` reveals; historical Expense still resolves; creating new Expense against archived key still succeeds (archive = "hide from picker", not "forbid").
+- `test_expense_totals_and_validation` — empty description / unknown category / negative amount rejected; `total_cents = amount_cents + tax_cents` on every write and update.
+- `test_expense_lifecycle_archive_restore_void` — archive → update forbidden → restore → void (reason required).
+- `test_expense_receipt_attachment_reuses_file_records` — attach EC2 `FileRecord` via `/api/expenses/{id}/attachments`; bad file id → 400; archive attachment removes it from `include`.
+- `test_expense_links_validate_and_cross_tenant_isolation` — customer/order/PO/vendor validated; cross-tenant references rejected; tenant B cannot see tenant A's expenses.
+
+`backend/tests/test_ec7_finance.py` (10)
+- `test_invoice_revenue_excludes_drafts_and_labels_basis` — draft invoices excluded, only issued counted; `basis=="issued_invoices"`.
+- `test_payments_and_refunds_are_never_silently_netted` — refund + pending excluded from `payments_received`; refund exposed as its own metric.
+- `test_outstanding_receivables_aging` — unpaid + partial balances counted; aging buckets sum equals total balance.
+- `test_tax_collected_uses_invoice_snapshots` — reports Invoice.tax_cents snapshots; `limitations` mentions snapshots.
+- `test_expenses_exclude_voided_and_archived` — only `state=active` counted; voided + archived excluded.
+- `test_estimated_gross_profit_warns_on_partial_coverage` — orders without cost snapshot → `orders_missing_cost > 0` → `coverage_label == "partial_coverage"` → warning emitted; profit remains a lower-bound estimate.
+- `test_estimated_net_operating_preserves_basis_labels` — value = revenue − expenses − refunds; `limitations` documents the label mix.
+- `test_revenue_trend_returns_month_buckets` — 3 months returned; empty month present with 0 (safe empty state).
+- `test_top_customers_ranked_by_revenue` — correct desc ordering by revenue.
+- `test_dashboard_summary_bundles_labeled_metrics` — every top-level composite key preserves its `basis` label.
+
+`backend/tests/test_ec7_tax.py` (4)
+- `test_tax_collected_and_by_jurisdiction` — total tax = sum of invoice tax_cents; by-jurisdiction resolves via customer state.
+- `test_manual_tax_override_report` — flags invoices with `tax_manual_override=true` or `tax_override_reason` set.
+- `test_exemption_crud_and_check` — upsert, list, check-at-date, archive → check returns `exempt:false`.
+- `test_exempt_customer_report` — pulls exempt customers with their invoice count + tax_cents in range.
+
+### Test totals
+```
+$ cd /app/backend && python -m pytest tests/ -q
+210 passed, 6 warnings in 3.84s
+```
+- Phase 7c: **20 new** tests (`test_ec7_expenses.py` + `test_ec7_finance.py` + `test_ec7_tax.py`).
+- Regression: 190 prior tests remain green (0 regressions).
+
+## Phase 7c — Frontend
+Not built in this phase. The Expenses / Categories / Finance Dashboard / Tax Reports UI is scheduled for **phase 7d** where `testing_agent_v3_fork` will drive the full EC7 frontend regression per the phasing plan. No frontend files were touched in phase 7c.
 
 ## Phase 7b — DELIVERED
 
@@ -167,8 +241,8 @@ Not built in this phase. Full Vendors / Purchase Orders / Receiving / Supply Cen
 ## Rollback for phase 7a
 Additive. Drop `materials`, `material_cost_history`, `inventory_locations`, `inventory_items`, `inventory_movements`, `inventory_reservations`. Revert `db.py`, `server.py`, and the new files listed above.
 
-## Rollback for phase 7b
-Additive. Drop `vendors`, `vendor_materials`, `supplier_warehouses`, `supplier_products`, `supplier_product_stock`, `supplier_order_log`, `purchase_orders`, `purchase_order_lines`, `receiving_records`. Revert the phase-7b sections in `db.py` and `server.py`, and remove the new files under `app/models/`, `app/services/`, `app/services/supplier_connectors/`, `app/routers/`, and the new `tests/test_ec7_supplier_catalog.py` / `tests/test_ec7_shortage_recommendation.py` / `tests/test_ec7_purchasing.py`.
+## Rollback for phase 7c
+Additive. Drop `expenses`, `expense_categories`, `expense_attachments`, `tax_exemptions`. Revert the phase-7c sections in `db.py` and `server.py`, remove the new `EXPENSE_*` / `FINANCE_READ` / `TAX_REPORT_READ` Perm entries from `core/permissions.py`, and remove the new files under `app/models/`, `app/services/`, `app/routers/`, and the three new `tests/test_ec7_*` files.
 
 ## Confirmations
 - EC3.1 remains **REQUIRED — SCHEDULED (pending)**.
@@ -176,6 +250,7 @@ Additive. Drop `vendors`, `vendor_materials`, `supplier_warehouses`, `supplier_p
 - EC6.2 remains **DEFERRED (unscheduled)**.
 - Commercial appendix A.4 (REVISED 2026-07) locked into master plan; NO commercial-billing / trial / onboarding / marketing code lands in EC7 — those are assigned to EC11 / EC12 / EC13.
 - EC8 was NOT started.
+- Phase 7d was NOT started per owner directive.
 
 ## Status
-**EC7 — IN PROGRESS. Phase 7a + Phase 7b delivered. Phases 7c, 7d remain. Backend 190/190 tests green.**
+**EC7 — IN PROGRESS. Phase 7a + Phase 7b + Phase 7c delivered. Phase 7d remains. Backend 210/210 tests green.**

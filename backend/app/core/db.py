@@ -280,4 +280,27 @@ async def ensure_indexes() -> None:
     )
     await db.receiving_records.create_index([("tenant_id", 1), ("purchase_order_id", 1), ("received_at", -1)])
 
+    # ---- EC7 phase 7c — Expenses + Categories + Tax Exemptions ----
+    await db.expense_categories.create_index("id", unique=True)
+    await db.expense_categories.create_index([("tenant_id", 1), ("key", 1)], unique=True)
+    await db.expense_categories.create_index([("tenant_id", 1), ("position", 1)])
+
+    await db.expenses.create_index("id", unique=True)
+    await db.expenses.create_index([("tenant_id", 1), ("number", 1)], unique=True)
+    await db.expenses.create_index([("tenant_id", 1), ("state", 1), ("expense_date", -1)])
+    await db.expenses.create_index([("tenant_id", 1), ("category_key", 1), ("expense_date", -1)])
+    await db.expenses.create_index([("tenant_id", 1), ("vendor_id", 1)])
+    await db.expenses.create_index([("tenant_id", 1), ("order_id", 1)])
+    await db.expenses.create_index([("tenant_id", 1), ("purchase_order_id", 1)])
+    await db.expenses.create_index([("tenant_id", 1), ("customer_id", 1)])
+
+    await db.expense_attachments.create_index("id", unique=True)
+    await db.expense_attachments.create_index([("tenant_id", 1), ("expense_id", 1), ("archived", 1)])
+
+    await db.tax_exemptions.create_index("id", unique=True)
+    await db.tax_exemptions.create_index(
+        [("tenant_id", 1), ("customer_id", 1), ("jurisdiction", 1), ("effective_from", -1)]
+    )
+    await db.tax_exemptions.create_index([("tenant_id", 1), ("jurisdiction", 1), ("archived", 1)])
+
     logger.info("MongoDB indexes ensured")
