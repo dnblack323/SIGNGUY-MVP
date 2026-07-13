@@ -160,12 +160,27 @@ async def get_submission(tenant_id: str, submission_id: str) -> Optional[dict[st
 async def apply_quiz_suggestions(tenant_id: str, submission_id: str, accepted_shop_defaults: dict[str, float], actor_user_id: Optional[str] = None) -> dict[str, Any]:
     """Apply ONLY the fields explicitly present in `accepted_shop_defaults` —
     never the raw suggestion set. Owner-rejected/edited fields are respected
-    because the caller (after review) decides exactly what's in this dict."""
+    because the caller (after review) decides exactly what's in this dict.
+
+    Status lifecycle is `draft` -> `applied` only: a submission can never be
+    re-applied, and an already-`skipped` submission cannot be applied without
+    starting a fresh quiz. Field names are also restricted to the allowlist
+    the quiz itself suggested (`suggested_shop_defaults_map`) — the router
+    is responsible for validating each value against the same `ShopDefaultsIn`
+    ranges used by manual pricing settings before calling this function."""
     submission = await get_submission(tenant_id, submission_id)
     if not submission:
         raise ValueError("Quiz submission not found")
+    if submission["status"] == "applied":
+        raise ValueError("This submission has already been applied — start a new quiz to make further changes")
+    if submission["status"] == "skipped":
+        raise ValueError("This submission was skipped and cannot be applied — start a new quiz instead")
     if not accepted_shop_defaults:
         raise ValueError("No fields accepted to apply")
+    allowlist = set((submission.get("derived_suggestions") or {}).get("suggested_shop_defaults_map") or {})
+    disallowed = set(accepted_shop_defaults) - allowlist
+    if disallowed:
+        raise ValueError(f"Field(s) not suggested by this quiz: {sorted(disallowed)}")
     await update_shop_defaults(tenant_id, accepted_shop_defaults, source="grouped_quiz")
     updates = {
         "status": "applied",
@@ -179,10 +194,16 @@ async def apply_quiz_suggestions(tenant_id: str, submission_id: str, accepted_sh
 
 
 async def skip_submission(tenant_id: str, submission_id: str) -> dict[str, Any]:
-    res = await db.pricing_quiz_submissions.update_one(
+    """Only a `draft` submission can be skipped — an already-`applied`
+    submission can never be moved back to `skipped`, and re-skipping an
+    already-`skipped` submission is a no-op error (idempotent lifecycle)."""
+    submission = await get_submission(tenant_id, submission_id)
+    if not submission:
+        raise ValueError("Quiz submission not found")
+    if submission["status"] != "draft":
+        raise ValueError(f"Only a draft submission can be skipped (current status: {submission['status']})")
+    await db.pricing_quiz_submissions.update_one(
         {"tenant_id": tenant_id, "id": submission_id},
         {"$set": {"status": "skipped", "updated_at": _now_iso()}},
     )
-    if res.matched_count == 0:
-        raise ValueError("Quiz submission not found")
     return await get_submission(tenant_id, submission_id) or {}

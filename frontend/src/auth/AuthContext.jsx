@@ -62,8 +62,8 @@ export function AuthProvider({ children }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const login = useCallback(async (email, password) => {
-    const { data } = await api.post("/auth/login", { email, password });
+  const login = useCallback(async (tenantSlug, email, password) => {
+    const { data } = await api.post("/auth/login", { tenant_slug: tenantSlug, email, password });
     localStorage.setItem("signguy.token", data.access_token);
     setUser(data.user); setTenant(data.tenant); setPermissions(data.permissions || []);
     return data;

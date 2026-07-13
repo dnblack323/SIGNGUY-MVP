@@ -140,20 +140,20 @@ export default function TeamSchedulePage() {
     queryFn: async () => (await api.get("/schedules", { params: { period_start: weekStart } })).data,
   });
   const schedule = data?.schedule;
-  const shifts = data?.shifts || [];
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
   const visibleEmployees = employeeFilter === "all" ? employees : employees.filter((e) => e.id === employeeFilter);
 
   const shiftsByEmpDay = useMemo(() => {
+    const shifts = data?.shifts || [];
     const m = {};
     shifts.forEach((s) => {
       const key = `${s.employee_id}|${s.shift_date}`;
       (m[key] = m[key] || []).push(s);
     });
     return m;
-  }, [shifts]);
+  }, [data]);
 
   function invalidate() {
     qc.invalidateQueries({ queryKey: ["team-schedule", weekStart] });

@@ -9,6 +9,7 @@ import { Building2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function ForgotPasswordPage() {
+  const [tenantSlug, setTenantSlug] = useState("");
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -18,16 +19,10 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const { data } = await api.post("/auth/request-password-reset", { email });
+      const { data } = await api.post("/auth/request-password-reset", { tenant_slug: tenantSlug.trim().toLowerCase(), email });
       setDone(true);
-      if (!data?.email_sent) {
-        // Dev fallback: fetch token so shop owners can complete reset without SendGrid
-        try {
-          const dev = await api.get("/auth/_dev/last-reset-token", { params: { email } });
-          setDevToken(dev.data.token);
-        } catch { /* ignore */ }
-      }
-      toast.success("If that email exists, a reset was created.");
+      if (data?.dev_reset_token) setDevToken(data.dev_reset_token);
+      toast.success("If that shop and email match, a reset was created.");
     } catch (err) {
       toast.error(extractError(err));
     } finally {
@@ -50,6 +45,10 @@ export default function ForgotPasswordPage() {
         <CardContent>
           {!done ? (
             <form onSubmit={onSubmit} className="grid gap-3">
+              <div className="grid gap-1.5">
+                <Label>Shop</Label>
+                <Input type="text" value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} placeholder="your-shop-slug" required data-testid="forgot-tenant-slug-input" />
+              </div>
               <div className="grid gap-1.5">
                 <Label>Email</Label>
                 <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required data-testid="forgot-email-input" />

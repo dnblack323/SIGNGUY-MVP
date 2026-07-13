@@ -1,6 +1,7 @@
 """Password hashing (bcrypt) and JWT token helpers."""
 from __future__ import annotations
 
+import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -44,3 +45,10 @@ def decode_access_token(token: str) -> dict[str, Any]:
 
 def generate_reset_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def hash_reset_token(raw_token: str) -> str:
+    """One-way SHA-256 digest of a password-reset token. Only the raw token
+    is ever emailed to the user; the database stores the hash so read access
+    to the DB alone can never be used to redeem an unused reset token."""
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()

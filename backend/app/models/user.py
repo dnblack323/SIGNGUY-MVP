@@ -30,6 +30,6 @@ class User(BaseDoc):
 class PasswordResetToken(BaseDoc):
     user_id: str
     tenant_id: str
-    token: str
+    token_hash: str
     expires_at: datetime
     used_at: Optional[datetime] = None

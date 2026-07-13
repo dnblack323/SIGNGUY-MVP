@@ -23,7 +23,14 @@ async def ensure_indexes() -> None:
     await db.tenants.create_index("id", unique=True)
     await db.users.create_index("id", unique=True)
     await db.users.create_index([("tenant_id", 1), ("email", 1)], unique=True)
-    await db.password_reset_tokens.create_index("token", unique=True)
+    # Migration: the reset-token field was renamed `token` -> `token_hash`
+    # (tokens are now stored hashed, never in plaintext). Drop the old
+    # unique index if it's still present from before the rename, otherwise
+    # every insert after the first collides on the now-unused `token: null`.
+    existing_pwd_reset_indexes = await db.password_reset_tokens.index_information()
+    if "token_1" in existing_pwd_reset_indexes:
+        await db.password_reset_tokens.drop_index("token_1")
+    await db.password_reset_tokens.create_index("token_hash", unique=True)
     await db.password_reset_tokens.create_index("expires_at")
 
     # Sequence counters

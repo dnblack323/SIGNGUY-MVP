@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { extractError } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -35,13 +35,27 @@ const emptyAnswers = {
  * detailed CategorySetupWizard — never a replacement. Suggestions are always
  * provisional; nothing is applied to shop_defaults without an explicit
  * "Apply selected" click after review.
+ *
+ * `resumeSubmission` (optional): a previously-saved `draft` submission to
+ * resume directly at the review/apply step, skipping re-answering the quiz —
+ * this is what powers "Continue previous setup" on the Pricing Foundation
+ * page (a draft is never lost when the owner clicks "Review later").
  */
-export default function GroupedPricingQuiz({ open, onOpenChange, categoryOptions }) {
+export default function GroupedPricingQuiz({ open, onOpenChange, categoryOptions, resumeSubmission }) {
   const qc = useQueryClient();
   const [answers, setAnswers] = useState(emptyAnswers);
   const [submission, setSubmission] = useState(null);
   const [selected, setSelected] = useState({});
   const [values, setValues] = useState({});
+
+  useEffect(() => {
+    if (open && resumeSubmission) {
+      setSubmission(resumeSubmission);
+      const map = resumeSubmission.derived_suggestions?.suggested_shop_defaults_map || {};
+      setSelected(Object.fromEntries(Object.keys(map).map((k) => [k, true])));
+      setValues(map);
+    }
+  }, [open, resumeSubmission]);
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -76,6 +90,7 @@ export default function GroupedPricingQuiz({ open, onOpenChange, categoryOptions
     onSuccess: () => {
       toast.success("Applied to Pricing Foundation");
       qc.invalidateQueries({ queryKey: ["pricing-settings"] });
+      qc.invalidateQueries({ queryKey: ["pricing-quiz-drafts"] });
       reset();
       onOpenChange(false);
     },
@@ -87,7 +102,12 @@ export default function GroupedPricingQuiz({ open, onOpenChange, categoryOptions
       const { data } = await api.post(`/pricing/quiz/submissions/${submission.id}/skip`);
       return data;
     },
-    onSuccess: () => { toast.message("Quiz skipped — you can start again anytime"); reset(); onOpenChange(false); },
+    onSuccess: () => {
+      toast.message("Quiz skipped — you can start again anytime");
+      qc.invalidateQueries({ queryKey: ["pricing-quiz-drafts"] });
+      reset();
+      onOpenChange(false);
+    },
     onError: (e) => toast.error(extractError(e)),
   });
 
@@ -206,7 +226,7 @@ export default function GroupedPricingQuiz({ open, onOpenChange, categoryOptions
 
             <DialogFooter className="gap-2">
               <Button variant="ghost" onClick={() => skip.mutate()} disabled={skip.isPending} data-testid="quiz-skip-button">Skip this suggestion</Button>
-              <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }} data-testid="quiz-review-later-button">Review later</Button>
+              <Button variant="outline" onClick={() => { toast.message("Saved as a draft — resume anytime from \"Continue previous setup\" on this page"); qc.invalidateQueries({ queryKey: ["pricing-quiz-drafts"] }); reset(); onOpenChange(false); }} data-testid="quiz-review-later-button">Review later</Button>
               <Button
                 onClick={() => apply.mutate()}
                 disabled={apply.isPending || Object.values(selected).every((v) => !v)}

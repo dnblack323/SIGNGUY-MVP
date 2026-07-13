@@ -97,7 +97,8 @@
     "globals": "15.15.0",
     "jest-environment-jsdom": "^29",
     "postcss": "8.5.10",
-    "tailwindcss": "3.4.17"
+    "tailwindcss": "3.4.17",
+    "ajv": "^8.17.1"
   },
   "resolutions": {
     "react-router": "7.15.0",

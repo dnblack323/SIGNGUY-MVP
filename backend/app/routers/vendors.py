@@ -60,41 +60,12 @@ async def create_vendor(payload: VendorIn,
     return serialize_doc(doc)
 
 
-@router.get("/{vid}")
-async def get_vendor(vid: str,
-                     user: dict = Depends(require_permission(Perm.VENDOR_READ))) -> dict:
-    doc = await db.vendors.find_one({"id": vid, "tenant_id": user["tenant_id"]}, {"_id": 0})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Vendor not found")
-    warehouses = [serialize_doc(w) async for w in db.supplier_warehouses.find(
-        {"tenant_id": user["tenant_id"], "vendor_id": vid}, {"_id": 0}
-    )]
-    return {"vendor": serialize_doc(doc), "warehouses": warehouses}
-
-
-@router.patch("/{vid}")
-async def update_vendor(vid: str, payload: VendorIn,
-                        user: dict = Depends(require_permission(Perm.VENDOR_WRITE))) -> dict:
-    upd = {k: v for k, v in payload.model_dump().items() if v is not None}
-    upd["updated_at"] = utc_now().isoformat()
-    res = await db.vendors.update_one({"id": vid, "tenant_id": user["tenant_id"]}, {"$set": upd})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Vendor not found")
-    doc = await db.vendors.find_one({"id": vid}, {"_id": 0})
-    return serialize_doc(doc or {})
-
-
-@router.post("/{vid}/archive")
-async def archive_vendor(vid: str,
-                         user: dict = Depends(require_permission(Perm.VENDOR_WRITE))) -> dict:
-    res = await db.vendors.update_one({"id": vid, "tenant_id": user["tenant_id"]},
-                                       {"$set": {"active": False, "updated_at": utc_now().isoformat()}})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Vendor not found")
-    return {"archived": True}
-
-
 # ----- Vendor <-> Material mapping -----
+# NOTE: these fixed-path routes (`/materials`, `/seed/test-adapter`) MUST be
+# registered before the dynamic `/{vid}` routes below — FastAPI matches
+# routes in registration order, so `/{vid}` would otherwise shadow them
+# (e.g. GET /vendors/materials would be interpreted as GET /vendors/{vid}
+# with vid="materials").
 @router.post("/materials", status_code=201, tags=["vendors"])
 async def link_vendor_material(payload: VendorMaterialIn,
                                 user: dict = Depends(require_permission(Perm.VENDOR_WRITE))) -> dict:
@@ -133,3 +104,37 @@ async def seed_test_adapter(reset: bool = Query(False),
     stats = await TestSupplierAdapter().seed_tenant(tenant_id=user["tenant_id"], reset=reset)
     return {"seeded": True, "reset": reset, **stats,
             "note": "SYNTHETIC DEMO DATA — NOT REAL SUPPLIER PRICING"}
+
+
+@router.get("/{vid}")
+async def get_vendor(vid: str,
+                     user: dict = Depends(require_permission(Perm.VENDOR_READ))) -> dict:
+    doc = await db.vendors.find_one({"id": vid, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    warehouses = [serialize_doc(w) async for w in db.supplier_warehouses.find(
+        {"tenant_id": user["tenant_id"], "vendor_id": vid}, {"_id": 0}
+    )]
+    return {"vendor": serialize_doc(doc), "warehouses": warehouses}
+
+
+@router.patch("/{vid}")
+async def update_vendor(vid: str, payload: VendorIn,
+                        user: dict = Depends(require_permission(Perm.VENDOR_WRITE))) -> dict:
+    upd = {k: v for k, v in payload.model_dump().items() if v is not None}
+    upd["updated_at"] = utc_now().isoformat()
+    res = await db.vendors.update_one({"id": vid, "tenant_id": user["tenant_id"]}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    doc = await db.vendors.find_one({"id": vid}, {"_id": 0})
+    return serialize_doc(doc or {})
+
+
+@router.post("/{vid}/archive")
+async def archive_vendor(vid: str,
+                         user: dict = Depends(require_permission(Perm.VENDOR_WRITE))) -> dict:
+    res = await db.vendors.update_one({"id": vid, "tenant_id": user["tenant_id"]},
+                                       {"$set": {"active": False, "updated_at": utc_now().isoformat()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    return {"archived": True}

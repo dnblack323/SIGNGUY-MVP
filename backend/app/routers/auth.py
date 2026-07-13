@@ -18,6 +18,7 @@ from ..core.security import (
     decode_access_token,
     generate_reset_token,
     hash_password,
+    hash_reset_token,
     verify_password,
 )
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
@@ -43,6 +44,7 @@ class RegisterTenantIn(BaseModel):
 
 
 class LoginIn(BaseModel):
+    tenant_slug: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9\-]+$")
     email: EmailStr
     password: str
 
@@ -56,6 +58,7 @@ class TokenOut(BaseModel):
 
 
 class RequestPasswordResetIn(BaseModel):
+    tenant_slug: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9\-]+$")
     email: EmailStr
 
 
@@ -105,15 +108,16 @@ async def register_tenant(payload: RegisterTenantIn) -> TokenOut:
 
 @router.post("/login", response_model=TokenOut)
 async def login(payload: LoginIn) -> TokenOut:
-    doc = await db.users.find_one({"email": str(payload.email).lower()})
-    if not doc:
-        # try case-preserved too
-        doc = await db.users.find_one({"email": payload.email})
-    if not doc or not verify_password(payload.password, doc["password_hash"]) or not doc.get("is_active", True):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    tenant = await db.tenants.find_one({"id": doc["tenant_id"]})
+    tenant = await db.tenants.find_one({"slug": payload.tenant_slug})
+    generic_error = HTTPException(status_code=401, detail="Invalid shop, email, or password")
     if not tenant:
-        raise HTTPException(status_code=401, detail="Tenant not found")
+        raise generic_error
+    doc = await db.users.find_one({"tenant_id": tenant["id"], "email": str(payload.email).lower()})
+    if not doc:
+        # try case-preserved too (older records may not be lowercased)
+        doc = await db.users.find_one({"tenant_id": tenant["id"], "email": payload.email})
+    if not doc or not verify_password(payload.password, doc["password_hash"]) or not doc.get("is_active", True):
+        raise generic_error
     await db.users.update_one({"id": doc["id"]}, {"$set": {"last_login_at": utc_now().isoformat()}})
     token = create_access_token(subject=doc["id"], tenant_id=doc["tenant_id"])
     u = serialize_doc(doc)
@@ -174,9 +178,20 @@ async def google_session(payload: GoogleSessionIn) -> TokenOut:
 
     doc = await db.users.find_one({"google_id": google_id})
     if not doc:
-        # Link to an existing password-based account with the same email, if any.
-        doc = await db.users.find_one({"email": email})
-        if doc:
+        # Link to an existing password-based account with the same email —
+        # but only when the email is unambiguous. Email is unique per-tenant,
+        # not globally, so if more than one tenant has this email we must
+        # not silently guess which shop to link (would risk logging the
+        # user into the wrong shop). Ask them to use email+password+shop
+        # sign-in instead, where the shop is explicit.
+        matches = await db.users.find({"email": email}).to_list(length=2)
+        if len(matches) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail="This email exists in more than one shop. Please sign in with your shop, email, and password instead.",
+            )
+        if matches:
+            doc = matches[0]
             await db.users.update_one({"id": doc["id"]}, {"$set": {"google_id": google_id}})
             doc["google_id"] = google_id
 
@@ -253,40 +268,54 @@ async def me(user: dict = Depends(get_current_user)) -> dict:
 
 @router.post("/request-password-reset", status_code=202)
 async def request_password_reset(payload: RequestPasswordResetIn) -> dict:
-    doc = await db.users.find_one({"email": payload.email})
+    """Always returns the identical `{"ok": true}` shape regardless of
+    whether the shop/email combination exists, whether the account is
+    rate-limited, or whether the email actually sent — this prevents an
+    attacker from using response differences to enumerate valid accounts."""
+    response: dict = {"ok": True}
+    tenant = await db.tenants.find_one({"slug": payload.tenant_slug})
+    doc = await db.users.find_one({"tenant_id": tenant["id"], "email": str(payload.email).lower()}) if tenant else None
     if not doc:
-        # Do not reveal whether user exists.
-        return {"ok": True}
-    token = generate_reset_token()
+        return response
+
+    # Basic rate limit: at most 5 reset requests per user per 15 minutes.
+    window_start = utc_now() - timedelta(minutes=15)
+    recent_count = await db.password_reset_tokens.count_documents({
+        "user_id": doc["id"], "created_at": {"$gte": window_start.isoformat()},
+    })
+    if recent_count >= 5:
+        return response
+
+    raw_token = generate_reset_token()
     expires_at = utc_now() + timedelta(minutes=_settings.password_reset_ttl_minutes)
     reset = PasswordResetToken(
         user_id=doc["id"],
         tenant_id=doc["tenant_id"],
-        token=token,
+        token_hash=hash_reset_token(raw_token),
         expires_at=expires_at,
     )
     await db.password_reset_tokens.insert_one(prepare_for_mongo(reset.model_dump()))
 
-    reset_link = f"/reset-password?token={token}"
+    reset_link = f"/reset-password?token={raw_token}"
     body = (
         f"Hi {doc.get('full_name','')},\n\n"
         f"You (or someone) requested a password reset for your SignGuy AI account.\n"
         f"Use this token within {_settings.password_reset_ttl_minutes} minutes:\n\n"
-        f"Token: {token}\n"
+        f"Token: {raw_token}\n"
         f"Link: {reset_link}\n\n"
         f"If you didn't request this, ignore this message."
     )
-    ok, msg_id, err = send_email(
-        to_email=doc["email"], subject="Reset your SignGuy AI password", body_text=body
-    )
-    # We still return 202 whether or not the email actually left the server.
-    # In dev without SendGrid keys, the token is retrievable via /api/auth/_dev/last-reset-token
-    return {"ok": True, "email_sent": ok, "error": err}
+    send_email(to_email=doc["email"], subject="Reset your SignGuy AI password", body_text=body)
+    # DEV-ONLY convenience so local/dev testing can proceed without SendGrid.
+    # Never included outside a development environment.
+    if _settings.env == "development":
+        response["dev_reset_token"] = raw_token
+    return response
 
 
 @router.post("/reset-password", status_code=204, response_class=Response)
 async def reset_password(payload: ResetPasswordIn) -> Response:
-    tok = await db.password_reset_tokens.find_one({"token": payload.token})
+    tok = await db.password_reset_tokens.find_one({"token_hash": hash_reset_token(payload.token)})
     if not tok:
         raise HTTPException(status_code=400, detail="Invalid or unknown token")
     if tok.get("used_at"):
@@ -303,7 +332,7 @@ async def reset_password(payload: ResetPasswordIn) -> Response:
     if exp_dt < utc_now():
         raise HTTPException(status_code=400, detail="Token expired")
     await db.users.update_one({"id": tok["user_id"]}, {"$set": {"password_hash": hash_password(payload.new_password)}})
-    await db.password_reset_tokens.update_one({"token": payload.token}, {"$set": {"used_at": utc_now().isoformat()}})
+    await db.password_reset_tokens.update_one({"id": tok["id"]}, {"$set": {"used_at": utc_now().isoformat()}})
     user = await db.users.find_one({"id": tok["user_id"]})
     if user:
         await record_audit(
@@ -316,25 +345,6 @@ async def reset_password(payload: ResetPasswordIn) -> Response:
             summary=f"Password reset for {user['email']}",
         )
     return Response(status_code=204)
-
-
-@router.get("/_dev/last-reset-token")
-async def _dev_last_reset_token(email: EmailStr) -> dict:
-    """DEV-ONLY convenience endpoint: fetch the latest unused reset token for an email.
-
-    Refuses to run outside a development environment (EC1 guard).
-    """
-    if _settings.env != "development":
-        raise HTTPException(status_code=404, detail="Not found")
-    user = await db.users.find_one({"email": email})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    doc = await db.password_reset_tokens.find_one(
-        {"user_id": user["id"], "used_at": None}, sort=[("created_at", -1)]
-    )
-    if not doc:
-        raise HTTPException(status_code=404, detail="No unused token")
-    return {"token": doc["token"], "expires_at": doc["expires_at"]}
 
 
 @router.get("/dev-config")

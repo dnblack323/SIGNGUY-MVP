@@ -12,8 +12,8 @@ Scope discipline:
   Employees API) — no parallel Employee-creation logic.
 - Idempotent: looks up by `linked_user_id` first; never creates a duplicate.
 - Refuses outside development (same guard pattern as `auth.py`'s
-  `/auth/_dev/last-reset-token` and `/auth/dev-config`) — disabled in
-  production even if `AUTH_DEV_BYPASS` were somehow set.
+  `/auth/dev-config`) — disabled in production even if `AUTH_DEV_BYPASS`
+  were somehow set.
 """
 from __future__ import annotations
 

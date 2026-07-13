@@ -84,6 +84,13 @@ export default function PricingFoundationPage() {
   const [shopForm, setShopForm] = useState({});
   const [wizardCat, setWizardCat] = useState(null);
   const [quizOpen, setQuizOpen] = useState(false);
+  const [resumeSubmission, setResumeSubmission] = useState(null);
+
+  const { data: draftQuizzes } = useQuery({
+    queryKey: ["pricing-quiz-drafts"],
+    queryFn: async () => (await api.get("/pricing/quiz/submissions", { params: { status: "draft" } })).data,
+    enabled: canWrite,
+  });
 
   const currentShop = useMemo(() => ({ ...(settings?.shop_defaults || {}), ...shopForm }), [settings, shopForm]);
 
@@ -118,6 +125,23 @@ export default function PricingFoundationPage() {
           You’re starting with SignGuy AI recommended shop defaults (version <span className="mono">{settings.starter_default_version}</span>). Run the setup wizards below to tailor these values to your shop. Every change is per-tenant — the starter template stays untouched.
         </div>
       </div>
+
+      {canWrite && !!draftQuizzes?.items?.length && (
+        <Card data-testid="quiz-drafts-panel">
+          <CardHeader className="pb-3"><CardTitle className="text-base">Continue previous setup</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {draftQuizzes.items.map((sub) => (
+              <div key={sub.id} className="flex items-center justify-between rounded-md border p-3 text-sm" data-testid={`quiz-draft-row-${sub.id}`}>
+                <div>
+                  <span className="font-medium capitalize">{(sub.category || "").replace("_", " ")}</span>
+                  <span className="text-muted-foreground ml-2">saved {new Date(sub.created_at).toLocaleString()}</span>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => { setResumeSubmission(sub); setQuizOpen(true); }} data-testid={`quiz-draft-resume-${sub.id}`}>Resume</Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="shop-categories">
         <TabsList data-testid="pricing-foundation-tabs">
@@ -199,8 +223,9 @@ export default function PricingFoundationPage() {
 
       <GroupedPricingQuiz
         open={quizOpen}
-        onOpenChange={setQuizOpen}
+        onOpenChange={(o) => { setQuizOpen(o); if (!o) setResumeSubmission(null); }}
         categoryOptions={Object.keys(settings.category_defaults || {}).map((id) => [id, settings.category_meta?.[id]?.name || id])}
+        resumeSubmission={resumeSubmission}
       />
     </div>
   );

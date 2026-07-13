@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from ..core.permissions import Perm
 from ..core.time_utils import serialize_doc
 from ..deps import require_permission
+from ..routers.pricing import ShopDefaultsIn
 from ..services.audit import record_audit
 from ..services.pricing_quiz import (
     apply_quiz_suggestions,
@@ -42,7 +43,11 @@ class QuizAnswersIn(BaseModel):
 
 
 class QuizApplyIn(BaseModel):
-    accepted_shop_defaults: dict[str, float]
+    # Reuses the exact same field names + validated ranges (ge=0, le=..., etc.)
+    # as manual Pricing Foundation edits (`PATCH /pricing/settings/shop-defaults`)
+    # — the quiz can never write an unknown key, a negative rate, or an
+    # out-of-range margin/markup that manual editing wouldn't also allow.
+    accepted_shop_defaults: ShopDefaultsIn
 
 
 @router.post("/submit", status_code=201)
@@ -70,15 +75,16 @@ async def get_one_submission(submission_id: str, user: dict = Depends(require_pe
 
 @router.post("/submissions/{submission_id}/apply")
 async def post_apply_submission(submission_id: str, payload: QuizApplyIn, user: dict = Depends(require_permission(Perm.PRICING_WRITE))) -> dict:
+    accepted = payload.accepted_shop_defaults.model_dump(exclude_none=True)
     try:
-        doc = await apply_quiz_suggestions(user["tenant_id"], submission_id, payload.accepted_shop_defaults, actor_user_id=user["id"])
+        doc = await apply_quiz_suggestions(user["tenant_id"], submission_id, accepted, actor_user_id=user["id"])
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         action="pricing.quiz.apply", entity_type="pricing_quiz_submission", entity_id=submission_id,
-        summary=f"Applied grouped pricing quiz suggestions: {list(payload.accepted_shop_defaults.keys())}",
-        diff={"applied": payload.accepted_shop_defaults},
+        summary=f"Applied grouped pricing quiz suggestions: {list(accepted.keys())}",
+        diff={"applied": accepted},
     )
     return serialize_doc(doc)
 
@@ -88,5 +94,5 @@ async def post_skip_submission(submission_id: str, user: dict = Depends(require_
     try:
         doc = await skip_submission(user["tenant_id"], submission_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
     return serialize_doc(doc)

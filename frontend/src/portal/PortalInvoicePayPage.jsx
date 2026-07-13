@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import portalApi, { portalExtractError } from "./portalApi";
 import { Button } from "@/components/ui/button";
@@ -27,13 +27,13 @@ export default function PortalInvoicePayPage() {
   // interpolate them into the DOM.
   const [_stripe, _setStripe] = useState({ client_secret: null, publishable_key: null });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const r = await portalApi.get(`/portal/invoices/${id}`);
       setInvoice(r.data);
     } catch (e) { setErr(portalExtractError(e)); }
-  };
-  useEffect(() => { load(); }, [id]);
+  }, [id]);
+  useEffect(() => { load(); }, [load]);
 
   const balance = useMemo(() => Number(invoice?.invoice?.balance_due_cents || 0), [invoice]);
   const canPay = balance > 0 && invoice?.invoice?.document_status !== "void";

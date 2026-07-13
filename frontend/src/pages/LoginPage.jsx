@@ -16,6 +16,7 @@ function handleGoogleLogin() {
 }
 
 export default function LoginPage() {
+  const [tenantSlug, setTenantSlug] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -30,11 +31,11 @@ export default function LoginPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await login(email, password);
+      await login(tenantSlug.trim().toLowerCase(), email, password);
       toast.success("Signed in");
       navigate(from, { replace: true });
     } catch (err) {
-      toast.error(extractError(err, "Invalid credentials"));
+      toast.error(extractError(err, "Invalid shop, email, or password"));
     } finally {
       setSubmitting(false);
     }
@@ -54,6 +55,10 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="grid gap-3" data-testid="login-form">
+            <div className="grid gap-1.5">
+              <Label htmlFor="tenant-slug">Shop</Label>
+              <Input id="tenant-slug" data-testid="login-tenant-slug-input" type="text" value={tenantSlug} onChange={(e) => setTenantSlug(e.target.value)} placeholder="your-shop-slug" required autoComplete="organization" />
+            </div>
             <div className="grid gap-1.5">
               <Label htmlFor="email">Email</Label>
               <Input id="email" data-testid="login-email-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
