@@ -14,6 +14,14 @@ export function AuthProvider({ children }) {
   const refresh = useCallback(async () => {
     try {
       setError(null);
+      // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+      // If we're returning from the Google Sign-In redirect, GoogleAuthCallback
+      // owns the exchange (and will call refresh() again once done) — skip the
+      // normal check here to avoid a race that flashes the login page.
+      if (window.location.hash?.includes("session_id=")) {
+        setLoading(false);
+        return;
+      }
       // Check backend dev bypass status
       let bypass = false;
       try {

@@ -1,7 +1,8 @@
 import "@/App.css";
-import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/auth/AuthContext";
 import RequireAuth from "@/auth/RequireAuth";
+import GoogleAuthCallback from "@/auth/GoogleAuthCallback";
 import AppShell from "@/components/app-shell/AppShell";
 import LoginPage from "@/pages/LoginPage";
 import RegisterTenantPage from "@/pages/RegisterTenantPage";
@@ -64,67 +65,80 @@ function LoggedInHome() {
   return <Navigate to="/" replace />;
 }
 
+function AppRoutes() {
+  const location = useLocation();
+  // Google Sign-In lands back on whatever page we redirected to, with
+  // `#session_id=...` appended. Detected synchronously during render (not
+  // in an effect) so it's handled before any route/auth-guard decision.
+  if (location.hash?.includes("session_id=")) {
+    return <GoogleAuthCallback />;
+  }
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterTenantPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/portal/employee/*" element={<EmployeePortalApp />} />
+      <Route path="/portal/*" element={<PortalApp />} />
+      <Route path="/p/*" element={<PublicApp />} />
+      <Route element={<RequireAuth><AppShell /></RequireAuth>}>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/customers" element={<CustomersPage />} />
+        <Route path="/customers/:id" element={<CustomerDetailPage />} />
+        <Route path="/quotes" element={<QuotesPage />} />
+        <Route path="/quotes/:id" element={<QuoteDetailPage />} />
+        <Route path="/orders" element={<OrdersPage />} />
+        <Route path="/orders/:id" element={<OrderDetailPage />} />
+        <Route path="/work-orders" element={<WorkOrdersPage />} />
+        <Route path="/work-orders/board" element={<ProductionBoardPage />} />
+        <Route path="/work-orders/:id" element={<WorkOrderDetailPage />} />
+        <Route path="/invoices" element={<InvoicesPage />} />
+        <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
+        <Route path="/documents" element={<DocumentsPage />} />
+        <Route path="/email-history" element={<EmailHistoryPage />} />
+        <Route path="/pricing-foundation" element={<PricingFoundationPage />} />
+        <Route path="/pricing-calculator" element={<PricingCalculatorPage />} />
+        <Route path="/inventory" element={<InventoryPage />} />
+        <Route path="/materials/:id" element={<MaterialDetailPage />} />
+        <Route path="/supply-center" element={<SupplyCenterPage />} />
+        <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
+        <Route path="/purchase-orders/:id" element={<PurchaseOrderDetailPage />} />
+        <Route path="/vendors/:id" element={<VendorDetailPage />} />
+        <Route path="/expenses" element={<ExpensesPage />} />
+        <Route path="/finance" element={<FinanceDashboardPage />} />
+        <Route path="/tax" element={<TaxReportsPage />} />
+        <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/team" element={<TeamDashboardPage />} />
+        <Route path="/team/employees" element={<EmployeesPage />} />
+        <Route path="/team/employees/:id" element={<EmployeeDetailPage />} />
+        <Route path="/team/equipment" element={<EquipmentPage />} />
+        <Route path="/team/equipment/:id" element={<EquipmentDetailPage />} />
+        <Route path="/team/training" element={<TrainingPage />} />
+        <Route path="/team/certifications" element={<CertificationsPage />} />
+        <Route path="/team/announcements" element={<AnnouncementsPage />} />
+        <Route path="/team/schedule" element={<TeamSchedulePage />} />
+        <Route path="/team/employee-portal" element={<EmployeePortalAccessPage />} />
+        <Route path="/team/time-clock" element={<TimeClockPage />} />
+        <Route path="/team/timesheets" element={<TimesheetsPage />} />
+        <Route path="/team/payroll" element={<PayrollPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings/company" element={<CompanySettingsPage />} />
+        <Route path="/settings/integrations" element={<IntegrationsPage />} />
+        <Route path="/settings/features" element={<FeatureAccessPage />} />
+        <Route path="/settings/data-security" element={<DataSecurityPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+      <Route path="*" element={<LoggedInHome />} />
+    </Routes>
+  );
+}
+
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterTenantPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="/portal/employee/*" element={<EmployeePortalApp />} />
-          <Route path="/portal/*" element={<PortalApp />} />
-          <Route path="/p/*" element={<PublicApp />} />
-          <Route element={<RequireAuth><AppShell /></RequireAuth>}>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/customers" element={<CustomersPage />} />
-            <Route path="/customers/:id" element={<CustomerDetailPage />} />
-            <Route path="/quotes" element={<QuotesPage />} />
-            <Route path="/quotes/:id" element={<QuoteDetailPage />} />
-            <Route path="/orders" element={<OrdersPage />} />
-            <Route path="/orders/:id" element={<OrderDetailPage />} />
-            <Route path="/work-orders" element={<WorkOrdersPage />} />
-            <Route path="/work-orders/board" element={<ProductionBoardPage />} />
-            <Route path="/work-orders/:id" element={<WorkOrderDetailPage />} />
-            <Route path="/invoices" element={<InvoicesPage />} />
-            <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
-            <Route path="/documents" element={<DocumentsPage />} />
-            <Route path="/email-history" element={<EmailHistoryPage />} />
-            <Route path="/pricing-foundation" element={<PricingFoundationPage />} />
-            <Route path="/pricing-calculator" element={<PricingCalculatorPage />} />
-            <Route path="/inventory" element={<InventoryPage />} />
-            <Route path="/materials/:id" element={<MaterialDetailPage />} />
-            <Route path="/supply-center" element={<SupplyCenterPage />} />
-            <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
-            <Route path="/purchase-orders/:id" element={<PurchaseOrderDetailPage />} />
-            <Route path="/vendors/:id" element={<VendorDetailPage />} />
-            <Route path="/expenses" element={<ExpensesPage />} />
-            <Route path="/finance" element={<FinanceDashboardPage />} />
-            <Route path="/tax" element={<TaxReportsPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/team" element={<TeamDashboardPage />} />
-            <Route path="/team/employees" element={<EmployeesPage />} />
-            <Route path="/team/employees/:id" element={<EmployeeDetailPage />} />
-            <Route path="/team/equipment" element={<EquipmentPage />} />
-            <Route path="/team/equipment/:id" element={<EquipmentDetailPage />} />
-            <Route path="/team/training" element={<TrainingPage />} />
-            <Route path="/team/certifications" element={<CertificationsPage />} />
-            <Route path="/team/announcements" element={<AnnouncementsPage />} />
-            <Route path="/team/schedule" element={<TeamSchedulePage />} />
-            <Route path="/team/employee-portal" element={<EmployeePortalAccessPage />} />
-            <Route path="/team/time-clock" element={<TimeClockPage />} />
-            <Route path="/team/timesheets" element={<TimesheetsPage />} />
-            <Route path="/team/payroll" element={<PayrollPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/settings/company" element={<CompanySettingsPage />} />
-            <Route path="/settings/integrations" element={<IntegrationsPage />} />
-            <Route path="/settings/features" element={<FeatureAccessPage />} />
-            <Route path="/settings/data-security" element={<DataSecurityPage />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Route>
-          <Route path="*" element={<LoggedInHome />} />
-        </Routes>
+        <AppRoutes />
       </BrowserRouter>
       <Toaster richColors position="top-right" />
     </AuthProvider>

@@ -24,6 +24,7 @@ class User(BaseDoc):
     password_hash: str
     is_active: bool = True
     last_login_at: Optional[datetime] = None
+    google_id: Optional[str] = None
 
 
 class PasswordResetToken(BaseDoc):

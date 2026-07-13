@@ -1,9 +1,12 @@
-"""Auth: register-tenant (bootstrap), login, logout, me, password reset."""
+"""Auth: register-tenant (bootstrap), login, logout, me, password reset, Google sign-in."""
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 from typing import Literal, Optional
+from uuid import uuid4
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, EmailStr, Field
 
@@ -25,6 +28,10 @@ from ..services.email import send_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _settings = get_settings()
+
+# Emergent-managed Google Auth session exchange endpoint. Fixed platform URL,
+# not tenant/environment-specific — not sourced from .env.
+EMERGENT_AUTH_SESSION_DATA_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
 
 class RegisterTenantIn(BaseModel):
@@ -116,6 +123,107 @@ async def login(payload: LoginIn) -> TokenOut:
         user=u,
         tenant=serialize_doc(tenant),
         permissions=permissions_for_role(doc.get("role", "staff")),
+    )
+
+
+class GoogleSessionIn(BaseModel):
+    session_id: str = Field(min_length=1)
+
+
+def _slugify(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug or "shop"
+
+
+async def _unique_tenant_slug(base: str) -> str:
+    slug = _slugify(base)
+    candidate = slug
+    for _ in range(5):
+        if not await db.tenants.find_one({"slug": candidate}):
+            return candidate
+        candidate = f"{slug}-{uuid4().hex[:6]}"
+    return f"{slug}-{uuid4().hex[:6]}"
+
+
+@router.post("/google/session", response_model=TokenOut)
+async def google_session(payload: GoogleSessionIn) -> TokenOut:
+    """Exchange an Emergent-managed Google Auth `session_id` for our own JWT.
+
+    This bridges Google Sign-In into the existing tenant/user/JWT system
+    (same TokenOut shape as /login and /register-tenant) instead of adding
+    a second, cookie-based session mechanism — Google is only used here to
+    verify identity (email/name), the app's own JWT remains the single
+    source of truth for authenticated requests.
+    """
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(
+                EMERGENT_AUTH_SESSION_DATA_URL,
+                headers={"X-Session-ID": payload.session_id},
+            )
+        except httpx.HTTPError:
+            raise HTTPException(status_code=502, detail="Could not reach Google sign-in service")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid or expired Google sign-in session")
+    profile = resp.json()
+    google_id = profile.get("id")
+    email = (profile.get("email") or "").lower()
+    name = profile.get("name") or email.split("@")[0]
+    if not google_id or not email:
+        raise HTTPException(status_code=502, detail="Google sign-in did not return a profile")
+
+    doc = await db.users.find_one({"google_id": google_id})
+    if not doc:
+        # Link to an existing password-based account with the same email, if any.
+        doc = await db.users.find_one({"email": email})
+        if doc:
+            await db.users.update_one({"id": doc["id"]}, {"$set": {"google_id": google_id}})
+            doc["google_id"] = google_id
+
+    if doc:
+        if not doc.get("is_active", True):
+            raise HTTPException(status_code=401, detail="This account is disabled")
+        tenant = await db.tenants.find_one({"id": doc["tenant_id"]})
+        if not tenant:
+            raise HTTPException(status_code=401, detail="Tenant not found")
+        await db.users.update_one({"id": doc["id"]}, {"$set": {"last_login_at": utc_now().isoformat()}})
+        u = serialize_doc(doc)
+        u.pop("password_hash", None)
+        return TokenOut(
+            access_token=create_access_token(subject=doc["id"], tenant_id=doc["tenant_id"]),
+            user=u,
+            tenant=serialize_doc(tenant),
+            permissions=permissions_for_role(doc.get("role", "staff")),
+        )
+
+    # First-ever sign-in for this Google identity — auto-create a new tenant + owner.
+    tenant = Tenant(name=f"{name}'s Shop", slug=await _unique_tenant_slug(name or email))
+    user = User(
+        tenant_id=tenant.id,
+        email=email,
+        full_name=name,
+        role="owner",
+        password_hash=hash_password(uuid4().hex),
+        google_id=google_id,
+    )
+    await db.tenants.insert_one(prepare_for_mongo(tenant.model_dump()))
+    await db.users.insert_one(prepare_for_mongo(user.model_dump()))
+    await record_audit(
+        tenant_id=tenant.id,
+        actor_user_id=user.id,
+        actor_email=user.email,
+        action="tenant.create",
+        entity_type="tenant",
+        entity_id=tenant.id,
+        summary=f"Tenant '{tenant.name}' created via Google sign-in",
+    )
+    user_out = serialize_doc(user.model_dump())
+    user_out.pop("password_hash", None)
+    return TokenOut(
+        access_token=create_access_token(subject=user.id, tenant_id=tenant.id),
+        user=user_out,
+        tenant=serialize_doc(tenant.model_dump()),
+        permissions=permissions_for_role(user.role),
     )
 
 
