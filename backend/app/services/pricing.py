@@ -12,6 +12,8 @@ from ..core.db import db
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from .starter_defaults import build_starter_pack, CATEGORY_IDS, MATERIALS
 from .pricing_flat_sqft import FLAT_SQFT_CATEGORIES, calculate_flat_sqft_pricing
+from .pricing_apparel import calculate_apparel_pricing
+from .pricing_promotional import calculate_promotional_pricing
 
 
 def _now_iso() -> str:
@@ -113,6 +115,7 @@ def calculate_pricing(
     category_inputs: Optional[dict[str, Any]] = None,
     material_profile: Optional[dict[str, Any]] = None,
     pricing_components: Optional[list[dict[str, Any]]] = None,
+    saved_item: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Return the canonical MVP pricing response.
 
@@ -125,6 +128,12 @@ def calculate_pricing(
     (still the single authoritative pipeline — this function is the only
     entrypoint routers call). All other categories keep the pre-existing
     generic per-sqft/cost-plus calculation below, unchanged.
+
+    EC9 Phase 9E-2: `apparel` and `promotional` also dispatch to their own
+    EC09-controlling-document formula libraries (`pricing_apparel.py`,
+    `pricing_promotional.py`). `promotional` is driven primarily by an
+    optional resolved `saved_item` (a `PricingSavedItem`, e.g. a preloaded
+    Business Card tier item) rather than by `width_inches`/`height_inches`.
     """
     if category not in CATEGORY_IDS:
         raise ValueError(f"Unknown category: {category}")
@@ -141,6 +150,19 @@ def calculate_pricing(
             width_inches=width_inches, height_inches=height_inches, quantity=quantity,
             material_key=material_key, design_needed=design_needed, install_needed=install_needed,
             manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
+        )
+
+    if category == "apparel":
+        return calculate_apparel_pricing(
+            shop=shop, cat=cat, pricing_components=pricing_components or [], quantity=quantity,
+            manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
+        )
+
+    if category == "promotional":
+        return calculate_promotional_pricing(
+            shop=shop, cat=cat, pricing_components=pricing_components or [], quantity=quantity,
+            manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
+            saved_item=saved_item,
         )
 
     # Area
@@ -175,23 +197,12 @@ def calculate_pricing(
             "cut_vinyl": Decimal("0.20"),
             "digital_print": Decimal("0.08"),
             "vehicle_graphics": Decimal("0.12"),
-            "apparel": Decimal("0"),
             "services": Decimal("0"),
-            "promotional": Decimal("0"),
             "custom": Decimal("0"),
         }
         labor_hr_per_sqft = defaults_hr_per_sqft.get(category, Decimal("0"))
     labor_hours = labor_hr_per_sqft * total_area
     labor_cost = labor_hours * prod_rate
-
-    # Apparel: labor per garment
-    if category == "apparel":
-        mins_per = _to_dec(cat.get("production_minutes_per_garment") or 0)
-        garment_cost = _to_dec(cat.get("blank_tshirt_cost") or 0) * qty
-        decoration_cost = _to_dec(cat.get("decoration_cost_per_garment") or 0) * qty
-        material_cost = garment_cost + decoration_cost
-        labor_hours = (mins_per * qty) / Decimal("60")
-        labor_cost = labor_hours * prod_rate
 
     # Design labor
     design_cost = Decimal("0")

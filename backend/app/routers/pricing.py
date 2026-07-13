@@ -20,6 +20,7 @@ from ..services.pricing import (
 )
 from ..services.pricing_components import list_components
 from ..services.pricing_materials import get_profile
+from ..services.pricing_saved_items import get_saved_item
 from ..services.starter_defaults import CATEGORY_IDS
 
 router = APIRouter(prefix="/pricing", tags=["pricing"])
@@ -81,6 +82,11 @@ class CalcIn(BaseModel):
     material_profile_id: Optional[str] = None
     pricing_component_ids: list[str] = Field(default_factory=list)
     category_inputs: dict[str, Any] = Field(default_factory=dict)
+    # EC9 Phase 9E-2 — optional resolved PricingSavedItem reference, used by
+    # the `promotional` category for exact-match quantity-tier price lookup
+    # (e.g. the preloaded Business Card starter items) and as the default
+    # `pricing_method` when not explicitly overridden in `category_inputs`.
+    saved_item_id: Optional[str] = None
 
 
 class WizardSuggestIn(BaseModel):
@@ -205,6 +211,12 @@ async def calculate(payload: CalcIn, user: dict = Depends(require_permission(Per
         by_id = {c["id"]: c for c in all_components}
         pricing_components = [by_id[cid] for cid in payload.pricing_component_ids if cid in by_id]
 
+    saved_item = None
+    if payload.saved_item_id:
+        saved_item = await get_saved_item(user["tenant_id"], payload.saved_item_id)
+        if not saved_item:
+            raise HTTPException(status_code=404, detail="Saved item not found")
+
     try:
         return calculate_pricing(
             settings=settings,
@@ -219,6 +231,7 @@ async def calculate(payload: CalcIn, user: dict = Depends(require_permission(Per
             category_inputs=payload.category_inputs,
             material_profile=material_profile,
             pricing_components=pricing_components,
+            saved_item=saved_item,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

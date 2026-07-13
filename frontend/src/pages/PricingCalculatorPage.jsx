@@ -17,6 +17,8 @@ import { CategorySpecificFields } from "@/components/pricing/CategorySpecificFie
 import { Calculator, Loader2, Save, Copy, RefreshCw } from "lucide-react";
 
 const FLAT_SQFT_CATEGORIES = ["banners", "rigid_signs", "digital_print", "cut_vinyl"];
+const DIMENSIONLESS_CATEGORIES = ["apparel", "promotional"];
+const CATEGORY_SPECIFIC_CATEGORIES = ["banners", "rigid_signs", "digital_print", "cut_vinyl", "apparel", "promotional"];
 
 const fmtUSD = (n) => Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
 const fmtPct = (n) => `${Number(n || 0).toFixed(2)}%`;
@@ -49,6 +51,7 @@ export default function PricingCalculatorPage() {
   const [saveName, setSaveName] = useState("");
   const [quickSelect, setQuickSelect] = useState(false);
   const [tierPreview, setTierPreview] = useState(null);
+  const [useSavedDefaults, setUseSavedDefaults] = useState(true);
 
   const calc = useMutation({
     mutationFn: async () => (await api.post("/pricing/calculate", {
@@ -60,7 +63,8 @@ export default function PricingCalculatorPage() {
       design_needed: form.design_needed,
       install_needed: form.install_needed,
       manual_selling_price: form.manual_selling_price != null ? Number(form.manual_selling_price) : null,
-      category_inputs: FLAT_SQFT_CATEGORIES.includes(form.category) ? form.category_inputs : {},
+      category_inputs: CATEGORY_SPECIFIC_CATEGORIES.includes(form.category) ? form.category_inputs : {},
+      saved_item_id: form.category === "promotional" ? (savedItem?.id || null) : null,
     })).data,
     onSuccess: async (data) => {
       setResult(data);
@@ -102,7 +106,8 @@ export default function PricingCalculatorPage() {
 
   const applySavedItem = (id, item) => {
     setSavedItem(item);
-    if (item?.saved_config && Object.keys(item.saved_config).length) {
+    const shouldLoadDefaults = form.category !== "promotional" || useSavedDefaults;
+    if (shouldLoadDefaults && item?.saved_config && Object.keys(item.saved_config).length) {
       setForm((f) => ({ ...f, ...item.saved_config }));
     }
   };
@@ -120,6 +125,12 @@ export default function PricingCalculatorPage() {
               <Label>Saved / common item <span className="text-muted-foreground font-normal">(optional — pick one, or leave as a one-time custom item)</span></Label>
               <SavedItemSelector value={savedItem?.id} onChange={applySavedItem} category={form.category} testIdPrefix="calc-saved-item" />
               {savedItem && <Badge variant="secondary" className="w-fit text-[10px]">Loaded from "{savedItem.name}" — values below stay fully editable</Badge>}
+              {form.category === "promotional" && (
+                <label className="flex items-center gap-2 text-xs cursor-pointer text-muted-foreground">
+                  <Switch checked={useSavedDefaults} onCheckedChange={setUseSavedDefaults} data-testid="calc-promo-use-saved-defaults-switch" />
+                  Use saved item defaults when a saved item is picked
+                </label>
+              )}
             </div>
             <div className="grid gap-1.5">
               <Label>Category</Label>
@@ -130,12 +141,16 @@ export default function PricingCalculatorPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="grid gap-1.5"><Label>Width (in)</Label><Input type="number" value={form.width_inches} onChange={(e) => upd("width_inches")(e.target.value)} data-testid="calc-width-input" /></div>
-              <div className="grid gap-1.5"><Label>Height (in)</Label><Input type="number" value={form.height_inches} onChange={(e) => upd("height_inches")(e.target.value)} data-testid="calc-height-input" /></div>
+            {DIMENSIONLESS_CATEGORIES.includes(form.category) ? (
               <div className="grid gap-1.5"><Label>Quantity</Label><Input type="number" min="1" value={form.quantity} onChange={(e) => upd("quantity")(e.target.value)} data-testid="calc-quantity-input" /></div>
-            </div>
-            {materialOptions.length > 0 && (
+            ) : (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="grid gap-1.5"><Label>Width (in)</Label><Input type="number" value={form.width_inches} onChange={(e) => upd("width_inches")(e.target.value)} data-testid="calc-width-input" /></div>
+                <div className="grid gap-1.5"><Label>Height (in)</Label><Input type="number" value={form.height_inches} onChange={(e) => upd("height_inches")(e.target.value)} data-testid="calc-height-input" /></div>
+                <div className="grid gap-1.5"><Label>Quantity</Label><Input type="number" min="1" value={form.quantity} onChange={(e) => upd("quantity")(e.target.value)} data-testid="calc-quantity-input" /></div>
+              </div>
+            )}
+            {materialOptions.length > 0 && !DIMENSIONLESS_CATEGORIES.includes(form.category) && (
               <div className="grid gap-1.5">
                 <Label>Material (optional)</Label>
                 <Select value={form.material_key || "__default__"} onValueChange={(v) => upd("material_key")(v === "__default__" ? "" : v)}>
@@ -147,11 +162,13 @@ export default function PricingCalculatorPage() {
                 </Select>
               </div>
             )}
-            <div className="flex items-center gap-6 pt-1">
-              <label className="flex items-center gap-2 text-sm cursor-pointer"><Switch checked={form.design_needed} onCheckedChange={upd("design_needed")} data-testid="calc-design-switch" />Design needed</label>
-              <label className="flex items-center gap-2 text-sm cursor-pointer"><Switch checked={form.install_needed} onCheckedChange={upd("install_needed")} data-testid="calc-install-switch" />Install needed</label>
-            </div>
-            {FLAT_SQFT_CATEGORIES.includes(form.category) && (
+            {!DIMENSIONLESS_CATEGORIES.includes(form.category) && (
+              <div className="flex items-center gap-6 pt-1">
+                <label className="flex items-center gap-2 text-sm cursor-pointer"><Switch checked={form.design_needed} onCheckedChange={upd("design_needed")} data-testid="calc-design-switch" />Design needed</label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer"><Switch checked={form.install_needed} onCheckedChange={upd("install_needed")} data-testid="calc-install-switch" />Install needed</label>
+              </div>
+            )}
+            {CATEGORY_SPECIFIC_CATEGORIES.includes(form.category) && (
               <CategorySpecificFields
                 category={form.category}
                 values={form.category_inputs}
@@ -177,22 +194,27 @@ export default function PricingCalculatorPage() {
               <div className="text-sm text-muted-foreground">Fill in inputs and click Calculate.</div>
             ) : (
               <div className="space-y-4" data-testid="calc-result">
+                {result.requires_manual_price && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800" data-testid="calc-requires-manual-price-warning">
+                    No configured tier price for quantity {result.quantity} — this is not a guessed price. Enter a manual selling price override below.
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-lg border p-3">
                     <div className="text-xs text-muted-foreground">Selling price</div>
-                    <div className="text-2xl font-semibold tabular-nums" data-testid="calc-selling-price">{fmtUSD(result.selling_price)}</div>
+                    <div className="text-2xl font-semibold tabular-nums" data-testid="calc-selling-price">{result.selling_price != null ? fmtUSD(result.selling_price) : "—"}</div>
                   </div>
                   <div className="rounded-lg border p-3">
                     <div className="text-xs text-muted-foreground">Profit margin</div>
-                    <div className="text-2xl font-semibold tabular-nums" data-testid="calc-margin">{fmtPct(result.profit_margin_percent)}</div>
-                    <div className="text-xs text-muted-foreground mt-1">{fmtUSD(result.profit_amount)} profit</div>
+                    <div className="text-2xl font-semibold tabular-nums" data-testid="calc-margin">{result.profit_margin_percent != null ? fmtPct(result.profit_margin_percent) : "—"}</div>
+                    <div className="text-xs text-muted-foreground mt-1">{result.profit_amount != null ? fmtUSD(result.profit_amount) : "—"} profit</div>
                   </div>
                 </div>
 
                 <div className="rounded-lg border">
                   <div className="px-3 py-2 border-b flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Cost breakdown</span>
-                    <span className="capitalize text-muted-foreground">Method: {String(result.pricing_method_used).replace("_", " ")}</span>
+                    <span className="capitalize text-muted-foreground">Method: {String(result.pricing_method_used).replace(/_/g, " ")}</span>
                   </div>
                   <ul className="divide-y">
                     {result.breakdown.map((row, i) => (
@@ -205,9 +227,11 @@ export default function PricingCalculatorPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
-                  <div>Area (total): <span className="tabular-nums text-foreground">{result.area_sqft_total} sqft</span></div>
+                  {!DIMENSIONLESS_CATEGORIES.includes(result.category) && (
+                    <div>Area (total): <span className="tabular-nums text-foreground">{result.area_sqft_total} sqft</span></div>
+                  )}
                   <div>Quantity: <span className="tabular-nums text-foreground">{result.quantity}</span></div>
-                  <div>Material: <span className="mono text-foreground">{result.material_key || "—"}</span></div>
+                  <div>{result.category === "promotional" ? "Item" : "Material"}: <span className="mono text-foreground">{result.material_key || "—"}</span></div>
                   <div>Category: <span className="capitalize text-foreground">{result.category.replace("_"," ")}</span></div>
                 </div>
 

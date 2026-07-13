@@ -3,9 +3,30 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+const GARMENT_TYPES = [
+  ["short_sleeve_tee", "Short Sleeve Tee"], ["long_sleeve_tee", "Long Sleeve Tee"],
+  ["crewneck_sweatshirt", "Crewneck Sweatshirt"], ["hoodie", "Hoodie"], ["polo", "Polo"],
+  ["standard_cap", "Standard Cap"], ["premium_cap", "Premium Cap"], ["visor", "Visor"],
+];
+const HAT_TYPES = new Set(["standard_cap", "premium_cap", "visor"]);
+const BRANDS_BY_GARMENT = {
+  short_sleeve_tee: [["gildan_5000", "Gildan 5000"], ["bella_3001", "Bella + Canvas 3001"]],
+  long_sleeve_tee: [["gildan_2400", "Gildan 2400"], ["bella_3501", "Bella + Canvas 3501"]],
+  crewneck_sweatshirt: [["gildan_18000", "Gildan 18000"], ["bella_3901", "Bella + Canvas 3901"]],
+  hoodie: [["gildan_18500", "Gildan 18500"], ["bella_3719", "Bella + Canvas 3719"]],
+  polo: [["gildan_8800", "Gildan 8800"], ["bella_3415", "Bella + Canvas 3415"]],
+};
+const DECORATION_METHODS = [
+  ["htv", "HTV"], ["screen_print_transfer", "Screen Print Transfer"], ["dtf_transfer", "DTF Transfer"],
+  ["direct_screen_print", "Direct Screen Print"], ["embroidery", "Embroidery"], ["dtg", "DTG"],
+  ["patch_emblem", "Patch / Emblem"], ["sublimation", "Sublimation"], ["specialty_custom", "Specialty / Custom"],
+];
+const SIZE_KEYS = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"];
+
 /**
  * EC9 Phase 9E-1 — category-specific conditional fields for the 4 Core Flat
  * & Square-Foot calculators (Banners, Rigid Signs, Digital Print, Cut Vinyl).
+ * EC9 Phase 9E-2 adds Apparel and Promotional Items.
  * Progressive disclosure: dependent fields (grommet count, pole-pocket
  * sides, piece separation, design/install complexity) only render once
  * their parent toggle is on, so the form never shows more than what's
@@ -26,6 +47,16 @@ export function CategorySpecificFields({ category, values, onChange, designNeede
         <SelectTrigger data-testid={testId}><SelectValue /></SelectTrigger>
         <SelectContent>{options.map(([val, lbl]) => <SelectItem key={val} value={val}>{lbl}</SelectItem>)}</SelectContent>
       </Select>
+    </div>
+  );
+  const Numbery = ({ testId, label, field, defaultValue = 0, min = 0 }) => (
+    <div className="grid gap-1.5"><Label className="text-xs">{label}</Label>
+      <Input type="number" min={min} value={v[field] ?? defaultValue} onChange={(e) => set(field)(Number(e.target.value))} data-testid={testId} />
+    </div>
+  );
+  const Moneyy = ({ testId, label, field, defaultValue = 0 }) => (
+    <div className="grid gap-1.5"><Label className="text-xs">{label}</Label>
+      <Input type="number" min="0" step="0.01" value={v[field] ?? defaultValue} onChange={(e) => set(field)(Number(e.target.value))} data-testid={testId} />
     </div>
   );
 
@@ -147,6 +178,133 @@ export function CategorySpecificFields({ category, values, onChange, designNeede
         <Switchy testId="calc-masking-switch" label="Masking required" field="masking" />
         <div className="grid grid-cols-2 gap-3">{complexityFields}</div>
         <div className="grid grid-cols-2 gap-3">{rushAndCleanup}</div>
+      </div>
+    );
+  }
+
+  if (category === "apparel") {
+    const isHat = HAT_TYPES.has(v.garment_type || "short_sleeve_tee");
+    const brandOptions = BRANDS_BY_GARMENT[v.garment_type] || BRANDS_BY_GARMENT.short_sleeve_tee;
+    const placementOptions = isHat
+      ? [["front_only", "Front only"], ["side_back", "Side-back"], ["front_side_back", "Front + Side/Back"]]
+      : [["front_small", "Front small"], ["back_large", "Back large"], ["front_back", "Front + Back"]];
+    return (
+      <div className="grid gap-3 rounded-lg border p-3" data-testid="calc-category-fields-apparel">
+        <div className="text-xs font-medium text-muted-foreground">Apparel options</div>
+        <div className="grid grid-cols-2 gap-3">
+          <Selecty testId="calc-apparel-garment-type" label="Garment / blank" field="garment_type" defaultValue="short_sleeve_tee" options={GARMENT_TYPES} />
+          {!isHat && <Selecty testId="calc-apparel-brand" label="Brand" field="brand" defaultValue={brandOptions[0][0]} options={brandOptions} />}
+          <Selecty testId="calc-apparel-placement" label="Decoration location" field="placement" defaultValue={isHat ? "front_side_back" : "front_back"} options={placementOptions} />
+          <Selecty testId="calc-apparel-decoration-method" label="Decoration method" field="decoration_method" defaultValue="htv" options={DECORATION_METHODS} />
+          <Numbery testId="calc-apparel-num-colors" label="Number of print colors" field="num_colors" defaultValue={1} min={1} />
+          {v.decoration_method === "embroidery" && <Numbery testId="calc-apparel-stitch-count" label="Stitch count" field="stitch_count" defaultValue={0} />}
+        </div>
+
+        <div>
+          <Label className="text-xs">Sizes (per-size quantity — leave blank to use the Quantity field above)</Label>
+          <div className="grid grid-cols-5 sm:grid-cols-9 gap-2 mt-1.5">
+            {SIZE_KEYS.map((sz) => (
+              <div key={sz} className="grid gap-1">
+                <Label className="text-[10px] text-muted-foreground text-center">{sz}</Label>
+                <Input type="number" min="0" className="h-8 text-xs text-center" value={(v.sizes || {})[sz] ?? ""}
+                  onChange={(e) => set("sizes")({ ...(v.sizes || {}), [sz]: Number(e.target.value) || 0 })}
+                  data-testid={`calc-apparel-size-${sz.toLowerCase()}`} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Switchy testId="calc-apparel-customer-supplied-switch" label="Customer-supplied blank" field="customer_supplied" />
+          <Switchy testId="calc-apparel-artwork-needed-switch" label="Artwork needed" field="artwork_needed" />
+          {v.artwork_needed && <Selecty testId="calc-apparel-design-complexity" label="Design complexity" field="design_complexity" defaultValue="simple"
+            options={[["simple", "Simple"], ["medium", "Medium"], ["complex", "Complex"], ["extreme", "Extreme"]]} />}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Switchy testId="calc-apparel-custom-name-number-switch" label="Custom name / number" field="custom_name_number" />
+          {v.custom_name_number && <Numbery testId="calc-apparel-custom-name-number-count" label="Name/number count" field="custom_name_number_count" defaultValue={0} />}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Switchy testId="calc-apparel-specialty-finish-switch" label={isHat ? "Specialty finish (+$1.50 ea)" : "Specialty vinyl/finish (+$2 ea)"} field="specialty_finish" />
+          <Switchy testId="calc-apparel-bag-and-fold-switch" label="Bag & fold" field="bag_and_fold" />
+          {isHat && <Switchy testId="calc-apparel-two-tone-hat-switch" label="Two-tone / specialty hat finish" field="two_tone_hat_finish" />}
+          {isHat && <Switchy testId="calc-apparel-leather-patch-switch" label="Leather / faux patch" field="leather_patch" />}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Switchy testId="calc-apparel-rush-switch" label="Rush" field="rush" />
+          {v.rush && <Numbery testId="calc-apparel-rush-percent" label="Rush % override" field="rush_percent" defaultValue={17.5} />}
+        </div>
+      </div>
+    );
+  }
+
+  if (category === "promotional") {
+    return (
+      <div className="grid gap-3 rounded-lg border p-3" data-testid="calc-category-fields-promotional">
+        <div className="text-xs font-medium text-muted-foreground">Promotional item options</div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-1.5"><Label className="text-xs">Order item name</Label>
+            <Input value={v.order_item_name ?? ""} onChange={(e) => set("order_item_name")(e.target.value)} data-testid="calc-promo-order-item-name-input" /></div>
+          <div className="grid gap-1.5"><Label className="text-xs">Promotional item type</Label>
+            <Input placeholder="e.g. pens, mugs, koozies" value={v.promotional_item_type ?? ""} onChange={(e) => set("promotional_item_type")(e.target.value)} data-testid="calc-promo-item-type-input" /></div>
+        </div>
+        <div className="grid gap-1.5"><Label className="text-xs">Description</Label>
+          <Input value={v.description ?? ""} onChange={(e) => set("description")(e.target.value)} data-testid="calc-promo-description-input" /></div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Selecty testId="calc-promo-pricing-method" label="Pricing method" field="pricing_method" defaultValue="manual"
+            options={[["tier_pricing", "Tier pricing (saved item)"], ["per_piece", "Per-piece"], ["flat_fee", "Flat fee"], ["manual", "Manual"]]} />
+          {v.pricing_method === "flat_fee" && <Moneyy testId="calc-promo-flat-fee-price" label="Flat fee sell price" field="flat_fee_price" defaultValue={0} />}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <div className="grid gap-1.5"><Label className="text-xs">Vendor / supplier</Label>
+            <Input value={v.vendor_supplier ?? ""} onChange={(e) => set("vendor_supplier")(e.target.value)} data-testid="calc-promo-vendor-input" /></div>
+          <Switchy testId="calc-promo-known-supplier-cost-switch" label="Known supplier cost?" field="known_supplier_cost" />
+          {v.known_supplier_cost !== false && <Moneyy testId="calc-promo-unit-cost-input" label="Unit cost" field="unit_cost" defaultValue={0} />}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Switchy testId="calc-promo-setup-required-switch" label="Setup required?" field="setup_required" />
+          {v.setup_required && <Moneyy testId="calc-promo-setup-fee-input" label="Setup fee" field="setup_fee" defaultValue={0} />}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <div className="grid gap-1.5"><Label className="text-xs">Decoration method</Label>
+            <Input value={v.decoration_method ?? ""} onChange={(e) => set("decoration_method")(e.target.value)} data-testid="calc-promo-decoration-method-input" /></div>
+          <div className="grid gap-1.5"><Label className="text-xs">Decoration location</Label>
+            <Input value={v.decoration_location ?? ""} onChange={(e) => set("decoration_location")(e.target.value)} data-testid="calc-promo-decoration-location-input" /></div>
+        </div>
+        <div className="grid grid-cols-3 gap-3 items-end">
+          <Switchy testId="calc-promo-decoration-fee-required-switch" label="Decoration fee required?" field="decoration_fee_required" />
+          {v.decoration_fee_required && (
+            <>
+              <Selecty testId="calc-promo-decoration-fee-type" label="Fee type" field="decoration_fee_type" defaultValue="per_piece"
+                options={[["per_piece", "Per piece"], ["flat_fee", "Flat fee"]]} />
+              <Moneyy testId="calc-promo-decoration-fee-amount" label="Decoration fee" field="decoration_fee_amount" defaultValue={0} />
+            </>
+          )}
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 items-end">
+          <Switchy testId="calc-promo-personalization-required-switch" label="Personalization required?" field="personalization_required" />
+          {v.personalization_required && (
+            <>
+              <Numbery testId="calc-promo-personalization-count" label="Personalization count" field="personalization_count" defaultValue={0} />
+              <Moneyy testId="calc-promo-personalization-fee" label="Personalization fee (ea)" field="personalization_fee" defaultValue={0} />
+            </>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Switchy testId="calc-promo-shipping-required-switch" label="Shipping / pass-through required?" field="shipping_required" />
+          {v.shipping_required && <Moneyy testId="calc-promo-shipping-cost" label="Shipping / pass-through cost" field="shipping_cost" defaultValue={0} />}
+        </div>
+
+        <Switchy testId="calc-promo-rush-switch" label="Rush" field="rush" />
       </div>
     );
   }

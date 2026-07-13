@@ -88,6 +88,104 @@ FLAT_SQFT_QUANTITY_TIERS: dict[str, list[tuple[int, Optional[int], float]]] = {
     "cut_vinyl":     [(1, 5, 0.0), (6, 24, 5.0), (25, 99, 10.0), (100, None, 15.0)],
 }
 
+# EC9 Phase 9E-2 — Apparel garment quantity/placement pricing tables and
+# decoration method configs (EC09 controlling document, Apparel section,
+# exact values). Every tier row is {min_qty, max_qty, front, back, combo}:
+# `front`/`back` map to "Front Small"/"Back Large" (garments) or "Front
+# Only"/"Side-Back" (hats); `combo` maps to "Front + Back" / "Front +
+# Side/Back". Stored under category_defaults so every value stays
+# tenant-editable through the existing Pricing Foundation category-update
+# endpoints (no separate table lives outside category_defaults).
+def _tiers(*rows: tuple[int, Optional[int], float, float, float]) -> list[dict[str, Any]]:
+    return [{"min_qty": lo, "max_qty": hi, "front": f, "back": b, "combo": c} for lo, hi, f, b, c in rows]
+
+
+APPAREL_GARMENTS: dict[str, dict[str, Any]] = {
+    "short_sleeve_tee": {"label": "Short Sleeve Tee", "is_hat": False, "brands": {
+        "gildan_5000": {"label": "Gildan 5000", "blank_cost": 3.25, "tiers": _tiers(
+            (1, 4, 12.00, 13.50, 17.00), (5, 24, 10.50, 12.00, 15.00), (25, 49, 9.00, 10.50, 14.00),
+            (50, 99, 8.25, 9.50, 13.00), (100, None, 7.75, 9.00, 12.50),
+        )},
+        "bella_3001": {"label": "Bella + Canvas 3001", "blank_cost": 5.00, "tiers": _tiers(
+            (1, 4, 14.00, 15.50, 19.00), (5, 24, 12.50, 14.00, 17.00), (25, 49, 11.00, 12.50, 16.00),
+            (50, 99, 10.25, 11.75, 15.00), (100, None, 9.75, 11.25, 14.50),
+        )},
+    }},
+    "long_sleeve_tee": {"label": "Long Sleeve Tee", "is_hat": False, "brands": {
+        "gildan_2400": {"label": "Gildan 2400", "blank_cost": 6.00, "tiers": _tiers(
+            (1, 4, 15.00, 16.50, 20.00), (5, 24, 13.50, 15.00, 18.00), (25, 49, 12.00, 13.50, 17.00),
+            (50, 99, 11.25, 12.50, 16.00), (100, None, 10.75, 12.00, 15.50),
+        )},
+        "bella_3501": {"label": "Bella + Canvas 3501", "blank_cost": 8.00, "tiers": _tiers(
+            (1, 4, 17.00, 18.50, 22.00), (5, 24, 15.50, 17.00, 20.00), (25, 49, 14.00, 15.50, 19.00),
+            (50, 99, 13.25, 14.75, 18.00), (100, None, 12.75, 14.25, 17.50),
+        )},
+    }},
+    "crewneck_sweatshirt": {"label": "Crewneck Sweatshirt", "is_hat": False, "brands": {
+        "gildan_18000": {"label": "Gildan 18000", "blank_cost": 9.00, "tiers": _tiers(
+            (1, 4, 18.00, 19.50, 23.00), (5, 24, 16.50, 18.00, 21.00), (25, 49, 15.00, 16.50, 20.00),
+            (50, 99, 14.25, 15.50, 19.00), (100, None, 13.75, 15.00, 18.50),
+        )},
+        "bella_3901": {"label": "Bella + Canvas 3901", "blank_cost": 11.00, "tiers": _tiers(
+            (1, 4, 20.00, 21.50, 25.00), (5, 24, 18.50, 20.00, 23.00), (25, 49, 17.00, 18.50, 22.00),
+            (50, 99, 16.25, 17.75, 21.00), (100, None, 15.75, 17.25, 20.50),
+        )},
+    }},
+    "hoodie": {"label": "Hoodie", "is_hat": False, "brands": {
+        "gildan_18500": {"label": "Gildan 18500", "blank_cost": 13.00, "tiers": _tiers(
+            (1, 4, 23.00, 24.50, 28.00), (5, 24, 21.50, 23.00, 26.00), (25, 49, 20.00, 21.50, 25.00),
+            (50, 99, 19.25, 20.50, 24.00), (100, None, 18.75, 20.00, 23.50),
+        )},
+        "bella_3719": {"label": "Bella + Canvas 3719", "blank_cost": 17.00, "tiers": _tiers(
+            (1, 4, 25.00, 26.50, 30.00), (5, 24, 23.50, 25.00, 28.00), (25, 49, 22.00, 23.50, 27.00),
+            (50, 99, 21.25, 22.75, 26.00), (100, None, 20.75, 22.25, 25.50),
+        )},
+    }},
+    "polo": {"label": "Polo", "is_hat": False, "brands": {
+        "gildan_8800": {"label": "Gildan 8800", "blank_cost": 6.00, "tiers": _tiers(
+            (1, 4, 14.00, 15.50, 19.00), (5, 24, 12.50, 14.00, 17.00), (25, 49, 11.00, 12.50, 16.00),
+            (50, 99, 10.25, 11.75, 15.00), (100, None, 9.75, 11.25, 14.50),
+        )},
+        "bella_3415": {"label": "Bella + Canvas 3415", "blank_cost": 8.50, "tiers": _tiers(
+            (1, 4, 16.00, 17.50, 21.00), (5, 24, 14.50, 16.00, 19.00), (25, 49, 13.00, 14.50, 18.00),
+            (50, 99, 12.25, 13.75, 17.00), (100, None, 11.75, 13.25, 16.50),
+        )},
+    }},
+    "standard_cap": {"label": "Standard Cap", "is_hat": True, "blank_cost": 4.00, "tiers": _tiers(
+        (1, 4, 12.00, 13.00, 15.00), (5, 24, 11.00, 12.00, 14.00), (25, 49, 10.00, 11.00, 13.00),
+        (50, 99, 9.50, 10.50, 12.50), (100, None, 9.00, 10.00, 12.00),
+    )},
+    "premium_cap": {"label": "Premium Cap", "is_hat": True, "blank_cost": 6.00, "tiers": _tiers(
+        (1, 4, 14.00, 15.00, 17.00), (5, 24, 13.00, 14.00, 16.00), (25, 49, 12.00, 13.00, 15.00),
+        (50, 99, 11.50, 12.50, 14.50), (100, None, 11.00, 12.00, 14.00),
+    )},
+    # EC09 controlling document lists "Standard Cap / Visor" as a single
+    # shared tier table — the Visor has its own blank cost but reuses the
+    # Standard Cap sell-price tiers verbatim.
+    "visor": {"label": "Visor", "is_hat": True, "blank_cost": 4.00, "tiers": _tiers(
+        (1, 4, 12.00, 13.00, 15.00), (5, 24, 11.00, 12.00, 14.00), (25, 49, 10.00, 11.00, 13.00),
+        (50, 99, 9.50, 10.50, 12.50), (100, None, 9.00, 10.00, 12.00),
+    )},
+}
+
+# EC09 controlling document — Apparel Decoration Method configs. `table_based`
+# methods (HTV, Screen Print Transfer) are "currently fully priced" via the
+# garment tier table above; the other 7 methods have full foundation/model
+# support (selectable now, cost-plus priced from these constants) per the
+# document's explicit instruction that they "must not be hard-coded in a way
+# that prevents later method-specific pricing tables" being added.
+APPAREL_DECORATION_METHODS: dict[str, dict[str, Any]] = {
+    "htv":                  {"label": "HTV",                    "setup_fee": 10.00, "material_cost_type": "per_color_per_piece", "material_cost_rate": 0.50, "min_sell_per_piece": None, "table_based": True},
+    "screen_print_transfer":{"label": "Screen Print Transfer",   "setup_fee": 15.00, "material_cost_type": "per_color_per_piece", "material_cost_rate": 0.35, "min_sell_per_piece": None, "table_based": True},
+    "dtf_transfer":         {"label": "DTF Transfer",            "setup_fee": 10.00, "material_cost_type": "per_sqin",            "material_cost_rate": 0.03, "min_sell_per_piece": None, "table_based": False},
+    "direct_screen_print":  {"label": "Direct Screen Print",     "setup_fee": 30.00, "setup_fee_per_color": True, "material_cost_type": "per_color_per_piece", "material_cost_rate": 0.25, "min_sell_per_piece": 5.00, "table_based": False},
+    "embroidery":           {"label": "Embroidery",               "setup_fee": 25.00, "material_cost_type": "per_1000_stitches",   "material_cost_rate": 0.75, "min_sell_per_piece": 6.00, "table_based": False},
+    "dtg":                  {"label": "DTG",                      "setup_fee": 5.00,  "material_cost_type": "per_piece",           "material_cost_rate": 2.50, "min_sell_per_piece": 8.00, "table_based": False},
+    "patch_emblem":         {"label": "Patch / Emblem",           "setup_fee": 0.00,  "material_cost_type": "per_piece",           "material_cost_rate": 3.00, "min_sell_per_piece": 4.00, "table_based": False},
+    "sublimation":          {"label": "Sublimation",              "setup_fee": 10.00, "material_cost_type": "per_sqin",            "material_cost_rate": 0.04, "min_sell_per_piece": 5.00, "table_based": False},
+    "specialty_custom":     {"label": "Specialty / Custom",       "setup_fee": 20.00, "material_cost_type": "per_piece",           "material_cost_rate": 3.00, "min_sell_per_piece": 6.00, "table_based": False},
+}
+
 # Reusable material catalogs. Only a compact, opinionated subset of the
 # original repo’s dozens of materials — enough for the MVP calculator.
 MATERIALS: dict[str, dict[str, Any]] = {
@@ -277,10 +375,28 @@ CATEGORY_DEFAULTS: dict[str, dict[str, Any]] = {
         markup=2.15, target_margin=38.0, waste_percent=0.0,
         default_material=None,
         extras={
+            # Legacy MVP fields kept for backward compatibility with any
+            # pre-Phase-9E-2 record that referenced them directly.
             "blank_tshirt_cost": 3.25,
             "decoration_cost_per_garment": 0.50,
             "production_minutes_per_garment": 2.0,
             "basic_setup_fee": 10.00,
+            # EC9 Phase 9E-2 — EC09 controlling document, Apparel section.
+            "garments": APPAREL_GARMENTS,
+            "decoration_methods": APPAREL_DECORATION_METHODS,
+            "default_decoration_method": "htv",
+            "design_default_hours": 0.5,
+            "design_setup_fee_by_complexity": {"simple": 10.00, "medium": 15.00, "complex": 25.00, "extreme": 30.00},
+            "plus_size_upcharge": 2.00,
+            "custom_name_number_charge_garment": 4.00,
+            "custom_name_number_charge_hat": 3.00,
+            "specialty_finish_charge_garment": 2.00,
+            "specialty_finish_charge_hat": 1.50,
+            "two_tone_hat_finish_charge": 1.50,
+            "leather_patch_charge": 2.50,
+            "bag_and_fold_charge": 1.00,
+            "rush_default_percent": 17.5,
+            "decoration_area_sqin_by_placement": {"front": 16, "back": 100, "combo": 116, "hat": 9},
             "quantity_tiers": [
                 {"min_qty": 1,  "discount_percent": 0},
                 {"min_qty": 12, "discount_percent": 5},
@@ -304,7 +420,20 @@ CATEGORY_DEFAULTS: dict[str, dict[str, Any]] = {
     "promotional": _make_category(
         pricing_method="cost_plus_labor", base_rate=None, minimum_charge=50.00,
         markup=1.50, target_margin=33.0, waste_percent=0.0, needs_tenant_setup=True,
-        extras={"minimum_setup_fee": 25.00},
+        extras={
+            "minimum_setup_fee": 25.00,
+            # EC9 Phase 9E-2 — EC09 controlling document, Promotional Items
+            # section "Foundation Values". This category is driven primarily
+            # by the tenant's own PricingSavedItem library (business cards,
+            # pens, mugs, vendor-supplied/custom-sourced items, etc.) — these
+            # are just the toggle defaults for a brand-new one-time item.
+            "default_setup_required": False,
+            "default_decoration_fee_required": False,
+            "default_personalization_required": False,
+            "default_shipping_required": False,
+            "default_rush": False,
+            "default_known_supplier_cost": True,
+        },
     ),
     "custom": _make_category(
         pricing_method="cost_plus_labor", base_rate=None, minimum_charge=50.00,
