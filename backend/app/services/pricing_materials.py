@@ -28,6 +28,8 @@ async def create_profile(tenant_id: str, material_id: str, fields: dict[str, Any
     material = await _get_tenant_material(tenant_id, material_id)
     if not material:
         raise ValueError("Material not found for this tenant")
+    if not material.get("active", True):
+        raise ValueError("Cannot create a pricing profile for an archived material — restore it first")
     existing = await db.material_pricing_profiles.find_one({"tenant_id": tenant_id, "material_id": material_id})
     if existing:
         raise ValueError("A pricing profile already exists for this material")

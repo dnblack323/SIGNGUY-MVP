@@ -270,6 +270,22 @@ def calculate_pricing(
         "profit_margin_percent": _round2(profit_margin_percent),
         "pricing_method_used": method_used,
         "breakdown": breakdown,
+        # Phase 9B — the exact shop-level Pricing Foundation values in effect
+        # at calculation time, so a snapshot can "show the math" and remain
+        # historically accurate even after the shop later edits its defaults.
+        "shop_defaults_used": {
+            "production_hourly_rate": shop.get("production_hourly_rate"),
+            "design_hourly_rate": shop.get("design_hourly_rate"),
+            "install_hourly_rate": shop.get("install_hourly_rate"),
+            "default_overhead_percent": shop.get("default_overhead_percent"),
+            "labor_burden_percent": shop.get("labor_burden_percent"),
+            "target_profit_margin_percent": shop.get("target_profit_margin_percent"),
+            "default_markup_multiplier": shop.get("default_markup_multiplier"),
+            "minimum_order_amount": shop.get("minimum_order_amount"),
+            "install_minimum_charge": shop.get("install_minimum_charge"),
+            "setup_fee_default": shop.get("setup_fee_default"),
+            "rush_fee_percent": shop.get("rush_fee_percent"),
+        },
     }
 
 

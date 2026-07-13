@@ -108,6 +108,16 @@ async def archive_material(mid: str, user: dict = Depends(require_permission(Per
     return {"archived": True}
 
 
+@materials_router.post("/{mid}/restore", status_code=200)
+async def restore_material(mid: str, user: dict = Depends(require_permission(Perm.INVENTORY_WRITE))) -> dict:
+    """Reactivate an archived material — required so it can be intentionally
+    re-selected for pricing (EC9 Phase 9A invariant 5)."""
+    res = await db.materials.update_one({"id": mid, "tenant_id": user["tenant_id"]}, {"$set": {"active": True}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Material not found")
+    return {"restored": True}
+
+
 # ---- Locations ----
 class LocationIn(BaseModel):
     name: str

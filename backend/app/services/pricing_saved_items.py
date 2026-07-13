@@ -19,9 +19,11 @@ def _now_iso() -> str:
 
 async def _validate_material_refs(tenant_id: str, material_ids: list[str]) -> None:
     for mid in material_ids or []:
-        exists = await db.materials.find_one({"id": mid, "tenant_id": tenant_id}, {"_id": 0, "id": 1})
-        if not exists:
+        mat = await db.materials.find_one({"id": mid, "tenant_id": tenant_id}, {"_id": 0, "id": 1, "active": 1})
+        if not mat:
             raise ValueError(f"Material '{mid}' not found for this tenant")
+        if not mat.get("active", True):
+            raise ValueError(f"Material '{mid}' is archived and cannot be newly selected — restore it first")
 
 
 async def create_saved_item(tenant_id: str, fields: dict[str, Any]) -> dict[str, Any]:

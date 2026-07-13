@@ -269,6 +269,7 @@ async def add_item(order_id: str, payload: OrderItemIn, user: dict = Depends(req
         reason=payload.manual_override_reason,
         actor_user_id=user["id"],
         actor_email=user["email"],
+        source="user_entered",
     )
     item = OrderItem(
         tenant_id=user["tenant_id"],

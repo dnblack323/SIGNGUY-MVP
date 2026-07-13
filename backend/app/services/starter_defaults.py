@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-STARTER_DEFAULT_VERSION = "1.0.0"
+STARTER_DEFAULT_VERSION = "1.1.0"
 
 CATEGORY_IDS = [
     "banners", "rigid_signs", "cut_vinyl", "digital_print",
@@ -35,18 +35,39 @@ CATEGORY_META: dict[str, dict[str, str]] = {
 }
 
 SHOP_DEFAULTS: dict[str, float] = {
-    # From SignGuy AI MVP baseline anchors
-    "design_hourly_rate": 97.00,
+    # Global Labor Rates — EC09 controlling document exact values (2026-02)
     "production_hourly_rate": 28.00,
-    "install_hourly_rate": 75.00,
-    "default_overhead_percent": 19.00,
+    "design_hourly_rate": 85.00,
+    "install_hourly_rate": 95.00,
+    "removal_hourly_rate": 65.00,
+    "travel_hourly_rate": 45.00,
+    "admin_hourly_rate": 35.00,
+    "consultation_hourly_rate": 110.00,
+    "site_survey_hourly_rate": 95.00,
+    "finishing_hourly_rate": 28.00,
+    # Global Markup & Overhead — EC09 controlling document exact values
+    "default_overhead_percent": 15.00,
     "target_profit_margin_percent": 40.00,
+    "default_markup_multiplier": 2.5,
+    # Not given an explicit global number by the EC09 controlling document —
+    # kept as the pre-existing, tenant-editable shop-level fallback that
+    # categories reference as "Pricing Foundation" defaults when they don't
+    # define their own (see EC9 preflight Phase 9B report for detail).
     "minimum_order_amount": 25.00,
     "deposit_percentage": 50.00,
-    # Supporting anchors (from original repo, tested)
-    "default_markup_multiplier": 2.5,
     "default_waste_percent": 10.0,
     "rush_fee_percent": 25.0,
+    # New in Phase 9B — EC09 references these as "Pricing Foundation install
+    # minimum" / "Pricing Foundation setup fee" fallbacks used by several
+    # categories; the document does not give a single global dollar amount,
+    # so these are seeded at 0.00 (no fee unless the shop configures one) and
+    # remain fully editable.
+    "install_minimum_charge": 0.00,
+    "setup_fee_default": 0.00,
+    # Not present in the EC09 document as a distinct line item (overhead is
+    # the only shop-level loading percentage defined there); kept separate
+    # from overhead per the Phase 9B requirement list, seeded at 0.00, editable.
+    "labor_burden_percent": 0.0,
 }
 
 # Reusable material catalogs. Only a compact, opinionated subset of the

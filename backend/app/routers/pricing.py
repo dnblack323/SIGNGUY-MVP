@@ -27,13 +27,22 @@ class ShopDefaultsIn(BaseModel):
     design_hourly_rate: Optional[float] = Field(None, ge=0)
     production_hourly_rate: Optional[float] = Field(None, ge=0)
     install_hourly_rate: Optional[float] = Field(None, ge=0)
+    removal_hourly_rate: Optional[float] = Field(None, ge=0)
+    travel_hourly_rate: Optional[float] = Field(None, ge=0)
+    admin_hourly_rate: Optional[float] = Field(None, ge=0)
+    consultation_hourly_rate: Optional[float] = Field(None, ge=0)
+    site_survey_hourly_rate: Optional[float] = Field(None, ge=0)
+    finishing_hourly_rate: Optional[float] = Field(None, ge=0)
     default_overhead_percent: Optional[float] = Field(None, ge=0, le=200)
+    labor_burden_percent: Optional[float] = Field(None, ge=0, le=200)
     target_profit_margin_percent: Optional[float] = Field(None, ge=0, le=99.9)
     minimum_order_amount: Optional[float] = Field(None, ge=0)
     deposit_percentage: Optional[float] = Field(None, ge=0, le=100)
     default_markup_multiplier: Optional[float] = Field(None, ge=1)
     default_waste_percent: Optional[float] = Field(None, ge=0, le=100)
     rush_fee_percent: Optional[float] = Field(None, ge=0, le=200)
+    install_minimum_charge: Optional[float] = Field(None, ge=0)
+    setup_fee_default: Optional[float] = Field(None, ge=0)
 
 
 class CategoryUpdateIn(BaseModel):

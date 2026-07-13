@@ -392,6 +392,7 @@ async def add_line_item(
         reason=payload.manual_override_reason,
         actor_user_id=user["id"],
         actor_email=user["email"],
+        source="user_entered",
     )
     li = QuoteLineItem(
         tenant_id=user["tenant_id"],
