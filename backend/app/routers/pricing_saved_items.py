@@ -18,6 +18,7 @@ from ..services.pricing_saved_items import (
     create_saved_item,
     get_saved_item,
     list_saved_items,
+    resolve_quantity_tier_price,
     save_as_variation,
     update_saved_item,
 )
@@ -58,9 +59,24 @@ class SaveAsVariationIn(BaseModel):
 
 
 @router.get("")
-async def list_pricing_saved_items(category: Optional[str] = None, active: Optional[bool] = None, user: dict = Depends(require_permission(Perm.PRICING_READ))) -> dict:
-    items = await list_saved_items(user["tenant_id"], category=category, active=active)
+async def list_pricing_saved_items(
+    category: Optional[str] = None, active: Optional[bool] = None, quick_select: Optional[bool] = None,
+    user: dict = Depends(require_permission(Perm.PRICING_READ)),
+) -> dict:
+    items = await list_saved_items(user["tenant_id"], category=category, active=active, quick_select=quick_select)
     return {"items": [serialize_doc(d) for d in items]}
+
+
+@router.get("/{item_id}/tier-price")
+async def get_saved_item_tier_price(item_id: str, quantity: int, user: dict = Depends(require_permission(Perm.PRICING_READ))) -> dict:
+    """Exact-match quantity-tier lookup (e.g. Business Card tiers). Never
+    invents a price for a quantity that doesn't match a configured tier —
+    the caller must fall back to manual pricing in that case."""
+    doc = await get_saved_item(user["tenant_id"], item_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Saved item not found")
+    price = resolve_quantity_tier_price(doc, quantity)
+    return {"item_id": item_id, "quantity": quantity, "matched": price is not None, "price": price}
 
 
 @router.get("/{item_id}")

@@ -7,10 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Wand2, RotateCcw, Save, CircleCheck, AlertCircle, Info } from "lucide-react";
 import CategorySetupWizard from "@/components/pricing/CategorySetupWizard";
 import GroupedPricingQuiz from "@/components/pricing/GroupedPricingQuiz";
+import MaterialPricingPanel from "@/components/pricing/MaterialPricingPanel";
+import PricingComponentsPanel from "@/components/pricing/PricingComponentsPanel";
+import SavedItemsPanel from "@/components/pricing/SavedItemsPanel";
 import { WIZARD_CONFIGS } from "@/components/pricing/wizardConfigs";
 import { useAuth } from "@/auth/AuthContext";
 
@@ -115,49 +119,72 @@ export default function PricingFoundationPage() {
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle>Shop defaults</CardTitle>
-            {canWrite && Object.keys(shopForm).length > 0 && (
-              <Button size="sm" onClick={() => saveShop.mutate()} disabled={saveShop.isPending} data-testid="shop-defaults-save-button">
-                <Save className="size-4 mr-1" />Save shop defaults
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {SHOP_FIELDS.map(([key, label, unit]) => (
-            <div key={key} className="grid gap-1.5">
-              <Label className="text-xs">{label} <span className="text-muted-foreground">({unit})</span></Label>
-              <Input
-                type="number" step="0.01" inputMode="decimal"
-                value={currentShop[key] ?? ""} disabled={!canWrite}
-                onChange={(e) => setShopForm((f) => ({ ...f, [key]: e.target.value === "" ? null : Number(e.target.value) }))}
-                data-testid={`shop-defaults-${key}`}
-              />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="shop-categories">
+        <TabsList data-testid="pricing-foundation-tabs">
+          <TabsTrigger value="shop-categories" data-testid="tab-shop-categories">Shop & Categories</TabsTrigger>
+          <TabsTrigger value="materials" data-testid="tab-materials">Materials & Pricing Profiles</TabsTrigger>
+          <TabsTrigger value="components" data-testid="tab-components">Pricing Components</TabsTrigger>
+          <TabsTrigger value="saved-items" data-testid="tab-saved-items">Saved / Common Items</TabsTrigger>
+        </TabsList>
 
-      <div>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-display text-lg font-semibold">Categories</h2>
-          <p className="text-xs text-muted-foreground">One card per pricing category.</p>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Object.keys(settings.category_defaults || {}).map((id) => (
-            <CategoryCard
-              key={id} id={id}
-              cat={settings.category_defaults[id]}
-              meta={settings.category_meta?.[id]}
-              onSetup={() => canWrite && setWizardCat(id)}
-              onReset={() => canWrite && confirm(`Reset '${id}' to starter defaults?`) && resetCategory.mutate(id)}
-            />
-          ))}
-        </div>
-      </div>
+        <TabsContent value="shop-categories" className="space-y-6">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle>Shop defaults</CardTitle>
+                {canWrite && Object.keys(shopForm).length > 0 && (
+                  <Button size="sm" onClick={() => saveShop.mutate()} disabled={saveShop.isPending} data-testid="shop-defaults-save-button">
+                    <Save className="size-4 mr-1" />Save shop defaults
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {SHOP_FIELDS.map(([key, label, unit]) => (
+                <div key={key} className="grid gap-1.5">
+                  <Label className="text-xs">{label} <span className="text-muted-foreground">({unit})</span></Label>
+                  <Input
+                    type="number" step="0.01" inputMode="decimal"
+                    value={currentShop[key] ?? ""} disabled={!canWrite}
+                    onChange={(e) => setShopForm((f) => ({ ...f, [key]: e.target.value === "" ? null : Number(e.target.value) }))}
+                    data-testid={`shop-defaults-${key}`}
+                  />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-display text-lg font-semibold">Categories</h2>
+              <p className="text-xs text-muted-foreground">One card per pricing category.</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Object.keys(settings.category_defaults || {}).map((id) => (
+                <CategoryCard
+                  key={id} id={id}
+                  cat={settings.category_defaults[id]}
+                  meta={settings.category_meta?.[id]}
+                  onSetup={() => canWrite && setWizardCat(id)}
+                  onReset={() => canWrite && confirm(`Reset '${id}' to starter defaults?`) && resetCategory.mutate(id)}
+                />
+              ))}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="materials">
+          <MaterialPricingPanel categoryMeta={settings.category_meta} />
+        </TabsContent>
+
+        <TabsContent value="components">
+          <PricingComponentsPanel />
+        </TabsContent>
+
+        <TabsContent value="saved-items">
+          <SavedItemsPanel categoryMeta={settings.category_meta} />
+        </TabsContent>
+      </Tabs>
 
       {wizardCat && WIZARD_CONFIGS[wizardCat] && (
         <CategorySetupWizard

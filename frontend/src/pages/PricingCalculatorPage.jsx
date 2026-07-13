@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import MoneyInput from "@/components/forms/MoneyInput";
-import { centsToDollarsString } from "@/lib/format";
-import { Calculator, Loader2 } from "lucide-react";
+import SavedItemSelector from "@/components/pricing/selectors/SavedItemSelector";
+import { Calculator, Loader2, Save, Copy, RefreshCw } from "lucide-react";
 
 const fmtUSD = (n) => Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
 const fmtPct = (n) => `${Number(n || 0).toFixed(2)}%`;
@@ -38,6 +40,11 @@ export default function PricingCalculatorPage() {
   }, [settings, form.category]);
 
   const [result, setResult] = useState(null);
+  const [savedItem, setSavedItem] = useState(null); // full item object once picked, else null = one-time/custom
+  const [saveDialog, setSaveDialog] = useState(null); // "new" | "variation" | null
+  const [saveName, setSaveName] = useState("");
+  const [quickSelect, setQuickSelect] = useState(false);
+  const [tierPreview, setTierPreview] = useState(null);
 
   const calc = useMutation({
     mutationFn: async () => (await api.post("/pricing/calculate", {
@@ -50,9 +57,50 @@ export default function PricingCalculatorPage() {
       install_needed: form.install_needed,
       manual_selling_price: form.manual_selling_price != null ? Number(form.manual_selling_price) : null,
     })).data,
-    onSuccess: (data) => setResult(data),
+    onSuccess: async (data) => {
+      setResult(data);
+      if (savedItem?.default_pricing_method === "tier_pricing") {
+        const r = await api.get(`/pricing/saved-items/${savedItem.id}/tier-price`, { params: { quantity: Number(form.quantity) || 1 } });
+        setTierPreview(r.data);
+      } else {
+        setTierPreview(null);
+      }
+    },
     onError: (e) => toast.error(extractError(e)),
   });
+
+  const savedItemConfig = () => ({
+    category: form.category, width_inches: Number(form.width_inches) || 0, height_inches: Number(form.height_inches) || 0,
+    quantity: Number(form.quantity) || 1, material_key: form.material_key || null,
+    design_needed: form.design_needed, install_needed: form.install_needed,
+  });
+
+  const saveAsNew = useMutation({
+    mutationFn: async () => (await api.post("/pricing/saved-items", {
+      name: saveName, category: form.category, saved_config: savedItemConfig(), quick_select: quickSelect,
+    })).data,
+    onSuccess: (item) => { toast.success(`Saved as new item "${item.name}"`); setSavedItem(item); setSaveDialog(null); setSaveName(""); },
+    onError: (e) => toast.error(extractError(e)),
+  });
+
+  const updateExisting = useMutation({
+    mutationFn: async () => (await api.patch(`/pricing/saved-items/${savedItem.id}`, { saved_config: savedItemConfig() })).data,
+    onSuccess: (item) => { toast.success(`Updated "${item.name}" with the current configuration`); setSavedItem(item); },
+    onError: (e) => toast.error(extractError(e)),
+  });
+
+  const saveAsVariation = useMutation({
+    mutationFn: async () => (await api.post(`/pricing/saved-items/${savedItem.id}/save-as-variation`, { name: saveName, saved_config: savedItemConfig() })).data,
+    onSuccess: (item) => { toast.success(`Saved variation "${item.name}" — original unchanged`); setSavedItem(item); setSaveDialog(null); setSaveName(""); },
+    onError: (e) => toast.error(extractError(e)),
+  });
+
+  const applySavedItem = (id, item) => {
+    setSavedItem(item);
+    if (item?.saved_config && Object.keys(item.saved_config).length) {
+      setForm((f) => ({ ...f, ...item.saved_config }));
+    }
+  };
 
   const upd = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -63,6 +111,11 @@ export default function PricingCalculatorPage() {
         <Card>
           <CardHeader><CardTitle className="text-base">Inputs</CardTitle></CardHeader>
           <CardContent className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label>Saved / common item <span className="text-muted-foreground font-normal">(optional — pick one, or leave as a one-time custom item)</span></Label>
+              <SavedItemSelector value={savedItem?.id} onChange={applySavedItem} category={form.category} testIdPrefix="calc-saved-item" />
+              {savedItem && <Badge variant="secondary" className="w-fit text-[10px]">Loaded from "{savedItem.name}" — values below stay fully editable</Badge>}
+            </div>
             <div className="grid gap-1.5">
               <Label>Category</Label>
               <Select value={form.category} onValueChange={(v) => setForm((f) => ({ ...f, category: v, material_key: "" }))}>
@@ -143,11 +196,50 @@ export default function PricingCalculatorPage() {
                   <div>Material: <span className="mono text-foreground">{result.material_key || "—"}</span></div>
                   <div>Category: <span className="capitalize text-foreground">{result.category.replace("_"," ")}</span></div>
                 </div>
+
+                {tierPreview && (
+                  <div className="rounded-lg border p-3 text-xs" data-testid="calc-tier-preview">
+                    {tierPreview.matched
+                      ? <span>Exact tier match for qty {tierPreview.quantity}: <strong className="tabular-nums">${tierPreview.price.toFixed(2)}</strong> (from "{savedItem.name}")</span>
+                      : <span className="text-amber-700">No configured tier for qty {tierPreview.quantity} on "{savedItem.name}" — use manual pricing instead of guessing.</span>}
+                  </div>
+                )}
+
+                <div className="rounded-lg border p-3 space-y-2">
+                  <div className="text-xs font-medium">Reusable item</div>
+                  {!savedItem ? (
+                    <Button size="sm" variant="outline" onClick={() => setSaveDialog("new")} data-testid="calc-save-as-new-button"><Save className="size-3.5 mr-1" />Save this as a reusable item</Button>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={() => updateExisting.mutate()} disabled={updateExisting.isPending} data-testid="calc-update-existing-button"><RefreshCw className="size-3.5 mr-1" />Update "{savedItem.name}"</Button>
+                      <Button size="sm" variant="outline" onClick={() => { setSaveDialog("variation"); setSaveName(`${savedItem.name} (variation)`); }} data-testid="calc-save-variation-button"><Copy className="size-3.5 mr-1" />Save as variation</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setSaveDialog("new")} data-testid="calc-save-as-new-from-loaded-button"><Save className="size-3.5 mr-1" />Save as new item</Button>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">Leave unsaved to use this as a one-time custom item — nothing is saved unless you choose to.</p>
+                </div>
               </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!saveDialog} onOpenChange={(o) => !o && setSaveDialog(null)}>
+        <DialogContent className="max-w-sm" data-testid="calc-save-dialog">
+          <DialogHeader><DialogTitle>{saveDialog === "variation" ? "Save as variation" : "Save as new reusable item"}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="grid gap-1.5"><Label className="text-xs">Item name</Label><Input value={saveName} onChange={(e) => setSaveName(e.target.value)} data-testid="calc-save-name-input" /></div>
+            {saveDialog === "new" && (
+              <label className="flex items-center gap-2 text-sm cursor-pointer"><Switch checked={quickSelect} onCheckedChange={setQuickSelect} data-testid="calc-save-quick-select-switch" />Mark as quick-select / common item</label>
+            )}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => (saveDialog === "variation" ? saveAsVariation.mutate() : saveAsNew.mutate())} disabled={!saveName || saveAsNew.isPending || saveAsVariation.isPending} data-testid="calc-save-confirm-button">
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
