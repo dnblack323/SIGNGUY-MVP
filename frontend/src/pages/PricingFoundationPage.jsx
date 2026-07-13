@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Wand2, RotateCcw, Save, CircleCheck, AlertCircle, Info } from "lucide-react";
 import CategorySetupWizard from "@/components/pricing/CategorySetupWizard";
+import GroupedPricingQuiz from "@/components/pricing/GroupedPricingQuiz";
 import { WIZARD_CONFIGS } from "@/components/pricing/wizardConfigs";
 import { useAuth } from "@/auth/AuthContext";
 
@@ -78,6 +79,7 @@ export default function PricingFoundationPage() {
 
   const [shopForm, setShopForm] = useState({});
   const [wizardCat, setWizardCat] = useState(null);
+  const [quizOpen, setQuizOpen] = useState(false);
 
   const currentShop = useMemo(() => ({ ...(settings?.shop_defaults || {}), ...shopForm }), [settings, shopForm]);
 
@@ -99,6 +101,11 @@ export default function PricingFoundationPage() {
       <PageHeader
         title="Pricing Foundation"
         subtitle="Shop defaults + per-category setup. Run the wizards to tailor these values to your shop."
+        actions={canWrite ? (
+          <Button variant="outline" onClick={() => setQuizOpen(true)} data-testid="open-grouped-quiz-button">
+            <Wand2 className="size-4 mr-1" />Quick Setup (Grouped Quiz)
+          </Button>
+        ) : null}
       />
 
       <div className="rounded-lg border bg-accent/40 p-4 flex gap-3 items-start" data-testid="starter-notice">
@@ -162,6 +169,12 @@ export default function PricingFoundationPage() {
           onApplied={() => qc.invalidateQueries({ queryKey: ["pricing-settings"] })}
         />
       )}
+
+      <GroupedPricingQuiz
+        open={quizOpen}
+        onOpenChange={setQuizOpen}
+        categoryOptions={Object.keys(settings.category_defaults || {}).map((id) => [id, settings.category_meta?.[id]?.name || id])}
+      />
     </div>
   );
 }

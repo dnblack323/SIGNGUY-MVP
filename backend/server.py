@@ -168,6 +168,10 @@ api_router.include_router(pricing_materials_router_module.router)
 api_router.include_router(pricing_components_router_module.router)
 api_router.include_router(pricing_saved_items_router_module.router)
 
+# EC9 — Phase 9C Grouped Pricing Setup Quiz (additive to the detailed wizard)
+from app.routers import pricing_quiz as pricing_quiz_router_module
+api_router.include_router(pricing_quiz_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

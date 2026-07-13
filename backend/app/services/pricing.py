@@ -30,30 +30,36 @@ async def get_or_init_pricing_settings(tenant_id: str) -> dict[str, Any]:
     return await db.pricing_settings.find_one({"tenant_id": tenant_id}, {"_id": 0})
 
 
-async def update_shop_defaults(tenant_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+async def update_shop_defaults(tenant_id: str, updates: dict[str, Any], source: str = "user_entered") -> dict[str, Any]:
     doc = await get_or_init_pricing_settings(tenant_id)
     sd = dict(doc.get("shop_defaults") or {})
+    sources = dict(doc.get("field_sources") or {})
     for k, v in updates.items():
         if v is None:
             continue
         sd[k] = float(v) if isinstance(v, (int, float, Decimal)) else v
+        sources[f"shop_defaults.{k}"] = source
     await db.pricing_settings.update_one(
         {"tenant_id": tenant_id},
-        {"$set": {"shop_defaults": sd, "updated_at": _now_iso()}},
+        {"$set": {"shop_defaults": sd, "field_sources": sources, "updated_at": _now_iso()}},
     )
     return await db.pricing_settings.find_one({"tenant_id": tenant_id}, {"_id": 0})
 
 
-async def update_category(tenant_id: str, category_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+async def update_category(tenant_id: str, category_id: str, updates: dict[str, Any], source: str = "user_entered") -> dict[str, Any]:
     if category_id not in CATEGORY_IDS:
         raise ValueError(f"Unknown category: {category_id}")
     doc = await get_or_init_pricing_settings(tenant_id)
     cats = dict(doc.get("category_defaults") or {})
     current = dict(cats.get(category_id) or {})
+    sources = dict(doc.get("field_sources") or {})
     for k, v in updates.items():
         if v is None:
             continue
+        if k == "__mark_setup_complete__":
+            continue
         current[k] = v
+        sources[f"category_defaults.{category_id}.{k}"] = source
     if updates.get("__mark_setup_complete__") is True:
         current["setup_complete"] = True
         current["setup_updated_at"] = _now_iso()
@@ -61,7 +67,7 @@ async def update_category(tenant_id: str, category_id: str, updates: dict[str, A
     cats[category_id] = current
     await db.pricing_settings.update_one(
         {"tenant_id": tenant_id},
-        {"$set": {f"category_defaults.{category_id}": current, "updated_at": _now_iso()}},
+        {"$set": {f"category_defaults.{category_id}": current, "field_sources": sources, "updated_at": _now_iso()}},
     )
     return await db.pricing_settings.find_one({"tenant_id": tenant_id}, {"_id": 0})
 

@@ -422,4 +422,9 @@ async def ensure_indexes() -> None:
     await db.pricing_saved_items.create_index([("tenant_id", 1), ("category", 1)])
     await db.pricing_saved_items.create_index([("tenant_id", 1), ("quick_select", 1)])
 
+    # ---- EC9 phase 9C — Grouped Pricing Setup Quiz submissions ----
+    await db.pricing_quiz_submissions.create_index("id", unique=True)
+    await db.pricing_quiz_submissions.create_index([("tenant_id", 1), ("status", 1)])
+    await db.pricing_quiz_submissions.create_index([("tenant_id", 1), ("created_at", -1)])
+
     logger.info("MongoDB indexes ensured")

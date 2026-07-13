@@ -167,7 +167,7 @@ async def wizard_apply(category_id: str, payload: ApplySuggestionsIn, user: dict
         updates["__mark_setup_complete__"] = True
     if not updates:
         raise HTTPException(status_code=400, detail="No suggestions selected to apply")
-    doc = await update_category(user["tenant_id"], category_id, updates)
+    doc = await update_category(user["tenant_id"], category_id, updates, source="detailed_wizard")
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         action="pricing.wizard.apply", entity_type="pricing_category", entity_id=category_id,
