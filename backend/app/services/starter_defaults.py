@@ -13,7 +13,7 @@ Strategy for values:
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 STARTER_DEFAULT_VERSION = "1.1.0"
 
@@ -68,6 +68,24 @@ SHOP_DEFAULTS: dict[str, float] = {
     # the only shop-level loading percentage defined there); kept separate
     # from overhead per the Phase 9B requirement list, seeded at 0.00, editable.
     "labor_burden_percent": 0.0,
+    # EC9 Phase 9E-1 — EC09 controlling document: "file cleanup fee defaults: $20"
+    "file_cleanup_fee_default": 20.00,
+}
+
+# EC9 Phase 9E-1 — shared complexity/install multiplier scales (EC09 controlling
+# document, Global Definitions). Every flat/square-foot category uses the same
+# 4-level scale for Design Complexity and (a differently-labelled but
+# identically-valued) Install Complexity scale.
+DESIGN_COMPLEXITY_MULTIPLIERS: dict[str, float] = {"simple": 1.00, "medium": 1.25, "complex": 1.50, "extreme": 2.00}
+INSTALL_COMPLEXITY_MULTIPLIERS: dict[str, float] = {"easy": 1.00, "medium": 1.25, "difficult": 1.50, "extreme": 2.00}
+
+# EC9 Phase 9E-1 — exact per-category quantity discount tiers (EC09 controlling
+# document). Each tuple is (min_qty, max_qty_or_None, discount_percent).
+FLAT_SQFT_QUANTITY_TIERS: dict[str, list[tuple[int, Optional[int], float]]] = {
+    "banners":       [(1, 2, 0.0), (3, 9, 5.0), (10, 24, 10.0), (25, None, 15.0)],
+    "rigid_signs":   [(1, 4, 0.0), (5, 24, 5.0), (25, 99, 10.0), (100, None, 15.0)],
+    "digital_print": [(1, 4, 0.0), (5, 24, 5.0), (25, 99, 10.0), (100, None, 15.0)],
+    "cut_vinyl":     [(1, 5, 0.0), (6, 24, 5.0), (25, 99, 10.0), (100, None, 15.0)],
 }
 
 # Reusable material catalogs. Only a compact, opinionated subset of the
@@ -139,6 +157,26 @@ CATEGORY_DEFAULTS: dict[str, dict[str, Any]] = {
             "reinforced_corners_charge": 6.00,
             "wind_slit_charge": 2.00,
             "install_available": True,
+            # EC9 Phase 9E-1 additions (EC09 controlling document, Banners section)
+            "min_billable_area_sqft": 4.0,
+            "print_consumable_rate_per_sqft": 0.75,
+            "grommet_minimum_charge": 4.00,
+            "hem_charge_per_linear_ft": 0.35,
+            "specialty_sewing_charge": 15.00,
+            "coating_rate_per_sqft": {"none": 0.0, "matte": 0.30, "gloss": 0.35},
+            "double_sided_same_side_multiplier": 1.75,
+            "double_sided_different_side_multiplier": 2.00,
+            "event_premium_multiplier": 1.20,
+            "step_and_repeat_multiplier": 1.30,
+            "design_default_hours": 0.5,
+            "production_labor_hr_per_sqft": 0.10,
+            "install_base_hr_per_sqft": 0.08,
+            "quantity_tiers": [
+                {"min_qty": 1, "max_qty": 2, "discount_percent": 0},
+                {"min_qty": 3, "max_qty": 9, "discount_percent": 5},
+                {"min_qty": 10, "max_qty": 24, "discount_percent": 10},
+                {"min_qty": 25, "max_qty": None, "discount_percent": 15},
+            ],
         },
     ),
     "rigid_signs": _make_category(
@@ -149,19 +187,79 @@ CATEGORY_DEFAULTS: dict[str, dict[str, Any]] = {
             "coroplast_4x4_default_sell_price": 47.00,
             "coroplast_4x8_default_sell_price": 75.00,
             "yard_sign_large_qty_each_price": 8.50,
+            # EC9 Phase 9E-1 additions (EC09 controlling document, Rigid Signs section)
+            "min_billable_area_sqft": 1.0,
+            "graphic_method_cost_per_sqft": {"direct_print": 1.25, "mounted_print": 2.00, "cut_vinyl_applied": 1.25},
+            "shape_multipliers": {"standard": 1.0, "custom_cut": 1.5, "complex_cut": 2.0},
+            "finish_quality_multipliers": {"standard": 1.0, "premium": 1.25, "show_quality": 1.5},
+            "thickness_multipliers": {"standard": 1.0, "heavy_duty": 1.1, "extra_heavy": 1.2},
+            "double_sided_multiplier": 1.75,
+            "drill_prep_charge": 3.00,
+            "hardware_options": {
+                "none": {"name": "None", "sell_price": 0.0},
+                "h_stake": {"name": "Standard H-Stake", "sell_price": 3.50},
+                "heavy_duty_stake": {"name": "Heavy-Duty Stake", "sell_price": 5.00},
+            },
+            "hardware_handling_labor_default": 5.00,
+            "design_default_hours": 0.5,
+            "production_labor_hr_per_sqft": 0.15,
+            "install_base_hr_per_sqft": 0.08,
+            "quantity_tiers": [
+                {"min_qty": 1, "max_qty": 4, "discount_percent": 0},
+                {"min_qty": 5, "max_qty": 24, "discount_percent": 5},
+                {"min_qty": 25, "max_qty": 99, "discount_percent": 10},
+                {"min_qty": 100, "max_qty": None, "discount_percent": 15},
+            ],
         },
     ),
     "cut_vinyl": _make_category(
         pricing_method="per_sqft", base_rate=12.00, minimum_charge=25.00,
         markup=2.30, target_margin=40.0, waste_percent=10.0,
         default_material="oracal_651",
-        extras={"cleanup_fee": 20.00, "masking_required": True},
+        extras={
+            "cleanup_fee": 20.00, "masking_required": True,
+            # EC9 Phase 9E-1 additions (EC09 controlling document, Cut Vinyl section)
+            "min_billable_area_sqft": 0.5,
+            "color_count_multipliers": {"1": 1.00, "2": 1.50, "3": 2.00, "4_plus": 2.50},
+            "weeding_complexity_multipliers": {"simple": 1.00, "medium": 1.25, "complex": 1.50, "extreme": 2.00},
+            "masking_tape_cost_per_sqft": 0.15,
+            "surface_type_multipliers": {"flat": 1.00, "curved": 1.40, "awkward": 1.75},
+            "production_labor_hr_per_sqft": 0.20,
+            "design_default_hours": 0.5,
+            "install_base_hr_per_sqft": 0.08,
+            "quantity_tiers": [
+                {"min_qty": 1, "max_qty": 5, "discount_percent": 0},
+                {"min_qty": 6, "max_qty": 24, "discount_percent": 5},
+                {"min_qty": 25, "max_qty": 99, "discount_percent": 10},
+                {"min_qty": 100, "max_qty": None, "discount_percent": 15},
+            ],
+        },
     ),
     "digital_print": _make_category(
         pricing_method="per_sqft", base_rate=9.50, minimum_charge=40.00,
         markup=2.30, target_margin=40.0, waste_percent=10.0,
         default_material="print_adhesive_vinyl",
-        extras={"file_prep_fee": 20.00},
+        extras={
+            "file_prep_fee": 20.00,
+            # EC9 Phase 9E-1 additions (EC09 controlling document, Digital Print section)
+            "min_billable_area_sqft": 1.0,
+            "base_ink_coverage_percent": 75.0,
+            "ink_consumable_rate_per_sqft": 0.75,
+            "quality_multipliers": {"draft": 0.90, "standard": 1.00, "high": 1.15, "photo": 1.30},
+            "laminate_rate_per_sqft": 1.00,
+            "mounting_labor_hr_per_sqft": 0.08,
+            "piece_separation_labor_hr_each": 0.02,
+            "production_labor_hr_per_sqft": 0.08,
+            "production_labor_min_hours": 0.2,
+            "design_default_hours": 0.5,
+            "install_base_hr_per_sqft": 0.08,
+            "quantity_tiers": [
+                {"min_qty": 1, "max_qty": 4, "discount_percent": 0},
+                {"min_qty": 5, "max_qty": 24, "discount_percent": 5},
+                {"min_qty": 25, "max_qty": 99, "discount_percent": 10},
+                {"min_qty": 100, "max_qty": None, "discount_percent": 15},
+            ],
+        },
     ),
     "vehicle_graphics": _make_category(
         pricing_method="cost_plus_labor", base_rate=None, minimum_charge=150.00,

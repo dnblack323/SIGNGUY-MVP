@@ -11,6 +11,7 @@ from typing import Any, Optional
 from ..core.db import db
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from .starter_defaults import build_starter_pack, CATEGORY_IDS, MATERIALS
+from .pricing_flat_sqft import FLAT_SQFT_CATEGORIES, calculate_flat_sqft_pricing
 
 
 def _now_iso() -> str:
@@ -109,11 +110,21 @@ def calculate_pricing(
     design_needed: bool = False,
     install_needed: bool = False,
     manual_selling_price: Optional[float] = None,
+    category_inputs: Optional[dict[str, Any]] = None,
+    material_profile: Optional[dict[str, Any]] = None,
+    pricing_components: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """Return the canonical MVP pricing response.
 
     All money returned as float dollars, rounded to 2 decimals.
     Breakdown is a list of {label, amount} rows explaining how the total was built.
+
+    EC9 Phase 9E-1: for the 4 "Core Flat & Square-Foot" categories (banners,
+    rigid_signs, digital_print, cut_vinyl), this dispatches to the detailed
+    EC09-controlling-document formulas in `services/pricing_flat_sqft.py`
+    (still the single authoritative pipeline — this function is the only
+    entrypoint routers call). All other categories keep the pre-existing
+    generic per-sqft/cost-plus calculation below, unchanged.
     """
     if category not in CATEGORY_IDS:
         raise ValueError(f"Unknown category: {category}")
@@ -122,6 +133,15 @@ def calculate_pricing(
     cats = settings.get("category_defaults") or {}
     materials = settings.get("materials") or {}
     cat = cats.get(category) or {}
+
+    if category in FLAT_SQFT_CATEGORIES:
+        return calculate_flat_sqft_pricing(
+            category=category, shop=shop, cat=cat, materials_legacy=materials,
+            material_profile=material_profile, pricing_components=pricing_components or [],
+            width_inches=width_inches, height_inches=height_inches, quantity=quantity,
+            material_key=material_key, design_needed=design_needed, install_needed=install_needed,
+            manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
+        )
 
     # Area
     width = _to_dec(width_inches)

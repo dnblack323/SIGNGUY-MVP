@@ -13,7 +13,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { toast } from "sonner";
 import MoneyInput from "@/components/forms/MoneyInput";
 import SavedItemSelector from "@/components/pricing/selectors/SavedItemSelector";
+import { CategorySpecificFields } from "@/components/pricing/CategorySpecificFields";
 import { Calculator, Loader2, Save, Copy, RefreshCw } from "lucide-react";
+
+const FLAT_SQFT_CATEGORIES = ["banners", "rigid_signs", "digital_print", "cut_vinyl"];
 
 const fmtUSD = (n) => Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
 const fmtPct = (n) => `${Number(n || 0).toFixed(2)}%`;
@@ -30,6 +33,7 @@ export default function PricingCalculatorPage() {
     design_needed: false,
     install_needed: false,
     manual_selling_price: null,
+    category_inputs: {},
   });
 
   const materialOptions = useMemo(() => {
@@ -56,6 +60,7 @@ export default function PricingCalculatorPage() {
       design_needed: form.design_needed,
       install_needed: form.install_needed,
       manual_selling_price: form.manual_selling_price != null ? Number(form.manual_selling_price) : null,
+      category_inputs: FLAT_SQFT_CATEGORIES.includes(form.category) ? form.category_inputs : {},
     })).data,
     onSuccess: async (data) => {
       setResult(data);
@@ -72,7 +77,7 @@ export default function PricingCalculatorPage() {
   const savedItemConfig = () => ({
     category: form.category, width_inches: Number(form.width_inches) || 0, height_inches: Number(form.height_inches) || 0,
     quantity: Number(form.quantity) || 1, material_key: form.material_key || null,
-    design_needed: form.design_needed, install_needed: form.install_needed,
+    design_needed: form.design_needed, install_needed: form.install_needed, category_inputs: form.category_inputs,
   });
 
   const saveAsNew = useMutation({
@@ -118,7 +123,7 @@ export default function PricingCalculatorPage() {
             </div>
             <div className="grid gap-1.5">
               <Label>Category</Label>
-              <Select value={form.category} onValueChange={(v) => setForm((f) => ({ ...f, category: v, material_key: "" }))}>
+              <Select value={form.category} onValueChange={(v) => setForm((f) => ({ ...f, category: v, material_key: "", category_inputs: {} }))}>
                 <SelectTrigger data-testid="calc-category-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(settings?.category_meta || {}).map(([id, m]) => <SelectItem key={id} value={id}>{m.name}</SelectItem>)}
@@ -146,6 +151,15 @@ export default function PricingCalculatorPage() {
               <label className="flex items-center gap-2 text-sm cursor-pointer"><Switch checked={form.design_needed} onCheckedChange={upd("design_needed")} data-testid="calc-design-switch" />Design needed</label>
               <label className="flex items-center gap-2 text-sm cursor-pointer"><Switch checked={form.install_needed} onCheckedChange={upd("install_needed")} data-testid="calc-install-switch" />Install needed</label>
             </div>
+            {FLAT_SQFT_CATEGORIES.includes(form.category) && (
+              <CategorySpecificFields
+                category={form.category}
+                values={form.category_inputs}
+                onChange={(next) => setForm((f) => ({ ...f, category_inputs: next }))}
+                designNeeded={form.design_needed}
+                installNeeded={form.install_needed}
+              />
+            )}
             <div className="grid gap-1.5">
               <Label>Manual selling price override (optional)</Label>
               <MoneyInput value={form.manual_selling_price ? Math.round(form.manual_selling_price * 100) : 0} onChange={(cents) => upd("manual_selling_price")(cents ? cents / 100 : null)} testId="calc-manual-override" />

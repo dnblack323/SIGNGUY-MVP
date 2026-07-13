@@ -18,6 +18,8 @@ from ..services.pricing import (
     update_shop_defaults,
     wizard_suggestions,
 )
+from ..services.pricing_components import list_components
+from ..services.pricing_materials import get_profile
 from ..services.starter_defaults import CATEGORY_IDS
 
 router = APIRouter(prefix="/pricing", tags=["pricing"])
@@ -72,6 +74,13 @@ class CalcIn(BaseModel):
     design_needed: bool = False
     install_needed: bool = False
     manual_selling_price: Optional[float] = Field(None, ge=0)
+    # EC9 Phase 9E-1 additions — reuse canonical EC7 Materials (via Phase 9A
+    # MaterialPricingProfile) and Phase 9A Pricing Components instead of the
+    # legacy static `material_key` catalog, plus the category-specific
+    # conditional fields (hems/grommets/graphic method/ink coverage/etc).
+    material_profile_id: Optional[str] = None
+    pricing_component_ids: list[str] = Field(default_factory=list)
+    category_inputs: dict[str, Any] = Field(default_factory=dict)
 
 
 class WizardSuggestIn(BaseModel):
@@ -179,6 +188,23 @@ async def wizard_apply(category_id: str, payload: ApplySuggestionsIn, user: dict
 @router.post("/calculate")
 async def calculate(payload: CalcIn, user: dict = Depends(require_permission(Perm.PRICING_CALCULATE))) -> dict:
     settings = await get_or_init_pricing_settings(user["tenant_id"])
+
+    material_profile = None
+    if payload.material_profile_id:
+        material_profile = await get_profile(user["tenant_id"], payload.material_profile_id)
+        if not material_profile:
+            raise HTTPException(status_code=404, detail="Material pricing profile not found")
+        material_doc = await db.materials.find_one(
+            {"id": material_profile["material_id"], "tenant_id": user["tenant_id"]}, {"_id": 0, "name": 1}
+        )
+        material_profile = {**material_profile, "material_name": (material_doc or {}).get("name")}
+
+    pricing_components: list[dict] = []
+    if payload.pricing_component_ids:
+        all_components = await list_components(user["tenant_id"], active=True)
+        by_id = {c["id"]: c for c in all_components}
+        pricing_components = [by_id[cid] for cid in payload.pricing_component_ids if cid in by_id]
+
     try:
         return calculate_pricing(
             settings=settings,
@@ -190,6 +216,9 @@ async def calculate(payload: CalcIn, user: dict = Depends(require_permission(Per
             design_needed=payload.design_needed,
             install_needed=payload.install_needed,
             manual_selling_price=payload.manual_selling_price,
+            category_inputs=payload.category_inputs,
+            material_profile=material_profile,
+            pricing_components=pricing_components,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
