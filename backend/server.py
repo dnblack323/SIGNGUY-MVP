@@ -158,6 +158,16 @@ api_router.include_router(equipment_router_module.router)
 api_router.include_router(training_router_module.router)
 api_router.include_router(certification_router_module.router)
 
+# EC9 — Phase 9A Pricing architecture: Material Pricing Profiles (linked to
+# canonical EC7 Material), Pricing Components (non-inventory charges/fees),
+# and reusable Saved Items (reference canonical Materials, never copy them)
+from app.routers import pricing_materials as pricing_materials_router_module
+from app.routers import pricing_components as pricing_components_router_module
+from app.routers import pricing_saved_items as pricing_saved_items_router_module
+api_router.include_router(pricing_materials_router_module.router)
+api_router.include_router(pricing_components_router_module.router)
+api_router.include_router(pricing_saved_items_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

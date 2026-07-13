@@ -37,7 +37,7 @@
 
 | EC | Name | Status | Notes |
 |---|---|---|---|
-| **EC9** | Pricing Foundation, Detailed Calculators, and Exact Order Workflow | **PREFLIGHT COMPLETE — AWAITING OWNER APPROVAL TO CODE** | Absorbs old Appendix A.2 (EC3.1). Controlling doc: `EC09_Pricing_Foundation_Calculators_and_Order_Pricing.docx`. Preflight: `/app/preflight/EC9_PRICING_FOUNDATION_CALCULATORS_AND_ORDER_PRICING_PREFLIGHT.md`. Held on H1 (no auto-start of coding). |
+| **EC9** | Pricing Foundation, Detailed Calculators, and Exact Order Workflow | **IN PROGRESS — Phase 9A COMPLETE (9B–9H remaining)** | Absorbs old Appendix A.2 (EC3.1). Controlling doc: `EC09_Pricing_Foundation_Calculators_and_Order_Pricing.docx`. Preflight + Phase 9A decision record: `/app/preflight/EC9_PRICING_FOUNDATION_CALCULATORS_AND_ORDER_PRICING_PREFLIGHT.md`. |
 | **EC10** | Order Intake, Visual Markup, Customer Decision Room, and Templates | NOT STARTED | Absorbs old Appendix A.1 (EC6.3); adds the previously-missing Customer Decision Room + Templates system. Controlling doc: `EC10_Order_Intake_Visual_Markup_Decision_Room_and_Templates.docx`. Held on H1. |
 | **EC11** | Production Timeline, Workflow Configuration, Stage Tracking, and Kiosk | NOT STARTED | Controlling doc: `EC11_Production_Timeline_Workflows_Kiosk_and_Advanced_Tracking.docx`. Advanced/paid half remains the pre-existing owner-locked add-on (`/app/docs/production_stage_timer_boundary.md`). Held on H1. |
 | **EC12** | Tasks, Kanban, Messages, Notes, Calendar, Appointments, Shop Schedule, and Community | NOT STARTED | Controlling doc: `EC12_Productivity_Messaging_Calendar_Appointments_and_Community.docx`. Held on H1. |

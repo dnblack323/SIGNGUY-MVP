@@ -133,3 +133,25 @@
 - **No `.docx` specification file was modified.**
 - **No full regression suite or `testing_agent` run was performed** (not applicable at preflight stage).
 - **No navigation changes were made.**
+
+---
+
+## 16. Phase 9A — Decision Record & Completion Evidence (2026-02)
+
+**Owner decisions received and applied (superseding this preflight's §14 recommendations where they differ):**
+
+1. **Canonical Materials — REJECTED the independent `pricing_materials` collection recommendation.** EC7's `Material` (`app/models/material.py`) is the single canonical physical-material/inventory record for ALL physical items, including hardware/accessories (grommets, stakes, brackets, frames, mounting hardware, packaging, fasteners) that are stocked/purchased/reordered/supplier-linked/quantity-tracked. **Decision: linked one-to-one pricing profile** (not additive fields on `Material`) — implemented as `app/models/material_pricing_profile.py` (`MaterialPricingProfile`), one profile per `(tenant_id, material_id)`, referencing the canonical `Material` by id and reusing `Material`'s pre-existing (previously dormant) `pricing_material_id` field to point back at the profile. The profile never duplicates name/SKU/supplier/unit-of-measure/purchase method/quantity/inventory cost/tenant ownership/archive status — those stay exclusively on `Material`.
+2. **Hardware/Accessories — REJECTED the separate `pricing_hardware_accessories` catalog.** Physical hardware/accessories use the same EC7 `Material`/Inventory/Supplier/Purchasing system as any other material (via `MaterialPricingProfile` if pricing-relevant). A **separate, non-inventory `PricingComponent` model** (`app/models/pricing_component.py`) was created strictly for commercial charges/fees that are never stocked or supplier-linked: setup fee, design fee, file cleanup, permit fee, outsourced service, pass-through/shipping, install minimum, rush charge, personalization fee, decoration fee, relaunch fee.
+3. **Saved Items — APPROVED as planned**, revised to reference canonical `Material.id` via `material_refs` (never copies material/inventory data). Implemented as `app/models/pricing_saved_item.py` (`PricingSavedItem`), with `save_as_variation()` cloning without mutating the source.
+4. **AI/market-research/historical-analysis boundaries — deferred to Phase 9G** per the owner's phase plan (contracts/data structures, zero live calls, hidden-until-entitled UI) — not built in Phase 9A.
+
+**Phase 9A implementation (COMPLETE):**
+- New models: `app/models/material_pricing_profile.py`, `app/models/pricing_component.py`, `app/models/pricing_saved_item.py`.
+- New services: `app/services/pricing_materials.py`, `app/services/pricing_components.py`, `app/services/pricing_saved_items.py` — all tenant-scoped, all validate references against the canonical `db.materials` collection (no duplication), dollar-based fields (no `_cents` suffix — this is pricing configuration, not a transactional snapshot, per the Money Policy in `app/core/money.py`).
+- New routers: `app/routers/pricing_materials.py` (`/pricing/material-profiles`), `app/routers/pricing_components.py` (`/pricing/components`), `app/routers/pricing_saved_items.py` (`/pricing/saved-items`) — registered in `server.py`, reusing the existing `pricing:read`/`pricing:write` permissions (no new permission enum values).
+- New indexes in `app/core/db.py`: unique `(tenant_id, material_id)` on `material_pricing_profiles`, unique `(tenant_id, key)` on `pricing_components`, `(tenant_id, category)` + `(tenant_id, quick_select)` on `pricing_saved_items`.
+- New tests: `tests/test_ec9_material_pricing_profiles.py` (4 tests), `tests/test_ec9_pricing_components.py` (3 tests), `tests/test_ec9_pricing_saved_items.py` (3 tests) — **10/10 passing.**
+- Regression check (targeted, not full suite): `tests/test_pricing_snapshot.py` (3/3 passing, untouched), `tests/test_terminology_guard.py`, `tests/test_money_policy.py`, `tests/test_permissions_scope.py` (23/23 passing) — confirms tenant isolation, integer-cents boundary, and snapshot immutability behavior are all preserved.
+- `Material.pricing_material_id` is now actively wired (was previously a dormant reserved field) — set automatically when a `MaterialPricingProfile` is created.
+
+**Phase 9A status: COMPLETE.** Proceeding to Phase 9B (Global Pricing Foundation) next, per owner authorization.

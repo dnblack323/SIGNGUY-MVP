@@ -411,4 +411,15 @@ async def ensure_indexes() -> None:
     # document_links — first actively wired up in EC8 phase 8e (Equipment/Training docs)
     await db.document_links.create_index([("tenant_id", 1), ("entity_type", 1), ("entity_id", 1)])
 
+    # ---- EC9 phase 9A — Material Pricing Profiles, Pricing Components, Saved Items ----
+    await db.material_pricing_profiles.create_index("id", unique=True)
+    await db.material_pricing_profiles.create_index([("tenant_id", 1), ("material_id", 1)], unique=True)
+
+    await db.pricing_components.create_index("id", unique=True)
+    await db.pricing_components.create_index([("tenant_id", 1), ("key", 1)], unique=True)
+
+    await db.pricing_saved_items.create_index("id", unique=True)
+    await db.pricing_saved_items.create_index([("tenant_id", 1), ("category", 1)])
+    await db.pricing_saved_items.create_index([("tenant_id", 1), ("quick_select", 1)])
+
     logger.info("MongoDB indexes ensured")
