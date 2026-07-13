@@ -155,3 +155,43 @@
 - `Material.pricing_material_id` is now actively wired (was previously a dormant reserved field) — set automatically when a `MaterialPricingProfile` is created.
 
 **Phase 9A status: COMPLETE.** Proceeding to Phase 9B (Global Pricing Foundation) next, per owner authorization.
+
+---
+
+## 17. Phase 9B — Global Pricing Foundation (COMPLETE, 2026-02)
+
+**Scope delivered:** shop-level (tenant-wide) Pricing Foundation settings only — Shop Rate/labor rates, labor burden, overhead, target margin, markup, design/install rates, minimum charges, setup/rush/waste defaults (fallback slots), source labels, manual-override coexistence, effective-date/versioning. Category-specific calculator formulas remain Phase 9E (not started). The grouped onboarding quiz remains Phase 9C (not started — no quiz code was written; only the shop-level data fields it will eventually suggest values for now exist).
+
+**Settings/models changed:** `app/services/starter_defaults.py` (`SHOP_DEFAULTS`, `STARTER_DEFAULT_VERSION` bumped to `1.1.0`), `app/routers/pricing.py` (`ShopDefaultsIn` extended with 12 new optional fields), `app/services/pricing.py` (`calculate_pricing()` now returns `shop_defaults_used`), `app/services/pricing_snapshot.py` (`build_calculated_snapshot` now returns `defaults_snapshot` + `foundation_effective_at`; source taxonomy formally documented), `app/routers/quotes.py` / `app/routers/orders.py` (manual line-item creation now tags `source="user_entered"`), `app/routers/inventory.py` (added a `POST /materials/{id}/restore` endpoint — a small, necessary EC7 gap-fill required to make Phase 9A invariant 5 enforceable/testable; mirrors the existing `archive` endpoint exactly), `app/services/pricing_materials.py` / `app/services/pricing_saved_items.py` (reject archived materials for new profile/saved-item-ref creation), `app/frontend/src/pages/PricingFoundationPage.jsx` (`SHOP_FIELDS` extended to 18 fields).
+
+**Defaults added (EC09-exact, per the controlling document):** `design_hourly_rate` 97→**85**, `install_hourly_rate` 75→**95**, `default_overhead_percent` 19→**15**; new `removal_hourly_rate` **65**, `travel_hourly_rate` **45**, `admin_hourly_rate` **35**, `consultation_hourly_rate` **110**, `site_survey_hourly_rate` **95**, `finishing_hourly_rate` **28**. `production_hourly_rate` (28), `target_profit_margin_percent` (40), `default_markup_multiplier` (2.5) were already correct and unchanged. Fields with no explicit global number in the EC09 document (`install_minimum_charge`, `setup_fee_default`, `labor_burden_percent`) were added as tenant-editable fallback slots seeded at 0 — not invented values, explicitly flagged, editable.
+
+**Formulas added:** none new (Phase 9E territory) — `calculate_pricing()`'s pipeline is unchanged in shape, only its shop-level rate inputs changed value and it now echoes back the exact values it used (`shop_defaults_used`) for downstream snapshotting.
+
+**Versioning/effective-date behavior:** `defaults_snapshot` captures the actual shop-level rate/percentage values in effect at calculation time (not just a version string), and `foundation_effective_at` records the tenant's `pricing_settings.updated_at` timestamp at that moment. This guarantees a historical snapshot's math remains fully explainable and immutable even after a shop later edits its Pricing Foundation — proven by `test_defaults_snapshot_immutable_after_shop_defaults_change`.
+
+**Frontend behavior:** `PricingFoundationPage.jsx` Shop Defaults grid now exposes all 18 fields for direct edit/save (verified end-to-end by the testing agent: edit → save → reload → persisted). The 9 category cards are unaffected.
+
+**Backend-authoritative calculation behavior:** unchanged and reconfirmed — `calculate_pricing()` remains the single, backend-only source of truth; frontend never computes a price itself.
+
+**Phase 9A invariant verification (all 10, per owner request):**
+1. Unique `(tenant_id, material_id)` — enforced by service check + Mongo unique index. ✅ (re-verified at DB layer in `test_invariant_1_and_3_...`)
+2. Cross-tenant Material reference rejected — ✅ (`test_tenant_isolation_on_material_profile`, Phase 9A)
+3. Duplicate create cannot produce >1 active profile — ✅ (service 400 + DB-level `DuplicateKeyError` + count==1 assertion)
+4. Archiving a Material preserves historical snapshots — ✅ (`test_invariant_4_...`, new)
+5. Archived Materials rejected for new selection, restorable — ✅ (`test_invariant_5_...`, new — required adding a small `POST /materials/{id}/restore` endpoint, noted above)
+6. Deactivating a SavedItem/Component doesn't touch other collections — ✅ (`test_invariant_6_...`, new)
+7. `material_refs` validated as canonical tenant-owned — ✅ (`test_foreign_material_ref_rejected`, Phase 9A)
+8. `save_as_variation()` never mutates source — ✅ (`test_save_as_variation_does_not_mutate_source`, Phase 9A)
+9. Tenant scope/timestamps/status on all new records — ✅ (`test_invariant_9_...`, new)
+10. No pricing profile is a second inventory record — ✅ (`test_invariant_10_...`, new)
+
+**Phase 9B targeted test results:** `tests/test_ec9_phase9b_global_foundation.py` (5 tests) + `tests/test_ec9_phase9a_invariants.py` (6 tests) — **11/11 passing.**
+
+**Regression checked (targeted, not full suite):** `test_ec9_material_pricing_profiles.py`, `test_ec9_pricing_components.py`, `test_ec9_pricing_saved_items.py`, `test_pricing_snapshot.py`, `test_quotes_ec3.py`, `test_orders_ec3.py`, `test_money_policy.py`, `test_terminology_guard.py`, `test_ec7_inventory.py` — **64/64 passing, zero regressions.**
+
+**Frontend verification:** delegated to `testing_agent_v4` (main agent's own Playwright screenshot attempts were disrupted by a transient dev-server recompile loop this session). Result: **100% pass** — Shop Defaults render/edit/save/persist correctly with all 18 fields, 9 category cards unaffected, Pricing Calculator smoke calculation still works, general app navigation stable, zero console errors, zero bugs found. See `/app/test_reports/iteration_17.json`.
+
+**Phase 9B status: COMPLETE.**
+
+**Remaining Phase 9C work (NOT started):** the simplified, grouped onboarding pricing quiz — one practical-scenario question deriving labor rate/minimum/overhead/sell-rate suggestions, shown-math + owner-review-before-apply, additive to (not replacing) the existing detailed `CategorySetupWizard`. No quiz code, service, or endpoint exists yet.

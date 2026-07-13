@@ -20,7 +20,7 @@
 
 | EC | Name | Status | Controlling document | Absorbs/carries forward | Holds |
 |---|---|---|---|---|---|
-| **EC9** | Pricing Foundation, Detailed Calculators, and Exact Order Workflow | **IN PROGRESS — Phase 9A COMPLETE (9B–9H remaining)** | `EC09_Pricing_Foundation_Calculators_and_Order_Pricing.docx` | Old master plan Appendix A.2 (EC3.1 Pricing Foundation Verification). Preflight + Phase 9A decision record: `/app/preflight/EC9_PRICING_FOUNDATION_CALCULATORS_AND_ORDER_PRICING_PREFLIGHT.md` | H1 |
+| **EC9** | Pricing Foundation, Detailed Calculators, and Exact Order Workflow | **IN PROGRESS — Phase 9A + 9B COMPLETE (9C–9H remaining)** | `EC09_Pricing_Foundation_Calculators_and_Order_Pricing.docx` | Old master plan Appendix A.2 (EC3.1 Pricing Foundation Verification). Preflight + Phase 9A/9B decision record & evidence: `/app/preflight/EC9_PRICING_FOUNDATION_CALCULATORS_AND_ORDER_PRICING_PREFLIGHT.md` | H1 |
 | **EC10** | Order Intake, Visual Markup, Customer Decision Room, and Templates | NOT STARTED | `EC10_Order_Intake_Visual_Markup_Decision_Room_and_Templates.docx` | Old master plan Appendix A.1 (EC6.3 Order Intake/Visual Markup); adds the new Customer Decision Room + reusable Templates | H1 |
 | **EC11** | Production Timeline, Workflow Configuration, Stage Tracking, and Kiosk | NOT STARTED | `EC11_Production_Timeline_Workflows_Kiosk_and_Advanced_Tracking.docx` | Advanced Production Tracking & Bottleneck Analytics Add-On (registered permanent future scope from EC8 Phase 8c) | H1 |
 | **EC12** | Tasks, Kanban, Messages, Notes, Calendar, Appointments, Shop Schedule, and Community | NOT STARTED | `EC12_Productivity_Messaging_Calendar_Appointments_and_Community.docx` | — | H1 |
