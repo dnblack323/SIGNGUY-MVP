@@ -29,6 +29,10 @@
 
 ---
 
+> ## ⚠️ DOCUMENT-LEVEL NOTICE (2026-02 intake — SignGuy AI Checkpoint Specification Pack)
+>
+> This document remains the **authoritative build plan for EC0–EC8** (all COMPLETE/CLOSED). For **EC9 onward**, this document is **SUPERSEDED — HISTORICAL REFERENCE ONLY — NOT IMPLEMENTATION AUTHORITY** by the owner-approved **SignGuy AI Checkpoint Specification Pack** (15 documents: Master Index + EC09–EC22, at `/app/specs_pack/extracted/`). The new pack renumbers and expands the remaining work into **EC9–EC22** (see `/app/memory/checkpoint_reference_table.md`). Specific superseded sections inside this document are marked inline (Part 30A.10–30A.15, Appendix A.4). Full authority order is in `/app/memory/documentation_authority_register.md`. No checkpoint from either the old or new sequence begins without explicit owner authorization.
+
 # PART 1 — EXECUTIVE BUILD SUMMARY
 
 SignGuy AI ships as **nine Program Checkpoints (PC1-PC9)** delivering the permanent commercial product on top of the existing MVP foundation. The MVP already contains a production-safe Auth / Tenants / Permissions / Customers / Quotes / Orders / Work Orders / Invoices / Object Storage / Pricing Foundation & Calculator surface. The remaining work is a mixture of targeted extensions, donor-code extractions (FEB financial logic; REB Settings / Communications / DocuLink / Wrap Lab / Platform Admin / AI catalog / Quote+Order shapes; ORIG signatures / approvals / portal / webstore feature discovery), and greenfield builds (portal identity, background jobs, feature entitlements, AI credit ledger, custom report builder, global search, tax provider boundary).
@@ -2349,7 +2353,19 @@ The following EC units are the only units used for implementation branches and e
 - Evidence package lists files changed, routes/models/collections/indexes affected, tests run, known issues, documentation updated, and rollback instructions.
 - The next checkpoint does not begin automatically.
 
-## 30A.10 EC9 — Webstores and Stripe Connect
+> ---
+> ## ⚠️ SUPERSEDED BLOCK — SECTIONS 30A.10 THROUGH 30A.15 (EC9–EC14 AS ORIGINALLY NUMBERED)
+>
+> **STATUS: SUPERSEDED — HISTORICAL REFERENCE ONLY — NOT IMPLEMENTATION AUTHORITY.**
+>
+> As of the owner-approved **SignGuy AI Checkpoint Specification Pack** (intake dated 2026-02, 15 documents: `00_Master_Index_and_Owner_Decision_Register.docx` + `EC09`–`EC22`), the six checkpoint detail pages below (old EC9 Webstores/Stripe Connect, old EC10 Wrap Lab, old EC11 Creative Studio/AI Credits, old EC12 Control Center/Governance/Community, old EC13 Commercial Billing/Marketing, old EC14 Commercial Release Hardening) are **replaced by a new, renumbered, and expanded EC9–EC22 sequence**. The old five-checkpoint condensation of this remaining work was too coarse to act as a safe build authority and has been retired in favor of one controlling document per checkpoint.
+>
+> **New controlling authority:** `/app/memory/checkpoint_reference_table.md` (EC9–EC22 sequence + controlling document map) and `/app/memory/documentation_authority_register.md` (full priority order). Source documents retained at `/app/specs_pack/extracted/*.docx`.
+>
+> **Do not implement against the sections below.** They remain in this file only for provenance (to show what the product's history/lineage of planning looked like). Any agent picking up work on Webstores, Wrap Lab, AI credits, Control Center/Community, Commercial Billing, or Final Hardening MUST use the new EC9–EC22 pack, not this block.
+> ---
+
+## 30A.10 EC9 — Webstores and Stripe Connect  _(SUPERSEDED — see banner above; this old EC9 slot is now EC14 Webstores in the new pack)_
 
 **Purpose:** Build Webstores from REB specifications and ORIG feature map, using shared core, portals, entitlements, and secure payout reconciliation.
 
@@ -2366,7 +2382,7 @@ The following EC units are the only units used for implementation branches and e
 - Evidence package lists files changed, routes/models/collections/indexes affected, tests run, known issues, documentation updated, and rollback instructions.
 - The next checkpoint does not begin automatically.
 
-## 30A.11 EC10 — Wrap Lab / Wrap Command Center
+## 30A.11 EC10 — Wrap Lab / Wrap Command Center  _(SUPERSEDED — this old EC10 slot is now EC15 Wrap Lab in the new pack; "Wrap Command Center" naming is retired in favor of "Wrap Lab")_
 
 **Purpose:** Integrate the REB 11-stage workflow into shared Orders, DocuLink, approvals, signatures, portal auth, and entitlements.
 
@@ -2381,7 +2397,7 @@ The following EC units are the only units used for implementation branches and e
 - Evidence package lists files changed, routes/models/collections/indexes affected, tests run, known issues, documentation updated, and rollback instructions.
 - The next checkpoint does not begin automatically.
 
-## 30A.12 EC11 — Creative Studio and AI Credits
+## 30A.12 EC11 — Creative Studio and AI Credits  _(SUPERSEDED — this old EC11 slot is now split across new EC16 Shared AI Gateway/Credits and new EC17 Studio AI Tools [OWNER REVIEW REQUIRED HOLD])_
 
 **Purpose:** Adopt AI tool catalog, build provider abstraction, credit ledger, AI history, generated assets, review gates, and cost controls.
 
@@ -2398,7 +2414,7 @@ The following EC units are the only units used for implementation branches and e
 - Evidence package lists files changed, routes/models/collections/indexes affected, tests run, known issues, documentation updated, and rollback instructions.
 - The next checkpoint does not begin automatically.
 
-## 30A.13 EC12 — Control Center, Platform Governance, Help, and Community
+## 30A.13 EC12 — Control Center, Platform Governance, Help, and Community  _(SUPERSEDED — this old EC12 slot is now split across new EC12 Tasks/Kanban/Messages/Calendar/Community, new EC19 Onboarding/Help, and new EC20 Platform Admin/Analytics/Dunning/Support)_
 
 **Purpose:** Tenant configuration, platform admin, subscription administration, community, support, onboarding, help, and release notes.
 
@@ -2414,7 +2430,7 @@ The following EC units are the only units used for implementation branches and e
 - Evidence package lists files changed, routes/models/collections/indexes affected, tests run, known issues, documentation updated, and rollback instructions.
 - The next checkpoint does not begin automatically.
 
-## 30A.14 EC13 — Commercial Billing, Marketing, and Public Pricing
+## 30A.14 EC13 — Commercial Billing, Marketing, and Public Pricing  _(SUPERSEDED — this old EC13 slot is now split across new EC13 Commercial Billing/Entitlements/Fees/Trials/Setup and new EC21 Marketing Website/Public Pricing/Founder Offer/Signup)_
 
 **Purpose:** Finalize plans, founders offer, trials, add-ons, AI top-ups, subscription checkout, marketing site, and public pricing.
 
@@ -2430,7 +2446,7 @@ The following EC units are the only units used for implementation branches and e
 - Evidence package lists files changed, routes/models/collections/indexes affected, tests run, known issues, documentation updated, and rollback instructions.
 - The next checkpoint does not begin automatically.
 
-## 30A.15 EC14 — Commercial Release Hardening
+## 30A.15 EC14 — Commercial Release Hardening  _(SUPERSEDED — this old EC14 slot is now new EC22 Final Integration and Commercial Release Hardening)_
 
 **Purpose:** Full cross-tenant, permission, portal, financial, integration, accessibility, performance, operations, and release-gate verification.
 
@@ -2744,7 +2760,9 @@ When this plan is updated, the changes must be reconciled back into the scope re
 
 ## Appendix A — Owner-locked permanent-scope addenda (post-issue)
 
-The following requirements are **permanent product scope** and must be delivered before EC14 Final Hardening. Neither may be treated as an optional product idea, a deferred nice-to-have, or an implicit capability. Both are assigned to explicit named checkpoints below.
+The following requirements are **permanent product scope** and must be delivered before EC14 Final Hardening (as originally numbered — see renumbering note below). Neither may be treated as an optional product idea, a deferred nice-to-have, or an implicit capability. Both are assigned to explicit named checkpoints below.
+
+> **RENUMBERING NOTE (not superseded in substance — carried forward under new numbers):** The requirements in **A.1 (EC6.3 Order Intake Capture and Visual Markup)** and **A.2 (EC3.1 Pricing Foundation Verification)** remain fully required permanent scope. Under the new SignGuy AI Checkpoint Specification Pack, A.1's Order Intake/Visual Markup requirement is now carried forward and expanded inside the new **EC10 — Order Intake, Visual Markup, Customer Decision Room, and Templates**, and A.2's Pricing Foundation requirement is now carried forward and expanded inside the new **EC9 — Pricing Foundation, Detailed Calculators, and Exact Order Workflow**. A.3 (Supplier Catalog) and A.5 (Equipment/Training/Certification) below are already COMPLETE (delivered inside EC7 and EC8 respectively) and are unaffected. See `/app/memory/checkpoint_reference_table.md`.
 
 ### A.1 EC6.3 — Order Intake Capture and Visual Markup (permanent scope)
 
@@ -2849,6 +2867,8 @@ EC8 must additionally deliver:
 **EC8 scope boundary:** this addendum does not change EC8's dependency ordering relative to EC1–EC7, does not reopen EC7, and does not introduce a second Files/Documents/Audit/Reports system. It is delivered as EC8 phase 8e, after Employees (8a) and before EC8 closure (8f).
 
 ### A.4 Commercial Authority — Revised Pricing, Fees, Onboarding, Trials, Annual, AI Credits (REVISED 2026-07)
+
+> **⚠️ SUPERSEDED NOTICE (2026-02 intake):** A.4 below (and its source `/app/docs/commercial/REVISED_COMMERCIAL_SOURCE_OF_TRUTH_2026-07.md`) is now **SUPERSEDED — HISTORICAL REFERENCE ONLY** by the new SignGuy AI Checkpoint Specification Pack's **EC13 — Commercial Billing, Entitlements, Fees, Trials, and Setup Packages** (plus **EC19 — Onboarding** for setup-fee display and **EC21 — Marketing/Public Pricing** for public pricing-page rules). Almost all numeric values below (Founder $119→$189, 25 shops, Core/Webstores/Wrap/Complete add-on pricing, credit packs, setup fees, trial terms, day-based grace period) are **CONFIRMED UNCHANGED** by the new EC13 document. **One contradiction was found and is NOT silently resolved:** the new EC13 document introduces distinct **standalone** pricing (Webstores standalone $109/month, Wrap Lab standalone $139/month, both "provisional") whereas A.4 below prices standalone products the **same as the add-on price** (Webstores $89/month, Wrap Lab $119/month). This is registered as an open contradiction requiring explicit owner resolution before EC14 (Webstores) or EC15 (Wrap Lab) implementation — see `/app/memory/owner_specification_hold_register.md`. Also note: EC20 (Platform Admin) introduces a "3-strikes" dunning model that appears to conflict with the day-based grace period (Days 1-7/8-14/14+) below, also registered as an open contradiction.
 
 **Source of truth:** `/app/docs/commercial/REVISED_COMMERCIAL_SOURCE_OF_TRUTH_2026-07.md`.
 **Revision:** REVISED-2026-07 (July 2026 owner-approved revision).

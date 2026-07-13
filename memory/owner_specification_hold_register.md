@@ -1,0 +1,81 @@
+# SignGuy AI — Owner Specification Hold Register
+
+**Purpose:** Every explicit "do not proceed without owner authorization" hold currently in force, in one place, so no hold is silently forgotten or silently cleared. Created 2026-02 during the SignGuy AI Checkpoint Specification Pack intake.
+
+**Rule:** No checkpoint below begins — no code, no models, no routers, no pages — until its hold is explicitly lifted by the owner. Completing this documentation-only intake and delivering the Intake Report does **not** lift any hold.
+
+## Active holds (2026-02 intake)
+
+| # | Hold | Scope | Condition to lift | Status |
+|---|---|---|---|---|
+| H1 | **No checkpoint starts automatically after this documentation update.** | All of EC9–EC22 | Explicit owner "go" message naming the checkpoint to start. | ACTIVE |
+| H2 | **EC14 Webstores requires separate owner authorization.** | EC14 | Owner explicitly authorizes EC14 start (separate from generic "start EC9" authorization). | ACTIVE |
+| H3 | **EC15 Wrap Lab requires separate owner authorization.** | EC15 | Owner explicitly authorizes EC15 start. | ACTIVE |
+| H4 | **EC16–EC18 AI work requires separate authorization.** | EC16 (Shared AI Gateway), EC17 (Studio AI Tools), EC18 (Paid Business Assistant/Voice) | Owner explicitly authorizes AI-checkpoint work to begin. | ACTIVE |
+| H5 | **EC17 is blocked until the owner completes the AI Tools Keep / Combine / Change / Rename / Defer / Remove review.** | EC17 specifically | Owner completes the full tool-by-tool review worksheet (28+ legacy AI tools) and assigns a final status + Final Name + Family to every tool. | ACTIVE — BLOCKING (stronger than H4; EC17 cannot start even if H4 is otherwise lifted, until this worksheet is complete) |
+| H6 | Wrap Lab **standalone** activation requires a completed preflight proving shared-core reuse without duplication. | Wrap Lab standalone sale only (not Founder-included or add-on use) | Preflight completed and owner-approved (carried forward from old master plan Decision 7; still binding under EC15). | ACTIVE (carried forward) |
+| H7 | AI top-up pricing, included AI-credit amounts, and AI provider/model assignments are approved **subject to a measured provider-cost audit** before live commercial activation. | EC13/EC16/EC17 commercial AI numbers | Provider-cost audit completed after 10–20 active paying shops (per rollout discipline); numbers may be adjusted before activation. | ACTIVE (carried forward from old master plan Decisions 12/13/18; reaffirmed by EC13/EC16/EC17) |
+| H8 | Studio AI tool inventory must receive an owner **Keep / Change / Remove** review before EC17 implementation — no legacy tool list is automatically final. | EC17 | Same worksheet as H5 (this is the Master Index's phrasing of the same hold; tracked together with H5). | ACTIVE — same as H5 |
+
+## Commercial authority — confirmed scope (registered, not yet activated)
+
+The commercial authority for EC13 (and its EC19/EC21 dependents) is confirmed to include all of the following. None of it is implemented — this is a documentation registration only:
+
+- Subscription prices (Founder + General Availability: Core, Webstores add-on, Wrap Lab add-on, Complete Bundle)
+- Annual prices ("pay 10, get 12" annual billing)
+- Setup and onboarding fees (DIY $0 / Founder Kickstart $299 / Standard $499 / Full Optimization $999 / White-Glove $1,999+, plus setup add-ons)
+- Trials (48-hour free trial, 7-day extended trial)
+- Extended-trial credit ($20 credited toward first paid subscription if converted within 14 days)
+- AI credit packs (100/$19, 300/$45, 800/$99 — provisional, subject to H7)
+- Platform fees (Founder 0% → 0.5%/1.5%; GA 1.0%/2.0%)
+- Add-on pricing (Webstores, Wrap Lab as Core add-ons)
+- Standalone pricing (Webstores, Wrap Lab as standalone products — **see open contradiction C1 below**)
+- Entitlements (feature access gated by plan/add-on/standalone status)
+
+## Resolved contradictions (owner decisions received 2026-02) — RESOLVED, NOT open holds anymore
+
+### C1 — RESOLVED: Standalone Webstores/Wrap Lab pricing
+
+**Owner decision (2026-02):**
+
+| Product | Add-on (Core) | Add-on annual | Standalone monthly | Standalone annual |
+|---|---|---|---|---|
+| Webstores | $89/month | $890/year | **$109/month (provisional)** | **NOT YET APPROVED — pending** |
+| Wrap Lab | $119/month | $1,190/year | **$139/month (provisional)** | **NOT YET APPROVED — pending** |
+
+Rules (owner-locked): standalone pricing is permanently a distinct figure from add-on pricing (never "same as add-on" again); standalone products include shared-platform infrastructure without requiring a Core subscription; no annual standalone price is invented — annual standalone remains explicitly pending owner approval until a future decision; EC14/EC15 must build the standalone-annual field/UI as "coming soon / not yet available," never a placeholder guess.
+
+**Superseded by this decision:** the old master-plan Decision 10 rule and `REVISED_COMMERCIAL_SOURCE_OF_TRUTH_2026-07.md` §2 rule that priced standalone = add-on price. Both are now **SUPERSEDED — HISTORICAL REFERENCE ONLY — NOT IMPLEMENTATION AUTHORITY** for standalone pricing specifically (add-on pricing and every other figure in those documents remains valid/unchanged).
+
+### C2 — RESOLVED: Dunning and failed-payment handling
+
+**Owner decision (2026-02) — day-based delinquency model (authoritative):**
+
+- Days 1–7: reminder + grace period (normal access).
+- Days 8–14: escalated warning (soft restriction).
+- Day 15+: eligible for suspension (not automatic — "eligible," a manual/automated gate, not an instant hard block).
+
+Rules (owner-locked): Stripe payment-failure webhook events (`invoice.payment_failed` / `invoice.payment_succeeded`) update the tenant's delinquency state; **Stripe's internal retry-attempt count is never the suspension authority** — only the day-based clock is; must support configurable grace-period extensions (admin-granted) and approved Founder exceptions (e.g., the existing 24-hour Founder Grace concept, now folded into "configurable grace extension" rather than a separate mechanism); a successful payment OR a manually-recorded/cleared payment resets the delinquency state immediately; every suspension and reactivation must be audited (actor, reason, timestamp).
+
+**Superseded by this decision:** the EC20 "3-strikes" dunning model (`EC20_Platform_Admin_Analytics_Dunning_and_Support.docx`) is now **SUPERSEDED — HISTORICAL REFERENCE ONLY — NOT IMPLEMENTATION AUTHORITY**. The day-based model (originally old master plan Decision 26, restated in `REVISED_COMMERCIAL_SOURCE_OF_TRUTH_2026-07.md` §8) is reaffirmed as authoritative, with the Day 15+ "eligible for suspension" phrasing (not an automatic hard block) and the Stripe-webhook-driven / configurable-grace / Founder-exception / reset / audit rules above layered on top as refinements.
+
+### C3 — RESOLVED: AI subscriptions, credits, and credit packs
+
+**Owner decision (2026-02):** no separate Starter/Growth/Power/Agency (or any other) monthly AI-subscription tier is created. The approved commercial model is:
+
+- Monthly AI credits are included according to the tenant's approved plan (Founder/Core/Webstores/Wrap/Complete — per EC13, unchanged).
+- Purchased top-up packs (one-time, unchanged from the existing commercial authority): 100 credits/$19, 300 credits/$45, 800 credits/$99.
+- Studio AI Tools (EC17) are gated by plan entitlement + available credit balance — not by a separate AI subscription tier.
+- The paid Business Assistant (EC18) is a separately entitled add-on, handled under EC18's own commercial terms — not part of this credit model.
+- No "unlimited AI" is ever promised in marketing, UI, or copy.
+- Actual provider cost (`cost_usd`, tokens, provider/model) must be tracked separately from the customer-facing credit ledger (cost ledger vs. credit ledger stay two distinct records, per EC16).
+
+**Superseded by this decision:** the EC17 "Starter $19/Growth $49/Power $99/Agency $199" monthly AI-tier proposal (`EC17_Studio_AI_Tools_OWNER_REVIEW_REQUIRED.docx`) and any other legacy AI-subscription-tier proposal are now **SUPERSEDED — HISTORICAL RESEARCH ONLY — NOT IMPLEMENTATION AUTHORITY**. This does not lift hold H5/H8 — the owner's tool-by-tool Keep/Combine/Change/Rename/Defer/Remove review for EC17 is still required before EC17 implementation; this decision only settles the pricing-model question so that review isn't blocked on it.
+
+## Resolved (no contradiction found)
+
+- Founder eligibility count and pricing ($119→$189/mo, 25 shops, $1,890/yr), GA Core/Webstores-add-on/Wrap-add-on/Complete pricing, credit-pack amounts, setup-fee tiers, and trial terms in EC13 all **match** the existing `REVISED_COMMERCIAL_SOURCE_OF_TRUTH_2026-07.md` exactly. (The *older* master-plan Decision 10/11 numbers — 50 shops, flat $149/mo Founder — were already superseded by that 2026-07 revision before this intake; EC13 simply reconfirms the 2026-07 revision.)
+- EC19's setup-fee tier names/amounts match EC13 exactly.
+- EC09's and EC19's pricing-quiz descriptions (one practical scenario question deriving labor rate/minimums/sell rate) are consistent with each other.
+
+**Register last updated:** 2026-02 — Contradictions C1, C2, and C3 resolved by explicit owner decision (see sections above). No hold (H1–H8) has been lifted by this resolution. No checkpoint has started.

@@ -6,7 +6,7 @@
 
 ## Original problem statement
 
-Owner is building SignGuy AI as a permanent commercial application (not an MVP scaffold). Execution proceeds through numbered checkpoints (EC0 → EC14) defined in `SIGNGUY_AI_FINAL_CONSOLIDATED_MASTER_BUILD_PLAN.md`. Each checkpoint requires a preflight, code, tests, evidence package, and explicit stop before the next checkpoint.
+Owner is building SignGuy AI as a permanent commercial application (not an MVP scaffold). Execution proceeds through numbered checkpoints defined, for EC0–EC8, in `SIGNGUY_AI_FINAL_CONSOLIDATED_MASTER_BUILD_PLAN.md` (all COMPLETE/CLOSED), and, for **EC9 onward, in the owner-approved SignGuy AI Checkpoint Specification Pack** (`/app/specs_pack/extracted/*.docx` — Master Index + EC09–EC22), which supersedes the old master plan's condensed EC9–EC14 sections. See `/app/memory/checkpoint_reference_table.md` for the full renumbered sequence, `/app/memory/documentation_authority_register.md` for the priority order of every planning document, and `/app/memory/owner_specification_hold_register.md` for active owner holds and open contradictions. Each checkpoint requires a preflight, code, tests, evidence package, and explicit stop before the next checkpoint — **no checkpoint begins without explicit owner authorization.**
 
 Constraints:
 - No `Job / Job Item / Job Ticket / Production Ticket / Job Ticket Summary` terminology.
@@ -32,7 +32,8 @@ Constraints:
 | EC6.2 — Signed PDF Composite Rendering | DEFERRED (unscheduled) | `/app/memory/product_ideas_register.md` — reconsider during EC14 Final Hardening, or earlier only on a verified customer/compliance/operational requirement. Do NOT schedule during EC7. |
 | **EC7 — Inventory, Purchasing, Finance, Reporting** | **COMPLETE** (all phases 7a+7b+7c+7d delivered; frontend closure workflows landed; `testing_agent_v3_fork` regression PASS) | `/app/evidence/EC7_evidence.md` + `/app/docs/modules/EC7_INVENTORY_PURCHASING_FINANCE.md`. Backend 215/215 green. Frontend Jest 25/25 green. Regression report `/app/test_reports/iteration_10.json`. |
 | **EC8 — Team, Scheduling, Time, Payroll, Employee Portal, Equipment Training & Certification** | **DELIVERED / CLOSED — all phases 8a–8f complete.** | `/app/evidence/EC8_evidence.md`. Employee CRUD + status transitions, Announcements, Team Dashboard (8a) + Time Clock + Timesheets (8b) + Scheduling & Employee Portal (8c) + Payroll (8d) + Equipment/Training/Certification + Work Order enforcement (8e) + final closure regression (8f) — 312/312 full backend pytest green + terminology guard OK. Phase 8f ran the first full frontend regression covering Phase 8e (`testing_agent_v4` iteration_15): found 3 Phase-8e-only defects (critical quiz-submission 500; medium Certifications Matrix stale-dialog; low a11y DialogTitle warning), all fixed and confirmed via a focused retest (iteration_16, 100% pass, 0 open defects). Zero regressions in EC0-EC7 or Phase 8a-8d. EC8 formally closed. |
-| EC9–EC14 | NOT STARTED | dependency-ordered per master plan |
+| EC9–EC14 (old numbering) | **SUPERSEDED — HISTORICAL REFERENCE ONLY — NOT IMPLEMENTATION AUTHORITY** | Replaced 2026-02 by the new EC9–EC22 sequence from the SignGuy AI Checkpoint Specification Pack. See `/app/memory/checkpoint_reference_table.md`. |
+| EC9–EC22 (new numbering) | NOT STARTED | Controlling docs at `/app/specs_pack/extracted/*.docx`. Full status/holds table: `/app/memory/checkpoint_reference_table.md`. Active owner holds: `/app/memory/owner_specification_hold_register.md`. |
 
 ## Completed capabilities
 
@@ -73,8 +74,10 @@ Constraints:
 
 ## Priority backlog (P0/P1/P2)
 
+**2026-02 update:** the detailed, checkpoint-by-checkpoint backlog now lives in `/app/memory/permanent_backlog_register.md` (committed permanent scope) and `/app/memory/checkpoint_reference_table.md` (status + holds per checkpoint). This section is kept short and points there instead of duplicating it.
+
 ### P0 — Immediate next checkpoint
-- EC8 is DELIVERED / CLOSED (all phases 8a–8f complete, full regression passed). Per explicit owner instruction, no new checkpoint (EC9 or otherwise) begins until the owner explicitly authorizes it.
+- EC8 is DELIVERED / CLOSED. Per explicit owner instruction, **no new checkpoint (EC9 or any other) begins until the owner explicitly authorizes it** — see hold H1 in `/app/memory/owner_specification_hold_register.md`.
 
 ### P1 — EC8 (all phases 8a–8f complete)
 - Phase 8a — Employees & Team Foundation ✅ DONE
@@ -84,24 +87,39 @@ Constraints:
 - Phase 8e — Equipment, Training & Certification + Work Order assignment enforcement ✅ DONE
 - Phase 8f — Full EC8 frontend regression, full backend regression, closure evidence ✅ DONE
 
-### Permanent scope — REQUIRED before EC14 Final Hardening (owner-locked)
-- **EC3.1 Pricing Foundation Verification & Full Calculator Category Coverage** — every calculator category + formulas, shop rate/labor/materials/waste/markup/margin/minimum charges/complexity/add-ons/templates, snapshots, and pytest coverage with known expected pricing examples. Reuses EC3 pricing services; no parallel pricing system. Master plan Appendix A.2.
-- **EC6.3 Order Intake Capture & Visual Markup** — image + camera + PDF uploads bound to Customer/Quote/Order/Order Item, drawing on image + blank canvas, versioned annotations, attach approved markups to Proofs/Work Orders/Work Order Summaries, controlled portal visibility, **in-person customer signature capture** bound to exact Order/Order Item/drawing/image version/measurement/approval content with immutable audit. Reuses EC2 files/links/storage/audit + EC6 Proof/Approval/SignatureRequest/Signature; no parallel file/drawing/approval/signature system. Master plan Appendix A.1.
-- **EC7 A.3 Supplier Catalog, Price Comparison & Integrated Purchasing** — normalized supplier-product model, reusable connector interface (search_catalog/get_product/get_variants/get_account_price/get_inventory/get_shipping_quote/create_supplier_order/retrieve_supplier_order/retrieve_tracking/cancel_order), three connection tiers (API/EDI, catalog feed, manual+handoff), shortage calc, purchasing recommendation with delivered-cost comparison, Supply Center staff UI, idempotent supplier-order submission via EC2 integration-secret storage, at least one realistic end-to-end connector or deterministic test adapter demonstrating catalog→variant→price→availability→shortage→PO→submission→receiving. Master plan Appendix A.3. **Assigned to and delivered inside EC7.**
+### Permanent scope carried into EC9/EC10 (owner-locked, unaffected in substance by the renumbering)
+- **EC9 — Pricing Foundation Verification & Full Calculator Category Coverage** (formerly EC3.1) — every calculator category + formulas, shop rate/labor/materials/waste/markup/margin/minimums/complexity/add-ons/templates, snapshots, and pytest coverage. Controlling doc: `EC09_Pricing_Foundation_Calculators_and_Order_Pricing.docx`.
+- **EC10 — Order Intake Capture & Visual Markup + Customer Decision Room + Templates** (formerly EC6.3, now expanded) — image/camera/PDF uploads, drawing/markup, versioned annotations, in-person signature capture, plus the new Customer Decision Room and reusable-template system. Controlling doc: `EC10_Order_Intake_Visual_Markup_Decision_Room_and_Templates.docx`.
+- **EC7 A.3 Supplier Catalog, Price Comparison & Integrated Purchasing** — ✅ DELIVERED inside EC7 (unaffected by this intake).
 
-### P1 — After EC8
-- EC9 Webstores + Stripe Connect (add-on + standalone shell).
-- EC10 Wrap Lab.
+### P1 — EC9–EC13 (after EC8, per new pack — NOT STARTED, held on H1)
+- EC9 Pricing Foundation, Detailed Calculators, Exact Order Workflow. **Preflight complete** (`/app/preflight/EC9_PRICING_FOUNDATION_CALCULATORS_AND_ORDER_PRICING_PREFLIGHT.md`) — awaiting owner approval to begin coding.
+- EC10 Order Intake, Visual Markup, Customer Decision Room, Templates.
+- EC11 Production Timeline, Workflow Configuration, Stage Tracking, Kiosk.
+- EC12 Tasks, Kanban, Messages, Notes, Calendar, Appointments, Community.
+- EC13 Commercial Billing, Entitlements, Fees, Trials, Setup Packages (contradictions C1/C2 RESOLVED 2026-02 by owner decision — see hold register).
 
-### P2 — Later (LOCKED per master plan Appendix A.4 — REVISED 2026-07)
-- **EC11 — AI Credits and Usage Ledger** — usage ledger, provider/model cost tracking, included monthly balances (reset), top-up balances (persistent while account active), monthly resets, purchased-credit retention, refunds and adjustments, **configurable, plan-aware** launch guardrails (NOT hardcoded permanent limits), low-credit warnings, zero-balance blocking, provisional credit packs, cost-audit gate.
-- **EC12 — Onboarding, Documentation, Help, and Governance UX** — Quick Setup + Advanced Setup wizards, mini quizzes, setup readiness, documentation registry, module documentation, Help Center, documentation-grounded AI Help, support escalation, documentation-gap reporting, **failed-subscription warning + restriction UX**. May display subscription state but does NOT own billing truth. DIY wizard must work without a paid package. Paid setup purchases must not create a parallel onboarding system.
-- **EC13 — Commercial Billing and Marketing** — Founder eligibility (first 25 shops), $119 for first 3 paid months, $189 Founder monthly renewal, $1,890 Founder annual, Core $149/$1,490, Webstores $89/$890, Wrap $119/$1,190, Complete $279/$2,790, trials, paid extended trial + $20 conversion credit, setup products + add-ons, annual billing, platform fees, Stripe products/prices/coupons, entitlements, grace periods, continuous-active Founder enforcement, public pricing page, marketing website, signup + conversion flows.
-- **EC14 — Final Integration & Hardening** — closes only after EC11 / EC12 / EC13 are COMPLETE.
+### P2 — Add-ons and AI (held on H2/H3/H4/H5/H8 — see `/app/memory/owner_specification_hold_register.md`)
+- **EC14 Webstores** — requires separate owner authorization (H2).
+- **EC15 Wrap Lab** — requires separate owner authorization (H3); standalone sale additionally requires its own preflight (H6).
+- **EC16 Shared AI Gateway, Usage, Cost, Credits, Governance** — requires separate authorization (H4).
+- **EC17 Studio AI Tools, Prompt Library, Generated Assets, AI Activity** — requires separate authorization (H4) AND is blocked until the owner completes the AI Tools Keep/Combine/Change/Rename/Defer/Remove review (H5/H8). Pricing-model question (C3) is RESOLVED — no separate AI subscription tiers (see hold register); this does not lift H5/H8.
+- **EC18 Paid Business Assistant, Actions, Intelligence, Realtime Voice** — requires separate authorization (H4).
+- **EC19 Onboarding, Help Center, Contextual Help, App Documentation.**
+- **EC20 Platform Admin, Analytics, Dunning, Support.**
+- **EC21 Marketing Website, Public Pricing, Founder Offer, Signup.**
 
-### Commercial pricing source of truth (LOCKED)
+### P3 — Final gate
+- **EC22 Final Integration and Commercial Release Hardening** — closes only after EC9–EC21 are all COMPLETE.
 
-Master plan **Appendix A.4** and `/app/docs/commercial/REVISED_COMMERCIAL_SOURCE_OF_TRUTH_2026-07.md` are the commercial source of truth. All Stripe product setup, marketing copy, entitlement rules, onboarding packages, and billing tests must match A.4. **None of A.4 is implemented during EC7.**
+### Naming corrections registered (2026-02, not yet applied to code)
+- "Order Portal" → **Webstores** / "Webstores Manager". "Portal Owner" (Webstores context) → **Webstore Owner**.
+- "Wrap Command Center" → **Wrap Lab**.
+- See `/app/memory/documentation_authority_register.md` for details. No file/route/model/label has been renamed yet — renaming is deferred to the owning checkpoint (EC14, EC15).
+
+### Commercial pricing source of truth (SUPERSEDED — see hold register; contradictions now resolved)
+
+Old master plan **Appendix A.4** and `/app/docs/commercial/REVISED_COMMERCIAL_SOURCE_OF_TRUTH_2026-07.md` are now **superseded — historical reference only** by the new pack's `EC13_Commercial_Billing_Fees_Trials_Setup_and_Entitlements.docx` (plus `EC19` for setup-fee display and `EC21` for public-pricing rules). Almost all numeric values are confirmed unchanged. **Contradictions C1 (standalone pricing) and C2 (dunning model) are now RESOLVED by explicit owner decision (2026-02)** — see `/app/memory/owner_specification_hold_register.md` for the final figures (Webstores standalone $109/mo, Wrap Lab standalone $139/mo, both provisional with annual "not yet approved"; day-based delinquency model Days 1-7/8-14/15+ eligible-for-suspension, Stripe-webhook-driven, not retry-count-driven). **None of EC13 is implemented by this decision — documentation only.**
 
 ### Permanent future-scope register — configurable paid add-ons
 
@@ -115,9 +133,17 @@ Master plan **Appendix A.4** and `/app/docs/commercial/REVISED_COMMERCIAL_SOURCE
 
 ## Authority references
 
-- `/app/SIGNGUY_AI_FINAL_CONSOLIDATED_MASTER_BUILD_PLAN.md`
+**EC9 onward (current authority):**
+- `/app/specs_pack/extracted/*.docx` — SignGuy AI Checkpoint Specification Pack (Master Index + EC09–EC22)
+- `/app/memory/documentation_authority_register.md` — full priority order of every planning document
+- `/app/memory/checkpoint_reference_table.md` — EC9–EC22 status + controlling doc + holds
+- `/app/memory/owner_specification_hold_register.md` — active owner holds + open contradictions
+- `/app/memory/permanent_backlog_register.md` — committed permanent-scope backlog
+
+**EC0–EC8 (historical, COMPLETE/CLOSED — still authoritative for that range):**
+- `/app/SIGNGUY_AI_FINAL_CONSOLIDATED_MASTER_BUILD_PLAN.md` (EC9–EC14 sections inside it are SUPERSEDED — see banners inline)
 - `/app/SIGNGUY_AI_FINAL_SCOPE_AND_DECISION_REGISTER.md`
 - `/app/SIGNGUY_AI_FEATURE_READINESS_MATRIX.md`
 - `/app/SIGNGUY_AI_REPOSITORY_AND_ARCHITECTURE_SOURCE_MAP.md`
-- `/app/memory/AGENT_INSTRUCTIONS.md`
+- `/app/memory/AGENT_INSTRUCTIONS.md` (permanent LOCKED technical rules — unaffected by the new pack)
 - `/app/memory/progress_register.md`
