@@ -19,7 +19,7 @@ import LineItemDialog from "@/components/commerce/LineItemDialog";
 import GenerateWorkOrderDialog, { RegenerateDialog } from "@/components/work-orders/GenerateWorkOrderDialog";
 import ProofsPanel from "@/components/proofs/ProofsPanel";
 
-function ItemsPanel({ orderId, items, totals, canWrite, orderStatus }) {
+function ItemsPanel({ orderId, items, totals, pricingSummary, canWrite, orderStatus }) {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [addMode, setAddMode] = useState("detailed");
@@ -117,6 +117,22 @@ function ItemsPanel({ orderId, items, totals, canWrite, orderStatus }) {
                 {centsToDollarsString(totals.total_cents ?? 0)}
               </div>
             </div>
+            {pricingSummary?.item_count > 0 && (
+              <div className="grid grid-cols-[1fr_120px] gap-2 pt-2 border-t items-baseline" data-testid="order-pricing-summary">
+                <div className="text-xs text-muted-foreground text-right">Est. production cost</div>
+                <div className="text-right tabular-nums text-xs">{centsToDollarsString(pricingSummary.total_estimated_cost_cents ?? 0)}</div>
+                <div className="text-xs text-muted-foreground text-right">Est. profit / margin</div>
+                <div className="text-right tabular-nums text-xs">
+                  {centsToDollarsString(pricingSummary.estimated_total_profit_cents ?? 0)} ({pricingSummary.estimated_margin_percent ?? 0}%)
+                </div>
+                {pricingSummary.items_with_warnings_count > 0 && (
+                  <>
+                    <div className="text-xs text-amber-700 text-right">Warnings to review</div>
+                    <div className="text-right tabular-nums text-xs text-amber-700" data-testid="order-pricing-warnings-count">{pricingSummary.items_with_warnings_count}</div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
       </CardContent>
@@ -139,6 +155,9 @@ function ItemsPanel({ orderId, items, totals, canWrite, orderStatus }) {
         entityLabel="Order"
         allowProductionRequired
         onSubmit={(payload) => updateItem(editing.id, payload)}
+        onRecalculatePreview={editing ? async (categoryInputs) => (
+          await api.post(`/orders/${orderId}/items/${editing.id}/recalculate-preview`, { category_inputs: categoryInputs })
+        ).data : undefined}
       />
     </Card>
   );
@@ -170,6 +189,7 @@ export default function OrderDetailPage() {
   const order = data?.order;
   const items = data?.items || [];
   const totals = data?.totals || {};
+  const pricingSummary = data?.pricing_summary || {};
 
   const { data: workOrders } = useQuery({
     queryKey: ["order-work-orders", id],
@@ -260,7 +280,7 @@ export default function OrderDetailPage() {
             <TabsTrigger value="activity" data-testid="detail-tab-activity">Activity</TabsTrigger>
           </TabsList>
           <TabsContent value="items">
-            <ItemsPanel orderId={id} items={items} totals={totals} canWrite={canWrite} orderStatus={order.status} />
+            <ItemsPanel orderId={id} items={items} totals={totals} pricingSummary={pricingSummary} canWrite={canWrite} orderStatus={order.status} />
           </TabsContent>
           <TabsContent value="details" className="space-y-4">
             <Card>
@@ -305,6 +325,20 @@ export default function OrderDetailPage() {
               <div className="flex items-center justify-between"><span className="text-muted-foreground">Discount</span><span className="tabular-nums">{centsToDollarsString(totals.discount_cents ?? 0)}</span></div>
               <div className="flex items-center justify-between"><span className="text-muted-foreground">Tax</span><span className="tabular-nums">{centsToDollarsString(totals.tax_cents ?? 0)}</span></div>
               <div className="flex items-center justify-between border-t pt-1"><span className="font-medium">Total</span><span className="tabular-nums font-semibold">{centsToDollarsString(totals.total_cents ?? 0)}</span></div>
+              {pricingSummary?.item_count > 0 && (
+                <div className="border-t pt-1 space-y-1" data-testid="order-summary-pricing-block">
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Est. production cost</span><span className="tabular-nums">{centsToDollarsString(pricingSummary.total_estimated_cost_cents ?? 0)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Manual-price items total</span><span className="tabular-nums">{centsToDollarsString(pricingSummary.total_manual_price_amount_cents ?? 0)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Suggested-price items total</span><span className="tabular-nums">{centsToDollarsString(pricingSummary.total_suggested_price_amount_cents ?? 0)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Est. profit</span><span className="tabular-nums">{centsToDollarsString(pricingSummary.estimated_total_profit_cents ?? 0)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Est. margin</span><span className="tabular-nums">{pricingSummary.estimated_margin_percent ?? 0}%</span></div>
+                  {pricingSummary.items_with_warnings_count > 0 && (
+                    <div className="flex items-center justify-between text-amber-700" data-testid="order-summary-warnings-count">
+                      <span>Items needing review</span><span className="tabular-nums font-medium">{pricingSummary.items_with_warnings_count}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </aside>

@@ -9,7 +9,7 @@ since the frontend already rounds with `Math.round`).
 """
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Any, Iterable
 
 
 def _int(v) -> int:
@@ -68,4 +68,47 @@ def compute_document_totals(items: Iterable[dict]) -> dict[str, int]:
         "tax_cents": tax,
         "total_cents": total,
         "item_count": count,
+    }
+
+
+def compute_pricing_summary(items: Iterable[dict]) -> dict[str, Any]:
+    """EC9 Phase 9F — Order/Quote-level pricing summary.
+
+    A high-level roll-up of the pricing detail already stored on each item
+    (never recomputed here — purely a sum of already-derived fields) so the
+    Order/Quote-level view never has to show every calculator field.
+    """
+    items = list(items or [])
+    total_estimated_cost_cents = 0
+    total_suggested_price_cents = 0
+    total_manual_price_amount_cents = 0
+    total_estimated_profit_cents = 0
+    warnings_count = 0
+    for item in items:
+        qty = max(1, _int(item.get("quantity")) or 1)
+        if item.get("estimated_cost_cents") is not None:
+            total_estimated_cost_cents += _int(item.get("estimated_cost_cents"))
+        if item.get("suggested_price_cents") is not None:
+            total_suggested_price_cents += _int(item.get("suggested_price_cents")) * qty
+        if item.get("selected_price_source") == "manual":
+            total_manual_price_amount_cents += _int(item.get("line_subtotal_cents"))
+        if item.get("estimated_profit_cents") is not None:
+            total_estimated_profit_cents += _int(item.get("estimated_profit_cents"))
+        if item.get("calculation_warnings"):
+            warnings_count += 1
+
+    selected_final_total_cents = sum(_int(i.get("line_total_cents")) for i in items)
+    estimated_margin_percent = (
+        round((total_estimated_profit_cents / selected_final_total_cents) * 100, 2)
+        if selected_final_total_cents > 0 else 0.0
+    )
+    return {
+        "total_estimated_cost_cents": total_estimated_cost_cents,
+        "total_manual_price_amount_cents": total_manual_price_amount_cents,
+        "total_suggested_price_amount_cents": total_suggested_price_cents,
+        "selected_final_total_cents": selected_final_total_cents,
+        "estimated_total_profit_cents": total_estimated_profit_cents,
+        "estimated_margin_percent": estimated_margin_percent,
+        "item_count": len(items),
+        "items_with_warnings_count": warnings_count,
     }

@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import MoneyInput from "@/components/forms/MoneyInput";
 import SavedItemSelector from "@/components/pricing/selectors/SavedItemSelector";
 import { CategorySpecificFields } from "@/components/pricing/CategorySpecificFields";
-import { Calculator, Loader2, Save, Copy, RefreshCw } from "lucide-react";
+import { Calculator, Loader2, Save, Copy, RefreshCw, FileText, Package } from "lucide-react";
 
 const FLAT_SQFT_CATEGORIES = ["banners", "rigid_signs", "digital_print", "cut_vinyl"];
 const DIMENSIONLESS_CATEGORIES = ["apparel", "promotional", "vehicle_graphics", "services", "custom"];
@@ -54,6 +54,20 @@ export default function PricingCalculatorPage() {
   const [tierPreview, setTierPreview] = useState(null);
   const [useSavedDefaults, setUseSavedDefaults] = useState(true);
 
+  // EC9 Phase 9F — Add the calculated result to an existing draft Quote or Order.
+  const [addTarget, setAddTarget] = useState(null); // "quote" | "order" | null
+  const [addDocId, setAddDocId] = useState("");
+  const [addBusy, setAddBusy] = useState(false);
+  const { data: draftDocs } = useQuery({
+    queryKey: ["draft-docs-for-calc-add", addTarget],
+    queryFn: async () => {
+      if (!addTarget) return { items: [] };
+      const path = addTarget === "quote" ? "/quotes" : "/orders";
+      return (await api.get(path, { params: { status: "draft", limit: 50 } })).data;
+    },
+    enabled: !!addTarget,
+  });
+
   const calc = useMutation({
     mutationFn: async () => (await api.post("/pricing/calculate", {
       category: form.category,
@@ -83,6 +97,29 @@ export default function PricingCalculatorPage() {
     category: form.category, width_inches: Number(form.width_inches) || 0, height_inches: Number(form.height_inches) || 0,
     quantity: Number(form.quantity) || 1, material_key: form.material_key || null,
     design_needed: form.design_needed, install_needed: form.install_needed, category_inputs: form.category_inputs,
+  });
+
+  const addToDoc = useMutation({
+    mutationFn: async () => {
+      const path = addTarget === "quote" ? `/quotes/${addDocId}/line-items` : `/orders/${addDocId}/items`;
+      const description = savedItem?.name || `${form.category.replace(/_/g, " ")} item`;
+      return (await api.post(path, {
+        description,
+        quantity: Number(form.quantity) || 1,
+        unit_price_cents: 0,
+        category: form.category,
+        width_inches: DIMENSIONLESS_CATEGORIES.includes(form.category) ? null : (Number(form.width_inches) || null),
+        height_inches: DIMENSIONLESS_CATEGORIES.includes(form.category) ? null : (Number(form.height_inches) || null),
+        category_inputs: CATEGORY_SPECIFIC_CATEGORIES.includes(form.category) ? form.category_inputs : {},
+        saved_item_id: savedItem?.id || null,
+        selected_price_source: "suggested",
+      })).data;
+    },
+    onSuccess: () => {
+      toast.success(`Added to ${addTarget === "quote" ? "quote" : "order"} — server-suggested price applied`);
+      setAddTarget(null); setAddDocId("");
+    },
+    onError: (e) => toast.error(extractError(e)),
   });
 
   const saveAsNew = useMutation({
@@ -262,11 +299,47 @@ export default function PricingCalculatorPage() {
                   )}
                   <p className="text-[11px] text-muted-foreground">Leave unsaved to use this as a one-time custom item — nothing is saved unless you choose to.</p>
                 </div>
+
+                <div className="rounded-lg border p-3 space-y-2">
+                  <div className="text-xs font-medium">Add this result to a document</div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setAddTarget("quote")} data-testid="calc-add-to-quote-button"><FileText className="size-3.5 mr-1" />Add to Quote</Button>
+                    <Button size="sm" variant="outline" onClick={() => setAddTarget("order")} data-testid="calc-add-to-order-button"><Package className="size-3.5 mr-1" />Add to Order</Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Adds a new item to an existing draft using this server-computed suggested price — the calculator inputs and category travel with it.</p>
+                </div>
               </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!addTarget} onOpenChange={(o) => !o && setAddTarget(null)}>
+        <DialogContent className="max-w-sm" data-testid="calc-add-to-doc-dialog">
+          <DialogHeader><DialogTitle>Add to {addTarget === "quote" ? "Quote" : "Order"}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="grid gap-1.5">
+              <Label className="text-xs">Choose a draft {addTarget}</Label>
+              <Select value={addDocId} onValueChange={setAddDocId}>
+                <SelectTrigger data-testid="calc-add-to-doc-select"><SelectValue placeholder={`Select draft ${addTarget}`} /></SelectTrigger>
+                <SelectContent>
+                  {(draftDocs?.items || []).map((d) => (
+                    <SelectItem key={d.id} value={d.id}>{d.number || d.id} — {d.job_name || d.customer_name || "Untitled"}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(draftDocs?.items || []).length === 0 && (
+                <p className="text-xs text-muted-foreground">No draft {addTarget}s found — create one first from the {addTarget === "quote" ? "Quotes" : "Orders"} page.</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => addToDoc.mutate()} disabled={!addDocId || addToDoc.isPending} data-testid="calc-add-to-doc-confirm-button">
+              {addToDoc.isPending ? "Adding…" : "Add item"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!saveDialog} onOpenChange={(o) => !o && setSaveDialog(null)}>
         <DialogContent className="max-w-sm" data-testid="calc-save-dialog">

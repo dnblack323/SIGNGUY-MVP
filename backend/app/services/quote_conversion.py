@@ -124,6 +124,7 @@ async def convert_quote_to_order(
             tenant_id=tenant_id,
             order_id=order.id,
             position=int(li.get("position") or 0),
+            item_name=li.get("item_name"),
             category=li.get("category"),
             product_type=li.get("product_type"),
             description=li.get("description") or "",
@@ -146,6 +147,22 @@ async def convert_quote_to_order(
             manual_override_at=li.get("manual_override_at"),
             production_required=bool(prod_req),
             notes=li.get("notes"),
+            # EC9 Phase 9F — Quote-to-Order conversion preserves every
+            # pricing reference/derived field exactly as-is. NO recalculation.
+            category_inputs=dict(li.get("category_inputs") or {}),
+            material_profile_id=li.get("material_profile_id"),
+            pricing_component_ids=list(li.get("pricing_component_ids") or []),
+            saved_item_id=li.get("saved_item_id"),
+            suggested_price_cents=li.get("suggested_price_cents"),
+            manual_price_cents=li.get("manual_price_cents"),
+            selected_price_source=li.get("selected_price_source") or "manual",
+            pricing_status=li.get("pricing_status") or "manual",
+            estimated_cost_cents=li.get("estimated_cost_cents"),
+            estimated_profit_cents=li.get("estimated_profit_cents"),
+            estimated_margin_percent=li.get("estimated_margin_percent"),
+            calculation_warnings=list(li.get("calculation_warnings") or []),
+            source_labels=dict(li.get("source_labels") or {}),
+            price_selected_by_user_id=li.get("price_selected_by_user_id"),
         )
         await db.order_items.insert_one(prepare_for_mongo(item.model_dump()))
 

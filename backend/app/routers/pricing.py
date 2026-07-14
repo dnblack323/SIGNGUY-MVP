@@ -5,7 +5,6 @@ from typing import Any, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from ..core.db import db
 from ..core.permissions import Perm
 from ..core.time_utils import serialize_doc, utc_now
 from ..deps import require_permission
@@ -18,9 +17,7 @@ from ..services.pricing import (
     update_shop_defaults,
     wizard_suggestions,
 )
-from ..services.pricing_components import list_components
-from ..services.pricing_materials import get_profile
-from ..services.pricing_saved_items import get_saved_item
+from ..services.order_pricing import resolve_references
 from ..services.starter_defaults import CATEGORY_IDS
 
 router = APIRouter(prefix="/pricing", tags=["pricing"])
@@ -197,27 +194,17 @@ async def wizard_apply(category_id: str, payload: ApplySuggestionsIn, user: dict
 async def calculate(payload: CalcIn, user: dict = Depends(require_permission(Perm.PRICING_CALCULATE))) -> dict:
     settings = await get_or_init_pricing_settings(user["tenant_id"])
 
-    material_profile = None
-    if payload.material_profile_id:
-        material_profile = await get_profile(user["tenant_id"], payload.material_profile_id)
-        if not material_profile:
-            raise HTTPException(status_code=404, detail="Material pricing profile not found")
-        material_doc = await db.materials.find_one(
-            {"id": material_profile["material_id"], "tenant_id": user["tenant_id"]}, {"_id": 0, "name": 1}
+    try:
+        material_profile, pricing_components, saved_item = await resolve_references(
+            tenant_id=user["tenant_id"], material_profile_id=payload.material_profile_id,
+            pricing_component_ids=payload.pricing_component_ids, saved_item_id=payload.saved_item_id,
         )
-        material_profile = {**material_profile, "material_name": (material_doc or {}).get("name")}
-
-    pricing_components: list[dict] = []
-    if payload.pricing_component_ids:
-        all_components = await list_components(user["tenant_id"], active=True)
-        by_id = {c["id"]: c for c in all_components}
-        pricing_components = [by_id[cid] for cid in payload.pricing_component_ids if cid in by_id]
-
-    saved_item = None
-    if payload.saved_item_id:
-        saved_item = await get_saved_item(user["tenant_id"], payload.saved_item_id)
-        if not saved_item:
+    except ValueError as e:
+        if str(e) == "material_profile_not_found":
+            raise HTTPException(status_code=404, detail="Material pricing profile not found")
+        if str(e) == "saved_item_not_found":
             raise HTTPException(status_code=404, detail="Saved item not found")
+        raise
 
     try:
         return calculate_pricing(

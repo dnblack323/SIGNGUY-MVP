@@ -119,7 +119,7 @@ function ConvertToOrderDialog({ quote, disabled, onConverted }) {
 
 // ------------- line items panel -------------
 
-function LineItemsPanel({ quoteId, quote, lineItems, totals, canWrite }) {
+function LineItemsPanel({ quoteId, quote, lineItems, totals, pricingSummary, canWrite }) {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -221,6 +221,22 @@ function LineItemsPanel({ quoteId, quote, lineItems, totals, canWrite }) {
                 {centsToDollarsString(totals.total_cents ?? quote.total_cents ?? 0)}
               </div>
             </div>
+            {pricingSummary?.item_count > 0 && (
+              <div className="grid grid-cols-[1fr_120px] gap-2 pt-2 border-t items-baseline" data-testid="quote-pricing-summary">
+                <div className="text-xs text-muted-foreground text-right">Est. production cost</div>
+                <div className="text-right tabular-nums text-xs">{centsToDollarsString(pricingSummary.total_estimated_cost_cents ?? 0)}</div>
+                <div className="text-xs text-muted-foreground text-right">Est. profit / margin</div>
+                <div className="text-right tabular-nums text-xs">
+                  {centsToDollarsString(pricingSummary.estimated_total_profit_cents ?? 0)} ({pricingSummary.estimated_margin_percent ?? 0}%)
+                </div>
+                {pricingSummary.items_with_warnings_count > 0 && (
+                  <>
+                    <div className="text-xs text-amber-700 text-right">Warnings to review</div>
+                    <div className="text-right tabular-nums text-xs text-amber-700" data-testid="quote-pricing-warnings-count">{pricingSummary.items_with_warnings_count}</div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
       </CardContent>
@@ -241,6 +257,9 @@ function LineItemsPanel({ quoteId, quote, lineItems, totals, canWrite }) {
         initial={editing}
         entityLabel="Quote"
         onSubmit={(payload) => updateItem(editing.id, payload)}
+        onRecalculatePreview={editing ? async (categoryInputs) => (
+          await api.post(`/quotes/${quoteId}/line-items/${editing.id}/recalculate-preview`, { category_inputs: categoryInputs })
+        ).data : undefined}
       />
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
@@ -279,6 +298,7 @@ export default function QuoteDetailPage() {
   const q = qResp?.quote || qResp;
   const lineItems = qResp?.line_items || [];
   const totals = qResp?.totals || {};
+  const pricingSummary = qResp?.pricing_summary || {};
   const { data: audit } = useQuery({ queryKey: ["audit-quote", id], queryFn: async () => (await api.get(`/audit`, { params: { entity_type: "quote", entity_id: id } })).data, enabled: !!id });
   const { data: customer } = useQuery({ queryKey: ["customer", q?.customer_id], queryFn: async () => (await api.get(`/customers/${q.customer_id}`)).data, enabled: !!q?.customer_id });
   const { data: revs } = useQuery({ queryKey: ["quote-revs", id], queryFn: async () => (await api.get(`/quotes/${id}/revisions`)).data, enabled: !!id });
@@ -374,7 +394,7 @@ export default function QuoteDetailPage() {
           </TabsList>
 
           <TabsContent value="line-items" className="space-y-2">
-            <LineItemsPanel quoteId={id} quote={q} lineItems={lineItems} totals={totals} canWrite={canWrite} />
+            <LineItemsPanel quoteId={id} quote={q} lineItems={lineItems} totals={totals} pricingSummary={pricingSummary} canWrite={canWrite} />
           </TabsContent>
 
           <TabsContent value="details" className="space-y-4">

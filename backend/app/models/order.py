@@ -41,10 +41,29 @@ class OrderItem(BaseDoc):
 
     # Pricing snapshot + manual override metadata
     pricing_snapshot: dict[str, Any] = Field(default_factory=dict)
+    previous_pricing_snapshot: Optional[dict[str, Any]] = None  # preserved on accepted recalculation
     manual_override_reason: Optional[str] = None
     manual_override_actor_user_id: Optional[str] = None
     manual_override_actor_email: Optional[str] = None
     manual_override_at: Optional[str] = None
+
+    # EC9 Phase 9F — Quote/Order/Order Item pricing integration (additive).
+    item_name: Optional[str] = None
+    category_inputs: dict[str, Any] = Field(default_factory=dict)
+    material_profile_id: Optional[str] = None
+    pricing_component_ids: list[str] = Field(default_factory=list)
+    saved_item_id: Optional[str] = None
+    suggested_price_cents: Optional[int] = None
+    manual_price_cents: Optional[int] = None
+    selected_price_source: str = "manual"          # "suggested" | "manual"
+    pricing_status: str = "manual"                 # "manual" | "calculated"
+    estimated_cost_cents: Optional[int] = None
+    estimated_profit_cents: Optional[int] = None
+    estimated_margin_percent: Optional[float] = None
+    calculation_warnings: list[str] = Field(default_factory=list)
+    source_labels: dict[str, Any] = Field(default_factory=dict)
+    last_recalculated_at: Optional[str] = None
+    price_selected_by_user_id: Optional[str] = None
 
     # Artwork / proof workflow (foundation only in EC3)
     artwork_status: Optional[str] = None

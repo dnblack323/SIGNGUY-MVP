@@ -22,6 +22,7 @@ All values are additive — old snapshots with only "manual"/"calculator" remain
 """
 from __future__ import annotations
 
+import uuid
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -45,6 +46,7 @@ def build_manual_snapshot(
 ) -> dict[str, Any]:
     """Build a snapshot for a manually-entered price (no calculator used)."""
     return {
+        "snapshot_id": str(uuid.uuid4()),
         "source": source,
         "pricing_method": "manual",
         "calculator_version": None,
@@ -68,6 +70,12 @@ def build_calculated_snapshot(
     actor_user_id: Optional[str] = None,
     actor_email: Optional[str] = None,
     foundation_effective_at: Optional[str] = None,
+    # EC9 Phase 9F — Quote/Order/Order Item integration additions. Additive
+    # only; every pre-existing key above is unchanged so old snapshots and
+    # tests keep working.
+    saved_item_id: Optional[str] = None,
+    material_profile_id: Optional[str] = None,
+    pricing_component_ids: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     """Build a snapshot for a price derived from the pricing calculator.
 
@@ -83,9 +91,11 @@ def build_calculated_snapshot(
         else None
     )
     return {
+        "snapshot_id": str(uuid.uuid4()),
         "source": "calculator",
         "pricing_method": calc_result.get("pricing_method_used"),
         "calculator_version": STARTER_DEFAULT_VERSION,
+        "formula_version": STARTER_DEFAULT_VERSION,
         "category": calc_result.get("category"),
         "quantity": int(quantity),
         "width_inches": calc_result.get("width_inches"),
@@ -100,6 +110,7 @@ def build_calculated_snapshot(
         "true_cost_dollars": calc_result.get("true_cost"),
         "calculated_unit_price_cents": calc_unit_cents,
         "calculated_unit_price_dollars": calc_unit_dollars,
+        "suggested_price_dollars": calc_unit_dollars,
         "override_unit_price_cents": override_unit_price_cents,
         "override_reason": override_reason,
         "override_actor_user_id": actor_user_id,
@@ -108,6 +119,15 @@ def build_calculated_snapshot(
         # calculation time (immutable copy; never re-read from live settings).
         "defaults_snapshot": calc_result.get("shop_defaults_used") or {},
         "foundation_effective_at": foundation_effective_at,
+        # Phase 9F — explain-later context: raw calculator inputs used, why
+        # each field resolved the way it did, and any calculation warnings.
+        "category_inputs": calc_result.get("category_inputs_used") or {},
+        "source_labels": calc_result.get("source_labels") or {},
+        "calculation_warnings": calc_result.get("calculation_warnings") or [],
+        "breakdown": calc_result.get("breakdown") or [],
+        "saved_item_id": saved_item_id,
+        "material_profile_id": material_profile_id,
+        "pricing_component_ids": pricing_component_ids or [],
         "captured_at": _now_iso(),
     }
 

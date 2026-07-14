@@ -26,8 +26,9 @@ from ..deps import require_permission
 from ..models.quote import Quote
 from ..models.quote_line_item import QuoteLineItem
 from ..services.audit import record_audit
-from ..services.commerce_totals import compute_document_totals, compute_line_totals
-from ..services.pricing_snapshot import build_manual_snapshot
+from ..services.commerce_totals import compute_document_totals, compute_line_totals, compute_pricing_summary
+from ..services.order_pricing import build_item_pricing_fields, calculate_for_references
+from ..services.pricing import get_or_init_pricing_settings
 from ..services.quote_conversion import convert_quote_to_order
 from ..services.quote_revisions import get_revision, list_revisions, snapshot_current
 from ..services.sequence import next_number
@@ -79,6 +80,14 @@ class LineItemIn(BaseModel):
     notes: Optional[str] = None
     production_required: Optional[bool] = None
     manual_override_reason: Optional[str] = None
+    # EC9 Phase 9F — calculator-created / saved-item / canonical-material items.
+    item_name: Optional[str] = None
+    category_inputs: dict[str, Any] = Field(default_factory=dict)
+    material_profile_id: Optional[str] = None
+    pricing_component_ids: list[str] = Field(default_factory=list)
+    saved_item_id: Optional[str] = None
+    manual_price_cents: Optional[int] = Field(None, ge=0)
+    selected_price_source: Optional[Literal["suggested", "manual"]] = None
 
 
 class LineItemPatchIn(BaseModel):
@@ -99,6 +108,19 @@ class LineItemPatchIn(BaseModel):
     production_required: Optional[bool] = None
     position: Optional[int] = None
     manual_override_reason: Optional[str] = None
+    # EC9 Phase 9F
+    item_name: Optional[str] = None
+    category_inputs: Optional[dict[str, Any]] = None
+    material_profile_id: Optional[str] = None
+    pricing_component_ids: Optional[list[str]] = None
+    saved_item_id: Optional[str] = None
+    manual_price_cents: Optional[int] = Field(None, ge=0)
+    selected_price_source: Optional[Literal["suggested", "manual"]] = None
+    recalculate: bool = False  # if true, re-run the calculator with current category_inputs/defaults
+
+
+class RecalculatePreviewIn(BaseModel):
+    category_inputs: Optional[dict[str, Any]] = None  # override; defaults to the item's stored inputs
 
 
 class ConvertIn(BaseModel):
@@ -176,6 +198,45 @@ async def _create_revision_before_edit(quote_doc: dict[str, Any], user: dict, re
     return new_number
 
 
+async def _resolve_item_pricing(
+    *, user: dict, category: Optional[str], quantity: int, category_inputs: Optional[dict],
+    material_profile_id: Optional[str], pricing_component_ids: Optional[list], saved_item_id: Optional[str],
+    manual_price_cents: Optional[int], selected_price_source: Optional[str], fallback_unit_price_cents: int,
+    manual_override_reason: Optional[str], recalculated: bool = False,
+) -> dict[str, Any]:
+    """EC9 Phase 9F — the ONE place Quote Line Item pricing is derived. Calls
+    the canonical pricing service; never computes cost/price itself."""
+    category_inputs = category_inputs or {}
+    pricing_component_ids = pricing_component_ids or []
+    use_calculator = bool(category) and (
+        bool(category_inputs) or bool(material_profile_id) or bool(pricing_component_ids)
+        or bool(saved_item_id) or selected_price_source == "suggested"
+    )
+    calc_result = None
+    foundation_effective_at = None
+    if use_calculator:
+        settings = await get_or_init_pricing_settings(user["tenant_id"])
+        foundation_effective_at = settings.get("updated_at")
+        try:
+            calc_result = await calculate_for_references(
+                settings=settings, category=category, quantity=quantity, category_inputs=category_inputs,
+                material_profile_id=material_profile_id, pricing_component_ids=pricing_component_ids,
+                saved_item_id=saved_item_id,
+            )
+        except ValueError as e:
+            detail = "Material pricing profile not found" if str(e) == "material_profile_not_found" else (
+                "Saved item not found" if str(e) == "saved_item_not_found" else str(e))
+            raise HTTPException(status_code=404, detail=detail)
+    return build_item_pricing_fields(
+        calc_result=calc_result, quantity=quantity, category=category, category_inputs=category_inputs,
+        material_profile_id=material_profile_id, pricing_component_ids=pricing_component_ids,
+        saved_item_id=saved_item_id, manual_price_cents=manual_price_cents, selected_price_source=selected_price_source,
+        fallback_unit_price_cents=fallback_unit_price_cents, user_id=user["id"], actor_email=user["email"],
+        foundation_effective_at=foundation_effective_at, manual_override_reason=manual_override_reason,
+        recalculated=recalculated,
+    )
+
+
 # ---- Quote CRUD ----
 
 
@@ -231,7 +292,11 @@ async def get_quote(quote_id: str, user: dict = Depends(require_permission(Perm.
     if not doc:
         raise HTTPException(status_code=404, detail="Quote not found")
     line_items = await _list_line_items(user["tenant_id"], quote_id, int(doc.get("revision_number") or 1))
-    return {"quote": _serialize_quote(doc), "line_items": line_items, "totals": compute_document_totals(line_items)}
+    return {
+        "quote": _serialize_quote(doc), "line_items": line_items,
+        "totals": compute_document_totals(line_items),
+        "pricing_summary": compute_pricing_summary(line_items),
+    }
 
 
 @router.patch("/{quote_id}")
@@ -355,7 +420,7 @@ async def list_line_items(quote_id: str, user: dict = Depends(require_permission
     if not quote:
         raise HTTPException(status_code=404, detail="Quote not found")
     items = await _list_line_items(user["tenant_id"], quote_id, int(quote.get("revision_number") or 1))
-    return {"items": items, "totals": compute_document_totals(items)}
+    return {"items": items, "totals": compute_document_totals(items), "pricing_summary": compute_pricing_summary(items)}
 
 
 @router.post("/{quote_id}/line-items", status_code=201)
@@ -377,29 +442,29 @@ async def add_line_item(
         quote["revision_number"] = new_rev
 
     revision_number = int(quote.get("revision_number") or 1)
+    pricing_fields = await _resolve_item_pricing(
+        user=user, category=payload.category, quantity=payload.quantity, category_inputs=payload.category_inputs,
+        material_profile_id=payload.material_profile_id, pricing_component_ids=payload.pricing_component_ids,
+        saved_item_id=payload.saved_item_id, manual_price_cents=payload.manual_price_cents,
+        selected_price_source=payload.selected_price_source, fallback_unit_price_cents=payload.unit_price_cents,
+        manual_override_reason=payload.manual_override_reason,
+    )
+    final_unit_price_cents = pricing_fields.pop("unit_price_cents")
     totals = compute_line_totals(
         quantity=payload.quantity,
-        unit_price_cents=payload.unit_price_cents,
+        unit_price_cents=final_unit_price_cents,
         discount_cents=payload.discount_cents,
         tax_cents=payload.tax_cents,
     )
     position = await db.quote_line_items.count_documents(
         {"tenant_id": user["tenant_id"], "quote_id": quote_id, "revision_number": revision_number}
     )
-    snapshot = build_manual_snapshot(
-        unit_price_cents=payload.unit_price_cents,
-        quantity=payload.quantity,
-        reason=payload.manual_override_reason,
-        actor_user_id=user["id"],
-        actor_email=user["email"],
-        source="user_entered",
-    )
     li = QuoteLineItem(
         tenant_id=user["tenant_id"],
         quote_id=quote_id,
         revision_number=revision_number,
         position=position,
-        category=payload.category,
+        item_name=payload.item_name,
         product_type=payload.product_type,
         description=payload.description,
         sku=payload.sku,
@@ -409,15 +474,15 @@ async def add_line_item(
         height_inches=payload.height_inches,
         depth_inches=payload.depth_inches,
         material_key=payload.material_key,
-        unit_price_cents=payload.unit_price_cents,
+        unit_price_cents=final_unit_price_cents,
         discount_cents=totals["discount_cents"],
         tax_cents=totals["tax_cents"],
         line_subtotal_cents=totals["line_subtotal_cents"],
         line_total_cents=totals["line_total_cents"],
-        pricing_snapshot=snapshot,
         manual_override_reason=payload.manual_override_reason,
         production_required=payload.production_required,
         notes=payload.notes,
+        **pricing_fields,
     )
     await db.quote_line_items.insert_one(prepare_for_mongo(li.model_dump()))
 
@@ -431,7 +496,7 @@ async def add_line_item(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         action="quote.line_item.added", entity_type="quote", entity_id=quote_id,
         summary=f"Line item added to Q-{quote['number']}",
-        diff={"line_item_id": li.id, "unit_price_cents": payload.unit_price_cents,
+        diff={"line_item_id": li.id, "unit_price_cents": final_unit_price_cents,
               "quantity": payload.quantity, "revision": revision_number},
     )
     return serialize_doc(li.model_dump())
@@ -462,17 +527,44 @@ async def update_line_item(
         await db.quotes.update_one({"id": quote_id}, {"$set": {"revision_number": new_rev, "updated_at": utc_now().isoformat()}})
         line = await db.quote_line_items.find_one({"id": item_id})
 
-    updates = payload.model_dump(exclude_none=True)
-    if not updates:
+    updates = payload.model_dump(exclude_none=True, exclude={"recalculate"})
+    recalc_requested = payload.recalculate
+    if not updates and not recalc_requested:
         raise HTTPException(status_code=400, detail="No updates")
 
-    # If the unit price is overridden without a reason, reject.
+    pricing_trigger_fields = {"category_inputs", "material_profile_id", "pricing_component_ids", "saved_item_id",
+                               "manual_price_cents", "selected_price_source", "category", "quantity"}
+    needs_pricing_resolution = recalc_requested or any(f in updates for f in pricing_trigger_fields)
+    if needs_pricing_resolution:
+        pricing_fields = await _resolve_item_pricing(
+            user=user,
+            category=updates.get("category", line.get("category")),
+            quantity=int(updates.get("quantity", line.get("quantity") or 1)),
+            category_inputs=updates.get("category_inputs", line.get("category_inputs") or {}),
+            material_profile_id=updates.get("material_profile_id", line.get("material_profile_id")),
+            pricing_component_ids=updates.get("pricing_component_ids", line.get("pricing_component_ids") or []),
+            saved_item_id=updates.get("saved_item_id", line.get("saved_item_id")),
+            manual_price_cents=updates.get("manual_price_cents", line.get("manual_price_cents")),
+            selected_price_source=updates.get("selected_price_source", line.get("selected_price_source")),
+            fallback_unit_price_cents=int(updates.get("unit_price_cents", line.get("unit_price_cents") or 0)),
+            manual_override_reason=updates.get("manual_override_reason", line.get("manual_override_reason")),
+            recalculated=recalc_requested,
+        )
+        if recalc_requested and line.get("pricing_snapshot"):
+            updates["previous_pricing_snapshot"] = line.get("pricing_snapshot")
+        updates.update(pricing_fields)
+
+    # If the SELECTED final price changes AND the selected source is "manual",
+    # an override reason is required. Suggested-price acceptances (backend-
+    # authoritative) never require one.
     if "unit_price_cents" in updates and int(updates["unit_price_cents"]) != int(line.get("unit_price_cents") or 0):
-        if not updates.get("manual_override_reason") and not line.get("manual_override_reason"):
-            raise HTTPException(status_code=400, detail="Override reason required for manual price change")
-        updates["manual_override_actor_user_id"] = user["id"]
-        updates["manual_override_actor_email"] = user["email"]
-        updates["manual_override_at"] = utc_now().isoformat()
+        final_source = updates.get("selected_price_source", line.get("selected_price_source") or "manual")
+        if final_source == "manual":
+            if not updates.get("manual_override_reason") and not line.get("manual_override_reason"):
+                raise HTTPException(status_code=400, detail="Override reason required for manual price change")
+            updates["manual_override_actor_user_id"] = user["id"]
+            updates["manual_override_actor_email"] = user["email"]
+            updates["manual_override_at"] = utc_now().isoformat()
 
     merged = {**line, **updates}
     totals = compute_line_totals(
@@ -498,6 +590,43 @@ async def update_line_item(
     )
     doc = await db.quote_line_items.find_one({"id": item_id}, {"_id": 0})
     return serialize_doc(doc)
+
+
+@router.post("/{quote_id}/line-items/{item_id}/recalculate-preview")
+async def recalculate_line_item_preview(
+    quote_id: str,
+    item_id: str,
+    payload: RecalculatePreviewIn = Body(default_factory=RecalculatePreviewIn),
+    user: dict = Depends(require_permission(Perm.QUOTE_WRITE)),
+) -> dict:
+    """EC9 Phase 9F — pure preview. Computes a candidate result using current
+    Pricing Foundation defaults; does NOT touch the stored item. The old
+    snapshot is untouched until the caller PATCHes with `recalculate: true`
+    to explicitly accept it (or discards this preview to reject)."""
+    quote = await db.quotes.find_one({"id": quote_id, "tenant_id": user["tenant_id"]})
+    if not quote:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    if quote.get("status") != "draft":
+        raise HTTPException(status_code=400, detail="Recalculation preview is only available for draft quotes")
+    line = await db.quote_line_items.find_one({"id": item_id, "quote_id": quote_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not line:
+        raise HTTPException(status_code=404, detail="Line item not found")
+    if not line.get("category"):
+        raise HTTPException(status_code=400, detail="This item has no category/calculator to recalculate")
+
+    category_inputs = payload.category_inputs if payload.category_inputs is not None else (line.get("category_inputs") or {})
+    pricing_fields = await _resolve_item_pricing(
+        user=user, category=line.get("category"), quantity=int(line.get("quantity") or 1),
+        category_inputs=category_inputs, material_profile_id=line.get("material_profile_id"),
+        pricing_component_ids=line.get("pricing_component_ids") or [], saved_item_id=line.get("saved_item_id"),
+        manual_price_cents=line.get("manual_price_cents"), selected_price_source=line.get("selected_price_source") or "suggested",
+        fallback_unit_price_cents=int(line.get("unit_price_cents") or 0),
+        manual_override_reason=line.get("manual_override_reason"), recalculated=True,
+    )
+    return {"old": {k: line.get(k) for k in (
+        "unit_price_cents", "suggested_price_cents", "manual_price_cents", "selected_price_source",
+        "estimated_cost_cents", "estimated_profit_cents", "estimated_margin_percent", "pricing_snapshot",
+    )}, "new": pricing_fields}
 
 
 @router.delete("/{quote_id}/line-items/{item_id}", status_code=204, response_class=Response)
