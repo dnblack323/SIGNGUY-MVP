@@ -37,7 +37,7 @@
 
 | EC | Name | Status | Notes |
 |---|---|---|---|
-| **EC9** | Pricing Foundation, Detailed Calculators, and Exact Order Workflow | **IN PROGRESS — Phase 9A + 9B COMPLETE (9C–9H remaining)** | Absorbs old Appendix A.2 (EC3.1). Controlling doc: `EC09_Pricing_Foundation_Calculators_and_Order_Pricing.docx`. Preflight + Phase 9A/9B decision record & evidence: `/app/preflight/EC9_PRICING_FOUNDATION_CALCULATORS_AND_ORDER_PRICING_PREFLIGHT.md`. |
+| **EC9** | Pricing Foundation, Detailed Calculators, and Exact Order Workflow | **COMPLETE — CLOSED 2026-07 (Phases 9A-9H all delivered)** | Absorbs old Appendix A.2 (EC3.1). Controlling doc: `EC09_Pricing_Foundation_Calculators_and_Order_Pricing.docx`. Preflight: `/app/preflight/EC9_PRICING_FOUNDATION_CALCULATORS_AND_ORDER_PRICING_PREFLIGHT.md`. Closure record + full phase history: `/app/memory/PRD.md`. 196 EC9-targeted + 511 full-backend-regression + 25 frontend Jest tests all green; `testing_agent_v4` closure pass found and fixed 1 critical defect (Quote/Order item width/height not reaching the pricing engine); frontend production build + terminology guard both pass. |
 | **EC10** | Order Intake, Visual Markup, Customer Decision Room, and Templates | NOT STARTED | Absorbs old Appendix A.1 (EC6.3); adds the previously-missing Customer Decision Room + Templates system. Controlling doc: `EC10_Order_Intake_Visual_Markup_Decision_Room_and_Templates.docx`. Held on H1. |
 | **EC11** | Production Timeline, Workflow Configuration, Stage Tracking, and Kiosk | NOT STARTED | Controlling doc: `EC11_Production_Timeline_Workflows_Kiosk_and_Advanced_Tracking.docx`. Advanced/paid half remains the pre-existing owner-locked add-on (`/app/docs/production_stage_timer_boundary.md`). Held on H1. |
 | **EC12** | Tasks, Kanban, Messages, Notes, Calendar, Appointments, Shop Schedule, and Community | NOT STARTED | Controlling doc: `EC12_Productivity_Messaging_Calendar_Appointments_and_Community.docx`. Held on H1. |
@@ -79,14 +79,14 @@
 
 ## Next Action
 
-**EC8 is DELIVERED / CLOSED (all phases 8a–8f complete).** Per explicit owner instruction, no new checkpoint begins.
+**EC8 is DELIVERED / CLOSED (all phases 8a–8f complete). EC9 is COMPLETE / CLOSED (all phases 9A–9H complete, 2026-07).** Per explicit owner instruction, no new checkpoint begins.
 
-- The remaining roadmap (EC9–EC22) is now governed by the SignGuy AI Checkpoint Specification Pack — see `/app/memory/checkpoint_reference_table.md`.
-- Do NOT begin EC9 (or any checkpoint) without explicit owner authorization naming that checkpoint (hold H1).
+- The remaining roadmap (EC10–EC22) is now governed by the SignGuy AI Checkpoint Specification Pack — see `/app/memory/checkpoint_reference_table.md`.
+- Do NOT begin EC10 (or any checkpoint) without explicit owner authorization naming that checkpoint (hold H1).
 - Do NOT begin EC14 (Webstores), EC15 (Wrap Lab), or EC16–EC18 (AI) without their additional separate authorizations (H2/H3/H4).
 - Do NOT begin EC17 until the owner completes the AI Tools Keep/Combine/Change/Rename/Defer/Remove worksheet (H5/H8).
-- Do NOT invoke or rerun the EC0–EC8 implementation prompts.
+- Do NOT invoke or rerun the EC0–EC9 implementation prompts.
 
 ---
 
-**Register last updated:** 2026-02 — **Owner resolved all 3 registered contradictions (C1 standalone pricing, C2 dunning model, C3 AI-tool pricing tiers).** C1: Webstores standalone $109/mo, Wrap Lab standalone $139/mo, both provisional, annual not yet approved for either. C2: day-based delinquency model (Days 1-7 reminder/grace, 8-14 escalated warning, 15+ eligible for suspension) reaffirmed authoritative, Stripe-webhook-driven not retry-count-driven, configurable grace extensions + Founder exceptions + reset-on-payment + full audit; EC20's 3-strikes proposal superseded. C3: no separate AI subscription tiers — plan-included credits + existing one-time top-up packs (100/$19, 300/$45, 800/$99) only; EC17's Starter/Growth/Power/Agency proposal superseded (does not lift H5/H8 tool-review hold). All resolutions recorded in `/app/memory/owner_specification_hold_register.md`, `/app/memory/checkpoint_reference_table.md`, `/app/memory/permanent_backlog_register.md`, and `/app/memory/PRD.md`. No EC13/EC14/EC15/EC17/EC20 docx files were altered. EC9 preflight produced at `/app/preflight/EC9_PRICING_FOUNDATION_CALCULATORS_AND_ORDER_PRICING_PREFLIGHT.md` — no EC9 code written, no later checkpoint started.
+**Register last updated:** 2026-07 — **EC9 (Pricing Foundation, Calculators, and Order Pricing) formally CLOSED** — Phases 9A-9H all complete; see `/app/memory/PRD.md` for the full phase-by-phase closure record. No checkpoint after EC9 has started.

@@ -12,7 +12,7 @@
 
 | Item | Owning checkpoint | Carries forward from |
 |---|---|---|
-| Pricing Foundation full calculator category coverage, canonical formula pipeline, manual/saved/AI pricing-mode coexistence, review/testing panel | EC9 | Old Appendix A.2 (EC3.1) |
+| ~~Pricing Foundation full calculator category coverage, canonical formula pipeline, manual/saved/AI pricing-mode coexistence, review/testing panel~~ — **COMPLETE 2026-07, EC9 CLOSED** (see PRD.md) | EC9 | Old Appendix A.2 (EC3.1) |
 | Order Intake capture (camera/image/PDF/measurements/voice notes/questionnaires), Visual Markup tools, Customer Decision Room, reusable Templates (Quote/Order/Intake/Questionnaire/Proof/Email/SMS/Document/Production/Appointment) | EC10 | Old Appendix A.1 (EC6.3) + new Customer Decision Room (first-time authority, previously missing) |
 | Order Timeline panel, configurable Production Stages (Simple/Detailed/Custom), Employee Production Experience, Shop-Floor Kiosk | EC11 | New scope; Advanced stage-timer/bottleneck-analytics half remains the pre-existing owner-locked paid add-on (`/app/docs/production_stage_timer_boundary.md`) |
 | Shared Task system, Employee Scheduling/Time-Off, Messages/Announcements/Daily Digest, Calendar/Appointments/Shop Schedule, Employee Account Experience, Community + Founders Area, Templates | EC12 | New scope (Community/Founders area is new; Team messaging/scheduling extends EC8) |
@@ -52,4 +52,4 @@
 - **EC6.2 — Signed PDF Composite Rendering** (deferred per `/app/memory/product_ideas_register.md`) — still deferred to EC22 Final Hardening or an earlier verified need; unaffected by the new pack.
 - **Reusable Quote/Order Templates** and **Production Board Live Refresh** ideas in `product_ideas_register.md` remain unscheduled ideas, not part of this committed backlog, unless the owner promotes them.
 
-**Register last updated:** 2026-02 — SignGuy AI Checkpoint Specification Pack intake; contradictions C1/C2/C3 resolved by owner decision (see `owner_specification_hold_register.md`). No item above has started implementation.
+**Register last updated:** 2026-07 — EC9 (Pricing Foundation, Calculators, and Order Pricing) marked COMPLETE/CLOSED, moved off the P1 pending list. 2026-02 intake note (contradictions C1/C2/C3 resolved) retained below for provenance. No other item above has started implementation.

@@ -195,3 +195,20 @@
 **Phase 9B status: COMPLETE.**
 
 **Remaining Phase 9C work (NOT started):** the simplified, grouped onboarding pricing quiz — one practical-scenario question deriving labor rate/minimum/overhead/sell-rate suggestions, shown-math + owner-review-before-apply, additive to (not replacing) the existing detailed `CategorySetupWizard`. No quiz code, service, or endpoint exists yet.
+
+
+---
+
+## EC9 CLOSURE RECORD — Phase 9H (2026-07)
+
+**EC9 status: COMPLETE / CLOSED.** All phases delivered: 9A (invariants) → 9B (global foundation) → 9C (grouped quiz) → 9D (Materials/Saved Items) → 9E-1..9E-4 (all 9 category calculators) → 9F (Quote/Order/Order Item integration) → 9G (immutable snapshots + advisory contracts) → 9H (this closure pass).
+
+**Phase 9H findings:** `testing_agent_v4` (first and only run for the whole EC9 checkpoint) found **1 critical defect**: Quote Line Item / Order Item pricing resolution (`routers/quotes.py`, `routers/orders.py` — `_resolve_item_pricing`) never forwarded `width_inches`/`height_inches` into `order_pricing.calculate_for_references()`, causing flat/square-foot categories (banners, rigid_signs, cut_vinyl, digital_print) to silently price off the category's minimum billable area rather than the actual entered dimensions whenever an item was created/edited/recalculated through a Quote or Order (the standalone `/pricing/calculate` endpoint used by the Calculator page was unaffected — it always forwarded dimensions correctly). **Fixed** in both routers (dimensions now flow through create/update/recalculate-preview; `pricing_trigger_fields` now includes `width_inches`/`height_inches` so a dimensions-only edit also triggers recalculation) and locked in with 5 new regression tests (`tests/test_ec9_phase9h_closure_regressions.py`).
+
+**Dead-code finding:** `components/pricing/selectors/MaterialSelector.jsx` (a raw canonical-Material selector prepared in Phase 9D, zero usages anywhere in the frontend — superseded by the profile-based `MaterialProfileSelector.jsx` built in Phase 9F/9G) — **removed**.
+
+**Final test totals:** 196 EC9-targeted pytest (all phases together) + 5 Phase 9H closure regression tests + 511 full backend regression (2 pre-existing unrelated collection-only issues in `test_ec8_api_spotcheck.py`/`test_live_foundation_hardening.py` confirmed to pass fully when `REACT_APP_BACKEND_URL` is exported — a test-harness quirk, not an EC9 or application defect) + 25/25 frontend Jest + frontend production build (`yarn build`, clean) + terminology guard (`OK`) — all green. `testing_agent_v4` closure workflow pass: 1 defect found and fixed as above, zero other defects.
+
+**Full closure report + category coverage matrix + provisional assumption register:** see the "EC9 Phase 9H — Closure" section of `/app/memory/PRD.md` (this preflight doc is kept as historical evidence only and is not re-authored).
+
+**EC10 and all later checkpoints: NOT STARTED.**

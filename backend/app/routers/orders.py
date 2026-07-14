@@ -118,6 +118,8 @@ class OrderItemPatchIn(BaseModel):
 
 class RecalculatePreviewIn(BaseModel):
     category_inputs: Optional[dict[str, Any]] = None
+    width_inches: Optional[float] = None
+    height_inches: Optional[float] = None
 
 
 # ---- Helpers ----
@@ -150,6 +152,7 @@ async def _resolve_item_pricing(
     material_profile_id: Optional[str], pricing_component_ids: Optional[list], saved_item_id: Optional[str],
     manual_price_cents: Optional[int], selected_price_source: Optional[str], fallback_unit_price_cents: int,
     manual_override_reason: Optional[str], recalculated: bool = False,
+    width_inches: Optional[float] = None, height_inches: Optional[float] = None,
 ) -> dict[str, Any]:
     """EC9 Phase 9F — the ONE place Order Item pricing is derived. Calls the
     canonical pricing service; never computes cost/price itself."""
@@ -168,7 +171,7 @@ async def _resolve_item_pricing(
             calc_result = await calculate_for_references(
                 settings=settings, category=category, quantity=quantity, category_inputs=category_inputs,
                 material_profile_id=material_profile_id, pricing_component_ids=pricing_component_ids,
-                saved_item_id=saved_item_id,
+                saved_item_id=saved_item_id, width_inches=width_inches, height_inches=height_inches,
             )
         except ValueError as e:
             detail = "Material pricing profile not found" if str(e) == "material_profile_not_found" else (
@@ -328,6 +331,7 @@ async def add_item(order_id: str, payload: OrderItemIn, user: dict = Depends(req
         saved_item_id=payload.saved_item_id, manual_price_cents=payload.manual_price_cents,
         selected_price_source=payload.selected_price_source, fallback_unit_price_cents=payload.unit_price_cents,
         manual_override_reason=payload.manual_override_reason,
+        width_inches=payload.width_inches, height_inches=payload.height_inches,
     )
     final_unit_price_cents = pricing_fields.pop("unit_price_cents")
     line = compute_line_totals(
@@ -397,7 +401,8 @@ async def update_item(order_id: str, item_id: str, payload: OrderItemPatchIn,
     now = utc_now().isoformat()
 
     pricing_trigger_fields = {"category_inputs", "material_profile_id", "pricing_component_ids", "saved_item_id",
-                               "manual_price_cents", "selected_price_source", "category", "quantity"}
+                               "manual_price_cents", "selected_price_source", "category", "quantity",
+                               "width_inches", "height_inches"}
     needs_pricing_resolution = recalc_requested or any(f in updates for f in pricing_trigger_fields)
     if needs_pricing_resolution:
         pricing_fields = await _resolve_item_pricing(
@@ -413,6 +418,8 @@ async def update_item(order_id: str, item_id: str, payload: OrderItemPatchIn,
             fallback_unit_price_cents=int(updates.get("unit_price_cents", line.get("unit_price_cents") or 0)),
             manual_override_reason=updates.get("manual_override_reason", line.get("manual_override_reason")),
             recalculated=recalc_requested,
+            width_inches=updates.get("width_inches", line.get("width_inches")),
+            height_inches=updates.get("height_inches", line.get("height_inches")),
         )
         if recalc_requested and line.get("pricing_snapshot"):
             updates["previous_pricing_snapshot"] = line.get("pricing_snapshot")
@@ -488,6 +495,8 @@ async def recalculate_item_preview(
         raise HTTPException(status_code=400, detail="This item has no category/calculator to recalculate")
 
     category_inputs = payload.category_inputs if payload.category_inputs is not None else (line.get("category_inputs") or {})
+    width_inches = payload.width_inches if payload.width_inches is not None else line.get("width_inches")
+    height_inches = payload.height_inches if payload.height_inches is not None else line.get("height_inches")
     pricing_fields = await _resolve_item_pricing(
         user=user, category=line.get("category"), quantity=int(line.get("quantity") or 1),
         category_inputs=category_inputs, material_profile_id=line.get("material_profile_id"),
@@ -495,6 +504,7 @@ async def recalculate_item_preview(
         manual_price_cents=line.get("manual_price_cents"), selected_price_source=line.get("selected_price_source") or "suggested",
         fallback_unit_price_cents=int(line.get("unit_price_cents") or 0),
         manual_override_reason=line.get("manual_override_reason"), recalculated=True,
+        width_inches=width_inches, height_inches=height_inches,
     )
     return {"old": {k: line.get(k) for k in (
         "unit_price_cents", "suggested_price_cents", "manual_price_cents", "selected_price_source",
