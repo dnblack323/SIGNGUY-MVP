@@ -20,7 +20,7 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "N/A (not retested per scope, backend already 39/39 in iteration_12)", "frontend": "100% of requested fix-verification and regression items passed"},
-  "test_credentials": "Used dev-login (AUTH_DEV_BYPASS) + POST /api/dev-tools/ensure-dev-employee for staff bearer token; POST /api/dev-tools/mint-employee-portal-login?employee_id=299a45ee-8020-4583-9324-36b159b18682 for a fresh single-use raw magic-link token, exactly per /app/memory/test_credentials.md.",
+  "test_credentials": "Used dev-login (AUTH_DEV_BYPASS) + POST /api/dev-tools/ensure-dev-employee for staff bearer token; POST /api/dev-tools/mint-employee-portal-login?employee_id=ec9-services-pricing for a fresh single-use raw magic-link token, exactly per /app/memory/test_credentials.md.",
   "seed_data_creation": "None new; reused existing dev tenant / seeded employees and shifts from iteration_12 (disposable dev tenant, not cleaned up).",
   "retest_needed": false,
   "should_main_agent_self_test": false,

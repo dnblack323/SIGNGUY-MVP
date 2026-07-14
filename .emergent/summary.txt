@@ -1,44 +1,88 @@
 <analysis>**original_problem_statement**: 
-The user is building SignGuy AI using the FARM stack. Following the completion of EC7, the objective is to implement **EC8 — Team, Scheduling, Time, Payroll, Employee Portal, Equipment Training, and Certification**. The implementation must strictly follow credit conservation rules (reuse systems, run targeted tests only, no full regressions until the final Phase 8f). Phase 8a (Employees and Team Foundation) and **Phase 8b (Time Clock and Timesheets)** are now successfully completed. The agent is waiting for user authorization to proceed to Phase 8c.
+The user is implementing EC9 (Pricing Foundation, Calculators, and Order Pricing) following the SignGuy AI Checkpoint Specification Pack. Implementation must enforce tenant-isolation, preserve existing systems, and use the EC7 Material system. **CRITICAL PRODUCT REQUIREMENT:** The user has imposed a strict Credit-Conservation Rule which explicitly bans the use of  or full regression test suites.
 
-**User's preferred language**: English (INSTRUCT next agent to respond in English only)
+**User's preferred language**: English (INSTRUCT next agent to respond in the user's preferred language only)
 
 **what currently exists?** 
-A full-stack application (FARM stack) with EC0 through EC7 100% COMPLETE. EC8 Phase 8a and Phase 8b are fully coded, tested (targeted tests, curl, UI screenshots), and documented as DELIVERED. An idempotent dev-tools route exists to securely seed an  link for the developer user, unblocking E2E UI verification.
+Phases 9A through 9E-3 (Flat/SqFt, Apparel, Vehicle Graphics) are 100% COMPLETE. The calculator backend properly routes categories to sub-modules. A system for idempotent additive default merge handles safe tenant settings updates.  renders dynamic inputs correctly.
 
-**Last working item**:
-    - Last item agent was working: Wrapping up Phase 8b. The agent successfully built the  fixture, executed targeted E2E API checks (clock in, breaks, clock out, timesheets), confirmed UI rendering with a screenshot of the Time Clock page, updated all project documentation (, , ), and formally used  to request user permission to begin Phase 8c.
+**Last working item**: 
+    - Last item agent was working: Phase 9E-4 — Services, Installation, Design, and Custom / Miscellaneous Pricing. The agent extracted the necessary specs from the  file, reviewed , and sent an  query to confirm the implementation plan with the user.
     - Status: USER VERIFICATION PENDING
-    - Agent Testing Done: Y
-    - Which testing method agent to use? manual testing by curl / screenshot tool (Do NOT use testing subagent yet per strict credit-conservation rules).
+    - Agent Testing Done: N
+    - Which testing method agent to use? ============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0
+rootdir: /app
+plugins: anyio-4.14.1, asyncio-1.4.0, xdist-3.8.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 417 items / 2 errors
+
+==================================== ERRORS ====================================
+___________ ERROR collecting backend/tests/test_ec8_api_spotcheck.py ___________
+backend/tests/test_ec8_api_spotcheck.py:13: in <module>
+    BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'NoneType' object has no attribute 'rstrip'
+_______ ERROR collecting backend/tests/test_live_foundation_hardening.py _______
+backend/tests/test_live_foundation_hardening.py:10: in <module>
+    BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'NoneType' object has no attribute 'rstrip'
+=============================== warnings summary ===============================
+../root/.venv/lib/python3.11/site-packages/starlette/formparsers.py:12
+  /root/.venv/lib/python3.11/site-packages/starlette/formparsers.py:12: PendingDeprecationWarning: Please use `import python_multipart` instead.
+    import multipart
+
+backend/server.py:186
+  /app/backend/server.py:186: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+../root/.venv/lib/python3.11/site-packages/fastapi/applications.py:4495
+  /root/.venv/lib/python3.11/site-packages/fastapi/applications.py:4495: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+ERROR backend/tests/test_ec8_api_spotcheck.py - AttributeError: 'NoneType' ob...
+ERROR backend/tests/test_live_foundation_hardening.py - AttributeError: 'None...
+!!!!!!!!!!!!!!!!!!! Interrupted: 2 errors during collection !!!!!!!!!!!!!!!!!!!!
+======================== 3 warnings, 2 errors in 1.74s ========================= for TARGETED TESTS ONLY () and Frontend Compile/Screenshots. **STRICTLY DO NOT USE  OR FULL REGRESSION SUITES.** 
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:  
-  *None.* All issues for Phase 8b have been resolved.
+  *No standalone issues pending.*
 
 **In progress Task List**:
-  *None.* Phase 8b is finished. 
+  Task 1: Complete Phase 9E-4 (Services, Installation, Design, and Custom / Miscellaneous Pricing)
+     - Where to resume: Wait for the user's response to the pending  message. Once approved, implement calculation logic inside , wire it up in , build out the frontend inputs in , and write the targeted test file . 
+     - What will be achieved with this? Fulfils the EC9 spec requirements for service-based and custom manual pricing.
+     - Status: USER VERIFICATION PENDING
+     - Should Test frontend/backend/both after fix? Both (Backend targeted pytest + Frontend screenshot/compile).
+     - Blocked on something: Waiting for user to reply to the  plan.
 
 **Upcoming and Future Tasks**
-  *Upcoming Tasks:*
-  - P0: Phase 8c — Scheduling and Employee Portal (AWAITING EXPLICIT USER AUTHORIZATION. DO NOT START WITHOUT APPROVAL).
-  - P1: Phase 8d — Payroll
-  - P2: Phase 8e — Equipment, Training, and Certification
-  - P3: Phase 8f — Final frontend regression, backend test suite, testing_agent_v4_fork execution, and phase closure.
-  
-  *Future Tasks:*
-  - EC9+ (Wait for user instruction after EC8 is fully completed).
+  - P0: Complete Phase 9E-4 implementation, run targeted tests, and deliver the exact **16-point completion report** requested by the user.
+  - P1: Phase 9F — Quote, Order, and Order Item integration. (**Do NOT start Phase 9F until explicitly instructed.**)
+  - P2: Phase 9G — Snapshot and advisory contracts.
+  - P3: Phase 9H — Review, testing, and closure.
+  - Future Tasks: EC10 through EC22 Checkpoints, including EC15 (Wrap Lab). (**Do NOT start Wrap Lab until explicitly instructed.**)
 
 **Completed work in this session**
-- Built idempotent  endpoint to safely seed Employee data for the dev-admin user. (DONE)
-- Registered  router in  for E2E testing. (DONE)
-- Ran full lifecycle E2E API tests via curl covering clock-in, break-start, break-end, clock-out, and timesheet retrieval. (DONE)
-- Validated UI via screenshot tool on  with real dev data and injected session token. (DONE)
-- Updated documentation (, , ) to officially mark Phase 8b as DELIVERED. (DONE)
-- Triggered  to request permission to begin Phase 8c. (DONE)
+- Context gathering for Phase 9E-4: Read PRD, reviewed frontend component (), and extracted EC09 doc specifications.
+- Proposed implementation plan to user via .
 
 **Earlier issues found/mentioned but not fixed**
-   *None.*
+  *None*
 
 **Known issue recurrence from previous fork**
   - Issue recurrence in previous fork: None
@@ -46,70 +90,122 @@ A full-stack application (FARM stack) with EC0 through EC7 100% COMPLETE. EC8 Ph
   - Status: NOT STARTED
 
 **Code Architecture**
-
+- : Core logic dispatcher is , which routes to sub-modules (, , , ).  contains global/fallback tenant dictionaries.
+- :  houses the main state, passing category down to .
 
 **Key Technical Concepts**
-- **Strict Credit Conservation Rule**: Do NOT run the full backend test suite or full frontend test suite. Do NOT run  during interim phases (8a, 8b, 8c, etc.). Only run *targeted* test files.
-- **Tenant Isolation & Permissions**: Backend strictly filters all database queries by .  enforces manager-vs-self access boundaries.
-- **Idempotency**: Dev-seeding logic handles repeated executions safely without creating duplicates.
+- **Strict Credit Conservation**: DO NOT USE . DO NOT run the full pytest suite. Use targeted files only (e.g., ============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0
+rootdir: /app
+plugins: anyio-4.14.1, asyncio-1.4.0, xdist-3.8.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 0 items
+
+============================ no tests ran in 0.00s =============================).
+- **Additive Default Merge**: When pushing new default keys to tenants, strictly use an additive dictionary merge so old configurations are preserved.
+- **Backend Authority**: Frontend is a dumb form. Final pricing logic, suggested prices, and overrides must be handled/validated by the Python backend.
 
 **key DB schema**
-  - : {tenant_id, user_id, name, role, status, hourly_rate_cents}
-  - : {tenant_id, employee_id, work_date, clock_in_at, clock_out_at, total_worked_minutes, state}
-  - : {tenant_id, employee_id, start_date, end_date, status, total_regular_minutes}
+  - material_pricing_profiles: 
+  - users: 
 
 **changes in tech stack**
-  - None.
+  - None
 
-**All files of reference**
-  - 
-  - 
-  - 
-  - 
-  - 
+**All files of reference** 
+  -  (Currently empty, needs calculation logic)
+  -  (Contains service categories base values)
+  -  (Needs update to route to )
+  -  (Needs UI inputs for Phase 9E-4)
+  -  (Needs to be created for testing)
+  -  
+  -  (Source of Truth for specs)
 
-**Areas that need refactoring**:
-  *None.*
+**Areas that need refactoring**: 
+  - None. User explicitly requested NOT to refactor large existing service files to minimize scope creep.
 
 **key api endpoints**
   - 
   - 
-  - 
-  - 
-  - 
-  - 
-  - 
 
-**Critical Info for New Agent**
-1. **PENDING USER AUTHORIZATION:** The last agent just completed Phase 8b and called  to request permission to begin **Phase 8c**. **DO NOT write any implementation code until the user explicitly authorizes Phase 8c.**
-2. **Testing Restrictions**: The user has mandated a strict credit conservation and reuse rule. **Do not** run full test suites and **do not** call the testing agent until Phase 8f unless absolutely blocked.
-3. Development seeding is handled via  (called implicitly via curl scripts during agent testing; not meant for production UI integration).
+**Critical Info for New Agent** 
+1. **CRITICAL WARNING**: Do NOT run the  or full regression test suites under any circumstances. You must use targeted ============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0
+rootdir: /app
+plugins: anyio-4.14.1, asyncio-1.4.0, xdist-3.8.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 417 items / 2 errors
 
-**documents and test reports created in this job**
-  -  (Updated)
-  -  (Updated)
-  -  (Updated)
+==================================== ERRORS ====================================
+___________ ERROR collecting backend/tests/test_ec8_api_spotcheck.py ___________
+backend/tests/test_ec8_api_spotcheck.py:13: in <module>
+    BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'NoneType' object has no attribute 'rstrip'
+_______ ERROR collecting backend/tests/test_live_foundation_hardening.py _______
+backend/tests/test_live_foundation_hardening.py:10: in <module>
+    BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'NoneType' object has no attribute 'rstrip'
+=============================== warnings summary ===============================
+../root/.venv/lib/python3.11/site-packages/starlette/formparsers.py:12
+  /root/.venv/lib/python3.11/site-packages/starlette/formparsers.py:12: PendingDeprecationWarning: Please use `import python_multipart` instead.
+    import multipart
+
+backend/server.py:186
+  /app/backend/server.py:186: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+../root/.venv/lib/python3.11/site-packages/fastapi/applications.py:4495
+  /root/.venv/lib/python3.11/site-packages/fastapi/applications.py:4495: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+ERROR backend/tests/test_ec8_api_spotcheck.py - AttributeError: 'NoneType' ob...
+ERROR backend/tests/test_live_foundation_hardening.py - AttributeError: 'None...
+!!!!!!!!!!!!!!!!!!! Interrupted: 2 errors during collection !!!!!!!!!!!!!!!!!!!!
+======================== 3 warnings, 2 errors in 1.35s ========================= commands and manual screenshot/curl tests only.
+2. The agent is paused waiting for a user response to . Start by reading the user's latest response.
+3. Your immediate implementation task is **Phase 9E-4** logic in  and UI in .
+4. Once completed, present the exact **16-point Phase 9E-4 completion report** required by the user. Do not proceed to Phase 9F until authorized.
+
+**documents and test reports created in this job** 
+  -  (Checked, not modified in this specific fork yet)
 
 **Last 10 User Messages and any pending HUMAN messages** 
-1. *(User)* Detailed instructions: Use idempotent dev-only seed helper to link dev user to an Employee. Run targeted checks via curl. Take ONE useful Time Clock screenshot with real dev data. Update docs (, , ). Stop and request approval before starting Phase 8c. -> Agent COMPLETED all steps, validated via screenshot, updated docs, and submitted the  query. *Response is pending.*
+ - *User*: (PENDING) Waiting on user response to  plan for Phase 9E-4.
+ - *User*: Please use ask_human tool and confirm your plan now.
+ - *User*: Approved 9E-3 report. Ordered Phase 9E-4. Provided detailed specs and requested a 16-point completion report. Explicitly banned testing_agent and Wrap Lab initiation. 
+ - *User*: Approved 9E-2 corrections... (Previous phases completion messages).
 
 **Project Health Check:**
-- Broken: None. Codebase is green, and Phase 8b is fully operational.
-- Mocked: None.
+  - Broken: None
+  - Mocked: None
 
 **3rd Party Integrations** 
   - Stripe (Payments) — requires User API Key
   - SendGrid (Email) — requires User API Key
-  - Object Storage — Integrated
+  - Google Sign-In (Auth) — uses Emergentintegrations library
 
 **Testing status**
-  - Testing agent used after significant changes: NO (By strict user decree, testing agent is reserved for Phase 8f).
+  - Testing agent used after significant changes: **NO** (EXPLICITLY BANNED BY USER FOR THIS PHASE).
   - Troubleshoot agent used after agent stuck in loop: NO
-  - Test files created: Previously existing targeted EC8 tests.
-  - Known regressions: None.
+  - Test files created: None in this run. Needs  created next.
+  - Known regressions: None
 
 **Credentials to test flow:**
- is enabled in backend . Dev-login mints tokens automatically without real credentials. The  endpoint safely provisions the required  link for this bypassed token.
+See . 
 
 **What agent forgot to execute**
-Nothing. The agent successfully fulfilled all explicit user instructions for wrapping up Phase 8b.</analysis>
+The agent correctly paused to use  to confirm the implementation plan before writing the actual logic for Phase 9E-4 in , , and creating the targeted test file. Nothing was forgotten; it is a planned pause.</analysis>
