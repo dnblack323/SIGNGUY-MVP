@@ -294,8 +294,49 @@ VEHICLE_SEAM_COMPLEXITY_MULTIPLIERS: dict[str, float] = {"basic": 1.00, "moderat
 VEHICLE_SURFACE_PREP_HOURS: dict[str, float] = {"none": 0.0, "basic": 0.25, "moderate": 0.75, "heavy": 1.50}
 VEHICLE_REMOVAL_HOURS: dict[str, float] = {"none": 0.0, "small": 0.50, "partial": 2.00, "full": 4.00}
 
+# EC9 Phase 9E-4 — EC09 controlling document, Services calculator section.
+# `service_type` is a preset selector (pre-fills a sensible pricing_method +
+# rate + minimum) — the tenant/user can still override every field, and
+# `pricing_method` (not `service_type`) is what actually controls which
+# formula path and which fields the calculator uses, per the architecture
+# rule "the selected pricing method must control which fields appear."
+# `rate_shop_key` points at an EC09-exact shop-level Pricing Foundation rate
+# (see SHOP_DEFAULTS above) rather than duplicating the number here.
+# `is_rate_provisional: True` = EC09 gives this service type no distinct
+# rate of its own; it borrows the nearest documented rate as a flagged,
+# editable, warned starter assumption (never a silent invention).
+SERVICE_TYPES: dict[str, dict[str, Any]] = {
+    "general_labor":           {"label": "General Labor",            "default_pricing_method": "hourly",   "rate_shop_key": "production_hourly_rate",   "minimum_charge": 25.00, "is_rate_provisional": False},
+    "graphic_design":          {"label": "Graphic Design",            "default_pricing_method": "hourly",   "rate_shop_key": "design_hourly_rate",       "minimum_charge": 25.00, "default_hours": 0.5, "is_rate_provisional": False},
+    "artwork_setup":           {"label": "Artwork Setup",             "default_pricing_method": "flat_fee", "flat_fee_default": 25.00, "minimum_charge": 25.00, "is_rate_provisional": False},
+    "file_cleanup":            {"label": "File Cleanup",              "default_pricing_method": "flat_fee", "flat_fee_default": 20.00, "minimum_charge": 0.00,  "is_rate_provisional": False},
+    "consultation":            {"label": "Consultation",              "default_pricing_method": "hourly",   "rate_shop_key": "consultation_hourly_rate", "minimum_charge": 50.00, "is_rate_provisional": False},
+    "site_survey":             {"label": "Site Survey",               "default_pricing_method": "hourly",   "rate_shop_key": "site_survey_hourly_rate",  "minimum_charge": 50.00, "is_rate_provisional": False},
+    "measurement":             {"label": "Measurement",               "default_pricing_method": "hourly",   "rate_shop_key": "site_survey_hourly_rate",  "minimum_charge": 50.00, "is_rate_provisional": True},
+    "delivery":                {"label": "Delivery",                  "default_pricing_method": "flat_fee", "flat_fee_default": 0.00, "minimum_charge": 0.00, "is_rate_provisional": False},
+    "installation":            {"label": "Installation",              "default_pricing_method": "hourly",   "rate_shop_key": "install_hourly_rate",      "minimum_charge": None,   "is_rate_provisional": False},
+    "removal":                 {"label": "Removal",                   "default_pricing_method": "hourly",   "rate_shop_key": "removal_hourly_rate",      "minimum_charge": 25.00, "is_rate_provisional": False},
+    "maintenance_repair":      {"label": "Maintenance / Repair",      "default_pricing_method": "hourly",   "rate_shop_key": "production_hourly_rate",   "minimum_charge": 25.00, "is_rate_provisional": True},
+    "vehicle_graphics_install":{"label": "Vehicle Graphics Install",  "default_pricing_method": "hourly",   "hourly_rate_default": 75.00, "minimum_charge": 125.00, "is_rate_provisional": False},
+    "wrap_install":            {"label": "Wrap Install",              "default_pricing_method": "hourly",   "hourly_rate_default": 75.00, "minimum_charge": 125.00, "is_rate_provisional": False},
+    "service_call_labor":      {"label": "Service Call Labor",        "default_pricing_method": "hourly",   "rate_shop_key": "production_hourly_rate",   "minimum_charge": 50.00, "is_rate_provisional": False},
+    "project_management":     {"label": "Project Management",        "default_pricing_method": "hourly",   "rate_shop_key": "admin_hourly_rate",        "minimum_charge": 25.00, "is_rate_provisional": True},
+    "permit_handling":         {"label": "Permit Handling",           "default_pricing_method": "flat_fee", "flat_fee_default": 0.00, "minimum_charge": 0.00, "is_rate_provisional": False},
+    "custom_flat_fee":         {"label": "Custom Flat-Fee Service",   "default_pricing_method": "flat_fee", "flat_fee_default": 0.00, "minimum_charge": 0.00, "is_rate_provisional": False},
+}
+# EC09 gives no exact rate for equipment — "Equipment Type selection from a
+# library" with rate left configurable. Starter library seeded at $0.00/day
+# (never an invented number), tenant-editable.
+SERVICE_EQUIPMENT_TYPES: dict[str, dict[str, Any]] = {
+    "ladder":       {"label": "Ladder", "rate_per_day": 0.00},
+    "scissor_lift":  {"label": "Scissor Lift", "rate_per_day": 0.00},
+    "bucket_truck":  {"label": "Bucket Truck", "rate_per_day": 0.00},
+    "other":         {"label": "Other Equipment", "rate_per_day": 0.00},
+}
+
 # Reusable material catalogs. Only a compact, opinionated subset of the
 # original repo's dozens of materials — enough for the MVP calculator.
+
 
 MATERIALS: dict[str, dict[str, Any]] = {
     # key: {name, category, cost_per_sqft, sell_per_sqft (optional)}
@@ -544,11 +585,24 @@ CATEGORY_DEFAULTS: dict[str, dict[str, Any]] = {
         markup=1.80, target_margin=35.0, waste_percent=0.0,
         default_material=None,
         extras={
-            "minimum_design_charge": 75.00,
-            "minimum_install_charge": 150.00,
-            "trip_charge_default": 45.00,
-            "mileage_rate_cost": 0.67,
-            "mileage_rate_sell": 1.25,
+            # EC9 Phase 9E-4 — EC09-exact value.
+            "minimum_design_charge": 25.00,
+            # EC09 explicitly leaves these "configurable" with no digit of its
+            # own — seeded at $0.00 (never invented) rather than the earlier
+            # placeholder guesses this category previously shipped with.
+            # Tenant must configure a real trip charge / mileage rate before
+            # travel/trip add-ons will charge anything; the calculator warns
+            # when used unconfigured.
+            "trip_charge_default": 0.00,
+            "travel_cost_per_mile": 0.00,
+            "travel_sell_rate_per_mile": 0.00,
+            "subcontract_markup_percent": 0.00,
+            "default_minimum_charge": 25.00,
+            "service_call_minimum": 50.00,
+            "rush_default_percent": 25.0,
+            "design_default_hours": 0.5,
+            "service_types": SERVICE_TYPES,
+            "equipment_types": SERVICE_EQUIPMENT_TYPES,
         },
     ),
     "promotional": _make_category(
