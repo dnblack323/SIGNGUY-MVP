@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { toast } from "sonner";
 import MoneyInput from "@/components/forms/MoneyInput";
 import SavedItemSelector from "@/components/pricing/selectors/SavedItemSelector";
+import MaterialProfileSelector from "@/components/pricing/selectors/MaterialProfileSelector";
+import PricingComponentSelector from "@/components/pricing/selectors/PricingComponentSelector";
 import { CategorySpecificFields } from "@/components/pricing/CategorySpecificFields";
 import { Calculator, Loader2, Save, Copy, RefreshCw, FileText, Package } from "lucide-react";
 
@@ -53,6 +55,13 @@ export default function PricingCalculatorPage() {
   const [quickSelect, setQuickSelect] = useState(false);
   const [tierPreview, setTierPreview] = useState(null);
   const [useSavedDefaults, setUseSavedDefaults] = useState(true);
+  // EC9 Phase 9G — canonical Material Pricing Profile / Pricing Component
+  // references, sent straight to the same pricing resolver Quote/Order
+  // Detailed entry already uses (`services/order_pricing.py`), and carried
+  // into the resulting pricing snapshot when this result is saved or added
+  // to a Quote/Order.
+  const [materialProfileId, setMaterialProfileId] = useState(null);
+  const [pricingComponentIds, setPricingComponentIds] = useState([]);
 
   // EC9 Phase 9F — Add the calculated result to an existing draft Quote or Order.
   const [addTarget, setAddTarget] = useState(null); // "quote" | "order" | null
@@ -79,7 +88,9 @@ export default function PricingCalculatorPage() {
       install_needed: form.install_needed,
       manual_selling_price: form.manual_selling_price != null ? Number(form.manual_selling_price) : null,
       category_inputs: CATEGORY_SPECIFIC_CATEGORIES.includes(form.category) ? form.category_inputs : {},
-      saved_item_id: form.category === "promotional" ? (savedItem?.id || null) : null,
+      material_profile_id: materialProfileId || null,
+      pricing_component_ids: pricingComponentIds,
+      saved_item_id: savedItem?.id || null,
     })).data,
     onSuccess: async (data) => {
       setResult(data);
@@ -111,6 +122,8 @@ export default function PricingCalculatorPage() {
         width_inches: DIMENSIONLESS_CATEGORIES.includes(form.category) ? null : (Number(form.width_inches) || null),
         height_inches: DIMENSIONLESS_CATEGORIES.includes(form.category) ? null : (Number(form.height_inches) || null),
         category_inputs: CATEGORY_SPECIFIC_CATEGORIES.includes(form.category) ? form.category_inputs : {},
+        material_profile_id: materialProfileId || null,
+        pricing_component_ids: pricingComponentIds,
         saved_item_id: savedItem?.id || null,
         selected_price_source: "suggested",
       })).data;
@@ -172,7 +185,7 @@ export default function PricingCalculatorPage() {
             </div>
             <div className="grid gap-1.5">
               <Label>Category</Label>
-              <Select value={form.category} onValueChange={(v) => setForm((f) => ({ ...f, category: v, material_key: "", category_inputs: {} }))}>
+              <Select value={form.category} onValueChange={(v) => { setForm((f) => ({ ...f, category: v, material_key: "", category_inputs: {} })); setMaterialProfileId(null); setPricingComponentIds([]); }}>
                 <SelectTrigger data-testid="calc-category-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(settings?.category_meta || {}).map(([id, m]) => <SelectItem key={id} value={id}>{m.name}</SelectItem>)}
@@ -214,6 +227,18 @@ export default function PricingCalculatorPage() {
                 designNeeded={form.design_needed}
                 installNeeded={form.install_needed}
               />
+            )}
+            {CATEGORY_SPECIFIC_CATEGORIES.includes(form.category) && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-1.5">
+                  <Label className="text-xs">Canonical material (optional)</Label>
+                  <MaterialProfileSelector value={materialProfileId} onChange={setMaterialProfileId} category={form.category} testIdPrefix="calc-material-profile" />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label className="text-xs">Pricing components (optional)</Label>
+                  <PricingComponentSelector value={pricingComponentIds} onChange={setPricingComponentIds} category={form.category} testIdPrefix="calc-components" />
+                </div>
+              </div>
             )}
             <div className="grid gap-1.5">
               <Label>Manual selling price override (optional)</Label>

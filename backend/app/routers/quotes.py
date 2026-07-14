@@ -29,6 +29,7 @@ from ..services.audit import record_audit
 from ..services.commerce_totals import compute_document_totals, compute_line_totals, compute_pricing_summary
 from ..services.order_pricing import build_item_pricing_fields, calculate_for_references
 from ..services.pricing import get_or_init_pricing_settings
+from ..services.pricing_snapshot_records import create_snapshot_record
 from ..services.quote_conversion import convert_quote_to_order
 from ..services.quote_revisions import get_revision, list_revisions, snapshot_current
 from ..services.sequence import next_number
@@ -486,6 +487,13 @@ async def add_line_item(
     )
     await db.quote_line_items.insert_one(prepare_for_mongo(li.model_dump()))
 
+    # EC9 Phase 9G — every priced line item gets an immutable historical
+    # snapshot record (append-only; never mutated afterward).
+    await create_snapshot_record(
+        tenant_id=user["tenant_id"], source_type="quote_line_item", source_id=li.id,
+        quote_id=quote_id, item_doc=li.model_dump(), calculated_by_user_id=user["id"],
+    )
+
     # Recompute + persist quote totals
     quote_totals = await _recompute_quote_totals(user["tenant_id"], quote_id)
     await db.quotes.update_one(
@@ -557,7 +565,8 @@ async def update_line_item(
     # If the SELECTED final price changes AND the selected source is "manual",
     # an override reason is required. Suggested-price acceptances (backend-
     # authoritative) never require one.
-    if "unit_price_cents" in updates and int(updates["unit_price_cents"]) != int(line.get("unit_price_cents") or 0):
+    price_changed = "unit_price_cents" in updates and int(updates["unit_price_cents"]) != int(line.get("unit_price_cents") or 0)
+    if price_changed:
         final_source = updates.get("selected_price_source", line.get("selected_price_source") or "manual")
         if final_source == "manual":
             if not updates.get("manual_override_reason") and not line.get("manual_override_reason"):
@@ -576,6 +585,14 @@ async def update_line_item(
     updates.update(totals)
     updates["updated_at"] = utc_now().isoformat()
     await db.quote_line_items.update_one({"id": item_id}, {"$set": updates})
+
+    # EC9 Phase 9G — a repriced item gets a NEW immutable snapshot record; the
+    # previous "active" record is relabeled "superseded" (never mutated).
+    if needs_pricing_resolution or price_changed:
+        await create_snapshot_record(
+            tenant_id=user["tenant_id"], source_type="quote_line_item", source_id=item_id,
+            quote_id=quote_id, item_doc={**line, **updates}, calculated_by_user_id=user["id"],
+        )
 
     quote_totals = await _recompute_quote_totals(user["tenant_id"], quote_id)
     await db.quotes.update_one(

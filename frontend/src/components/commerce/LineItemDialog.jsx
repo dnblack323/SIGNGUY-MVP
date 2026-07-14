@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import api, { extractError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +15,7 @@ import { centsToDollarsString } from "@/lib/format";
 import { CategorySpecificFields } from "@/components/pricing/CategorySpecificFields";
 import SavedItemSelector from "@/components/pricing/selectors/SavedItemSelector";
 import PricingComponentSelector from "@/components/pricing/selectors/PricingComponentSelector";
+import MaterialProfilePicker from "@/components/pricing/selectors/MaterialProfileSelector";
 import { Calculator, RefreshCw } from "lucide-react";
 
 /**
@@ -50,33 +50,6 @@ const CATEGORY_OPTIONS = [
 const DIMENSIONLESS_CATEGORIES = ["apparel", "promotional", "vehicle_graphics", "services", "custom"];
 const UOM_OPTIONS = ["each", "sqft", "linear_ft", "hour"];
 const NON_PRODUCTION = new Set(["services", "promotional"]);
-
-function MaterialProfilePicker({ value, onChange, category }) {
-  const { data: profiles } = useQuery({
-    queryKey: ["material-profiles-active-all"],
-    queryFn: async () => (await api.get("/pricing/material-profiles", { params: { active: true } })).data,
-  });
-  const { data: materials } = useQuery({
-    queryKey: ["materials-active-all"],
-    queryFn: async () => (await api.get("/materials", { params: { active: true } })).data,
-  });
-  const matById = useMemo(() => new Map((materials?.items || []).map((m) => [m.id, m])), [materials]);
-  const items = (profiles?.items || []).filter((p) => !category || !p.category_applicability?.length || p.category_applicability.includes(category));
-
-  return (
-    <Select value={value || "__none__"} onValueChange={(v) => onChange?.(v === "__none__" ? null : v)}>
-      <SelectTrigger data-testid="li-material-profile-select"><SelectValue placeholder="No canonical material" /></SelectTrigger>
-      <SelectContent>
-        <SelectItem value="__none__">No canonical material</SelectItem>
-        {items.map((p) => (
-          <SelectItem key={p.id} value={p.id}>
-            {matById.get(p.material_id)?.name || p.material_id} — ${p.suggested_sell_rate ?? p.normalized_cost_basis ?? 0}/{p.pricing_unit}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
 
 export default function LineItemDialog({
   open,
@@ -437,7 +410,7 @@ export default function LineItemDialog({
                 <div className="grid grid-cols-2 gap-3">
                   <div className="grid gap-1.5">
                     <Label className="text-xs">Canonical material (optional)</Label>
-                    <MaterialProfilePicker value={materialProfileId} onChange={setMaterialProfileId} category={category} />
+                    <MaterialProfilePicker value={materialProfileId} onChange={setMaterialProfileId} category={category} testIdPrefix="li-material-profile" />
                   </div>
                   <div className="grid gap-1.5">
                     <Label className="text-xs">Saved item (optional)</Label>

@@ -21,6 +21,7 @@ from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.order import Order, OrderItem
 from ..services.sequence import next_number
 from ..services.order_item_rules import default_production_required
+from ..services.pricing_snapshot_records import create_snapshot_record
 
 
 def _is_expired(quote: dict[str, Any]) -> bool:
@@ -165,6 +166,22 @@ async def convert_quote_to_order(
             price_selected_by_user_id=li.get("price_selected_by_user_id"),
         )
         await db.order_items.insert_one(prepare_for_mongo(item.model_dump()))
+
+        # EC9 Phase 9G — clone the source Quote Line Item's active snapshot
+        # lineage into a brand-new record for the Order Item. Zero
+        # recalculation: the item's own `pricing_snapshot`/derived fields are
+        # copied byte-for-byte above; this only gives the new Order Item its
+        # own first immutable record, cross-linked via `previous_snapshot_id`.
+        quote_snapshot = await db.pricing_snapshot_records.find_one(
+            {"tenant_id": tenant_id, "source_type": "quote_line_item", "source_id": li["id"], "status": "active"},
+            {"_id": 0},
+        )
+        await create_snapshot_record(
+            tenant_id=tenant_id, source_type="order_item", source_id=item.id,
+            quote_id=quote_id, order_id=order.id, item_doc=item.model_dump(),
+            calculated_by_user_id=actor_user_id,
+            previous_snapshot_id=quote_snapshot.get("id") if quote_snapshot else None,
+        )
 
     # Complete the quote row (record converted revision + order id)
     await db.quotes.update_one(

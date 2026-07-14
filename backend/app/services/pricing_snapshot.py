@@ -128,6 +128,16 @@ def build_calculated_snapshot(
         "saved_item_id": saved_item_id,
         "material_profile_id": material_profile_id,
         "pricing_component_ids": pricing_component_ids or [],
+        # EC9 Phase 9G — frozen copies of the resolved reference objects +
+        # category defaults, exactly as they were at calculation time. An
+        # immutable historical `PricingSnapshotRecord` (see
+        # `services/pricing_snapshot_records.py`) is built FROM these values,
+        # never by re-reading the live Material/SavedItem/Component/Defaults
+        # records later.
+        "material_profile_snapshot": calc_result.get("material_profile_used"),
+        "pricing_components_snapshot": calc_result.get("pricing_components_used") or [],
+        "saved_item_snapshot": calc_result.get("saved_item_used"),
+        "category_defaults_used": calc_result.get("category_defaults_used") or {},
         "captured_at": _now_iso(),
     }
 

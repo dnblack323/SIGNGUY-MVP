@@ -434,4 +434,15 @@ async def ensure_indexes() -> None:
     await db.pricing_quiz_submissions.create_index([("tenant_id", 1), ("status", 1)])
     await db.pricing_quiz_submissions.create_index([("tenant_id", 1), ("created_at", -1)])
 
+    # ---- EC9 phase 9G — Immutable Pricing Snapshot records + Advisory requests ----
+    await db.pricing_snapshot_records.create_index("id", unique=True)
+    await db.pricing_snapshot_records.create_index(
+        [("tenant_id", 1), ("source_type", 1), ("source_id", 1), ("status", 1)]
+    )
+    await db.pricing_snapshot_records.create_index([("tenant_id", 1), ("created_at", -1)])
+
+    await db.pricing_advisory_requests.create_index("id", unique=True)
+    await db.pricing_advisory_requests.create_index([("tenant_id", 1), ("created_at", -1)])
+    await db.pricing_advisory_requests.create_index([("tenant_id", 1), ("historical_snapshot_id", 1)])
+
     logger.info("MongoDB indexes ensured")

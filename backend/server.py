@@ -172,6 +172,13 @@ api_router.include_router(pricing_saved_items_router_module.router)
 from app.routers import pricing_quiz as pricing_quiz_router_module
 api_router.include_router(pricing_quiz_router_module.router)
 
+# EC9 — Phase 9G Immutable Pricing Snapshots + provider-neutral Advisory
+# contracts (no live AI/web/market provider call anywhere behind these).
+from app.routers import pricing_snapshots as pricing_snapshots_router_module
+from app.routers import pricing_advisory as pricing_advisory_router_module
+api_router.include_router(pricing_snapshots_router_module.router)
+api_router.include_router(pricing_advisory_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

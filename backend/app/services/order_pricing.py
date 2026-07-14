@@ -72,11 +72,22 @@ async def calculate_for_references(
         tenant_id=tenant_id, material_profile_id=material_profile_id,
         pricing_component_ids=pricing_component_ids, saved_item_id=saved_item_id,
     )
-    return calculate_pricing(
+    result = calculate_pricing(
         settings=settings, category=category, width_inches=width_inches, height_inches=height_inches,
         quantity=quantity, category_inputs=category_inputs, material_profile=material_profile,
         pricing_components=pricing_components, saved_item=saved_item, manual_selling_price=manual_selling_price,
     )
+    # EC9 Phase 9G — additive, explain-later context for the immutable
+    # snapshot record: the already-resolved reference objects (frozen at THIS
+    # calculation instant) plus the category-level Pricing Foundation
+    # defaults in effect right now. Never re-read later when explaining an
+    # old snapshot. Purely additive keys — no existing consumer of
+    # `calculate_pricing()`'s return dict is affected.
+    result["material_profile_used"] = material_profile
+    result["pricing_components_used"] = pricing_components
+    result["saved_item_used"] = saved_item
+    result["category_defaults_used"] = dict((settings.get("category_defaults") or {}).get(category) or {})
+    return result
 
 
 def build_item_pricing_fields(
