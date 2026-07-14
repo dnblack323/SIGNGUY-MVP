@@ -17,8 +17,8 @@ import { CategorySpecificFields } from "@/components/pricing/CategorySpecificFie
 import { Calculator, Loader2, Save, Copy, RefreshCw } from "lucide-react";
 
 const FLAT_SQFT_CATEGORIES = ["banners", "rigid_signs", "digital_print", "cut_vinyl"];
-const DIMENSIONLESS_CATEGORIES = ["apparel", "promotional"];
-const CATEGORY_SPECIFIC_CATEGORIES = ["banners", "rigid_signs", "digital_print", "cut_vinyl", "apparel", "promotional"];
+const DIMENSIONLESS_CATEGORIES = ["apparel", "promotional", "vehicle_graphics"];
+const CATEGORY_SPECIFIC_CATEGORIES = ["banners", "rigid_signs", "digital_print", "cut_vinyl", "apparel", "promotional", "vehicle_graphics"];
 
 const fmtUSD = (n) => Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
 const fmtPct = (n) => `${Number(n || 0).toFixed(2)}%`;
@@ -197,6 +197,11 @@ export default function PricingCalculatorPage() {
                 {result.requires_manual_price && (
                   <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800" data-testid="calc-requires-manual-price-warning">
                     No configured tier price for quantity {result.quantity} — this is not a guessed price. Enter a manual selling price override below.
+                  </div>
+                )}
+                {(result.calculation_warnings || []).length > 0 && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 space-y-1" data-testid="calc-warnings-banner">
+                    {result.calculation_warnings.map((w, i) => <div key={i}>{w}</div>)}
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-3">

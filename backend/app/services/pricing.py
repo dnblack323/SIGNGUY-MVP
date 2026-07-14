@@ -10,21 +10,57 @@ from typing import Any, Optional
 
 from ..core.db import db
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
-from .starter_defaults import build_starter_pack, CATEGORY_IDS, MATERIALS
+from .starter_defaults import build_starter_pack, CATEGORY_IDS, MATERIALS, STARTER_DEFAULT_VERSION
 from .pricing_flat_sqft import FLAT_SQFT_CATEGORIES, calculate_flat_sqft_pricing
 from .pricing_apparel import calculate_apparel_pricing
 from .pricing_promotional import calculate_promotional_pricing
+from .pricing_vehicle_graphics import calculate_vehicle_graphics_pricing
 
 
 def _now_iso() -> str:
     return utc_now().isoformat()
 
 
+async def _apply_additive_default_merge(tenant_id: str, doc: dict[str, Any]) -> dict[str, Any]:
+    """EC9 Phase 9E-2 Correction 2 — idempotent additive default merge.
+
+    Long-lived tenants must receive newly-required `category_defaults` keys
+    (e.g. Phase 9E-2's `garments`/`decoration_methods`, Phase 9E-3's vehicle
+    tables) WITHOUT an explicit "Reset to starter" action and WITHOUT ever
+    touching a key the tenant already has — even a stale/edited one. Only
+    ever ADDS missing keys; never overwrites. Fast-paths to a no-op once
+    `starter_default_version` already matches. Only ever touches this
+    tenant's `pricing_settings` document — the separate `quotes`/`orders`
+    collections (and any embedded historical pricing snapshots) are never
+    read or written here, so past calculations are unaffected.
+    """
+    if doc.get("starter_default_version") == STARTER_DEFAULT_VERSION:
+        return doc
+    starter_cats = build_starter_pack()["category_defaults"]
+    stored_cats = doc.get("category_defaults") or {}
+    field_sources = dict(doc.get("field_sources") or {})
+    set_ops: dict[str, Any] = {}
+    any_missing = False
+    for cat_id, starter_cat in starter_cats.items():
+        stored_cat = stored_cats.get(cat_id) or {}
+        for k, v in starter_cat.items():
+            if k not in stored_cat:
+                any_missing = True
+                set_ops[f"category_defaults.{cat_id}.{k}"] = v
+                field_sources[f"category_defaults.{cat_id}.{k}"] = "shop_default"
+    set_ops["starter_default_version"] = STARTER_DEFAULT_VERSION
+    if any_missing:
+        set_ops["field_sources"] = field_sources
+        set_ops["updated_at"] = _now_iso()
+    await db.pricing_settings.update_one({"tenant_id": tenant_id}, {"$set": set_ops})
+    return await db.pricing_settings.find_one({"tenant_id": tenant_id}, {"_id": 0})
+
+
 async def get_or_init_pricing_settings(tenant_id: str) -> dict[str, Any]:
     """Return the tenant's pricing settings document, cloning the starter pack on first use."""
     doc = await db.pricing_settings.find_one({"tenant_id": tenant_id}, {"_id": 0})
     if doc:
-        return doc
+        return await _apply_additive_default_merge(tenant_id, doc)
     pack = build_starter_pack()
     pack["tenant_id"] = tenant_id
     pack["tenant_pricing_initialized_at"] = _now_iso()
@@ -165,6 +201,12 @@ def calculate_pricing(
             saved_item=saved_item,
         )
 
+    if category == "vehicle_graphics":
+        return calculate_vehicle_graphics_pricing(
+            shop=shop, cat=cat, pricing_components=pricing_components or [], quantity=quantity,
+            manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
+        )
+
     # Area
     width = _to_dec(width_inches)
     height = _to_dec(height_inches)
@@ -196,7 +238,6 @@ def calculate_pricing(
             "rigid_signs": Decimal("0.15"),
             "cut_vinyl": Decimal("0.20"),
             "digital_print": Decimal("0.08"),
-            "vehicle_graphics": Decimal("0.12"),
             "services": Decimal("0"),
             "custom": Decimal("0"),
         }

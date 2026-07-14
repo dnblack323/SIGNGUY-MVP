@@ -82,6 +82,14 @@ def calculate_apparel_pricing(
     decoration_method, dm_src = _resolve(inputs, "decoration_method", cat.get("default_decoration_method", "htv"))
     dm_cfg = decoration_methods.get(decoration_method) or decoration_methods.get("htv") or {}
     table_based = bool(dm_cfg.get("table_based"))
+    pricing_authority = dm_cfg.get("pricing_authority", "exact_table" if table_based else "foundation_estimate")
+
+    calculation_warnings: list[str] = []
+    if pricing_authority == "foundation_estimate":
+        calculation_warnings.append(
+            f"'{dm_cfg.get('label', decoration_method)}' uses a provisional Pricing Foundation cost-plus "
+            "estimate — it is not an exact production-tested price table like HTV / Screen Print Transfer."
+        )
 
     num_colors, nc_src = _resolve(inputs, "num_colors", 1)
     num_colors = max(1, int(num_colors or 1))
@@ -89,10 +97,9 @@ def calculate_apparel_pricing(
 
     cost_type = dm_cfg.get("material_cost_type")
     rate = _d(dm_cfg.get("material_cost_rate", 0))
-    decoration_area_sqin, area_src = _resolve(
-        inputs, "decoration_area_sqin",
-        (cat.get("decoration_area_sqin_by_placement") or {}).get("hat" if is_hat else col, 16),
-    )
+    is_provisional_area_assumption = bool(dm_cfg.get("is_provisional_area_assumption")) and cost_type == "per_sqin"
+    decoration_area_assumption_sqin: Optional[Decimal] = None
+    area_src = "not_applicable"
     if cost_type == "per_color_per_piece":
         decoration_material_cost = rate * _d(num_colors) * qty
     elif cost_type == "per_1000_stitches":
@@ -100,7 +107,19 @@ def calculate_apparel_pricing(
     elif cost_type == "per_piece":
         decoration_material_cost = rate * qty
     elif cost_type == "per_sqin":
-        decoration_material_cost = rate * _d(decoration_area_sqin) * qty
+        method_area_defaults = dm_cfg.get("default_area_sqin_by_placement") or {}
+        decoration_area_sqin, area_src = _resolve(
+            inputs, "decoration_area_sqin", method_area_defaults.get("hat" if is_hat else col, 16),
+        )
+        decoration_area_assumption_sqin = _d(decoration_area_sqin)
+        decoration_material_cost = rate * decoration_area_assumption_sqin * qty
+        if is_provisional_area_assumption:
+            calculation_warnings.append(
+                f"Decoration area for '{dm_cfg.get('label', decoration_method)}' is a provisional STARTER "
+                f"ASSUMPTION ({decoration_area_assumption_sqin} sq in) — not an owner-approved EC09 pricing "
+                "fact. Edit it in Pricing Foundation \u2192 Apparel \u2192 Decoration Methods, or override "
+                "`decoration_area_sqin` per-calculation."
+            )
     else:
         decoration_material_cost = Decimal("0")
 
@@ -250,8 +269,12 @@ def calculate_apparel_pricing(
         "plus_size_count": plus_size_count,
         "decoration_method": decoration_method,
         "decoration_table_based": table_based,
+        "decoration_pricing_source": pricing_authority,
         "decoration_table_revenue": _r2(table_revenue) if table_based else None,
         "decoration_material_cost": _r2(decoration_material_cost),
+        "decoration_area_assumption_sqin": float(decoration_area_assumption_sqin) if decoration_area_assumption_sqin is not None else None,
+        "decoration_area_assumption_is_provisional": is_provisional_area_assumption,
+        "calculation_warnings": calculation_warnings,
         "personalization_cost": _r2(personalization_cost),
         "category_inputs_used": category_inputs_used,
         "source_labels": source_labels,

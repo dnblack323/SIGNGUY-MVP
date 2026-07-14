@@ -23,10 +23,28 @@ const DECORATION_METHODS = [
 ];
 const SIZE_KEYS = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"];
 
+const VEHICLE_TYPES = [
+  ["sedan", "Sedan"], ["suv", "SUV"], ["pickup", "Pickup"], ["mini_van", "Mini Van (provisional estimate)"],
+  ["cargo_van", "Cargo Van"], ["sprinter_van", "Sprinter Van"], ["box_truck_12", "12 ft Box Truck"],
+  ["box_truck_16", "16 ft Box Truck"], ["box_truck_24", "24 ft Box Truck (provisional estimate)"],
+  ["trailer", "Trailer"], ["semi", "Semi Truck (provisional estimate)"], ["other", "Custom / Other Vehicle"],
+];
+const VEHICLE_COVERAGE_TYPES = [
+  ["spot", "Spot Graphics (~15%)"], ["partial", "Partial Wrap (~40%)"], ["half", "Half Wrap (~55%)"],
+  ["full", "Full Wrap (100%)"], ["custom", "Custom Percentage"],
+];
+const VEHICLE_MATERIALS = [
+  ["standard_calendared_vinyl", "Standard Calendared Vinyl"], ["premium_cast_vinyl", "Premium Cast Vinyl"],
+  ["wrap_cast_film", "Wrap Cast Film"], ["reflective_vinyl", "Reflective Vinyl"],
+  ["etched_frost_film", "Etched / Frost Film"], ["specialty_custom_media", "Specialty / Custom Vehicle Media"],
+];
+const VEHICLE_LAMINATES = [["gloss", "Gloss"], ["matte", "Matte"], ["satin", "Satin"]];
+
 /**
  * EC9 Phase 9E-1 — category-specific conditional fields for the 4 Core Flat
  * & Square-Foot calculators (Banners, Rigid Signs, Digital Print, Cut Vinyl).
  * EC9 Phase 9E-2 adds Apparel and Promotional Items.
+ * EC9 Phase 9E-3 adds Vehicle Graphics & Wraps.
  * Progressive disclosure: dependent fields (grommet count, pole-pocket
  * sides, piece separation, design/install complexity) only render once
  * their parent toggle is on, so the form never shows more than what's
@@ -59,6 +77,8 @@ export function CategorySpecificFields({ category, values, onChange, designNeede
       <Input type="number" min="0" step="0.01" value={v[field] ?? defaultValue} onChange={(e) => set(field)(Number(e.target.value))} data-testid={testId} />
     </div>
   );
+  const PROVISIONAL_DECORATION_AREA_METHODS = new Set(["dtf_transfer", "sublimation"]);
+  const FOUNDATION_ESTIMATE_METHODS = new Set(["dtf_transfer", "direct_screen_print", "embroidery", "dtg", "patch_emblem", "sublimation", "specialty_custom"]);
 
   const complexityFields = (
     <>
@@ -198,7 +218,15 @@ export function CategorySpecificFields({ category, values, onChange, designNeede
           <Selecty testId="calc-apparel-decoration-method" label="Decoration method" field="decoration_method" defaultValue="htv" options={DECORATION_METHODS} />
           <Numbery testId="calc-apparel-num-colors" label="Number of print colors" field="num_colors" defaultValue={1} min={1} />
           {v.decoration_method === "embroidery" && <Numbery testId="calc-apparel-stitch-count" label="Stitch count" field="stitch_count" defaultValue={0} />}
+          {PROVISIONAL_DECORATION_AREA_METHODS.has(v.decoration_method) && (
+            <Numbery testId="calc-apparel-decoration-area-sqin" label="Decoration area (sq in) — provisional, editable" field="decoration_area_sqin" defaultValue={16} />
+          )}
         </div>
+        {FOUNDATION_ESTIMATE_METHODS.has(v.decoration_method || "htv") && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="calc-apparel-provisional-warning">
+            This decoration method uses a provisional Pricing Foundation cost-plus estimate — not an exact production-tested price table like HTV / Screen Print Transfer.
+          </div>
+        )}
 
         <div>
           <Label className="text-xs">Sizes (per-size quantity — leave blank to use the Quantity field above)</Label>
@@ -236,6 +264,67 @@ export function CategorySpecificFields({ category, values, onChange, designNeede
         <div className="grid grid-cols-2 gap-3 items-end">
           <Switchy testId="calc-apparel-rush-switch" label="Rush" field="rush" />
           {v.rush && <Numbery testId="calc-apparel-rush-percent" label="Rush % override" field="rush_percent" defaultValue={17.5} />}
+        </div>
+      </div>
+    );
+  }
+
+  if (category === "vehicle_graphics") {
+    return (
+      <div className="grid gap-3 rounded-lg border p-3" data-testid="calc-category-fields-vehicle-graphics">
+        <div className="text-xs font-medium text-muted-foreground">Vehicle graphics / wrap options</div>
+        <div className="grid grid-cols-2 gap-3">
+          <Selecty testId="calc-vehicle-type" label="Vehicle type" field="vehicle_type" defaultValue="sedan" options={VEHICLE_TYPES} />
+          <Selecty testId="calc-vehicle-coverage-type" label="Coverage type" field="coverage_type" defaultValue="partial" options={VEHICLE_COVERAGE_TYPES} />
+          {v.coverage_type === "custom" && <Numbery testId="calc-vehicle-coverage-percent" label="Custom coverage %" field="coverage_percent" defaultValue={40} />}
+          <Numbery testId="calc-vehicle-estimated-sqft-override" label="Override estimated sq ft (optional)" field="estimated_sqft_override" defaultValue="" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Selecty testId="calc-vehicle-wrap-material" label="Wrap material" field="wrap_material" defaultValue="standard_calendared_vinyl" options={VEHICLE_MATERIALS} />
+          <Switchy testId="calc-vehicle-laminate-required-switch" label="Laminate required" field="laminate_required" />
+          {v.laminate_required && <Selecty testId="calc-vehicle-laminate-type" label="Laminate type" field="laminate_type" defaultValue="gloss" options={VEHICLE_LAMINATES} />}
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 items-end">
+          <Selecty testId="calc-vehicle-window-perf-type" label="Window perf" field="window_perf_type" defaultValue="none"
+            options={[["none", "None"], ["rear_only", "Rear window only"], ["side_windows", "Side windows"]]} />
+          {v.window_perf_type && v.window_perf_type !== "none" && (
+            <Numbery testId="calc-vehicle-window-perf-sqft" label="Window perf sq ft (measured)" field="window_perf_sqft" defaultValue={0} />
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Switchy testId="calc-vehicle-design-needed-switch" label="Design needed" field="design_needed" />
+          {v.design_needed && <Selecty testId="calc-vehicle-design-complexity" label="Design complexity" field="design_complexity" defaultValue="simple"
+            options={[["simple", "Simple"], ["medium", "Medium"], ["complex", "Complex"], ["extreme", "Extreme"]]} />}
+          <Switchy testId="calc-vehicle-file-cleanup-switch" label="File cleanup needed" field="file_cleanup_needed" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Selecty testId="calc-vehicle-surface-prep" label="Surface prep" field="surface_prep" defaultValue="none"
+            options={[["none", "None"], ["basic", "Basic"], ["moderate", "Moderate"], ["heavy", "Heavy"]]} />
+          <Selecty testId="calc-vehicle-removal-required" label="Removal required" field="removal_required" defaultValue="none"
+            options={[["none", "None"], ["small", "Small"], ["partial", "Partial"], ["full", "Full"]]} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Switchy testId="calc-vehicle-install-needed-switch" label="Install needed" field="install_needed" />
+          {v.install_needed !== false && (
+            <>
+              <Selecty testId="calc-vehicle-install-difficulty" label="Install difficulty" field="install_difficulty" defaultValue="easy"
+                options={[["easy", "Easy"], ["medium", "Medium"], ["difficult", "Difficult"], ["extreme", "Extreme"]]} />
+              <Selecty testId="calc-vehicle-seam-complexity" label="Seam / panel complexity" field="seam_complexity" defaultValue="basic"
+                options={[["basic", "Basic"], ["moderate", "Moderate"], ["advanced", "Advanced"]]} />
+              <Switchy testId="calc-vehicle-helper-required-switch" label="2nd installer / helper" field="helper_required" />
+            </>
+          )}
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 items-end">
+          <Switchy testId="calc-vehicle-travel-required-switch" label="Travel required" field="travel_required" />
+          {v.travel_required && <Numbery testId="calc-vehicle-travel-miles" label="Travel miles" field="travel_miles" defaultValue={0} />}
+          <Switchy testId="calc-vehicle-rush-switch" label="Rush" field="rush" />
         </div>
       </div>
     );

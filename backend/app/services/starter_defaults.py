@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-STARTER_DEFAULT_VERSION = "1.1.0"
+STARTER_DEFAULT_VERSION = "1.2.0"
 
 CATEGORY_IDS = [
     "banners", "rigid_signs", "cut_vinyl", "digital_print",
@@ -168,26 +168,135 @@ APPAREL_GARMENTS: dict[str, dict[str, Any]] = {
     )},
 }
 
-# EC09 controlling document — Apparel Decoration Method configs. `table_based`
-# methods (HTV, Screen Print Transfer) are "currently fully priced" via the
-# garment tier table above; the other 7 methods have full foundation/model
-# support (selectable now, cost-plus priced from these constants) per the
-# document's explicit instruction that they "must not be hard-coded in a way
-# that prevents later method-specific pricing tables" being added.
+# EC9 Phase 9E-2 — EC09 controlling document — Apparel Decoration Method
+# configs. `pricing_authority`:
+#   - "exact_table": HTV & Screen Print Transfer — the EC09-uploaded garment
+#     quantity/placement tier tables above ARE the authoritative sell price.
+#   - "foundation_estimate": the other 7 methods — fully selectable now with
+#     their own EC09-given setup fee + material cost rate, cost-plus priced.
+#     These are real foundation-level formulas, never presented as an exact
+#     production-tested price table.
+# EC9 Phase 9E-2 Correction 1: DTF Transfer & Sublimation are `per_sqin`
+# costed, and EC09 never specified a design/decoration AREA per placement —
+# `default_area_sqin_by_placement` is therefore an explicitly-flagged
+# (`is_provisional_area_assumption: True`) STARTER ASSUMPTION, not an
+# owner-approved pricing fact. It lives here in category_defaults (NOT a
+# buried code constant) so a tenant can edit it via the existing
+# `PATCH /pricing/settings/categories/apparel` endpoint (extras.decoration_methods),
+# and the calculator surfaces a `calculation_warnings` entry + snapshots the
+# applied value whenever it's used.
 APPAREL_DECORATION_METHODS: dict[str, dict[str, Any]] = {
-    "htv":                  {"label": "HTV",                    "setup_fee": 10.00, "material_cost_type": "per_color_per_piece", "material_cost_rate": 0.50, "min_sell_per_piece": None, "table_based": True},
-    "screen_print_transfer":{"label": "Screen Print Transfer",   "setup_fee": 15.00, "material_cost_type": "per_color_per_piece", "material_cost_rate": 0.35, "min_sell_per_piece": None, "table_based": True},
-    "dtf_transfer":         {"label": "DTF Transfer",            "setup_fee": 10.00, "material_cost_type": "per_sqin",            "material_cost_rate": 0.03, "min_sell_per_piece": None, "table_based": False},
-    "direct_screen_print":  {"label": "Direct Screen Print",     "setup_fee": 30.00, "setup_fee_per_color": True, "material_cost_type": "per_color_per_piece", "material_cost_rate": 0.25, "min_sell_per_piece": 5.00, "table_based": False},
-    "embroidery":           {"label": "Embroidery",               "setup_fee": 25.00, "material_cost_type": "per_1000_stitches",   "material_cost_rate": 0.75, "min_sell_per_piece": 6.00, "table_based": False},
-    "dtg":                  {"label": "DTG",                      "setup_fee": 5.00,  "material_cost_type": "per_piece",           "material_cost_rate": 2.50, "min_sell_per_piece": 8.00, "table_based": False},
-    "patch_emblem":         {"label": "Patch / Emblem",           "setup_fee": 0.00,  "material_cost_type": "per_piece",           "material_cost_rate": 3.00, "min_sell_per_piece": 4.00, "table_based": False},
-    "sublimation":          {"label": "Sublimation",              "setup_fee": 10.00, "material_cost_type": "per_sqin",            "material_cost_rate": 0.04, "min_sell_per_piece": 5.00, "table_based": False},
-    "specialty_custom":     {"label": "Specialty / Custom",       "setup_fee": 20.00, "material_cost_type": "per_piece",           "material_cost_rate": 3.00, "min_sell_per_piece": 6.00, "table_based": False},
+    "htv":                  {"label": "HTV",                    "pricing_authority": "exact_table", "table_based": True,  "setup_fee": 10.00, "material_cost_type": "per_color_per_piece", "material_cost_rate": 0.50, "min_sell_per_piece": None},
+    "screen_print_transfer":{"label": "Screen Print Transfer",   "pricing_authority": "exact_table", "table_based": True,  "setup_fee": 15.00, "material_cost_type": "per_color_per_piece", "material_cost_rate": 0.35, "min_sell_per_piece": None},
+    "dtf_transfer":         {"label": "DTF Transfer",            "pricing_authority": "foundation_estimate", "table_based": False, "setup_fee": 10.00, "material_cost_type": "per_sqin", "material_cost_rate": 0.03, "min_sell_per_piece": None,
+                              "default_area_sqin_by_placement": {"front": 16, "back": 100, "combo": 116, "hat": 9}, "is_provisional_area_assumption": True},
+    "direct_screen_print":  {"label": "Direct Screen Print",     "pricing_authority": "foundation_estimate", "table_based": False, "setup_fee": 30.00, "setup_fee_per_color": True, "material_cost_type": "per_color_per_piece", "material_cost_rate": 0.25, "min_sell_per_piece": 5.00},
+    "embroidery":           {"label": "Embroidery",               "pricing_authority": "foundation_estimate", "table_based": False, "setup_fee": 25.00, "material_cost_type": "per_1000_stitches", "material_cost_rate": 0.75, "min_sell_per_piece": 6.00},
+    "dtg":                  {"label": "DTG",                      "pricing_authority": "foundation_estimate", "table_based": False, "setup_fee": 5.00,  "material_cost_type": "per_piece", "material_cost_rate": 2.50, "min_sell_per_piece": 8.00},
+    "patch_emblem":         {"label": "Patch / Emblem",           "pricing_authority": "foundation_estimate", "table_based": False, "setup_fee": 0.00,  "material_cost_type": "per_piece", "material_cost_rate": 3.00, "min_sell_per_piece": 4.00},
+    "sublimation":          {"label": "Sublimation",              "pricing_authority": "foundation_estimate", "table_based": False, "setup_fee": 10.00, "material_cost_type": "per_sqin", "material_cost_rate": 0.04, "min_sell_per_piece": 5.00,
+                              "default_area_sqin_by_placement": {"front": 16, "back": 100, "combo": 116, "hat": 9}, "is_provisional_area_assumption": True},
+    "specialty_custom":     {"label": "Specialty / Custom",       "pricing_authority": "foundation_estimate", "table_based": False, "setup_fee": 20.00, "material_cost_type": "per_piece", "material_cost_rate": 3.00, "min_sell_per_piece": 6.00},
 }
 
+# EC9 Phase 9E-3 — EC09 controlling document, Vehicle Graphics / Wraps
+# section. Coverage-type operational defaults (estimated coverage %, waste %,
+# base design hours) — all 4 named coverage types have EC09-exact values.
+# "Half" wrap's waste% and "custom" (user-typed) coverage reuse the
+# document's own generic "waste percentage = 12%" baseline rather than an
+# invented number.
+VEHICLE_COVERAGE_TYPES: dict[str, dict[str, Any]] = {
+    "spot":    {"label": "Spot Graphics", "coverage_percent": 15.0,  "waste_percent": 10.0, "design_base_hours": 0.75},
+    "partial": {"label": "Partial Wrap",  "coverage_percent": 40.0,  "waste_percent": 12.0, "design_base_hours": 1.50},
+    "half":    {"label": "Half Wrap",     "coverage_percent": 55.0,  "waste_percent": 12.0, "design_base_hours": 2.00},
+    "full":    {"label": "Full Wrap",     "coverage_percent": 100.0, "waste_percent": 15.0, "design_base_hours": 3.00},
+    "custom":  {"label": "Custom Percentage", "coverage_percent": None, "waste_percent": 12.0, "design_base_hours": 1.50},
+}
+
+# Base square footage per vehicle type (EC09-exact for every type except
+# `mini_van`, which EC09 lists as a supported vehicle type but never gives a
+# base-sqft row for — flagged `is_provisional` so the calculator surfaces a
+# warning instead of silently treating it as an exact spec value; editable
+# via the same category-defaults update path as everything else here).
+VEHICLE_TYPES: dict[str, dict[str, Any]] = {
+    "sedan":         {"label": "Sedan",             "base_sqft": 150, "is_provisional": False},
+    "suv":           {"label": "SUV",                "base_sqft": 200, "is_provisional": False},
+    "pickup":        {"label": "Pickup",             "base_sqft": 175, "is_provisional": False},
+    "mini_van":      {"label": "Mini Van",           "base_sqft": 175, "is_provisional": True},
+    "cargo_van":     {"label": "Cargo Van",          "base_sqft": 250, "is_provisional": False},
+    "sprinter_van":  {"label": "Sprinter Van",       "base_sqft": 350, "is_provisional": False},
+    "box_truck_12":  {"label": "12 ft Box Truck",    "base_sqft": 400, "is_provisional": False},
+    "box_truck_16":  {"label": "16 ft Box Truck",    "base_sqft": 500, "is_provisional": False},
+    "box_truck_24":  {"label": "24 ft Box Truck",    "base_sqft": 650, "is_provisional": False},
+    "trailer":       {"label": "Trailer",            "base_sqft": 450, "is_provisional": False},
+    "semi":          {"label": "Semi Truck",         "base_sqft": 800, "is_provisional": False},
+    "other":         {"label": "Custom / Other Vehicle", "base_sqft": 160, "is_provisional": False},
+}
+
+# Install hour benchmark per vehicle type × coverage type. EC09-exact for
+# sedan/suv/pickup/cargo_van/sprinter_van/box_truck_12/box_truck_16/trailer
+# (cargo_van & sprinter_van share one EC09 row). `box_truck_24`, `semi`,
+# `mini_van`, and `other` have NO EC09 row — their hours are a flagged
+# provisional foundation estimate (linear extrapolation off the nearest
+# documented vehicle), never presented as an exact benchmark.
+VEHICLE_INSTALL_HOURS: dict[str, dict[str, Any]] = {
+    "sedan":        {"hours": {"spot": 0.75, "partial": 3.0, "half": 6.0,  "full": 12.0}, "is_provisional": False},
+    "suv":          {"hours": {"spot": 1.0,  "partial": 4.0, "half": 7.0,  "full": 14.0}, "is_provisional": False},
+    "pickup":       {"hours": {"spot": 1.0,  "partial": 4.0, "half": 7.0,  "full": 14.0}, "is_provisional": False},
+    "mini_van":     {"hours": {"spot": 1.0,  "partial": 4.0, "half": 7.0,  "full": 14.0}, "is_provisional": True},
+    "cargo_van":    {"hours": {"spot": 1.5,  "partial": 5.0, "half": 9.0,  "full": 18.0}, "is_provisional": False},
+    "sprinter_van": {"hours": {"spot": 1.5,  "partial": 5.0, "half": 9.0,  "full": 18.0}, "is_provisional": False},
+    "box_truck_12": {"hours": {"spot": 1.5,  "partial": 6.0, "half": 10.0, "full": 20.0}, "is_provisional": False},
+    "box_truck_16": {"hours": {"spot": 2.0,  "partial": 7.0, "half": 12.0, "full": 24.0}, "is_provisional": False},
+    "box_truck_24": {"hours": {"spot": 2.5,  "partial": 8.0, "half": 14.0, "full": 28.0}, "is_provisional": True},
+    "trailer":      {"hours": {"spot": 1.5,  "partial": 6.0, "half": 10.0, "full": 20.0}, "is_provisional": False},
+    "semi":         {"hours": {"spot": 3.0,  "partial": 10.0,"half": 18.0, "full": 36.0}, "is_provisional": True},
+    "other":        {"hours": {"spot": 0.75, "partial": 3.0, "half": 6.0,  "full": 12.0}, "is_provisional": True},
+}
+
+# EC09-exact package/benchmark sell prices — the "use higher of coverage
+# benchmark or cost-plus result" guardrail. Deliberately has NO row for
+# `mini_van` or `other`: EC09 never gives a benchmark $ for them, and unlike
+# an hours/sqft *estimate*, a benchmark price is an owner-approved pricing
+# fact — never invented. Those two vehicle types simply skip the benchmark
+# candidate and rely on cost-plus + the $150 minimum floor.
+VEHICLE_BENCHMARK_PRICES: dict[str, dict[str, float]] = {
+    "sedan":        {"spot": 150,  "partial": 650,  "half": 1400, "full": 2400},
+    "suv":          {"spot": 175,  "partial": 750,  "half": 1600, "full": 2800},
+    "pickup":       {"spot": 175,  "partial": 750,  "half": 1600, "full": 2800},
+    "cargo_van":    {"spot": 225,  "partial": 950,  "half": 2000, "full": 3400},
+    "sprinter_van": {"spot": 225,  "partial": 950,  "half": 2000, "full": 3400},
+    "box_truck_12": {"spot": 250,  "partial": 1100, "half": 2300, "full": 4000},
+    "box_truck_16": {"spot": 300,  "partial": 1300, "half": 2700, "full": 4600},
+    "box_truck_24": {"spot": 350,  "partial": 1500, "half": 3100, "full": 5200},
+    "trailer":      {"spot": 250,  "partial": 1200, "half": 2400, "full": 4200},
+    "semi":         {"spot": 400,  "partial": 1800, "half": 3600, "full": 6000},
+}
+
+VEHICLE_WRAP_MATERIALS: dict[str, dict[str, float]] = {
+    "standard_calendared_vinyl": {"label": "Standard Calendared Vinyl", "shop_cost_per_sqft": 1.50, "sell_rate_per_sqft": 9.00},
+    "premium_cast_vinyl":        {"label": "Premium Cast Vinyl",        "shop_cost_per_sqft": 2.75, "sell_rate_per_sqft": 14.00},
+    "wrap_cast_film":            {"label": "Wrap Cast Film",            "shop_cost_per_sqft": 3.50, "sell_rate_per_sqft": 18.00},
+    "reflective_vinyl":          {"label": "Reflective Vinyl (Wrap)",   "shop_cost_per_sqft": 5.00, "sell_rate_per_sqft": 24.00},
+    "etched_frost_film":         {"label": "Etched / Frost Film",       "shop_cost_per_sqft": 2.75, "sell_rate_per_sqft": 14.00},
+    "specialty_custom_media":    {"label": "Specialty / Custom Vehicle Media", "shop_cost_per_sqft": 4.00, "sell_rate_per_sqft": 20.00},
+}
+VEHICLE_LAMINATE_TYPES: dict[str, dict[str, float]] = {
+    "gloss":  {"label": "Gloss Wrap Laminate", "cost_per_sqft": 1.25},
+    "matte":  {"label": "Matte Wrap Laminate", "cost_per_sqft": 1.25},
+    "satin":  {"label": "Satin Wrap Laminate", "cost_per_sqft": 1.35},
+}
+# EC09-exact — window perf sell price is per sq ft of the window area the
+# tenant/estimator explicitly measures and enters (EC09 gives no default
+# window-area assumption, so none is invented here).
+VEHICLE_WINDOW_PERF_SELL_PER_SQFT: dict[str, float] = {"none": 0.0, "rear_only": 18.00, "side_windows": 20.00}
+VEHICLE_SEAM_COMPLEXITY_MULTIPLIERS: dict[str, float] = {"basic": 1.00, "moderate": 1.15, "advanced": 1.30}
+VEHICLE_SURFACE_PREP_HOURS: dict[str, float] = {"none": 0.0, "basic": 0.25, "moderate": 0.75, "heavy": 1.50}
+VEHICLE_REMOVAL_HOURS: dict[str, float] = {"none": 0.0, "small": 0.50, "partial": 2.00, "full": 4.00}
+
 # Reusable material catalogs. Only a compact, opinionated subset of the
-# original repo’s dozens of materials — enough for the MVP calculator.
+# original repo's dozens of materials — enough for the MVP calculator.
+
 MATERIALS: dict[str, dict[str, Any]] = {
     # key: {name, category, cost_per_sqft, sell_per_sqft (optional)}
     "banner_13oz":                {"name": "13 oz Banner",            "category": "banners",       "cost_per_sqft": 0.85, "sell_per_sqft": 8.00},
@@ -362,12 +471,38 @@ CATEGORY_DEFAULTS: dict[str, dict[str, Any]] = {
     "vehicle_graphics": _make_category(
         pricing_method="cost_plus_labor", base_rate=None, minimum_charge=150.00,
         markup=2.40, target_margin=42.0, waste_percent=12.0,
-        default_material="wrap_calendered",
+        default_material=None,
         extras={
+            # Legacy MVP fields kept for backward compatibility with any
+            # pre-Phase-9E-3 record that referenced them directly.
             "printed_wrap_sell_per_sqft": 19.00,
             "color_change_wrap_sell_per_sqft": 17.00,
             "install_included": True,
+            # EC9 Phase 9E-3 — EC09 controlling document, Vehicle Graphics /
+            # Wraps section (exact rates/tables; provisional entries flagged
+            # per-item in the tables themselves, see starter_defaults.py comments).
+            "vehicle_types": VEHICLE_TYPES,
+            "coverage_types": VEHICLE_COVERAGE_TYPES,
+            "install_hours": VEHICLE_INSTALL_HOURS,
+            "benchmark_prices": VEHICLE_BENCHMARK_PRICES,
+            "wrap_materials": VEHICLE_WRAP_MATERIALS,
+            "laminate_types": VEHICLE_LAMINATE_TYPES,
+            "window_perf_sell_per_sqft": VEHICLE_WINDOW_PERF_SELL_PER_SQFT,
+            "seam_complexity_multipliers": VEHICLE_SEAM_COMPLEXITY_MULTIPLIERS,
+            "surface_prep_hours": VEHICLE_SURFACE_PREP_HOURS,
+            "removal_hours": VEHICLE_REMOVAL_HOURS,
+            "removal_consumables_allowance": 8.00,
+            "production_hourly_rate_override": 28.00,
+            "design_hourly_rate_override": 85.00,
+            "install_hourly_rate_override": 75.00,
+            "helper_hourly_rate": 35.00,
             "install_min_charge": 125.00,
+            "rush_default_percent": 30.0,
+            "overhead_percent_override": 15.0,
+            "production_hr_per_sqft": 0.12,
+            "production_min_hours": 1.00,
+            "travel_labor_rate": 45.00,
+            "travel_cost_per_mile": 1.00,
         },
     ),
     "apparel": _make_category(
@@ -396,7 +531,6 @@ CATEGORY_DEFAULTS: dict[str, dict[str, Any]] = {
             "leather_patch_charge": 2.50,
             "bag_and_fold_charge": 1.00,
             "rush_default_percent": 17.5,
-            "decoration_area_sqin_by_placement": {"front": 16, "back": 100, "combo": 116, "hat": 9},
             "quantity_tiers": [
                 {"min_qty": 1,  "discount_percent": 0},
                 {"min_qty": 12, "discount_percent": 5},
