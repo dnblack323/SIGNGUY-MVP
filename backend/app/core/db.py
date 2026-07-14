@@ -445,4 +445,18 @@ async def ensure_indexes() -> None:
     await db.pricing_advisory_requests.create_index([("tenant_id", 1), ("created_at", -1)])
     await db.pricing_advisory_requests.create_index([("tenant_id", 1), ("historical_snapshot_id", 1)])
 
+    # ---- EC10 phase 10A — Intake Submissions ----
+    await db.intake_submissions.create_index("id", unique=True)
+    await db.intake_submissions.create_index([("tenant_id", 1), ("intake_number", 1)], unique=True)
+    await db.intake_submissions.create_index([("tenant_id", 1), ("status", 1)])
+    await db.intake_submissions.create_index([("tenant_id", 1), ("customer_id", 1)])
+    await db.intake_submissions.create_index([("tenant_id", 1), ("quote_id", 1)])
+    await db.intake_submissions.create_index([("tenant_id", 1), ("order_id", 1)])
+    await db.intake_submissions.create_index([("tenant_id", 1), ("assigned_user_id", 1)])
+    await db.intake_submissions.create_index([("tenant_id", 1), ("created_at", -1)])
+    await db.intake_submissions.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)],
+        unique=True, partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+
     logger.info("MongoDB indexes ensured")

@@ -1,8 +1,8 @@
 # Managed by Emergent webhook-cron (pod-local syscron). DO NOT EDIT.
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-JOB_ID=checkpoint-validated
+JOB_ID=75439358-8da5-4093-b992-9dafe7d60778
 WEBHOOK_ENV_FILE=/app/backend/.env
 CRON_API_URL=http://agent-service:8009
 
-* * * * * root JOB_ID=checkpoint-validated CRON_API_URL=http://agent-service:8009 /bin/sh /app/.emergent/cron/watch_crons.sh >> /var/log/webhook-cron.log 2>&1
+* * * * * root JOB_ID=75439358-8da5-4093-b992-9dafe7d60778 CRON_API_URL=http://agent-service:8009 /bin/sh /app/.emergent/cron/watch_crons.sh >> /var/log/webhook-cron.log 2>&1

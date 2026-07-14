@@ -79,10 +79,10 @@
 
 ## Next Action
 
-**EC8 is DELIVERED / CLOSED (all phases 8a–8f complete). EC9 is COMPLETE / CLOSED (all phases 9A–9H complete, 2026-07) — owner formally accepted closure 2026-02.** EC10 PREFLIGHT is COMPLETE (2026-02, no code changes) per owner-authorized preflight-only instruction — see `/app/preflight/EC10_ORDER_INTAKE_VISUAL_MARKUP_CUSTOMER_DECISION_ROOM_AND_TEMPLATES_PREFLIGHT.md`. **Phase 10A implementation is NOT authorized yet.**
+**EC8 is DELIVERED / CLOSED (all phases 8a–8f complete). EC9 is COMPLETE / CLOSED (all phases 9A–9H complete, 2026-07) — owner formally accepted closure 2026-02.** EC10 preflight COMPLETE; **Phase 10A (Intake Architecture and Canonical Data Contracts) COMPLETE (2026-02)** — see `/app/evidence/EC10_PHASE10A_COMPLETION_REPORT.md`. **Phase 10B is NOT authorized yet.**
 
 - The remaining roadmap (EC10–EC22) is now governed by the SignGuy AI Checkpoint Specification Pack — see `/app/memory/checkpoint_reference_table.md`.
-- Do NOT begin EC10 Phase 10A (or any checkpoint implementation) without explicit owner authorization naming that checkpoint (hold H1).
+- Do NOT begin EC10 Phase 10B (or any later phase/checkpoint implementation) without explicit owner authorization naming that phase (hold H1).
 - Do NOT begin EC14 (Webstores), EC15 (Wrap Lab), or EC16–EC18 (AI) without their additional separate authorizations (H2/H3/H4).
 - Do NOT begin EC17 until the owner completes the AI Tools Keep/Combine/Change/Rename/Defer/Remove worksheet (H5/H8).
 - Do NOT invoke or rerun the EC0–EC9 implementation prompts.

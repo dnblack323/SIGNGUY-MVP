@@ -31,7 +31,7 @@ class Perm(str, Enum):
     pricing, inventory, vendor, purchasing, employee, task, schedule,
     timeclock, timesheet, payroll, equipment, training, certification,
     report, webstore, wrap_lab, ai, settings, integration, subscription,
-    community, ai_credit.
+    community, ai_credit, intake.
     """
     # Customers / Leads
     CUSTOMER_READ = "customer:read"
@@ -156,6 +156,11 @@ class Perm(str, Enum):
     COMMUNITY_MODERATE = "community:moderate"
     SUPPORT_READ = "support:read"
     SUPPORT_WRITE = "support:write"
+    # EC10 Phase 10A — Order Intake (canonical intake capture, pre-Quote/Order).
+    # Distinct from `document:*` (files) and `quote:*`/`order:*` (the
+    # authoritative records an accepted intake may later be converted into).
+    INTAKE_READ = "intake:read"
+    INTAKE_WRITE = "intake:write"
 
 
 class PlatformPerm(str, Enum):
@@ -212,6 +217,9 @@ STAFF_PERMS: list[str] = [
     # Training (if linked to an Employee record), mirroring the
     # TIMECLOCK_SELF/TIMESHEET_SELF self-service convention above.
     Perm.TRAINING_SELF.value,
+    # EC10 Phase 10A — every staff login may capture/view intake submissions
+    # (pre-Quote/Order requests); it is not a privileged/admin-only action.
+    Perm.INTAKE_READ.value, Perm.INTAKE_WRITE.value,
 ]
 
 ROLE_PERMISSIONS: dict[str, list[str]] = {

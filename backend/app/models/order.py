@@ -78,6 +78,10 @@ class OrderItem(BaseDoc):
     production_required_override_at: Optional[str] = None
     notes: Optional[str] = None
 
+    # EC10 Phase 10A — reserved reference to a future Decision Room (EC10
+    # Phase 10D). Not implemented/enforced yet; reference only.
+    decision_room_id: Optional[str] = None
+
 
 class Order(BaseDoc):
     tenant_id: str
@@ -111,3 +115,7 @@ class Order(BaseDoc):
     status: OrderStatus = "draft"
     archived_at: Optional[str] = None
     created_by: str
+
+    # EC10 Phase 10A — reserved reference to a future Decision Room (EC10
+    # Phase 10D). Not implemented/enforced yet; reference only.
+    decision_room_id: Optional[str] = None

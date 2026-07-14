@@ -45,3 +45,7 @@ class Quote(BaseDoc):
     converted_at: Optional[datetime] = None
     archived_at: Optional[datetime] = None
     created_by: str                             # user id
+
+    # EC10 Phase 10A — reserved reference to a future Decision Room (EC10
+    # Phase 10D). Not implemented/enforced yet; reference only.
+    decision_room_id: Optional[str] = None

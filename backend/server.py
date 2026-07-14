@@ -179,6 +179,11 @@ from app.routers import pricing_advisory as pricing_advisory_router_module
 api_router.include_router(pricing_snapshots_router_module.router)
 api_router.include_router(pricing_advisory_router_module.router)
 
+# EC10 — Phase 10A Intake architecture and canonical data contracts (staff-only;
+# customer-facing/public intake submission deferred to a later phase).
+from app.routers import intake as intake_router_module
+api_router.include_router(intake_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(
