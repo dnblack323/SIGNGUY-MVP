@@ -5,7 +5,7 @@ starter default pack on first access.
 """
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from typing import Any, Optional
 
 from ..core.db import db
@@ -15,6 +15,8 @@ from .pricing_flat_sqft import FLAT_SQFT_CATEGORIES, calculate_flat_sqft_pricing
 from .pricing_apparel import calculate_apparel_pricing
 from .pricing_promotional import calculate_promotional_pricing
 from .pricing_vehicle_graphics import calculate_vehicle_graphics_pricing
+from .pricing_services import calculate_services_pricing
+from .pricing_custom import calculate_custom_pricing
 
 
 def _now_iso() -> str:
@@ -127,16 +129,6 @@ async def reset_category_to_starter(tenant_id: str, category_id: str) -> dict[st
 # Calculator
 # ---------------------------------------------------------------------------
 
-def _to_dec(v: Any) -> Decimal:
-    if v is None:
-        return Decimal("0")
-    return Decimal(str(v))
-
-
-def _round2(v: Decimal) -> float:
-    return float(v.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-
-
 def calculate_pricing(
     *,
     settings: dict[str, Any],
@@ -207,164 +199,21 @@ def calculate_pricing(
             manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
         )
 
-    # Area
-    width = _to_dec(width_inches)
-    height = _to_dec(height_inches)
-    qty = max(1, int(quantity or 1))
-    area_sqft_each = (width * height) / Decimal("144") if width and height else Decimal("0")
-    total_area = area_sqft_each * qty
+    if category == "services":
+        return calculate_services_pricing(
+            shop=shop, cat=cat, pricing_components=pricing_components or [], quantity=quantity,
+            manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
+            material_profile=material_profile,
+        )
 
-    # Material cost
-    material_key = material_key or cat.get("default_material")
-    material_cost = Decimal("0")
-    material_sell_rate = None
-    if material_key and material_key in materials:
-        m = materials[material_key]
-        material_cost = _to_dec(m.get("cost_per_sqft")) * total_area
-        material_sell_rate = m.get("sell_per_sqft")
-    # apply waste
-    waste_percent = _to_dec(cat.get("waste_percent") or 0)
-    if waste_percent > 0:
-        material_cost = material_cost * (Decimal("1") + waste_percent / Decimal("100"))
+    if category == "custom":
+        return calculate_custom_pricing(
+            cat=cat, quantity=quantity, manual_selling_price=manual_selling_price,
+            category_inputs=category_inputs or {},
+        )
 
-    # Labor cost (production)
-    prod_rate = _to_dec(shop.get("production_hourly_rate") or 0)
-    # Simple labor allocation: category-specific hr/sqft when we have one, else per-unit fallback.
-    labor_hr_per_sqft = _to_dec(cat.get("production_labor_hr_per_sqft") or 0)
-    if labor_hr_per_sqft == 0:
-        # Reasonable defaults per category derived from the original repo
-        defaults_hr_per_sqft = {
-            "banners": Decimal("0.10"),
-            "rigid_signs": Decimal("0.15"),
-            "cut_vinyl": Decimal("0.20"),
-            "digital_print": Decimal("0.08"),
-            "services": Decimal("0"),
-            "custom": Decimal("0"),
-        }
-        labor_hr_per_sqft = defaults_hr_per_sqft.get(category, Decimal("0"))
-    labor_hours = labor_hr_per_sqft * total_area
-    labor_cost = labor_hours * prod_rate
-
-    # Design labor
-    design_cost = Decimal("0")
-    if design_needed:
-        design_hours = _to_dec(cat.get("design_default_hours") or Decimal("0.5"))
-        design_cost = design_hours * _to_dec(shop.get("design_hourly_rate") or 0)
-
-    # Install labor
-    install_cost = Decimal("0")
-    if install_needed:
-        install_hr_per_sqft = _to_dec(cat.get("install_labor_hr_per_sqft") or Decimal("0.08"))
-        install_hours = install_hr_per_sqft * total_area
-        install_cost = install_hours * _to_dec(shop.get("install_hourly_rate") or 0)
-        min_install = _to_dec(cat.get("install_min_charge") or 0)
-        if min_install > 0 and install_cost < min_install:
-            install_cost = min_install
-
-    # Setup / finishing / hardware / outsourcing default to 0 in MVP
-    setup_cost = Decimal("0")
-    finishing_cost = Decimal("0")
-    hardware_cost = Decimal("0")
-    outsourcing_cost = Decimal("0")
-
-    base_cost = material_cost + labor_cost + design_cost + setup_cost + finishing_cost + hardware_cost + install_cost + outsourcing_cost
-
-    # Overhead
-    overhead_pct = _to_dec(shop.get("default_overhead_percent") or 0)
-    overhead_cost = base_cost * (overhead_pct / Decimal("100"))
-    true_cost = base_cost + overhead_cost
-
-    # Selling price
-    pricing_method = cat.get("pricing_method") or "cost_plus_labor"
-    method_used = pricing_method
-    base_rate = _to_dec(cat.get("base_sell_rate_per_sqft") or 0)
-    minimum_charge = _to_dec(cat.get("minimum_charge") or 0)
-    target_margin = _to_dec(cat.get("target_margin_percent") or shop.get("target_profit_margin_percent") or 40)
-    markup = _to_dec(cat.get("default_markup_multiplier") or shop.get("default_markup_multiplier") or 2.5)
-
-    # 1) manual override
-    if manual_selling_price is not None and manual_selling_price >= 0:
-        selling_price = _to_dec(manual_selling_price)
-        method_used = "manual_override"
-    elif pricing_method == "per_sqft" and base_rate > 0 and total_area > 0:
-        # per-sqft: max of (rate * area) vs (cost/(1 - margin/100)) vs minimum_charge
-        by_rate = base_rate * total_area
-        by_margin = true_cost / (Decimal("1") - target_margin / Decimal("100")) if target_margin < 100 else true_cost
-        selling_price = max(by_rate, by_margin, minimum_charge)
-        method_used = "per_sqft"
-    else:
-        # cost_plus_labor / common_job_prices fallback
-        by_markup = true_cost * markup
-        by_margin = true_cost / (Decimal("1") - target_margin / Decimal("100")) if target_margin < 100 else true_cost
-        selling_price = max(by_markup, by_margin, minimum_charge)
-        method_used = pricing_method if pricing_method != "per_sqft" else "cost_plus_labor"
-
-    # Global minimum order guard
-    global_min = _to_dec(shop.get("minimum_order_amount") or 0)
-    if selling_price < global_min:
-        selling_price = global_min
-
-    profit_amount = selling_price - true_cost
-    profit_margin_percent = (
-        (profit_amount / selling_price) * Decimal("100") if selling_price > 0 else Decimal("0")
-    )
-
-    def r(v: Decimal) -> float:
-        return _round2(v)
-
-    breakdown = [
-        {"label": "Material", "amount": r(material_cost)},
-        {"label": "Production labor", "amount": r(labor_cost)},
-    ]
-    if design_cost > 0: breakdown.append({"label": "Design", "amount": r(design_cost)})
-    if install_cost > 0: breakdown.append({"label": "Install", "amount": r(install_cost)})
-    breakdown.append({"label": "Overhead", "amount": r(overhead_cost)})
-    breakdown.append({"label": "True cost", "amount": r(true_cost)})
-    breakdown.append({"label": "Selling price", "amount": r(selling_price)})
-    breakdown.append({"label": "Profit", "amount": r(profit_amount)})
-
-    return {
-        "category": category,
-        "width_inches": float(width_inches or 0),
-        "height_inches": float(height_inches or 0),
-        "quantity": qty,
-        "area_sqft_each": _round2(area_sqft_each),
-        "area_sqft_total": _round2(total_area),
-        "material_key": material_key,
-        "material_sell_rate_per_sqft": material_sell_rate,
-        "material_cost": r(material_cost),
-        "labor_cost": r(labor_cost),
-        "design_cost": r(design_cost),
-        "setup_cost": r(setup_cost),
-        "finishing_cost": r(finishing_cost),
-        "hardware_cost": r(hardware_cost),
-        "install_cost": r(install_cost),
-        "outsourcing_cost": r(outsourcing_cost),
-        "overhead_cost": r(overhead_cost),
-        "base_cost": r(base_cost),
-        "true_cost": r(true_cost),
-        "selling_price": r(selling_price),
-        "profit_amount": r(profit_amount),
-        "profit_margin_percent": _round2(profit_margin_percent),
-        "pricing_method_used": method_used,
-        "breakdown": breakdown,
-        # Phase 9B — the exact shop-level Pricing Foundation values in effect
-        # at calculation time, so a snapshot can "show the math" and remain
-        # historically accurate even after the shop later edits its defaults.
-        "shop_defaults_used": {
-            "production_hourly_rate": shop.get("production_hourly_rate"),
-            "design_hourly_rate": shop.get("design_hourly_rate"),
-            "install_hourly_rate": shop.get("install_hourly_rate"),
-            "default_overhead_percent": shop.get("default_overhead_percent"),
-            "labor_burden_percent": shop.get("labor_burden_percent"),
-            "target_profit_margin_percent": shop.get("target_profit_margin_percent"),
-            "default_markup_multiplier": shop.get("default_markup_multiplier"),
-            "minimum_order_amount": shop.get("minimum_order_amount"),
-            "install_minimum_charge": shop.get("install_minimum_charge"),
-            "setup_fee_default": shop.get("setup_fee_default"),
-            "rush_fee_percent": shop.get("rush_fee_percent"),
-        },
-    }
+    # Unreachable: every id in CATEGORY_IDS is dispatched above.
+    raise ValueError(f"Unhandled category: {category}")
 
 
 # ---------------------------------------------------------------------------

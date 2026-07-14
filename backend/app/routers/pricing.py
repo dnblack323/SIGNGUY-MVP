@@ -36,6 +36,8 @@ class ShopDefaultsIn(BaseModel):
     consultation_hourly_rate: Optional[float] = Field(None, ge=0)
     site_survey_hourly_rate: Optional[float] = Field(None, ge=0)
     finishing_hourly_rate: Optional[float] = Field(None, ge=0)
+    helper_hourly_rate: Optional[float] = Field(None, ge=0)
+    specialty_technician_hourly_rate: Optional[float] = Field(None, ge=0)
     default_overhead_percent: Optional[float] = Field(None, ge=0, le=200)
     labor_burden_percent: Optional[float] = Field(None, ge=0, le=200)
     target_profit_margin_percent: Optional[float] = Field(None, ge=0, le=99.9)

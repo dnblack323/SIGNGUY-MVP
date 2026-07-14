@@ -70,6 +70,14 @@ SHOP_DEFAULTS: dict[str, float] = {
     "labor_burden_percent": 0.0,
     # EC9 Phase 9E-1 — EC09 controlling document: "file cleanup fee defaults: $20"
     "file_cleanup_fee_default": 20.00,
+    # EC9 Phase 9E-4 — Labor Role override rates for the Services calculator.
+    # EC09 gives no distinct global rate for "Helper" or "Specialty
+    # Technician" labor roles — seeded at $0.00 (never invented) and fully
+    # tenant-editable via Pricing Foundation. Selecting one of these roles
+    # while it is still $0.00 surfaces a `calculation_warnings` entry rather
+    # than silently substituting another configured rate.
+    "helper_hourly_rate": 0.00,
+    "specialty_technician_hourly_rate": 0.00,
 }
 
 # EC9 Phase 9E-1 — shared complexity/install multiplier scales (EC09 controlling

@@ -28,6 +28,22 @@ from .pricing_flat_sqft import _apply_components, _d, _design_mult, _install_mul
 
 _HOURLY_METHODS = {"hourly", "per_crew_hour", "cost_plus"}
 
+# EC9 Phase 9E-4 — optional Labor Role override. Maps a role selection to the
+# matching global Pricing Foundation shop rate — never a second rate table.
+# `helper` and `specialty_technician` have no EC09-given rate (seeded at
+# $0.00 in `starter_defaults.SHOP_DEFAULTS`, never invented); selecting one
+# while it is still unconfigured surfaces a warning rather than silently
+# substituting a different rate.
+LABOR_ROLES: dict[str, str] = {
+    "design": "design_hourly_rate",
+    "production": "production_hourly_rate",
+    "installer": "install_hourly_rate",
+    "helper": "helper_hourly_rate",
+    "project_manager": "admin_hourly_rate",
+    "admin": "admin_hourly_rate",
+    "specialty_technician": "specialty_technician_hourly_rate",
+}
+
 
 def calculate_services_pricing(
     *, shop: dict[str, Any], cat: dict[str, Any], pricing_components: list[dict[str, Any]],
@@ -58,6 +74,25 @@ def calculate_services_pricing(
         default_rate = st_cfg["hourly_rate_default"]
     else:
         default_rate = shop.get(st_cfg.get("rate_shop_key", "production_hourly_rate"), 0)
+
+    # EC9 Phase 9E-4 — optional Labor Role override. If selected, it replaces
+    # the service_type preset rate with the matching configured shop rate
+    # (still overridable below by an explicit hourly_rate_override). Never
+    # silently substitutes another rate when the role's own rate is
+    # unconfigured ($0.00) — warns instead, and pricing for this portion
+    # stays at $0 until the shop configures that rate or enters a manual
+    # override, preserving existing service_type preset behavior otherwise.
+    labor_role, role_src = _resolve(inputs, "labor_role", None)
+    if labor_role and labor_role in LABOR_ROLES:
+        role_rate_key = LABOR_ROLES[labor_role]
+        role_rate = shop.get(role_rate_key, 0)
+        default_rate = role_rate
+        if _d(role_rate) <= 0:
+            warnings.append(
+                f"Labor role '{labor_role.replace('_', ' ')}' has no configured rate ('{role_rate_key}' is $0.00 in "
+                "Pricing Foundation) — this portion will price at $0 until you configure that rate or enter a "
+                "manual hourly rate override / manual selling price."
+            )
     hourly_rate, rate_src = _resolve(inputs, "hourly_rate_override", default_rate)
 
     unit_rate, ur_src = _resolve(inputs, "unit_rate", 0.0)
@@ -237,7 +272,8 @@ def calculate_services_pricing(
 
     category_inputs_used = {
         "service_type": service_type, "pricing_method": pricing_method, "estimated_hours": estimated_hours,
-        "crew_size": crew_size, "complexity": complexity, "hourly_rate_override": hourly_rate, "unit_rate": unit_rate,
+        "crew_size": crew_size, "complexity": complexity, "labor_role": labor_role,
+        "hourly_rate_override": hourly_rate, "unit_rate": unit_rate,
         "units": units, "flat_fee_amount": flat_fee_amount, "materials_required": materials_required,
         "material_quantity": material_quantity, "material_cost_manual": material_cost_manual,
         "equipment_required": equipment_required, "equipment_type": equipment_type, "equipment_rate": equipment_rate,
@@ -252,7 +288,7 @@ def calculate_services_pricing(
     }
     source_labels = {
         "service_type": stype_src, "pricing_method": pm_src, "estimated_hours": hrs_src, "crew_size": crew_src,
-        "complexity": cx_src, "hourly_rate_override": rate_src, "unit_rate": ur_src, "units": units_src,
+        "complexity": cx_src, "labor_role": role_src, "hourly_rate_override": rate_src, "unit_rate": ur_src, "units": units_src,
         "flat_fee_amount": ffa_src, "materials_required": matreq_src, "material_quantity": matqty_src,
         "material_cost_manual": matcost_src, "equipment_required": eqreq_src, "equipment_type": eqtype_src,
         "equipment_rate": eqrate_src, "equipment_quantity": eqqty_src, "design_needed": dn_src,
@@ -301,6 +337,7 @@ def calculate_services_pricing(
         "outsourced_price_addon": _r2(outsourced_price_addon),
         "permit_cost": _r2(permit_cost),
         "service_rate_is_provisional": bool(st_cfg.get("is_rate_provisional")),
+        "labor_role_used": labor_role,
         "calculation_warnings": warnings,
         "category_inputs_used": category_inputs_used,
         "source_labels": source_labels,

@@ -40,6 +40,27 @@ const VEHICLE_MATERIALS = [
 ];
 const VEHICLE_LAMINATES = [["gloss", "Gloss"], ["matte", "Matte"], ["satin", "Satin"]];
 
+const SERVICE_TYPE_OPTIONS = [
+  ["general_labor", "General Labor"], ["graphic_design", "Graphic Design"], ["artwork_setup", "Artwork Setup"],
+  ["file_cleanup", "File Cleanup"], ["consultation", "Consultation"], ["site_survey", "Site Survey"],
+  ["measurement", "Measurement (provisional rate)"], ["delivery", "Delivery"], ["installation", "Installation"],
+  ["removal", "Removal"], ["maintenance_repair", "Maintenance / Repair (provisional rate)"],
+  ["vehicle_graphics_install", "Vehicle Graphics Install"], ["wrap_install", "Wrap Install"],
+  ["service_call_labor", "Service Call Labor"], ["project_management", "Project Management (provisional rate)"],
+  ["permit_handling", "Permit Handling"], ["custom_flat_fee", "Custom Flat-Fee Service"],
+];
+const PRICING_METHOD_OPTIONS = [
+  ["hourly", "Hourly"], ["per_crew_hour", "Per crew-hour"], ["per_unit", "Per unit"], ["flat_fee", "Flat fee"],
+  ["cost_plus", "Cost-plus (hourly)"], ["pass_through", "Pass-through (outsourced)"],
+  ["hybrid", "Hybrid (hourly + flat floor)"], ["manual", "Manual"],
+];
+const LABOR_ROLE_OPTIONS = [
+  ["none", "Use service-type preset rate"], ["design", "Design"], ["production", "Production"],
+  ["installer", "Installer"], ["helper", "Helper"], ["project_manager", "Project Manager"],
+  ["admin", "Admin"], ["specialty_technician", "Specialty Technician"],
+];
+const SERVICE_EQUIPMENT_TYPE_OPTIONS = [["ladder", "Ladder"], ["scissor_lift", "Scissor Lift"], ["bucket_truck", "Bucket Truck"], ["other", "Other Equipment"]];
+
 /**
  * EC9 Phase 9E-1 — category-specific conditional fields for the 4 Core Flat
  * & Square-Foot calculators (Banners, Rigid Signs, Digital Print, Cut Vinyl).
@@ -394,6 +415,141 @@ export function CategorySpecificFields({ category, values, onChange, designNeede
         </div>
 
         <Switchy testId="calc-promo-rush-switch" label="Rush" field="rush" />
+      </div>
+    );
+  }
+
+  if (category === "services") {
+    const pm = v.pricing_method || "hourly";
+    const isHourlyLike = ["hourly", "per_crew_hour", "cost_plus", "hybrid"].includes(pm);
+    const isPerUnit = pm === "per_unit";
+    const isFlatFeeLike = ["flat_fee", "custom_flat_fee", "hybrid"].includes(pm);
+    const isPassThrough = pm === "pass_through";
+    return (
+      <div className="grid gap-3 rounded-lg border p-3" data-testid="calc-category-fields-services">
+        <div className="text-xs font-medium text-muted-foreground">Service options</div>
+        <div className="grid grid-cols-2 gap-3">
+          <Selecty testId="calc-service-type" label="Service type" field="service_type" defaultValue="general_labor" options={SERVICE_TYPE_OPTIONS} />
+          <Selecty testId="calc-service-pricing-method" label="Pricing method (overrides service-type preset)" field="pricing_method" defaultValue="hourly" options={PRICING_METHOD_OPTIONS} />
+          <div className="grid gap-1.5">
+            <Label className="text-xs">Labor role (optional override)</Label>
+            <Select value={v.labor_role ?? "none"} onValueChange={(val) => set("labor_role")(val === "none" ? null : val)}>
+              <SelectTrigger data-testid="calc-service-labor-role"><SelectValue /></SelectTrigger>
+              <SelectContent>{LABOR_ROLE_OPTIONS.map(([val, lbl]) => <SelectItem key={val} value={val}>{lbl}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {isHourlyLike && (
+          <div className="grid grid-cols-2 gap-3">
+            <Numbery testId="calc-service-estimated-hours" label="Estimated hours" field="estimated_hours" defaultValue={1} />
+            <Numbery testId="calc-service-crew-size" label="Crew size" field="crew_size" defaultValue={1} min={1} />
+            <Selecty testId="calc-service-complexity" label="Complexity" field="complexity" defaultValue="easy"
+              options={[["easy", "Easy"], ["medium", "Medium"], ["difficult", "Difficult"], ["extreme", "Extreme"]]} />
+            <Moneyy testId="calc-service-hourly-rate-override" label="Hourly rate override (optional)" field="hourly_rate_override" defaultValue="" />
+          </div>
+        )}
+        {isPerUnit && (
+          <div className="grid grid-cols-2 gap-3">
+            <Moneyy testId="calc-service-unit-rate" label="Unit rate" field="unit_rate" defaultValue={0} />
+            <Numbery testId="calc-service-units" label="Units" field="units" defaultValue={1} />
+          </div>
+        )}
+        {isFlatFeeLike && <Moneyy testId="calc-service-flat-fee-amount" label="Flat fee amount" field="flat_fee_amount" defaultValue={0} />}
+        {isPassThrough && (
+          <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800" data-testid="calc-service-pass-through-note">
+            Pass-through pricing uses the Outsourced / vendor section below as the primary price.
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Switchy testId="calc-service-materials-required-switch" label="Materials required" field="materials_required" />
+          {v.materials_required && (<>
+            <Numbery testId="calc-service-material-quantity" label="Material quantity" field="material_quantity" defaultValue={1} />
+            <Moneyy testId="calc-service-material-cost-manual" label="Material cost (manual, per unit)" field="material_cost_manual" defaultValue={0} />
+          </>)}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Switchy testId="calc-service-equipment-required-switch" label="Equipment required" field="equipment_required" />
+          {v.equipment_required && (<>
+            <Selecty testId="calc-service-equipment-type" label="Equipment type" field="equipment_type" defaultValue="ladder" options={SERVICE_EQUIPMENT_TYPE_OPTIONS} />
+            <Moneyy testId="calc-service-equipment-rate" label="Equipment rate ($/day)" field="equipment_rate" defaultValue={0} />
+            <Numbery testId="calc-service-equipment-quantity" label="Days" field="equipment_quantity" defaultValue={1} />
+          </>)}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Switchy testId="calc-service-design-needed-switch" label="Design add-on needed" field="design_needed" />
+          {v.design_needed && <Selecty testId="calc-service-design-complexity" label="Design complexity" field="design_complexity" defaultValue="simple"
+            options={[["simple", "Simple"], ["medium", "Medium"], ["complex", "Complex"], ["extreme", "Extreme"]]} />}
+          <Switchy testId="calc-service-setup-required-switch" label="Setup fee required" field="setup_required" />
+          {v.setup_required && <Moneyy testId="calc-service-setup-fee" label="Setup fee" field="setup_fee" defaultValue={0} />}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Switchy testId="calc-service-travel-required-switch" label="Travel required" field="travel_required" />
+          {v.travel_required && (<>
+            <Numbery testId="calc-service-travel-miles" label="Travel miles" field="travel_miles" defaultValue={0} />
+            <Numbery testId="calc-service-travel-time-hours" label="Travel time (hrs)" field="travel_time_hours" defaultValue={0} />
+            <Moneyy testId="calc-service-travel-cost-per-mile" label="Travel cost/mile override" field="travel_cost_per_mile_override" defaultValue={0} />
+            <Moneyy testId="calc-service-travel-sell-rate-per-mile" label="Travel sell rate/mile override" field="travel_sell_rate_per_mile_override" defaultValue={0} />
+          </>)}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Switchy testId="calc-service-trip-charge-switch" label="Trip charge applies" field="trip_charge_applies" />
+          {v.trip_charge_applies && (<>
+            <Numbery testId="calc-service-trip-count" label="Trip count" field="trip_count" defaultValue={1} />
+            <Moneyy testId="calc-service-trip-charge-amount" label="Trip charge amount (each)" field="trip_charge_amount" defaultValue={0} />
+          </>)}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Switchy testId="calc-service-outsourced-required-switch" label="Outsourced / vendor" field="outsourced_required" />
+          {v.outsourced_required && (<>
+            <div className="grid gap-1.5"><Label className="text-xs">Vendor name</Label>
+              <Input value={v.vendor_name ?? ""} onChange={(e) => set("vendor_name")(e.target.value)} data-testid="calc-service-vendor-name-input" /></div>
+            <Moneyy testId="calc-service-vendor-cost" label="Vendor cost" field="vendor_cost" defaultValue={0} />
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <Switch checked={v.markup_applies !== false} onCheckedChange={set("markup_applies")} data-testid="calc-service-markup-applies-switch" />Apply subcontract markup
+            </label>
+            {v.markup_applies !== false && <Numbery testId="calc-service-subcontract-markup-percent" label="Subcontract markup %" field="subcontract_markup_percent_override" defaultValue={0} />}
+          </>)}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Switchy testId="calc-service-permit-required-switch" label="Permit / access fee" field="permit_required" />
+          {v.permit_required && <Moneyy testId="calc-service-permit-fee" label="Permit fee" field="permit_fee" defaultValue={0} />}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <Switchy testId="calc-service-rush-switch" label="Rush" field="rush" />
+          {v.rush && <Numbery testId="calc-service-rush-percent" label="Rush % override" field="rush_percent" defaultValue={25} />}
+          <Moneyy testId="calc-service-minimum-charge-override" label="Minimum charge override (optional)" field="minimum_charge_override" defaultValue="" />
+        </div>
+      </div>
+    );
+  }
+
+  if (category === "custom") {
+    return (
+      <div className="grid gap-3 rounded-lg border p-3" data-testid="calc-category-fields-custom">
+        <div className="text-xs font-medium text-muted-foreground">Custom / miscellaneous item — manual pricing only, no automated formula</div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-1.5"><Label className="text-xs">Item name</Label>
+            <Input value={v.item_name ?? ""} onChange={(e) => set("item_name")(e.target.value)} data-testid="calc-custom-item-name-input" /></div>
+          <div className="grid gap-1.5"><Label className="text-xs">Description</Label>
+            <Input value={v.description ?? ""} onChange={(e) => set("description")(e.target.value)} data-testid="calc-custom-description-input" /></div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Moneyy testId="calc-custom-unit-price" label="Unit price" field="unit_price" defaultValue={0} />
+          <Moneyy testId="calc-custom-unit-cost-manual" label="Unit cost (optional — profit/margin display only)" field="unit_cost_manual" defaultValue={0} />
+        </div>
+        <Moneyy testId="calc-custom-minimum-charge-override" label="Minimum charge override (optional)" field="minimum_charge_override" defaultValue="" />
+        <div className="grid gap-1.5"><Label className="text-xs">Notes (optional)</Label>
+          <Input value={v.notes ?? ""} onChange={(e) => set("notes")(e.target.value)} data-testid="calc-custom-notes-input" /></div>
+        <p className="text-[11px] text-muted-foreground">Selling price = unit price &times; quantity, with the configured minimum applied only if it's higher than that. Use "Manual selling price override" above for a fully manual final price, or "Save this as a reusable item" below to reuse this item later.</p>
       </div>
     );
   }

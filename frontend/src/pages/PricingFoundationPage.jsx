@@ -28,6 +28,8 @@ const SHOP_FIELDS = [
   ["consultation_hourly_rate", "Consultation hourly rate", "$/hr"],
   ["site_survey_hourly_rate", "Site survey hourly rate", "$/hr"],
   ["finishing_hourly_rate", "Finishing hourly rate", "$/hr"],
+  ["helper_hourly_rate", "Helper hourly rate (Services Labor Role)", "$/hr"],
+  ["specialty_technician_hourly_rate", "Specialty technician hourly rate (Services Labor Role)", "$/hr"],
   ["default_overhead_percent", "Default overhead", "%"],
   ["labor_burden_percent", "Labor burden", "%"],
   ["target_profit_margin_percent", "Target profit margin", "%"],

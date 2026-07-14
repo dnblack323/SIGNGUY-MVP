@@ -17,8 +17,9 @@ import { CategorySpecificFields } from "@/components/pricing/CategorySpecificFie
 import { Calculator, Loader2, Save, Copy, RefreshCw } from "lucide-react";
 
 const FLAT_SQFT_CATEGORIES = ["banners", "rigid_signs", "digital_print", "cut_vinyl"];
-const DIMENSIONLESS_CATEGORIES = ["apparel", "promotional", "vehicle_graphics"];
-const CATEGORY_SPECIFIC_CATEGORIES = ["banners", "rigid_signs", "digital_print", "cut_vinyl", "apparel", "promotional", "vehicle_graphics"];
+const DIMENSIONLESS_CATEGORIES = ["apparel", "promotional", "vehicle_graphics", "services", "custom"];
+const CATEGORY_SPECIFIC_CATEGORIES = ["banners", "rigid_signs", "digital_print", "cut_vinyl", "apparel", "promotional", "vehicle_graphics", "services", "custom"];
+const ITEM_LABEL_CATEGORIES = ["promotional", "services", "custom"];
 
 const fmtUSD = (n) => Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
 const fmtPct = (n) => `${Number(n || 0).toFixed(2)}%`;
@@ -236,7 +237,7 @@ export default function PricingCalculatorPage() {
                     <div>Area (total): <span className="tabular-nums text-foreground">{result.area_sqft_total} sqft</span></div>
                   )}
                   <div>Quantity: <span className="tabular-nums text-foreground">{result.quantity}</span></div>
-                  <div>{result.category === "promotional" ? "Item" : "Material"}: <span className="mono text-foreground">{result.material_key || "—"}</span></div>
+                  <div>{ITEM_LABEL_CATEGORIES.includes(result.category) ? "Item" : "Material"}: <span className="mono text-foreground">{result.material_key || "—"}</span></div>
                   <div>Category: <span className="capitalize text-foreground">{result.category.replace("_"," ")}</span></div>
                 </div>
 
