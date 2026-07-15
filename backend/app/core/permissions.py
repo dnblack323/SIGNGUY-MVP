@@ -31,7 +31,7 @@ class Perm(str, Enum):
     pricing, inventory, vendor, purchasing, employee, task, schedule,
     timeclock, timesheet, payroll, equipment, training, certification,
     report, webstore, wrap_lab, ai, settings, integration, subscription,
-    community, ai_credit, intake.
+    community, ai_credit, intake, markup.
     """
     # Customers / Leads
     CUSTOMER_READ = "customer:read"
@@ -161,6 +161,11 @@ class Perm(str, Enum):
     # authoritative records an accepted intake may later be converted into).
     INTAKE_READ = "intake:read"
     INTAKE_WRITE = "intake:write"
+    # EC10 Phase 10C — Visual Markup (staff annotation workspace over an
+    # existing uploaded image/PDF page). Distinct from `document:*` (raw
+    # files) — markup is the structured annotation layer on top of a file.
+    MARKUP_READ = "markup:read"
+    MARKUP_WRITE = "markup:write"
 
 
 class PlatformPerm(str, Enum):
@@ -220,6 +225,9 @@ STAFF_PERMS: list[str] = [
     # EC10 Phase 10A — every staff login may capture/view intake submissions
     # (pre-Quote/Order requests); it is not a privileged/admin-only action.
     Perm.INTAKE_READ.value, Perm.INTAKE_WRITE.value,
+    # EC10 Phase 10C — every staff login may create/edit Visual Markup on an
+    # intake asset, mirroring the intake self-service convention above.
+    Perm.MARKUP_READ.value, Perm.MARKUP_WRITE.value,
 ]
 
 ROLE_PERMISSIONS: dict[str, list[str]] = {

@@ -184,6 +184,11 @@ api_router.include_router(pricing_advisory_router_module.router)
 from app.routers import intake as intake_router_module
 api_router.include_router(intake_router_module.router)
 
+# EC10 — Phase 10C Visual Markup (staff-only annotation workspace over an
+# existing uploaded image/PDF page; customer annotation deferred).
+from app.routers import visual_markup as visual_markup_router_module
+api_router.include_router(visual_markup_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

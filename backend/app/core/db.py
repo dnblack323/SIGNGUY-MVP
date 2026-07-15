@@ -459,4 +459,13 @@ async def ensure_indexes() -> None:
         unique=True, partialFilterExpression={"idempotency_key": {"$type": "string"}},
     )
 
+    # ---- EC10 phase 10C — Visual Markup ----
+    await db.visual_markups.create_index("id", unique=True)
+    await db.visual_markups.create_index([("tenant_id", 1), ("status", 1)])
+    await db.visual_markups.create_index([("tenant_id", 1), ("intake_id", 1)])
+    await db.visual_markups.create_index([("tenant_id", 1), ("intake_item_id", 1)])
+    await db.visual_markups.create_index([("tenant_id", 1), ("source_file_id", 1)])
+    await db.markup_versions.create_index("id", unique=True)
+    await db.markup_versions.create_index([("tenant_id", 1), ("visual_markup_id", 1), ("version_number", 1)], unique=True)
+
     logger.info("MongoDB indexes ensured")
