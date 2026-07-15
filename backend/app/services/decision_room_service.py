@@ -17,10 +17,19 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 import logging
+import re
 
 from ..core.db import db
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
-from ..models.decision_room import CustomerDecision, DecisionOption, DecisionRoom, DecisionRoomVersion
+from ..models.decision_room import (
+    CustomerDecision,
+    DecisionOption,
+    DecisionRoom,
+    DecisionRoomOverlay,
+    DecisionRoomQuestion,
+    DecisionRoomVersion,
+    SavedForLater,
+)
 from ..services.audit import record_audit
 from ..services.notifications import notify_tenant_owners
 
@@ -186,6 +195,21 @@ def _sanitize_custom_badge_text(text: Optional[str]) -> Optional[str]:
         return None
     cleaned = "".join(ch for ch in text if ch.isprintable()).strip()
     return cleaned[:60] or None
+
+
+_HTML_TAG_RE = re.compile(r"<[^>]*>")
+
+
+def _sanitize_customer_message(text: Optional[str], max_len: int = 2000) -> Optional[str]:
+    """Plain sanitized text only — strips HTML tags entirely (never
+    rendered as HTML on read, but stripped at write time too, defense in
+    depth) and any non-printable control characters. No markdown/rich-text
+    is supported in this phase."""
+    if not text:
+        return None
+    stripped_tags = _HTML_TAG_RE.sub("", text)
+    cleaned = "".join(ch for ch in stripped_tags if ch.isprintable() or ch in "\n\t").strip()
+    return cleaned[:max_len] or None
 
 
 async def _get_room(tenant_id: str, room_id: str) -> dict:
@@ -1036,7 +1060,7 @@ async def submit_customer_decision(
         idempotency_key=idempotency_key, submitted_at=now, ip=ip, user_agent=user_agent,
     ).model_dump()
     try:
-        await db.customer_decisions.insert_one(prepare_for_mongo(dict(decision)))
+        await db.customer_decisions.insert_one(prepare_for_mongo(_for_insert(decision)))
     except Exception as ex:
         # Duplicate-key race on the idempotency index (two near-simultaneous
         # duplicate clicks) — return the row the other request just saved
@@ -1131,3 +1155,448 @@ async def acknowledge_customer_decision(
     doc["internal_review_status"] = "acknowledged"
     doc["updated_at"] = now
     return serialize_doc(doc)
+
+
+
+# ---- EC10 Phase 10E-3 — Customer Questions, Anchored Comments/Pins, and
+# Save for Later. Every write below is scoped to the exact frozen
+# `published_version_id` a customer was actually shown, gated behind the
+# room's OWN `allow_customer_questions`/`allow_customer_comments`/
+# `allow_save_for_later` flags (declared back in Phase 10D, inert until
+# now), and never touches a Quote/Order/Order Item/pricing/Proof/staff
+# markup. None of this is a commercial decision — that stays `CustomerDecision`
+# (Phase 10E-2) and the staff-controlled apply step (Phase 10F).
+
+def _require_room_open_for_customer_action(room: dict[str, Any]) -> None:
+    if room.get("status") != "published":
+        raise DecisionRoomError(
+            "room_not_open_for_decisions",
+            f"This Decision Room is '{room.get('status')}' and no longer accepts new actions",
+        )
+
+
+async def _find_by_idempotency_key(collection_name: str, *, tenant_id: str, room_id: str, idempotency_key: Optional[str]) -> Optional[dict]:
+    if not idempotency_key:
+        return None
+    return await db[collection_name].find_one(
+        {"tenant_id": tenant_id, "decision_room_id": room_id, "idempotency_key": idempotency_key}, {"_id": 0},
+    )
+
+
+def _for_insert(doc: dict[str, Any]) -> dict[str, Any]:
+    """The `(tenant_id, decision_room_id, idempotency_key)` indexes below
+    are `sparse=True` so multiple submissions with NO key never collide —
+    but that only works if the field is actually ABSENT, not present with
+    an explicit `null` (which `BaseModel.model_dump()` always produces).
+    Drop it here whenever it's falsy so two idempotency-key-less writes to
+    the same room never crash with a spurious duplicate-key error."""
+    doc = dict(doc)
+    if not doc.get("idempotency_key"):
+        doc.pop("idempotency_key", None)
+    return doc
+
+
+async def _resolve_and_validate_anchor(
+    tenant_id: str, room_id: str, customer_id: Optional[str], version: dict[str, Any], *,
+    option_id: Optional[str], source_file_id: Optional[str], visual_markup_id: Optional[str],
+    markup_version_id: Optional[str], page_number: Optional[int],
+) -> None:
+    """Shared by questions (anchor optional) and overlays (anchor required
+    — enforced by the caller). Every anchor field, if given, must resolve
+    against the EXACT frozen published version — never a live/draft/
+    cross-tenant reference."""
+    option = None
+    if option_id:
+        option = _find_frozen_active_option(version, option_id)
+    if visual_markup_id:
+        if option is not None:
+            if option.get("visual_markup_id") != visual_markup_id:
+                raise DecisionRoomError("visual_markup_not_in_version", "This markup is not part of the option you referenced")
+        else:
+            matching = next(
+                (o for o in (version.get("options_snapshot") or [])
+                 if o.get("active", True) and o.get("visual_markup_id") == visual_markup_id),
+                None,
+            )
+            if not matching:
+                raise DecisionRoomError("visual_markup_not_in_version", "This markup is not part of the Decision Room you were shown")
+        vm = await db.visual_markups.find_one({"id": visual_markup_id, "tenant_id": tenant_id}, {"_id": 0})
+        if not vm:
+            raise DecisionRoomError("visual_markup_not_in_version", "Visual markup not found")
+        if markup_version_id:
+            mv = await db.markup_versions.find_one(
+                {"id": markup_version_id, "visual_markup_id": visual_markup_id, "tenant_id": tenant_id}, {"_id": 0, "id": 1},
+            )
+            if not mv:
+                raise DecisionRoomError("markup_version_not_found", "Markup version not found")
+        if vm.get("source_file_type") == "pdf":
+            if not page_number or page_number != vm.get("source_page_number"):
+                raise DecisionRoomError("invalid_pdf_page", "page_number must match the frozen PDF page for this markup")
+        elif page_number is not None:
+            raise DecisionRoomError("invalid_pdf_page", "page_number only applies to PDF (non-PDF markup has no page)")
+    if source_file_id:
+        # Reuses the EXACT same frozen-media allowlist as customer media delivery
+        # (Phase 10E-1) — a customer can never anchor to a file that isn't
+        # actually referenced/visible on the frozen published version.
+        await resolve_customer_safe_media(tenant_id=tenant_id, room_id=room_id, file_id=source_file_id, customer_id=customer_id)
+
+
+def _actor_user_id(customer_id: Optional[str], public_token_id: Optional[str]) -> str:
+    return f"portal:{customer_id}" if customer_id else f"public_token:{public_token_id}"
+
+
+# ---- Questions -------------------------------------------------------------
+
+def _question_customer_safe(doc: dict[str, Any]) -> dict[str, Any]:
+    """Strips staff-only identity fields (`responded_by_user_id`,
+    `customer_id`/`public_token_id`, `tenant_id`) before returning a
+    question to the customer who asked it."""
+    return {
+        "id": doc.get("id"), "decision_room_id": doc.get("decision_room_id"),
+        "published_version_id": doc.get("published_version_id"),
+        "option_id": doc.get("option_id"), "source_file_id": doc.get("source_file_id"),
+        "visual_markup_id": doc.get("visual_markup_id"), "markup_version_id": doc.get("markup_version_id"),
+        "customer_message": doc.get("customer_message"), "status": doc.get("status"),
+        "staff_response": doc.get("staff_response"), "responded_at": doc.get("responded_at"),
+        "submitted_at": doc.get("submitted_at"), "created_at": doc.get("created_at"), "updated_at": doc.get("updated_at"),
+    }
+
+
+async def submit_customer_question(
+    *, tenant_id: str, room_id: str, customer_message: str, option_id: Optional[str] = None,
+    source_file_id: Optional[str] = None, visual_markup_id: Optional[str] = None,
+    markup_version_id: Optional[str] = None, page_number: Optional[int] = None,
+    source_access_mode: str, customer_id: Optional[str] = None, public_token_id: Optional[str] = None,
+    actor_display: Optional[str] = None, idempotency_key: Optional[str] = None,
+) -> dict:
+    room, version = await _get_accessible_room_and_version(tenant_id, room_id, customer_id)
+    _require_room_open_for_customer_action(room)
+    if not version.get("allow_customer_questions", False):
+        raise DecisionRoomError("questions_not_allowed", "This Decision Room does not accept customer questions")
+
+    existing = await _find_by_idempotency_key("decision_room_questions", tenant_id=tenant_id, room_id=room_id, idempotency_key=idempotency_key)
+    if existing:
+        return _question_customer_safe(existing)
+
+    message = _sanitize_customer_message(customer_message)
+    if not message:
+        raise DecisionRoomError("question_message_required", "A question message is required")
+
+    await _resolve_and_validate_anchor(
+        tenant_id, room_id, customer_id, version, option_id=option_id, source_file_id=source_file_id,
+        visual_markup_id=visual_markup_id, markup_version_id=markup_version_id, page_number=page_number,
+    )
+
+    now = _now_iso()
+    question = DecisionRoomQuestion(
+        tenant_id=tenant_id, decision_room_id=room_id, published_version_id=version["id"],
+        option_id=option_id, source_file_id=source_file_id, visual_markup_id=visual_markup_id,
+        markup_version_id=markup_version_id, source_access_mode=source_access_mode,
+        customer_id=customer_id, public_token_id=public_token_id, actor_display=actor_display,
+        customer_message=message, idempotency_key=idempotency_key, submitted_at=now,
+    ).model_dump()
+    try:
+        await db.decision_room_questions.insert_one(prepare_for_mongo(_for_insert(question)))
+    except Exception as ex:
+        if "E11000" in str(ex):
+            dup = await _find_by_idempotency_key("decision_room_questions", tenant_id=tenant_id, room_id=room_id, idempotency_key=idempotency_key)
+            if dup:
+                return _question_customer_safe(dup)
+        raise
+
+    actor_user_id = _actor_user_id(customer_id, public_token_id)
+    await record_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_display or "customer",
+        action="decision_room.customer_question_submitted", entity_type="decision_room", entity_id=room_id,
+        summary="Customer submitted a question",
+        diff={"question_id": question["id"], "option_id": option_id, "message_length": len(message)},
+    )
+    try:
+        await notify_tenant_owners(
+            tenant_id=tenant_id, module="decision_room", kind="customer_question_submitted",
+            title="Customer asked a question on a Decision Room",
+            entity_type="decision_room", entity_id=room_id,
+        )
+    except Exception:
+        logger.exception("decision_room customer_question_submitted notification failed (question already saved)")
+
+    return _question_customer_safe(question)
+
+
+async def respond_to_question(
+    *, tenant_id: str, room_id: str, question_id: str, staff_response: str, actor_user_id: str, actor_email: str,
+) -> dict:
+    await _get_room(tenant_id, room_id)
+    doc = await db.decision_room_questions.find_one({"id": question_id, "tenant_id": tenant_id, "decision_room_id": room_id})
+    if not doc:
+        raise DecisionRoomError("question_not_found", "Question not found")
+    response = _sanitize_customer_message(staff_response, max_len=4000)
+    if not response:
+        raise DecisionRoomError("question_message_required", "A response message is required")
+    now = _now_iso()
+    await db.decision_room_questions.update_one(
+        {"id": question_id, "tenant_id": tenant_id},
+        {"$set": {
+            "staff_response": response, "responded_by_user_id": actor_user_id, "responded_at": now,
+            "status": "answered", "updated_at": now,
+        }},
+    )
+    await record_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+        action="decision_room.staff_response_submitted", entity_type="decision_room", entity_id=room_id,
+        summary="Staff responded to a customer question",
+        diff={"question_id": question_id, "response_length": len(response)},
+    )
+    doc = await db.decision_room_questions.find_one({"id": question_id, "tenant_id": tenant_id}, {"_id": 0})
+    return serialize_doc(doc)
+
+
+async def resolve_question(*, tenant_id: str, room_id: str, question_id: str, actor_user_id: str, actor_email: str) -> dict:
+    await _get_room(tenant_id, room_id)
+    doc = await db.decision_room_questions.find_one({"id": question_id, "tenant_id": tenant_id, "decision_room_id": room_id})
+    if not doc:
+        raise DecisionRoomError("question_not_found", "Question not found")
+    now = _now_iso()
+    await db.decision_room_questions.update_one({"id": question_id, "tenant_id": tenant_id}, {"$set": {"status": "resolved", "updated_at": now}})
+    await record_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+        action="decision_room.question_resolved", entity_type="decision_room", entity_id=room_id,
+        summary="Customer question marked resolved", diff={"question_id": question_id},
+    )
+    doc = await db.decision_room_questions.find_one({"id": question_id, "tenant_id": tenant_id}, {"_id": 0})
+    return serialize_doc(doc)
+
+
+async def list_customer_questions(*, tenant_id: str, room_id: str) -> list[dict]:
+    await _get_room(tenant_id, room_id)
+    cur = db.decision_room_questions.find({"tenant_id": tenant_id, "decision_room_id": room_id}, {"_id": 0}).sort("created_at", -1)
+    return [serialize_doc(d) async for d in cur]
+
+
+async def list_my_questions(*, tenant_id: str, room_id: str, customer_id: Optional[str] = None, public_token_id: Optional[str] = None) -> list[dict]:
+    await _get_accessible_room_and_version(tenant_id, room_id, customer_id)
+    q: dict[str, Any] = {"tenant_id": tenant_id, "decision_room_id": room_id}
+    if customer_id is not None:
+        q["customer_id"] = customer_id
+    elif public_token_id is not None:
+        q["public_token_id"] = public_token_id
+    cur = db.decision_room_questions.find(q, {"_id": 0}).sort("created_at", -1)
+    return [_question_customer_safe(d) async for d in cur]
+
+
+# ---- Anchored comments/pins ------------------------------------------------
+
+def _overlay_customer_safe(doc: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": doc.get("id"), "decision_room_id": doc.get("decision_room_id"),
+        "published_version_id": doc.get("published_version_id"),
+        "source_file_id": doc.get("source_file_id"), "visual_markup_id": doc.get("visual_markup_id"),
+        "markup_version_id": doc.get("markup_version_id"), "page_number": doc.get("page_number"),
+        "overlay_type": doc.get("overlay_type"), "normalized_x": doc.get("normalized_x"),
+        "normalized_y": doc.get("normalized_y"), "marker_number": doc.get("marker_number"),
+        "customer_message": doc.get("customer_message"), "status": doc.get("status"),
+        "created_at": doc.get("created_at"), "updated_at": doc.get("updated_at"),
+    }
+
+
+async def submit_customer_overlay(
+    *, tenant_id: str, room_id: str, overlay_type: str, customer_message: str,
+    normalized_x: float, normalized_y: float, source_file_id: Optional[str] = None,
+    visual_markup_id: Optional[str] = None, markup_version_id: Optional[str] = None,
+    page_number: Optional[int] = None, source_access_mode: str,
+    customer_id: Optional[str] = None, public_token_id: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
+) -> dict:
+    if overlay_type not in {"comment", "pin"}:
+        raise DecisionRoomError("invalid_action_type", f"Unsupported overlay_type: {overlay_type!r}")
+
+    room, version = await _get_accessible_room_and_version(tenant_id, room_id, customer_id)
+    _require_room_open_for_customer_action(room)
+    if not version.get("allow_customer_comments", False):
+        raise DecisionRoomError("comments_not_allowed", "This Decision Room does not accept customer comments/pins")
+
+    existing = await _find_by_idempotency_key("decision_room_overlays", tenant_id=tenant_id, room_id=room_id, idempotency_key=idempotency_key)
+    if existing:
+        return _overlay_customer_safe(existing)
+
+    message = _sanitize_customer_message(customer_message)
+    if not message:
+        raise DecisionRoomError("question_message_required", "A comment message is required")
+    if normalized_x is None or normalized_y is None or not (0.0 <= normalized_x <= 1.0) or not (0.0 <= normalized_y <= 1.0):
+        raise DecisionRoomError("invalid_coordinates", "normalized_x/normalized_y must both be between 0.0 and 1.0")
+    if not (source_file_id or visual_markup_id):
+        raise DecisionRoomError("anchor_required", "An anchored comment/pin must reference a source file or visual markup")
+
+    await _resolve_and_validate_anchor(
+        tenant_id, room_id, customer_id, version, option_id=None, source_file_id=source_file_id,
+        visual_markup_id=visual_markup_id, markup_version_id=markup_version_id, page_number=page_number,
+    )
+
+    marker_number = None
+    if overlay_type == "pin":
+        anchor_key: dict[str, Any] = {
+            "tenant_id": tenant_id, "decision_room_id": room_id, "published_version_id": version["id"], "overlay_type": "pin",
+        }
+        if source_file_id:
+            anchor_key["source_file_id"] = source_file_id
+        if visual_markup_id:
+            anchor_key["visual_markup_id"] = visual_markup_id
+        marker_number = await db.decision_room_overlays.count_documents(anchor_key) + 1
+
+    overlay = DecisionRoomOverlay(
+        tenant_id=tenant_id, decision_room_id=room_id, published_version_id=version["id"],
+        source_file_id=source_file_id, visual_markup_id=visual_markup_id, markup_version_id=markup_version_id,
+        page_number=page_number, overlay_type=overlay_type, normalized_x=normalized_x, normalized_y=normalized_y,
+        marker_number=marker_number, customer_message=message, source_access_mode=source_access_mode,
+        customer_id=customer_id, public_token_id=public_token_id, idempotency_key=idempotency_key,
+    ).model_dump()
+    try:
+        await db.decision_room_overlays.insert_one(prepare_for_mongo(_for_insert(overlay)))
+    except Exception as ex:
+        if "E11000" in str(ex):
+            dup = await _find_by_idempotency_key("decision_room_overlays", tenant_id=tenant_id, room_id=room_id, idempotency_key=idempotency_key)
+            if dup:
+                return _overlay_customer_safe(dup)
+        raise
+
+    actor_user_id = _actor_user_id(customer_id, public_token_id)
+    await record_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email="customer",
+        action=f"decision_room.customer_overlay_{overlay_type}_added", entity_type="decision_room", entity_id=room_id,
+        summary=f"Customer added an anchored {overlay_type}",
+        diff={"overlay_id": overlay["id"], "source_file_id": source_file_id, "visual_markup_id": visual_markup_id},
+    )
+    try:
+        await notify_tenant_owners(
+            tenant_id=tenant_id, module="decision_room", kind="customer_overlay_submitted",
+            title=f"Customer added an anchored {overlay_type} on a Decision Room",
+            entity_type="decision_room", entity_id=room_id,
+        )
+    except Exception:
+        logger.exception("decision_room customer_overlay_submitted notification failed (overlay already saved)")
+
+    return _overlay_customer_safe(overlay)
+
+
+async def _get_own_active_overlay(
+    tenant_id: str, room_id: str, overlay_id: str, customer_id: Optional[str], public_token_id: Optional[str],
+) -> dict:
+    doc = await db.decision_room_overlays.find_one({"id": overlay_id, "tenant_id": tenant_id, "decision_room_id": room_id})
+    if not doc:
+        raise DecisionRoomError("overlay_not_found", "Overlay not found")
+    owns = (customer_id is not None and doc.get("customer_id") == customer_id) or \
+           (public_token_id is not None and doc.get("public_token_id") == public_token_id)
+    if not owns:
+        # Identical to "not found" — never confirms existence of someone else's overlay.
+        raise DecisionRoomError("overlay_not_found", "Overlay not found")
+    if doc.get("status") != "active":
+        raise DecisionRoomError("overlay_locked", "This overlay can no longer be edited or withdrawn")
+    return doc
+
+
+async def edit_customer_overlay(
+    *, tenant_id: str, room_id: str, overlay_id: str, customer_message: str,
+    customer_id: Optional[str] = None, public_token_id: Optional[str] = None,
+) -> dict:
+    await _get_own_active_overlay(tenant_id, room_id, overlay_id, customer_id, public_token_id)
+    message = _sanitize_customer_message(customer_message)
+    if not message:
+        raise DecisionRoomError("question_message_required", "A comment message is required")
+    now = _now_iso()
+    await db.decision_room_overlays.update_one(
+        {"id": overlay_id, "tenant_id": tenant_id}, {"$set": {"customer_message": message, "updated_at": now}},
+    )
+    actor_user_id = _actor_user_id(customer_id, public_token_id)
+    await record_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email="customer",
+        action="decision_room.customer_overlay_edited", entity_type="decision_room", entity_id=room_id,
+        summary="Customer edited their own anchored overlay", diff={"overlay_id": overlay_id},
+    )
+    doc = await db.decision_room_overlays.find_one({"id": overlay_id, "tenant_id": tenant_id}, {"_id": 0})
+    return _overlay_customer_safe(doc)
+
+
+async def withdraw_customer_overlay(
+    *, tenant_id: str, room_id: str, overlay_id: str, customer_id: Optional[str] = None, public_token_id: Optional[str] = None,
+) -> dict:
+    await _get_own_active_overlay(tenant_id, room_id, overlay_id, customer_id, public_token_id)
+    now = _now_iso()
+    await db.decision_room_overlays.update_one(
+        {"id": overlay_id, "tenant_id": tenant_id}, {"$set": {"status": "withdrawn", "updated_at": now}},
+    )
+    actor_user_id = _actor_user_id(customer_id, public_token_id)
+    await record_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email="customer",
+        action="decision_room.customer_overlay_withdrawn", entity_type="decision_room", entity_id=room_id,
+        summary="Customer withdrew their own anchored overlay", diff={"overlay_id": overlay_id},
+    )
+    doc = await db.decision_room_overlays.find_one({"id": overlay_id, "tenant_id": tenant_id}, {"_id": 0})
+    return _overlay_customer_safe(doc)
+
+
+async def list_customer_overlays(*, tenant_id: str, room_id: str) -> list[dict]:
+    await _get_room(tenant_id, room_id)
+    cur = db.decision_room_overlays.find({"tenant_id": tenant_id, "decision_room_id": room_id}, {"_id": 0}).sort("created_at", -1)
+    return [serialize_doc(d) async for d in cur]
+
+
+async def list_my_overlays(*, tenant_id: str, room_id: str, customer_id: Optional[str] = None, public_token_id: Optional[str] = None) -> list[dict]:
+    await _get_accessible_room_and_version(tenant_id, room_id, customer_id)
+    q: dict[str, Any] = {"tenant_id": tenant_id, "decision_room_id": room_id}
+    if customer_id is not None:
+        q["customer_id"] = customer_id
+    elif public_token_id is not None:
+        q["public_token_id"] = public_token_id
+    cur = db.decision_room_overlays.find(q, {"_id": 0}).sort("created_at", -1)
+    return [_overlay_customer_safe(d) async for d in cur]
+
+
+# ---- Save for later ---------------------------------------------------------
+
+async def submit_save_for_later(
+    *, tenant_id: str, room_id: str, note: Optional[str] = None, source_access_mode: str,
+    customer_id: Optional[str] = None, public_token_id: Optional[str] = None, idempotency_key: Optional[str] = None,
+) -> dict:
+    room, version = await _get_accessible_room_and_version(tenant_id, room_id, customer_id)
+    if not version.get("allow_save_for_later", False):
+        raise DecisionRoomError("save_for_later_not_allowed", "This Decision Room does not permit save for later")
+    _require_room_open_for_customer_action(room)
+
+    existing = await _find_by_idempotency_key("decision_room_saved_for_later", tenant_id=tenant_id, room_id=room_id, idempotency_key=idempotency_key)
+    if existing:
+        return serialize_doc(existing)
+
+    now = _now_iso()
+    saved = SavedForLater(
+        tenant_id=tenant_id, decision_room_id=room_id, published_version_id=version["id"],
+        source_access_mode=source_access_mode, customer_id=customer_id, public_token_id=public_token_id,
+        note=_sanitize_customer_message(note, max_len=500), idempotency_key=idempotency_key, saved_at=now,
+    ).model_dump()
+    try:
+        await db.decision_room_saved_for_later.insert_one(prepare_for_mongo(_for_insert(saved)))
+    except Exception as ex:
+        if "E11000" in str(ex):
+            dup = await _find_by_idempotency_key("decision_room_saved_for_later", tenant_id=tenant_id, room_id=room_id, idempotency_key=idempotency_key)
+            if dup:
+                return serialize_doc(dup)
+        raise
+
+    actor_user_id = _actor_user_id(customer_id, public_token_id)
+    await record_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email="customer",
+        action="decision_room.customer_saved_for_later", entity_type="decision_room", entity_id=room_id,
+        summary="Customer saved this Decision Room for later — no selection was submitted",
+        diff={"saved_id": saved["id"]},
+    )
+    return serialize_doc(saved)
+
+
+async def list_my_saved_for_later(*, tenant_id: str, room_id: str, customer_id: Optional[str] = None, public_token_id: Optional[str] = None) -> list[dict]:
+    await _get_accessible_room_and_version(tenant_id, room_id, customer_id)
+    q: dict[str, Any] = {"tenant_id": tenant_id, "decision_room_id": room_id}
+    if customer_id is not None:
+        q["customer_id"] = customer_id
+    elif public_token_id is not None:
+        q["public_token_id"] = public_token_id
+    cur = db.decision_room_saved_for_later.find(q, {"_id": 0}).sort("created_at", -1)
+    return [serialize_doc(d) async for d in cur]

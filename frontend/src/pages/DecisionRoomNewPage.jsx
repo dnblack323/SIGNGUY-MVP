@@ -110,7 +110,7 @@ export default function DecisionRoomNewPage() {
           <label className="flex items-center gap-2 text-sm"><Checkbox checked={allowChangeRequests} onCheckedChange={(v) => setAllowChangeRequests(!!v)} data-testid="decision-room-allow-change-requests-checkbox" />Allow customer change requests</label>
           <label className="flex items-center gap-2 text-sm"><Checkbox checked={allowRejectAll} onCheckedChange={(v) => setAllowRejectAll(!!v)} data-testid="decision-room-allow-reject-all-checkbox" />Allow customer to reject all options</label>
         </div>
-        <p className="text-xs text-muted-foreground">Select/reject/reject-all/change-request are live (Phase 10E-2). Save for later and comments/questions have no effect yet (Phase 10E-3).</p>
+        <p className="text-xs text-muted-foreground">All customer behavior flags above are now live (Phase 10E-2/10E-3).</p>
       </div>
       <div className="flex justify-end">
         <Button disabled={busy} onClick={create} data-testid="decision-room-create-button">Create draft</Button>

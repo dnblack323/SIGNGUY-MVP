@@ -1,14 +1,16 @@
 import { useMemo, useState } from "react";
 import { StatusPill } from "@/components/common/StatusPill";
 import { DecisionRoomMedia } from "@/components/decisionRoom/DecisionRoomMedia";
+import { DecisionRoomAnchorableMedia } from "@/components/decisionRoom/DecisionRoomAnchorableMedia";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CheckCircle2, XCircle, Bookmark, MessageCircleQuestion, X } from "lucide-react";
 
 /**
- * EC10 Phase 10E-1/10E-2 — Decision Room comparison view. Shared by the
- * Customer Portal detail page and the Public Token page (both fetch the
- * identical customer-safe shape from the backend — see
+ * EC10 Phase 10E-1/10E-2/10E-3 — Decision Room comparison view. Shared by
+ * the Customer Portal detail page and the Public Token page (both fetch
+ * the identical customer-safe shape from the backend — see
  * `decision_room_service.get_customer_view()`).
  *
  * `buildMediaUrl(fileId)` builds the customer-safe media endpoint URL for a
@@ -17,20 +19,28 @@ import { CheckCircle2, XCircle } from "lucide-react";
  * `authToken` is the portal JWT (omit for public-token mode — the token is
  * already embedded in the URL by `buildMediaUrl`).
  *
- * Phase 10E-2 actions (select/reject/reject-all/request-change) are exposed
- * through `onSubmitDecision({ action_type, option_id, comment })` — a
- * promise-returning callback supplied by the portal/public page (which
- * knows how to call its own `/decisions` endpoint). This component stays
- * a pure presentational view: it never calls an API directly, only derives
- * "already decided" state from `myDecisions` (the caller's own decision
- * history for this room, most-recent-first). Save-for-later and anchored
- * comments/questions remain Phase 10E-3 — not built here.
+ * Phase 10E-2 actions (select/reject/reject-all/request-change) go through
+ * `onSubmitDecision`. Phase 10E-3 adds `onSubmitQuestion`, `onAddOverlay`/
+ * `onWithdrawOverlay` (anchored comments/pins over option media), and
+ * `onSaveForLater` — all promise-returning callbacks supplied by the
+ * portal/public page. This component stays a pure presentational view: it
+ * never calls an API directly, only derives "already done" state from the
+ * caller-supplied history arrays (`myDecisions`/`myQuestions`/`myOverlays`/
+ * `mySavedForLater`, all most-recent-first).
  */
-export default function DecisionRoomCustomerView({ room, buildMediaUrl, authToken, myDecisions, onSubmitDecision }) {
+export default function DecisionRoomCustomerView({
+  room, buildMediaUrl, authToken, myDecisions, onSubmitDecision,
+  myQuestions, onSubmitQuestion, myOverlays, onAddOverlay, onWithdrawOverlay,
+  mySavedForLater, onSaveForLater,
+}) {
   const money = (cents) => `$${(cents / 100).toFixed(2)}`;
   const canRespond = room.status === "published" && typeof onSubmitDecision === "function";
   const [busyKey, setBusyKey] = useState(null);
   const [changeComment, setChangeComment] = useState("");
+  const [questionText, setQuestionText] = useState("");
+  const [questionOptionId, setQuestionOptionId] = useState("__none__");
+  const [saveNote, setSaveNote] = useState("");
+  const [showSaveForm, setShowSaveForm] = useState(false);
 
   const decisions = useMemo(() => myDecisions || [], [myDecisions]);
   // `myDecisions` is sorted most-recent-first by the backend — the latest
@@ -47,6 +57,10 @@ export default function DecisionRoomCustomerView({ room, buildMediaUrl, authToke
   );
   const allOptionsRejected = decisions.some((d) => d.action_type === "all_options_rejected");
   const changeRequestSubmitted = decisions.some((d) => d.action_type === "change_requested");
+  const questions = myQuestions || [];
+  const overlays = myOverlays || [];
+  const savedMarks = mySavedForLater || [];
+  const canAnnotate = canRespond && !!room.allow_customer_comments && typeof onAddOverlay === "function";
 
   async function submit(action_type, option_id, comment) {
     const key = `${action_type}:${option_id || ""}`;
@@ -59,17 +73,57 @@ export default function DecisionRoomCustomerView({ room, buildMediaUrl, authToke
     }
   }
 
+  async function submitQuestion() {
+    if (!questionText.trim()) return;
+    setBusyKey("question");
+    try {
+      await onSubmitQuestion({ customer_message: questionText, option_id: questionOptionId === "__none__" ? null : questionOptionId });
+      setQuestionText(""); setQuestionOptionId("__none__");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function submitSave() {
+    setBusyKey("save_for_later");
+    try {
+      await onSaveForLater({ note: saveNote || null });
+      setSaveNote(""); setShowSaveForm(false);
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   return (
     <div className="space-y-6" data-testid="decision-room-customer-view">
       <div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <h1 className="text-2xl font-semibold" data-testid="decision-room-customer-title">{room.title}</h1>
-          <StatusPill kind="decision_room" value={room.status} />
+        <div className="flex items-center gap-2 flex-wrap justify-between">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-semibold" data-testid="decision-room-customer-title">{room.title}</h1>
+            <StatusPill kind="decision_room" value={room.status} />
+          </div>
+          {canRespond && room.allow_save_for_later && typeof onSaveForLater === "function" && (
+            <Button size="sm" variant="outline" onClick={() => setShowSaveForm((v) => !v)} data-testid="decision-room-save-for-later-toggle-button">
+              <Bookmark className="size-3.5 mr-1" />Save for later
+            </Button>
+          )}
         </div>
         {room.customer_safe_intro && <p className="text-slate-600 mt-1" data-testid="decision-room-customer-intro">{room.customer_safe_intro}</p>}
         {room.status === "expired" && <p className="text-sm text-orange-700 mt-2" data-testid="decision-room-expired-banner">This Decision Room has expired. It is shown here as a historical record.</p>}
         {room.status === "closed" && <p className="text-sm text-slate-500 mt-2" data-testid="decision-room-closed-banner">This Decision Room is closed. It is shown here as a historical record.</p>}
         {allOptionsRejected && <p className="text-sm text-rose-700 mt-2" data-testid="decision-room-all-rejected-banner">You rejected all options. Our team has been notified and will follow up.</p>}
+        {showSaveForm && (
+          <div className="mt-2 rounded-lg border p-3 space-y-2 bg-amber-50" data-testid="decision-room-save-for-later-form">
+            <p className="text-xs text-slate-600">Saving does not select or reject any option — it's just a bookmark so you can pick up where you left off.</p>
+            <Textarea rows={2} value={saveNote} onChange={(e) => setSaveNote(e.target.value)} placeholder="Optional note to yourself…" data-testid="decision-room-save-for-later-note" />
+            <Button size="sm" disabled={busyKey === "save_for_later"} onClick={submitSave} data-testid="decision-room-save-for-later-submit-button">Confirm save</Button>
+          </div>
+        )}
+        {savedMarks.length > 0 && (
+          <p className="text-xs text-emerald-700 mt-2 flex items-center gap-1" data-testid="decision-room-saved-confirmation">
+            <Bookmark className="size-3" />Saved on {new Date(savedMarks[0].saved_at || savedMarks[0].created_at).toLocaleString()} — no selection was submitted.
+          </p>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2" data-testid="decision-room-customer-options">
@@ -102,13 +156,25 @@ export default function DecisionRoomCustomerView({ room, buildMediaUrl, authToke
               {(o.file_ids?.length > 0 || o.rendered_preview_file_id || o.proof_preview_file_id) && (
                 <div className="grid grid-cols-2 gap-2" data-testid={`decision-room-customer-option-${o.id}-media`}>
                   {o.rendered_preview_file_id && (
-                    <DecisionRoomMedia src={buildMediaUrl?.(o.rendered_preview_file_id)} authToken={authToken} alt="Rendered preview" testId={`decision-room-media-${o.id}-preview`} />
+                    <DecisionRoomAnchorableMedia
+                      src={buildMediaUrl?.(o.rendered_preview_file_id)} authToken={authToken} alt="Rendered preview"
+                      testId={`decision-room-media-${o.id}-preview`} fileId={o.rendered_preview_file_id}
+                      canAnnotate={canAnnotate} overlays={overlays} onAddOverlay={onAddOverlay}
+                    />
                   )}
                   {o.proof_preview_file_id && (
-                    <DecisionRoomMedia src={buildMediaUrl?.(o.proof_preview_file_id)} authToken={authToken} alt="Proof preview" testId={`decision-room-media-${o.id}-proof`} />
+                    <DecisionRoomAnchorableMedia
+                      src={buildMediaUrl?.(o.proof_preview_file_id)} authToken={authToken} alt="Proof preview"
+                      testId={`decision-room-media-${o.id}-proof`} fileId={o.proof_preview_file_id}
+                      canAnnotate={canAnnotate} overlays={overlays} onAddOverlay={onAddOverlay}
+                    />
                   )}
                   {(o.file_ids || []).map((fid) => (
-                    <DecisionRoomMedia key={fid} src={buildMediaUrl?.(fid)} authToken={authToken} alt="Attachment" testId={`decision-room-media-${o.id}-${fid}`} />
+                    <DecisionRoomAnchorableMedia
+                      key={fid} src={buildMediaUrl?.(fid)} authToken={authToken} alt="Attachment"
+                      testId={`decision-room-media-${o.id}-${fid}`} fileId={fid}
+                      canAnnotate={canAnnotate} overlays={overlays} onAddOverlay={onAddOverlay}
+                    />
                   ))}
                 </div>
               )}
@@ -165,6 +231,54 @@ export default function DecisionRoomCustomerView({ room, buildMediaUrl, authToke
           >
             Submit change request
           </Button>
+        </div>
+      )}
+
+      {(room.allow_customer_questions || questions.length > 0) && (
+        <div className="rounded-lg border p-4 space-y-3" data-testid="decision-room-questions-section">
+          <div className="text-sm font-medium text-slate-700 flex items-center gap-1"><MessageCircleQuestion className="size-4" />Questions</div>
+          {canRespond && room.allow_customer_questions && typeof onSubmitQuestion === "function" && (
+            <div className="space-y-2">
+              <Select value={questionOptionId} onValueChange={setQuestionOptionId}>
+                <SelectTrigger className="h-8 text-xs w-64" data-testid="decision-room-question-option-select"><SelectValue placeholder="About: Overall" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">About: Overall</SelectItem>
+                  {(room.options || []).map((o) => <SelectItem key={o.id} value={o.id}>About: {o.customer_label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Textarea rows={2} value={questionText} onChange={(e) => setQuestionText(e.target.value)} placeholder="Ask a question…" data-testid="decision-room-question-textarea" />
+              <Button size="sm" disabled={!!busyKey || !questionText.trim()} onClick={submitQuestion} data-testid="decision-room-question-submit-button">Ask</Button>
+            </div>
+          )}
+          {questions.length > 0 && (
+            <div className="space-y-2" data-testid="decision-room-questions-list">
+              {questions.map((q) => (
+                <div key={q.id} className="rounded border p-2 text-sm" data-testid={`decision-room-question-${q.id}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{q.customer_message}</span>
+                    <StatusPill kind="decision_review_status" value={q.status === "open" ? "pending_review" : "acknowledged"} />
+                  </div>
+                  {q.staff_response && <div className="mt-1 text-slate-600 text-xs border-t pt-1" data-testid={`decision-room-question-${q.id}-response`}>Our team: {q.staff_response}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {overlays.filter((o) => o.status !== "withdrawn").length > 0 && (
+        <div className="rounded-lg border p-4 space-y-2" data-testid="decision-room-overlays-list">
+          <div className="text-sm font-medium text-slate-700">Your comments &amp; pins</div>
+          {overlays.filter((o) => o.status !== "withdrawn").map((o) => (
+            <div key={o.id} className="flex items-center justify-between gap-2 text-sm rounded border p-2" data-testid={`decision-room-overlay-${o.id}`}>
+              <span>{o.overlay_type === "pin" ? `Pin #${o.marker_number}` : "Comment"}: {o.customer_message}</span>
+              {canRespond && typeof onWithdrawOverlay === "function" && (
+                <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => onWithdrawOverlay(o.id)} data-testid={`decision-room-overlay-${o.id}-withdraw-button`}>
+                  <X className="size-3.5" />
+                </Button>
+              )}
+            </div>
+          ))}
         </div>
       )}
 

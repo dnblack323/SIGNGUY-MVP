@@ -12,6 +12,7 @@ import DecisionOptionCard from "@/components/decisionRoom/DecisionOptionCard";
 import DecisionRoomVersionHistory from "@/components/decisionRoom/DecisionRoomVersionHistory";
 import DecisionRoomPreviewDialog from "@/components/decisionRoom/DecisionRoomPreviewDialog";
 import DecisionRoomCustomerDecisionsPanel from "@/components/decisionRoom/DecisionRoomCustomerDecisionsPanel";
+import DecisionRoomQuestionsPanel from "@/components/decisionRoom/DecisionRoomQuestionsPanel";
 import { toast } from "sonner";
 import { AlertTriangle, Eye, History, Plus } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
@@ -179,6 +180,7 @@ export default function DecisionRoomEditorPage() {
       </div>
 
       <DecisionRoomCustomerDecisionsPanel roomId={id} canAcknowledge={canWrite} />
+      <DecisionRoomQuestionsPanel roomId={id} canRespond={canWrite} />
 
       <DecisionRoomVersionHistory roomId={id} open={showVersions} onOpenChange={setShowVersions} />
       <DecisionRoomPreviewDialog roomId={id} open={showPreview} onOpenChange={setShowPreview} />

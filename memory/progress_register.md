@@ -79,14 +79,14 @@
 
 ## Next Action
 
-**EC8 is DELIVERED / CLOSED (all phases 8a–8f complete). EC9 is COMPLETE / CLOSED (all phases 9A–9H complete, 2026-07) — owner formally accepted closure 2026-02.** EC10 preflight COMPLETE; Phase 10A COMPLETE; Phase 10B (Quick and Detailed Internal Intake) COMPLETE; Phase 10C (Asset Upload and Visual Markup) COMPLETE; Phase 10D (Customer Decision Room — internal authoring only) COMPLETE; **Phase 10E split into controlled subphases 10E-1..10E-5 per owner instruction — Phase 10E-1 (Customer-safe access and published room display) COMPLETE (2026-02)** — see `/app/evidence/EC10_PHASE10E1_COMPLETION_REPORT.md`. **Phase 10E-2 is NOT authorized yet.**
+**EC8 is DELIVERED / CLOSED (all phases 8a–8f complete). EC9 is COMPLETE / CLOSED (all phases 9A–9H complete, 2026-07) — owner formally accepted closure 2026-02.** EC10 preflight COMPLETE; Phase 10A COMPLETE; Phase 10B (Quick and Detailed Internal Intake) COMPLETE; Phase 10C (Asset Upload and Visual Markup) COMPLETE; Phase 10D (Customer Decision Room — internal authoring only) COMPLETE; **Phase 10E split into controlled subphases 10E-1..10E-5 per owner instruction — Phase 10E-1 (Customer-safe access and published room display) COMPLETE (2026-02), Phase 10E-2 (Customer Option Selection, Rejection, and Change Requests) COMPLETE (2026-02), Phase 10E-3 (Customer Questions, Anchored Comments/Pins, and Save for Later) COMPLETE (2026-02).** — see `/app/evidence/EC10_PHASE10E1_COMPLETION_REPORT.md`, `/app/evidence/EC10_PHASE10E2_COMPLETION_REPORT.md`, `/app/evidence/EC10_PHASE10E3_COMPLETION_REPORT.md`. **Phase 10E-4 is NOT authorized yet.**
 
 - The remaining roadmap (EC10–EC22) is now governed by the SignGuy AI Checkpoint Specification Pack — see `/app/memory/checkpoint_reference_table.md`.
-- Do NOT begin EC10 Phase 10E-2 (or any later phase/subphase/checkpoint implementation) without explicit owner authorization naming that phase (hold H1).
+- Do NOT begin EC10 Phase 10E-4 (or any later phase/subphase/checkpoint implementation) without explicit owner authorization naming that phase (hold H1).
 - Do NOT begin EC14 (Webstores), EC15 (Wrap Lab), or EC16–EC18 (AI) without their additional separate authorizations (H2/H3/H4).
 - Do NOT begin EC17 until the owner completes the AI Tools Keep/Combine/Change/Rename/Defer/Remove worksheet (H5/H8).
 - Do NOT invoke or rerun the EC0–EC9 implementation prompts.
 
 ---
 
-**Register last updated:** 2026-02 — **EC10 Phase 10E-1 (Customer-safe access and published room display) COMPLETE, including the required customer-safe media completion-gap fix** — see `/app/evidence/EC10_PHASE10E1_COMPLETION_REPORT.md` and `/app/evidence/EC10_PHASE10E1_MEDIA_FIX_COMPLETION_REPORT.md`. EC9 (Pricing Foundation, Calculators, and Order Pricing) formally CLOSED — Phases 9A-9H all complete; see `/app/memory/PRD.md` for the full phase-by-phase closure record. Phase 10E-2 and later have NOT started.
+**Register last updated:** 2026-02 — **EC10 Phase 10E-3 (Customer Questions, Anchored Comments/Pins, and Save for Later) COMPLETE** — see `/app/evidence/EC10_PHASE10E3_COMPLETION_REPORT.md`. Phases 10E-1 and 10E-2 also complete (see their respective completion reports). EC9 (Pricing Foundation, Calculators, and Order Pricing) formally CLOSED — Phases 9A-9H all complete; see `/app/memory/PRD.md` for the full phase-by-phase closure record. Phase 10E-4 and later have NOT started.

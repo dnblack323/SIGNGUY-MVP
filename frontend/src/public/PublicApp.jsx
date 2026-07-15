@@ -113,10 +113,10 @@ function QuoteRequest() {
 }
 
 /**
- * EC10 Phase 10E-1/10E-2 — Public Token access to a published Decision
- * Room, including customer decision submission (select/reject/reject-all/
- * request-change). Save-for-later and anchored comments/questions remain
- * Phase 10E-3.
+ * EC10 Phase 10E-1/10E-2/10E-3 — Public Token access to a published
+ * Decision Room, including customer decision submission (select/reject/
+ * reject-all/request-change), questions, anchored comments/pins, and
+ * save-for-later.
  */
 function PublicDecisionRoom() {
   const { rid } = useParams();
@@ -124,21 +124,25 @@ function PublicDecisionRoom() {
   const t = sp.get("t");
   const [room, setRoom] = useState(null);
   const [myDecisions, setMyDecisions] = useState([]);
+  const [myQuestions, setMyQuestions] = useState([]);
+  const [myOverlays, setMyOverlays] = useState([]);
+  const [mySavedForLater, setMySavedForLater] = useState([]);
   const [err, setErr] = useState(null);
 
   function load() {
     axios.get(`${API}/public/decision-rooms/${rid}`, { params: { t } })
       .then((r) => setRoom(r.data))
       .catch((e) => setErr(e?.response?.data?.detail || "This Decision Room is not available."));
-    axios.get(`${API}/public/decision-rooms/${rid}/decisions`, { params: { t } })
-      .then((r) => setMyDecisions(r.data.items || []))
-      .catch(() => setMyDecisions([]));
+    axios.get(`${API}/public/decision-rooms/${rid}/decisions`, { params: { t } }).then((r) => setMyDecisions(r.data.items || [])).catch(() => setMyDecisions([]));
+    axios.get(`${API}/public/decision-rooms/${rid}/questions`, { params: { t } }).then((r) => setMyQuestions(r.data.items || [])).catch(() => setMyQuestions([]));
+    axios.get(`${API}/public/decision-rooms/${rid}/overlays`, { params: { t } }).then((r) => setMyOverlays(r.data.items || [])).catch(() => setMyOverlays([]));
+    axios.get(`${API}/public/decision-rooms/${rid}/save-for-later`, { params: { t } }).then((r) => setMySavedForLater(r.data.items || [])).catch(() => setMySavedForLater([]));
   }
 
   useEffect(() => {
     if (!t) { setErr("Missing access link token."); return; }
     load();
-  }, [rid, t]);
+  }, [rid, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function onSubmitDecision({ action_type, option_id, comment }) {
     try {
@@ -155,6 +159,61 @@ function PublicDecisionRoom() {
     }
   }
 
+  async function onSubmitQuestion({ customer_message, option_id }) {
+    try {
+      await axios.post(
+        `${API}/public/decision-rooms/${rid}/questions`,
+        { customer_message, option_id, idempotency_key: `${crypto.randomUUID()}` },
+        { params: { t } },
+      );
+      toast.success("Your question has been sent");
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Something went wrong");
+      throw e;
+    }
+  }
+
+  async function onAddOverlay({ overlay_type, normalized_x, normalized_y, customer_message, source_file_id }) {
+    try {
+      await axios.post(
+        `${API}/public/decision-rooms/${rid}/overlays`,
+        { overlay_type, normalized_x, normalized_y, customer_message, source_file_id, idempotency_key: `${crypto.randomUUID()}` },
+        { params: { t } },
+      );
+      toast.success(overlay_type === "pin" ? "Pin added" : "Comment added");
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Something went wrong");
+      throw e;
+    }
+  }
+
+  async function onWithdrawOverlay(overlayId) {
+    try {
+      await axios.post(`${API}/public/decision-rooms/${rid}/overlays/${overlayId}/withdraw`, {}, { params: { t } });
+      toast.success("Withdrawn");
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Something went wrong");
+    }
+  }
+
+  async function onSaveForLater({ note }) {
+    try {
+      await axios.post(
+        `${API}/public/decision-rooms/${rid}/save-for-later`,
+        { note, idempotency_key: `${crypto.randomUUID()}` },
+        { params: { t } },
+      );
+      toast.success("Saved for later — no selection was submitted");
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Something went wrong");
+      throw e;
+    }
+  }
+
   if (err) return <div className="min-h-screen bg-slate-50 grid place-items-center p-6"><div className="text-rose-700 text-sm max-w-md text-center" data-testid="public-decision-room-error">{err}</div></div>;
   if (!room) return <div className="min-h-screen bg-slate-50 grid place-items-center p-6 text-sm text-slate-500" data-testid="public-decision-room-loading">Loading…</div>;
   return (
@@ -163,6 +222,9 @@ function PublicDecisionRoom() {
         <DecisionRoomCustomerView
           room={room} buildMediaUrl={(fileId) => `${API}/public/decision-rooms/${rid}/media/${fileId}?t=${t}`}
           myDecisions={myDecisions} onSubmitDecision={onSubmitDecision}
+          myQuestions={myQuestions} onSubmitQuestion={onSubmitQuestion}
+          myOverlays={myOverlays} onAddOverlay={onAddOverlay} onWithdrawOverlay={onWithdrawOverlay}
+          mySavedForLater={mySavedForLater} onSaveForLater={onSaveForLater}
         />
       </div>
     </div>

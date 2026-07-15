@@ -32,6 +32,8 @@ _ERROR_STATUS = {
     "title_required": 400, "room_locked": 400, "invalid_transition": 400, "readiness_failed": 400,
     "invalid_badge_type": 400, "invalid_price_display_mode": 400, "reorder_mismatch": 400,
     "order_item_order_mismatch": 400,
+    # EC10 Phase 10E-3
+    "question_not_found": 404, "question_message_required": 400,
 }
 
 
@@ -444,5 +446,56 @@ async def acknowledge_decision(
             tenant_id=user["tenant_id"], room_id=room_id, decision_id=decision_id,
             actor_user_id=user["id"], actor_email=user["email"],
         )
+    except DecisionRoomError as ex:
+        _raise(ex)
+
+
+# ---- EC10 Phase 10E-3 — staff-facing questions/overlays -------------------
+# Staff may view every question/overlay and respond/resolve QUESTIONS ONLY.
+# Overlays remain customer-owned history — staff never edits/withdraws them.
+
+class StaffQuestionResponseIn(BaseModel):
+    staff_response: str
+
+
+@router.get("/{room_id}/questions")
+async def list_questions(room_id: str, user: dict = Depends(require_permission(Perm.DECISION_ROOM_READ))) -> dict:
+    try:
+        return {"items": await svc.list_customer_questions(tenant_id=user["tenant_id"], room_id=room_id)}
+    except DecisionRoomError as ex:
+        _raise(ex)
+
+
+@router.post("/{room_id}/questions/{question_id}/respond")
+async def respond_question(
+    room_id: str, question_id: str, payload: StaffQuestionResponseIn,
+    user: dict = Depends(require_permission(Perm.DECISION_ROOM_WRITE)),
+) -> dict:
+    try:
+        return await svc.respond_to_question(
+            tenant_id=user["tenant_id"], room_id=room_id, question_id=question_id,
+            staff_response=payload.staff_response, actor_user_id=user["id"], actor_email=user["email"],
+        )
+    except DecisionRoomError as ex:
+        _raise(ex)
+
+
+@router.post("/{room_id}/questions/{question_id}/resolve")
+async def resolve_question_route(
+    room_id: str, question_id: str, user: dict = Depends(require_permission(Perm.DECISION_ROOM_WRITE)),
+) -> dict:
+    try:
+        return await svc.resolve_question(
+            tenant_id=user["tenant_id"], room_id=room_id, question_id=question_id,
+            actor_user_id=user["id"], actor_email=user["email"],
+        )
+    except DecisionRoomError as ex:
+        _raise(ex)
+
+
+@router.get("/{room_id}/overlays")
+async def list_overlays(room_id: str, user: dict = Depends(require_permission(Perm.DECISION_ROOM_READ))) -> dict:
+    try:
+        return {"items": await svc.list_customer_overlays(tenant_id=user["tenant_id"], room_id=room_id)}
     except DecisionRoomError as ex:
         _raise(ex)

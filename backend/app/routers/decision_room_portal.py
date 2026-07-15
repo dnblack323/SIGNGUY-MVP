@@ -26,7 +26,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from ..deps_portal import require_portal_permission
 from ..services import decision_room_service as svc
@@ -41,6 +41,12 @@ _ERROR_STATUS = {
     "room_not_open_for_decisions": 400, "invalid_action_type": 400,
     "option_id_required": 400, "option_id_not_allowed": 400,
     "reject_all_not_allowed": 400, "change_requests_not_allowed": 400, "comment_required": 400,
+    # EC10 Phase 10E-3
+    "questions_not_allowed": 400, "question_message_required": 400,
+    "comments_not_allowed": 400, "invalid_coordinates": 400, "anchor_required": 400,
+    "visual_markup_not_in_version": 404, "markup_version_not_found": 404, "invalid_pdf_page": 400,
+    "overlay_not_found": 404, "overlay_locked": 400, "save_for_later_not_allowed": 400,
+    "media_not_found": 404, "media_unavailable": 404,
 }
 
 
@@ -118,5 +124,151 @@ async def list_my_decisions(
             tenant_id=identity["tenant_id"], room_id=room_id, customer_id=identity["customer_id"],
         )
         return {"items": items}
+    except DecisionRoomError as ex:
+        _raise(ex)
+
+
+
+# ---- EC10 Phase 10E-3 — Questions, anchored comments/pins, save for later.
+# Reuses the SAME `portal:respond_decision_rooms`/`portal:view_decision_rooms`
+# permission split as Phase 10E-2 — a viewer-only identity can read this
+# room's history but never submit a new question/overlay/save.
+
+class PortalQuestionSubmitIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    customer_message: str
+    option_id: Optional[str] = None
+    source_file_id: Optional[str] = None
+    visual_markup_id: Optional[str] = None
+    markup_version_id: Optional[str] = None
+    page_number: Optional[int] = None
+    idempotency_key: Optional[str] = None
+
+
+@router.post("/{room_id}/questions", status_code=201)
+async def submit_question(
+    room_id: str, payload: PortalQuestionSubmitIn,
+    identity: dict = Depends(require_portal_permission("portal:respond_decision_rooms")),
+) -> dict:
+    try:
+        return await svc.submit_customer_question(
+            tenant_id=identity["tenant_id"], room_id=room_id, customer_message=payload.customer_message,
+            option_id=payload.option_id, source_file_id=payload.source_file_id,
+            visual_markup_id=payload.visual_markup_id, markup_version_id=payload.markup_version_id,
+            page_number=payload.page_number, source_access_mode="portal", customer_id=identity["customer_id"],
+            actor_display=identity.get("full_name") or identity.get("email"), idempotency_key=payload.idempotency_key,
+        )
+    except DecisionRoomError as ex:
+        _raise(ex)
+
+
+@router.get("/{room_id}/questions")
+async def list_my_questions(
+    room_id: str, identity: dict = Depends(require_portal_permission("portal:view_decision_rooms")),
+) -> dict:
+    try:
+        return {"items": await svc.list_my_questions(tenant_id=identity["tenant_id"], room_id=room_id, customer_id=identity["customer_id"])}
+    except DecisionRoomError as ex:
+        _raise(ex)
+
+
+class PortalOverlaySubmitIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    overlay_type: str = "comment"
+    customer_message: str
+    normalized_x: float
+    normalized_y: float
+    source_file_id: Optional[str] = None
+    visual_markup_id: Optional[str] = None
+    markup_version_id: Optional[str] = None
+    page_number: Optional[int] = None
+    idempotency_key: Optional[str] = None
+
+
+class PortalOverlayEditIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    customer_message: str
+
+
+@router.post("/{room_id}/overlays", status_code=201)
+async def submit_overlay(
+    room_id: str, payload: PortalOverlaySubmitIn,
+    identity: dict = Depends(require_portal_permission("portal:respond_decision_rooms")),
+) -> dict:
+    try:
+        return await svc.submit_customer_overlay(
+            tenant_id=identity["tenant_id"], room_id=room_id, overlay_type=payload.overlay_type,
+            customer_message=payload.customer_message, normalized_x=payload.normalized_x, normalized_y=payload.normalized_y,
+            source_file_id=payload.source_file_id, visual_markup_id=payload.visual_markup_id,
+            markup_version_id=payload.markup_version_id, page_number=payload.page_number,
+            source_access_mode="portal", customer_id=identity["customer_id"], idempotency_key=payload.idempotency_key,
+        )
+    except DecisionRoomError as ex:
+        _raise(ex)
+
+
+@router.get("/{room_id}/overlays")
+async def list_my_overlays(
+    room_id: str, identity: dict = Depends(require_portal_permission("portal:view_decision_rooms")),
+) -> dict:
+    try:
+        return {"items": await svc.list_my_overlays(tenant_id=identity["tenant_id"], room_id=room_id, customer_id=identity["customer_id"])}
+    except DecisionRoomError as ex:
+        _raise(ex)
+
+
+@router.patch("/{room_id}/overlays/{overlay_id}")
+async def edit_overlay(
+    room_id: str, overlay_id: str, payload: PortalOverlayEditIn,
+    identity: dict = Depends(require_portal_permission("portal:respond_decision_rooms")),
+) -> dict:
+    try:
+        return await svc.edit_customer_overlay(
+            tenant_id=identity["tenant_id"], room_id=room_id, overlay_id=overlay_id,
+            customer_message=payload.customer_message, customer_id=identity["customer_id"],
+        )
+    except DecisionRoomError as ex:
+        _raise(ex)
+
+
+@router.post("/{room_id}/overlays/{overlay_id}/withdraw")
+async def withdraw_overlay(
+    room_id: str, overlay_id: str,
+    identity: dict = Depends(require_portal_permission("portal:respond_decision_rooms")),
+) -> dict:
+    try:
+        return await svc.withdraw_customer_overlay(
+            tenant_id=identity["tenant_id"], room_id=room_id, overlay_id=overlay_id, customer_id=identity["customer_id"],
+        )
+    except DecisionRoomError as ex:
+        _raise(ex)
+
+
+class PortalSaveForLaterIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: Optional[str] = None
+    idempotency_key: Optional[str] = None
+
+
+@router.post("/{room_id}/save-for-later", status_code=201)
+async def save_for_later(
+    room_id: str, payload: PortalSaveForLaterIn,
+    identity: dict = Depends(require_portal_permission("portal:respond_decision_rooms")),
+) -> dict:
+    try:
+        return await svc.submit_save_for_later(
+            tenant_id=identity["tenant_id"], room_id=room_id, note=payload.note,
+            source_access_mode="portal", customer_id=identity["customer_id"], idempotency_key=payload.idempotency_key,
+        )
+    except DecisionRoomError as ex:
+        _raise(ex)
+
+
+@router.get("/{room_id}/save-for-later")
+async def list_my_saved_for_later(
+    room_id: str, identity: dict = Depends(require_portal_permission("portal:view_decision_rooms")),
+) -> dict:
+    try:
+        return {"items": await svc.list_my_saved_for_later(tenant_id=identity["tenant_id"], room_id=room_id, customer_id=identity["customer_id"])}
     except DecisionRoomError as ex:
         _raise(ex)

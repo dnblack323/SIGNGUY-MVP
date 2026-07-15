@@ -183,3 +183,96 @@ class CustomerDecision(BaseDoc):
     submitted_at: Optional[str] = None
     ip: Optional[str] = None
     user_agent: Optional[str] = None
+
+
+
+# ---- EC10 Phase 10E-3 — Customer Questions, Anchored Comments/Pins, and
+# Save for Later. All three reuse `CustomerDecisionAccessMode` (portal vs
+# public_token) but are DELIBERATELY separate collections from
+# `CustomerDecision` — none of these represent a select/reject decision,
+# and folding them in would distort that model's supersede/history
+# semantics for no benefit.
+
+DecisionRoomQuestionStatus = Literal["open", "answered", "resolved"]
+
+
+class DecisionRoomQuestion(BaseDoc):
+    """A customer question tied to the exact frozen `published_version_id`
+    they were shown, optionally scoped to one option and/or one piece of
+    customer-safe media. `staff_response`/`responded_*` are populated ONLY
+    by the staff respond endpoint — never customer-submitted."""
+
+    tenant_id: str
+    decision_room_id: str
+    published_version_id: str
+    option_id: Optional[str] = None
+    source_file_id: Optional[str] = None
+    visual_markup_id: Optional[str] = None
+    markup_version_id: Optional[str] = None
+
+    source_access_mode: CustomerDecisionAccessMode
+    customer_id: Optional[str] = None
+    public_token_id: Optional[str] = None
+    actor_display: Optional[str] = None
+
+    customer_message: str
+    status: DecisionRoomQuestionStatus = "open"
+
+    staff_response: Optional[str] = None
+    responded_by_user_id: Optional[str] = None
+    responded_at: Optional[str] = None
+
+    idempotency_key: Optional[str] = None
+    submitted_at: Optional[str] = None
+
+
+DecisionRoomOverlayType = Literal["comment", "pin"]
+DecisionRoomOverlayStatus = Literal["active", "withdrawn"]
+
+
+class DecisionRoomOverlay(BaseDoc):
+    """A customer-authored anchored comment/pin over a customer-safe media
+    reference — stored ENTIRELY separately from staff-authored Fabric.js
+    `MarkupVersion.structured_markup_json`. Coordinates are normalized
+    (0.0-1.0) relative to the referenced media's display box, independent
+    of the staff editor's `canvas_pixels_v1` contract, so a customer overlay
+    renders correctly at any viewer size without needing canvas dimensions."""
+
+    tenant_id: str
+    decision_room_id: str
+    published_version_id: str
+    source_file_id: Optional[str] = None
+    visual_markup_id: Optional[str] = None
+    markup_version_id: Optional[str] = None
+    page_number: Optional[int] = None
+
+    overlay_type: DecisionRoomOverlayType = "comment"
+    normalized_x: float
+    normalized_y: float
+    marker_number: Optional[int] = None  # assigned server-side for overlay_type == "pin" only
+
+    customer_message: str
+    status: DecisionRoomOverlayStatus = "active"
+
+    source_access_mode: CustomerDecisionAccessMode
+    customer_id: Optional[str] = None
+    public_token_id: Optional[str] = None
+
+    idempotency_key: Optional[str] = None
+
+
+class SavedForLater(BaseDoc):
+    """A lightweight "come back later" marker — deliberately NOT a
+    `CustomerDecision` (it never selects/rejects/requests anything, extends
+    no expiration, and touches no pricing). Append-only; a returning
+    customer simply keeps viewing the same frozen `published_version_id`."""
+
+    tenant_id: str
+    decision_room_id: str
+    published_version_id: str
+    source_access_mode: CustomerDecisionAccessMode
+    customer_id: Optional[str] = None
+    public_token_id: Optional[str] = None
+    note: Optional[str] = None
+    idempotency_key: Optional[str] = None
+    saved_at: Optional[str] = None

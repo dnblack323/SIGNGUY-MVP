@@ -5,10 +5,11 @@ never grant general access, and are consumed on completion (single_use).
 """
 from __future__ import annotations
 import logging
+import time as _time
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from ..core.db import db
 from ..core.time_utils import serialize_doc
@@ -16,10 +17,18 @@ from ..deps_portal import resolve_public_token
 from ..services.approvals_signatures_service import record_approval, record_signature
 from ..services.decision_room_service import (
     DecisionRoomError,
+    edit_customer_overlay,
     get_customer_view,
     list_my_customer_decisions,
+    list_my_overlays,
+    list_my_questions,
+    list_my_saved_for_later,
     resolve_customer_safe_media,
     submit_customer_decision,
+    submit_customer_overlay,
+    submit_customer_question,
+    submit_save_for_later,
+    withdraw_customer_overlay,
 )
 from ..services.portal_tokens import consume_public_action_token
 from ..services.proofs_service import transition_proof
@@ -156,6 +165,193 @@ async def public_list_decisions(room_id: str, request: Request, t: str = Query(.
         raise HTTPException(status_code=404, detail="Decision Room not found")
 
 
+# ---- EC10 Phase 10E-3 — Questions, anchored comments/pins, save for later
+# (public token). Same `decision_room_view` token, same never-consumed
+# multi-use pattern as the 10E-2 decision endpoints above.
+
+_DR_ACTION_ERROR_STATUS = {
+    "room_not_found": 404, "option_not_found": 404, "room_not_open_for_decisions": 400,
+    "questions_not_allowed": 400, "question_message_required": 400,
+    "comments_not_allowed": 400, "invalid_coordinates": 400, "anchor_required": 400,
+    "visual_markup_not_in_version": 404, "markup_version_not_found": 404, "invalid_pdf_page": 400,
+    "overlay_not_found": 404, "overlay_locked": 400, "save_for_later_not_allowed": 400,
+    "invalid_action_type": 400, "media_not_found": 404, "media_unavailable": 404,
+}
+
+# Deliberately more generous than the open quote-request form (`_QR_MAX`) —
+# these are legitimate, repeated small interactions from an already-resolved,
+# purpose-scoped token, not an anonymous open form.
+_DR_BUCKET: dict[str, list[float]] = {}
+_DR_WINDOW = 60
+_DR_MAX = 20
+
+
+def _dr_rate(ip: str) -> None:
+    now = _time.time()
+    bucket = [ts for ts in _DR_BUCKET.get(ip, []) if now - ts < _DR_WINDOW]
+    if len(bucket) >= _DR_MAX:
+        raise HTTPException(status_code=429, detail="Too many requests")
+    bucket.append(now)
+    _DR_BUCKET[ip] = bucket
+
+
+def _dr_raise(ex: DecisionRoomError) -> None:
+    raise HTTPException(status_code=_DR_ACTION_ERROR_STATUS.get(ex.code, 400), detail=str(ex))
+
+
+class PublicQuestionSubmitIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    customer_message: str
+    option_id: Optional[str] = None
+    source_file_id: Optional[str] = None
+    visual_markup_id: Optional[str] = None
+    markup_version_id: Optional[str] = None
+    page_number: Optional[int] = None
+    signer_name: Optional[str] = None
+    idempotency_key: Optional[str] = None
+
+
+@router.post("/decision-rooms/{room_id}/questions", status_code=201)
+async def public_submit_question(room_id: str, payload: PublicQuestionSubmitIn, request: Request, t: str = Query(...)) -> dict:
+    _dr_rate(request.client.host if request.client else "?")
+    token = await resolve_public_token(
+        request, raw_token=t,
+        expected_action="decision_room_view", expected_parent_type="decision_room", expected_parent_id=room_id,
+    )
+    try:
+        return await submit_customer_question(
+            tenant_id=token["tenant_id"], room_id=room_id, customer_message=payload.customer_message,
+            option_id=payload.option_id, source_file_id=payload.source_file_id,
+            visual_markup_id=payload.visual_markup_id, markup_version_id=payload.markup_version_id,
+            page_number=payload.page_number, source_access_mode="public_token", public_token_id=token["id"],
+            actor_display=payload.signer_name, idempotency_key=payload.idempotency_key,
+        )
+    except DecisionRoomError as ex:
+        _dr_raise(ex)
+
+
+@router.get("/decision-rooms/{room_id}/questions")
+async def public_list_questions(room_id: str, request: Request, t: str = Query(...)) -> dict:
+    token = await resolve_public_token(
+        request, raw_token=t,
+        expected_action="decision_room_view", expected_parent_type="decision_room", expected_parent_id=room_id,
+    )
+    try:
+        return {"items": await list_my_questions(tenant_id=token["tenant_id"], room_id=room_id, public_token_id=token["id"])}
+    except DecisionRoomError as ex:
+        _dr_raise(ex)
+
+
+class PublicOverlaySubmitIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    overlay_type: str = "comment"
+    customer_message: str
+    normalized_x: float
+    normalized_y: float
+    source_file_id: Optional[str] = None
+    visual_markup_id: Optional[str] = None
+    markup_version_id: Optional[str] = None
+    page_number: Optional[int] = None
+    idempotency_key: Optional[str] = None
+
+
+class PublicOverlayEditIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    customer_message: str
+
+
+@router.post("/decision-rooms/{room_id}/overlays", status_code=201)
+async def public_submit_overlay(room_id: str, payload: PublicOverlaySubmitIn, request: Request, t: str = Query(...)) -> dict:
+    _dr_rate(request.client.host if request.client else "?")
+    token = await resolve_public_token(
+        request, raw_token=t,
+        expected_action="decision_room_view", expected_parent_type="decision_room", expected_parent_id=room_id,
+    )
+    try:
+        return await submit_customer_overlay(
+            tenant_id=token["tenant_id"], room_id=room_id, overlay_type=payload.overlay_type,
+            customer_message=payload.customer_message, normalized_x=payload.normalized_x, normalized_y=payload.normalized_y,
+            source_file_id=payload.source_file_id, visual_markup_id=payload.visual_markup_id,
+            markup_version_id=payload.markup_version_id, page_number=payload.page_number,
+            source_access_mode="public_token", public_token_id=token["id"], idempotency_key=payload.idempotency_key,
+        )
+    except DecisionRoomError as ex:
+        _dr_raise(ex)
+
+
+@router.get("/decision-rooms/{room_id}/overlays")
+async def public_list_overlays(room_id: str, request: Request, t: str = Query(...)) -> dict:
+    token = await resolve_public_token(
+        request, raw_token=t,
+        expected_action="decision_room_view", expected_parent_type="decision_room", expected_parent_id=room_id,
+    )
+    try:
+        return {"items": await list_my_overlays(tenant_id=token["tenant_id"], room_id=room_id, public_token_id=token["id"])}
+    except DecisionRoomError as ex:
+        _dr_raise(ex)
+
+
+@router.patch("/decision-rooms/{room_id}/overlays/{overlay_id}")
+async def public_edit_overlay(room_id: str, overlay_id: str, payload: PublicOverlayEditIn, request: Request, t: str = Query(...)) -> dict:
+    token = await resolve_public_token(
+        request, raw_token=t,
+        expected_action="decision_room_view", expected_parent_type="decision_room", expected_parent_id=room_id,
+    )
+    try:
+        return await edit_customer_overlay(
+            tenant_id=token["tenant_id"], room_id=room_id, overlay_id=overlay_id,
+            customer_message=payload.customer_message, public_token_id=token["id"],
+        )
+    except DecisionRoomError as ex:
+        _dr_raise(ex)
+
+
+@router.post("/decision-rooms/{room_id}/overlays/{overlay_id}/withdraw")
+async def public_withdraw_overlay(room_id: str, overlay_id: str, request: Request, t: str = Query(...)) -> dict:
+    token = await resolve_public_token(
+        request, raw_token=t,
+        expected_action="decision_room_view", expected_parent_type="decision_room", expected_parent_id=room_id,
+    )
+    try:
+        return await withdraw_customer_overlay(tenant_id=token["tenant_id"], room_id=room_id, overlay_id=overlay_id, public_token_id=token["id"])
+    except DecisionRoomError as ex:
+        _dr_raise(ex)
+
+
+class PublicSaveForLaterIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: Optional[str] = None
+    idempotency_key: Optional[str] = None
+
+
+@router.post("/decision-rooms/{room_id}/save-for-later", status_code=201)
+async def public_save_for_later(room_id: str, payload: PublicSaveForLaterIn, request: Request, t: str = Query(...)) -> dict:
+    _dr_rate(request.client.host if request.client else "?")
+    token = await resolve_public_token(
+        request, raw_token=t,
+        expected_action="decision_room_view", expected_parent_type="decision_room", expected_parent_id=room_id,
+    )
+    try:
+        return await submit_save_for_later(
+            tenant_id=token["tenant_id"], room_id=room_id, note=payload.note,
+            source_access_mode="public_token", public_token_id=token["id"], idempotency_key=payload.idempotency_key,
+        )
+    except DecisionRoomError as ex:
+        _dr_raise(ex)
+
+
+@router.get("/decision-rooms/{room_id}/save-for-later")
+async def public_list_saved_for_later(room_id: str, request: Request, t: str = Query(...)) -> dict:
+    token = await resolve_public_token(
+        request, raw_token=t,
+        expected_action="decision_room_view", expected_parent_type="decision_room", expected_parent_id=room_id,
+    )
+    try:
+        return {"items": await list_my_saved_for_later(tenant_id=token["tenant_id"], room_id=room_id, public_token_id=token["id"])}
+    except DecisionRoomError as ex:
+        _dr_raise(ex)
+
+
 # ---- Proof approve / request changes (single-use) ----
 
 class ProofApprovalIn(BaseModel):
@@ -273,7 +469,6 @@ class PublicQuoteRequestIn(BaseModel):
     file_ids: list[str] = []       # optional; must belong to a session upload endpoint (not implemented here)
 
 
-import time as _time
 _QR_BUCKET: dict[str, list[float]] = {}
 _QR_WINDOW = 60
 _QR_MAX = 5

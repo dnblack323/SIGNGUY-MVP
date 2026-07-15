@@ -484,14 +484,38 @@ async def ensure_indexes() -> None:
     # ---- EC10 phase 10E-2 — Customer Decisions (append-only) ----
     await db.customer_decisions.create_index("id", unique=True)
     # Idempotency: a duplicate submission with the same client-generated key
-    # for the same room must never create a second row. `sparse=True` (like
-    # the `quotes.number`/`orders.number` sparse indexes above) so multiple
-    # rows with no key at all never collide.
+    # for the same room must never create a second row. A COMPOUND sparse
+    # index is NOT sufficient here — MongoDB only excludes documents from a
+    # sparse compound index if they're missing EVERY indexed field, and
+    # `tenant_id`/`decision_room_id` are always present, so two key-less
+    # rows would still collide. A `partialFilterExpression` restricting the
+    # index to documents where `idempotency_key` is an actual string is the
+    # correct way to let multiple key-less rows coexist.
     await db.customer_decisions.create_index(
-        [("tenant_id", 1), ("decision_room_id", 1), ("idempotency_key", 1)], unique=True, sparse=True,
+        [("tenant_id", 1), ("decision_room_id", 1), ("idempotency_key", 1)], unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
     )
     await db.customer_decisions.create_index([("tenant_id", 1), ("decision_room_id", 1), ("created_at", -1)])
     await db.customer_decisions.create_index([("tenant_id", 1), ("customer_id", 1)])
     await db.customer_decisions.create_index([("tenant_id", 1), ("public_token_id", 1)])
+
+    # ---- EC10 phase 10E-3 — Questions, anchored overlays, save-for-later ----
+    await db.decision_room_questions.create_index("id", unique=True)
+    await db.decision_room_questions.create_index(
+        [("tenant_id", 1), ("decision_room_id", 1), ("idempotency_key", 1)], unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.decision_room_questions.create_index([("tenant_id", 1), ("decision_room_id", 1), ("created_at", -1)])
+    await db.decision_room_overlays.create_index("id", unique=True)
+    await db.decision_room_overlays.create_index(
+        [("tenant_id", 1), ("decision_room_id", 1), ("idempotency_key", 1)], unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.decision_room_overlays.create_index([("tenant_id", 1), ("decision_room_id", 1), ("created_at", -1)])
+    await db.decision_room_saved_for_later.create_index("id", unique=True)
+    await db.decision_room_saved_for_later.create_index(
+        [("tenant_id", 1), ("decision_room_id", 1), ("idempotency_key", 1)], unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
 
     logger.info("MongoDB indexes ensured")
