@@ -89,4 +89,4 @@
 
 ---
 
-**Register last updated:** 2026-02 — **EC10 Phase 10E-1 (Customer-safe access and published room display) COMPLETE** — see `/app/evidence/EC10_PHASE10E1_COMPLETION_REPORT.md`. EC9 (Pricing Foundation, Calculators, and Order Pricing) formally CLOSED — Phases 9A-9H all complete; see `/app/memory/PRD.md` for the full phase-by-phase closure record. Phase 10E-2 and later have NOT started.
+**Register last updated:** 2026-02 — **EC10 Phase 10E-1 (Customer-safe access and published room display) COMPLETE, including the required customer-safe media completion-gap fix** — see `/app/evidence/EC10_PHASE10E1_COMPLETION_REPORT.md` and `/app/evidence/EC10_PHASE10E1_MEDIA_FIX_COMPLETION_REPORT.md`. EC9 (Pricing Foundation, Calculators, and Order Pricing) formally CLOSED — Phases 9A-9H all complete; see `/app/memory/PRD.md` for the full phase-by-phase closure record. Phase 10E-2 and later have NOT started.

@@ -134,7 +134,9 @@ function PublicDecisionRoom() {
   if (!room) return <div className="min-h-screen bg-slate-50 grid place-items-center p-6 text-sm text-slate-500" data-testid="public-decision-room-loading">Loading…</div>;
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4">
-      <div className="max-w-3xl mx-auto"><DecisionRoomCustomerView room={room} /></div>
+      <div className="max-w-3xl mx-auto">
+        <DecisionRoomCustomerView room={room} buildMediaUrl={(fileId) => `${API}/public/decision-rooms/${rid}/media/${fileId}?t=${t}`} />
+      </div>
     </div>
   );
 }

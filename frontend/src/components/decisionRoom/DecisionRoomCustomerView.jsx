@@ -1,4 +1,5 @@
 import { StatusPill } from "@/components/common/StatusPill";
+import { DecisionRoomMedia } from "@/components/decisionRoom/DecisionRoomMedia";
 
 /**
  * EC10 Phase 10E-1 — pure, read-only Decision Room comparison view. Shared
@@ -7,13 +8,13 @@ import { StatusPill } from "@/components/common/StatusPill";
  * `decision_room_service.get_customer_view()`). No selection/rejection/
  * comment/question controls exist here yet — that is Phase 10E-2/10E-3.
  *
- * Known gap (documented, not solved here): `file_ids`/`rendered_preview_
- * file_id`/`thumbnail_file_id`/proof references are shown as plain
- * reference chips, not renderable images/PDFs — the existing `/files/*`
- * endpoints are staff-only (`document:read`), so no customer-safe file
- * byte-serving endpoint exists yet to actually preview them.
+ * `buildMediaUrl(fileId)` builds the customer-safe media endpoint URL for a
+ * given referenced file id (portal: `/portal/decision-rooms/{id}/media/
+ * {fileId}`; public: `/public/decision-rooms/{id}/media/{fileId}?t=...`).
+ * `authToken` is the portal JWT (omit for public-token mode — the token is
+ * already embedded in the URL by `buildMediaUrl`).
  */
-export default function DecisionRoomCustomerView({ room }) {
+export default function DecisionRoomCustomerView({ room, buildMediaUrl, authToken }) {
   const money = (cents) => `$${(cents / 100).toFixed(2)}`;
   return (
     <div className="space-y-6" data-testid="decision-room-customer-view">
@@ -43,9 +44,17 @@ export default function DecisionRoomCustomerView({ room }) {
               <ul className="text-sm list-disc pl-5 text-slate-400">{o.excluded_features.map((f, i) => <li key={i}>Not included: {f}</li>)}</ul>
             )}
             {o.expected_timing && <div className="text-xs text-slate-500">Timing: {o.expected_timing}</div>}
-            {(o.file_ids?.length > 0 || o.rendered_preview_file_id || o.thumbnail_file_id) && (
-              <div className="text-xs text-slate-400" data-testid={`decision-room-customer-option-${o.id}-media`}>
-                {(o.file_ids?.length || 0) + (o.rendered_preview_file_id ? 1 : 0)} attachment(s) referenced (preview coming soon)
+            {(o.file_ids?.length > 0 || o.rendered_preview_file_id || o.proof_preview_file_id) && (
+              <div className="grid grid-cols-2 gap-2" data-testid={`decision-room-customer-option-${o.id}-media`}>
+                {o.rendered_preview_file_id && (
+                  <DecisionRoomMedia src={buildMediaUrl?.(o.rendered_preview_file_id)} authToken={authToken} alt="Rendered preview" testId={`decision-room-media-${o.id}-preview`} />
+                )}
+                {o.proof_preview_file_id && (
+                  <DecisionRoomMedia src={buildMediaUrl?.(o.proof_preview_file_id)} authToken={authToken} alt="Proof preview" testId={`decision-room-media-${o.id}-proof`} />
+                )}
+                {(o.file_ids || []).map((fid) => (
+                  <DecisionRoomMedia key={fid} src={buildMediaUrl?.(fid)} authToken={authToken} alt="Attachment" testId={`decision-room-media-${o.id}-${fid}`} />
+                ))}
               </div>
             )}
             <div className="text-lg font-semibold tabular-nums" data-testid={`decision-room-customer-option-${o.id}-price`}>

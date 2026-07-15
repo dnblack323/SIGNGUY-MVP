@@ -643,6 +643,24 @@ async def transition(*, tenant_id: str, room_id: str, target: str, actor_user_id
     return await get_room(tenant_id=tenant_id, room_id=room_id)
 
 
+async def _freeze_options_with_proof_previews(tenant_id: str, options: list[dict]) -> list[dict]:
+    """Deep-copies the live options for a `DecisionRoomVersion` snapshot,
+    additionally resolving+freezing each option's Proof preview file NOW
+    (at publish time) — since `Proof.current_file_id` can change later if
+    staff re-version the proof, this is the one media reference that must
+    be resolved eagerly rather than served from a live lookup, to honor the
+    frozen-version rule for customer-safe media (Phase 10E-1 fix)."""
+    snapshot: list[dict] = []
+    for o in options:
+        snap = dict(o)
+        proof_id = snap.get("proof_id")
+        if proof_id:
+            proof_doc = await db.proofs.find_one({"id": proof_id, "tenant_id": tenant_id}, {"_id": 0, "current_file_id": 1})
+            snap["_frozen_proof_preview_file_id"] = (proof_doc or {}).get("current_file_id")
+        snapshot.append(snap)
+    return snapshot
+
+
 async def publish_room(*, tenant_id: str, room_id: str, actor_user_id: str, actor_email: str) -> dict:
     room = await _get_room(tenant_id, room_id)
     current = room.get("status", "draft")
@@ -660,10 +678,11 @@ async def publish_room(*, tenant_id: str, room_id: str, actor_user_id: str, acto
     # back into alignment with `published_version` here.
     new_version_number = int(room.get("published_version", 0)) + 1
     now = _now_iso()
+    options_snapshot = await _freeze_options_with_proof_previews(tenant_id, room.get("options") or [])
     version = DecisionRoomVersion(
         tenant_id=tenant_id, decision_room_id=room_id, version_number=new_version_number,
         title=room["title"], customer_safe_intro=room.get("customer_safe_intro"),
-        options_snapshot=[dict(o) for o in (room.get("options") or [])],
+        options_snapshot=options_snapshot,
         allow_save_for_later=room.get("allow_save_for_later", False),
         allow_customer_comments=room.get("allow_customer_comments", False),
         allow_customer_questions=room.get("allow_customer_questions", False),
@@ -738,6 +757,13 @@ def _option_preview(option: dict[str, Any]) -> dict[str, Any]:
         "file_ids": option.get("file_ids", []),
         "rendered_preview_file_id": option.get("rendered_preview_file_id"),
         "thumbnail_file_id": option.get("thumbnail_file_id"),
+        # Only ever populated on a FROZEN options_snapshot entry (see
+        # `publish_room()`), never on a live option — resolving a Proof's
+        # current rendered file live, at read time, would violate the
+        # frozen-version rule (a later Proof re-version must not silently
+        # change what a customer already saw). `None` on a live/staff
+        # preview is expected and harmless (staff view Proofs directly).
+        "proof_preview_file_id": option.get("_frozen_proof_preview_file_id"),
         "customer_safe_notes": option.get("customer_safe_notes"),
     }
 
@@ -805,8 +831,10 @@ def _customer_safe_room_response(room: dict[str, Any], version: dict[str, Any]) 
     }
 
 
-async def get_customer_view(*, tenant_id: str, room_id: str, customer_id: Optional[str] = None) -> dict:
-    """Shared by both the Customer Portal route and the Public Token route.
+async def _get_accessible_room_and_version(
+    tenant_id: str, room_id: str, customer_id: Optional[str],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Shared by `get_customer_view()` and `resolve_customer_safe_media()`.
     `customer_id` is the requesting identity's own customer id (enforces
     ownership for portal access); pass `None` for a public-token caller,
     since the token itself is already parent-bound to this exact room."""
@@ -824,7 +852,62 @@ async def get_customer_view(*, tenant_id: str, room_id: str, customer_id: Option
     )
     if not version:
         raise DecisionRoomError("room_not_found", "Decision Room not found")
+    return room, version
+
+
+async def get_customer_view(*, tenant_id: str, room_id: str, customer_id: Optional[str] = None) -> dict:
+    """Shared by both the Customer Portal route and the Public Token route."""
+    room, version = await _get_accessible_room_and_version(tenant_id, room_id, customer_id)
     return _customer_safe_room_response(room, version)
+
+
+def _collect_customer_media_refs(version: dict[str, Any]) -> tuple[set[str], set[str]]:
+    """From the FROZEN published version's `options_snapshot` (active
+    options only — matches `_customer_safe_room_response`'s own filtering):
+    returns `(always_allowed_ids, flag_required_ids)`. `thumbnail_file_id`/
+    `rendered_preview_file_id`/the frozen Proof preview are structurally
+    customer-facing by their role on the option, so they need no separate
+    File.visibility flag; plain `file_ids` attachments DO require the
+    file to be explicitly marked `visibility == "customer_visible"`."""
+    always_allowed: set[str] = set()
+    flag_required: set[str] = set()
+    for o in (version.get("options_snapshot") or []):
+        if not o.get("active", True):
+            continue
+        for key in ("thumbnail_file_id", "rendered_preview_file_id", "_frozen_proof_preview_file_id"):
+            if o.get(key):
+                always_allowed.add(o[key])
+        for fid in (o.get("file_ids") or []):
+            flag_required.add(fid)
+    return always_allowed, flag_required
+
+
+async def resolve_customer_safe_media(
+    *, tenant_id: str, room_id: str, file_id: str, customer_id: Optional[str] = None,
+) -> dict:
+    """Returns the `FileRecord` dict for `file_id` ONLY if it is referenced
+    by an ACTIVE option in the room's FROZEN published version (never the
+    live/draft option list — see `_freeze_options_with_proof_previews()`),
+    and (for a plain `file_ids` attachment) only if that File is explicitly
+    `visibility == "customer_visible"`. Any other id — unrelated, internal-
+    only, belonging to a draft-only option, guessed, or cross-tenant — is
+    rejected identically as `media_not_found`, so no distinction leaks."""
+    _room, version = await _get_accessible_room_and_version(tenant_id, room_id, customer_id)
+    always_allowed, flag_required = _collect_customer_media_refs(version)
+
+    if file_id in always_allowed:
+        needs_flag = False
+    elif file_id in flag_required:
+        needs_flag = True
+    else:
+        raise DecisionRoomError("media_not_found", "Referenced media not found in this Decision Room")
+
+    file_doc = await db.files.find_one({"id": file_id, "tenant_id": tenant_id}, {"_id": 0})
+    if not file_doc or file_doc.get("archived"):
+        raise DecisionRoomError("media_unavailable", "Referenced media is no longer available")
+    if needs_flag and file_doc.get("visibility") != "customer_visible":
+        raise DecisionRoomError("media_not_found", "Referenced media not found in this Decision Room")
+    return file_doc
 
 
 async def list_customer_rooms(*, tenant_id: str, customer_id: str) -> list[dict]:

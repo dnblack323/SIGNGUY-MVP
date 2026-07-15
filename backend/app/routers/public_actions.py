@@ -4,20 +4,23 @@ All actions are token-scoped (public_action_tokens). Tokens are single-purpose,
 never grant general access, and are consumed on completion (single_use).
 """
 from __future__ import annotations
+import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 
 from ..core.db import db
 from ..core.time_utils import serialize_doc
 from ..deps_portal import resolve_public_token
 from ..services.approvals_signatures_service import record_approval, record_signature
-from ..services.decision_room_service import DecisionRoomError, get_customer_view
+from ..services.decision_room_service import DecisionRoomError, get_customer_view, resolve_customer_safe_media
 from ..services.portal_tokens import consume_public_action_token
 from ..services.proofs_service import transition_proof
 from ..services.audit import record_audit
+from ..services import storage
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/public", tags=["public_actions"])
 
 
@@ -73,6 +76,24 @@ async def public_view_decision_room(room_id: str, request: Request, t: str = Que
         return await get_customer_view(tenant_id=token["tenant_id"], room_id=room_id, customer_id=None)
     except DecisionRoomError as ex:
         raise HTTPException(status_code=404, detail=str(ex))
+
+
+@router.get("/decision-rooms/{room_id}/media/{file_id}")
+async def public_view_decision_room_media(room_id: str, file_id: str, request: Request, t: str = Query(...)):
+    token = await resolve_public_token(
+        request, raw_token=t,
+        expected_action="decision_room_view", expected_parent_type="decision_room", expected_parent_id=room_id,
+    )
+    try:
+        file_doc = await resolve_customer_safe_media(tenant_id=token["tenant_id"], room_id=room_id, file_id=file_id, customer_id=None)
+    except DecisionRoomError:
+        raise HTTPException(status_code=404, detail="Media not available")
+    try:
+        data, ct = storage.get_bytes(file_doc["storage_key"])
+    except Exception:
+        logger.exception("Decision Room public media storage fetch failed")
+        raise HTTPException(status_code=404, detail="Media not available")
+    return Response(content=data, media_type=file_doc.get("mime_type") or ct)
 
 
 # ---- Proof approve / request changes (single-use) ----

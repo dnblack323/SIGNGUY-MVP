@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import portalApi, { portalExtractError } from "./portalApi";
+import portalApi, { API, portalExtractError } from "./portalApi";
 import DecisionRoomCustomerView from "@/components/decisionRoom/DecisionRoomCustomerView";
 
 /**
@@ -21,5 +21,12 @@ export default function PortalDecisionRoomPage() {
 
   if (err) return <div className="p-6 text-sm text-rose-700" data-testid="portal-decision-room-error">{err}</div>;
   if (!room) return <div className="p-6 text-sm text-slate-500" data-testid="portal-decision-room-loading">Loading…</div>;
-  return <DecisionRoomCustomerView room={room} />;
+  return (
+    <DecisionRoomCustomerView
+      room={room}
+      authToken={localStorage.getItem("sg_portal_token")}
+      buildMediaUrl={(fileId) => `${API}/portal/decision-rooms/${id}/media/${fileId}`}
+    />
+  );
 }
+
