@@ -14,7 +14,13 @@ from ..core.db import db
 from ..core.time_utils import serialize_doc
 from ..deps_portal import resolve_public_token
 from ..services.approvals_signatures_service import record_approval, record_signature
-from ..services.decision_room_service import DecisionRoomError, get_customer_view, resolve_customer_safe_media
+from ..services.decision_room_service import (
+    DecisionRoomError,
+    get_customer_view,
+    list_my_customer_decisions,
+    resolve_customer_safe_media,
+    submit_customer_decision,
+)
 from ..services.portal_tokens import consume_public_action_token
 from ..services.proofs_service import transition_proof
 from ..services.audit import record_audit
@@ -94,6 +100,60 @@ async def public_view_decision_room_media(room_id: str, file_id: str, request: R
         logger.exception("Decision Room public media storage fetch failed")
         raise HTTPException(status_code=404, detail="Media not available")
     return Response(content=data, media_type=file_doc.get("mime_type") or ct)
+
+
+# ---- EC10 Phase 10E-2 — Decision Room customer decision submission
+# (public token). Reuses the SAME `decision_room_view` token as the read
+# route above — it is deliberately multi-use/not-consumed here too, since a
+# customer may change their mind (select a different option) before the
+# room closes; each submission is its own append-only `CustomerDecision`
+# row, never a token-consuming one-shot action like proof approval/signing.
+
+_DECISION_ERROR_STATUS = {
+    "room_not_found": 404, "option_not_found": 404,
+    "room_not_open_for_decisions": 400, "invalid_action_type": 400,
+    "option_id_required": 400, "option_id_not_allowed": 400,
+    "reject_all_not_allowed": 400, "change_requests_not_allowed": 400, "comment_required": 400,
+}
+
+
+class PublicDecisionSubmitIn(BaseModel):
+    action_type: str
+    option_id: Optional[str] = None
+    comment: Optional[str] = None
+    signer_name: Optional[str] = None
+    idempotency_key: Optional[str] = None
+
+
+@router.post("/decision-rooms/{room_id}/decisions", status_code=201)
+async def public_submit_decision(room_id: str, payload: PublicDecisionSubmitIn, request: Request, t: str = Query(...)) -> dict:
+    token = await resolve_public_token(
+        request, raw_token=t,
+        expected_action="decision_room_view", expected_parent_type="decision_room", expected_parent_id=room_id,
+    )
+    try:
+        return await submit_customer_decision(
+            tenant_id=token["tenant_id"], room_id=room_id,
+            action_type=payload.action_type, option_id=payload.option_id, comment=payload.comment,
+            source_access_mode="public_token", public_token_id=token["id"],
+            actor_display=payload.signer_name, idempotency_key=payload.idempotency_key,
+            ip=(request.client.host if request.client else None), user_agent=request.headers.get("user-agent"),
+        )
+    except DecisionRoomError as ex:
+        raise HTTPException(status_code=_DECISION_ERROR_STATUS.get(ex.code, 400), detail=str(ex))
+
+
+@router.get("/decision-rooms/{room_id}/decisions")
+async def public_list_decisions(room_id: str, request: Request, t: str = Query(...)) -> dict:
+    token = await resolve_public_token(
+        request, raw_token=t,
+        expected_action="decision_room_view", expected_parent_type="decision_room", expected_parent_id=room_id,
+    )
+    try:
+        items = await list_my_customer_decisions(tenant_id=token["tenant_id"], room_id=room_id, public_token_id=token["id"])
+        return {"items": items}
+    except DecisionRoomError:
+        raise HTTPException(status_code=404, detail="Decision Room not found")
 
 
 # ---- Proof approve / request changes (single-use) ----

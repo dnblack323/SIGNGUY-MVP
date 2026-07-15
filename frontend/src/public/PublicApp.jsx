@@ -113,29 +113,57 @@ function QuoteRequest() {
 }
 
 /**
- * EC10 Phase 10E-1 — Public Token access to a published Decision Room.
- * Read-only. No selection/rejection/comment controls exist yet.
+ * EC10 Phase 10E-1/10E-2 — Public Token access to a published Decision
+ * Room, including customer decision submission (select/reject/reject-all/
+ * request-change). Save-for-later and anchored comments/questions remain
+ * Phase 10E-3.
  */
 function PublicDecisionRoom() {
   const { rid } = useParams();
   const [sp] = useSearchParams();
   const t = sp.get("t");
   const [room, setRoom] = useState(null);
+  const [myDecisions, setMyDecisions] = useState([]);
   const [err, setErr] = useState(null);
 
-  useEffect(() => {
-    if (!t) { setErr("Missing access link token."); return; }
+  function load() {
     axios.get(`${API}/public/decision-rooms/${rid}`, { params: { t } })
       .then((r) => setRoom(r.data))
       .catch((e) => setErr(e?.response?.data?.detail || "This Decision Room is not available."));
+    axios.get(`${API}/public/decision-rooms/${rid}/decisions`, { params: { t } })
+      .then((r) => setMyDecisions(r.data.items || []))
+      .catch(() => setMyDecisions([]));
+  }
+
+  useEffect(() => {
+    if (!t) { setErr("Missing access link token."); return; }
+    load();
   }, [rid, t]);
+
+  async function onSubmitDecision({ action_type, option_id, comment }) {
+    try {
+      await axios.post(
+        `${API}/public/decision-rooms/${rid}/decisions`,
+        { action_type, option_id, comment, idempotency_key: `${crypto.randomUUID()}` },
+        { params: { t } },
+      );
+      toast.success("Your response has been recorded");
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Something went wrong");
+      throw e;
+    }
+  }
 
   if (err) return <div className="min-h-screen bg-slate-50 grid place-items-center p-6"><div className="text-rose-700 text-sm max-w-md text-center" data-testid="public-decision-room-error">{err}</div></div>;
   if (!room) return <div className="min-h-screen bg-slate-50 grid place-items-center p-6 text-sm text-slate-500" data-testid="public-decision-room-loading">Loading…</div>;
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4">
       <div className="max-w-3xl mx-auto">
-        <DecisionRoomCustomerView room={room} buildMediaUrl={(fileId) => `${API}/public/decision-rooms/${rid}/media/${fileId}?t=${t}`} />
+        <DecisionRoomCustomerView
+          room={room} buildMediaUrl={(fileId) => `${API}/public/decision-rooms/${rid}/media/${fileId}?t=${t}`}
+          myDecisions={myDecisions} onSubmitDecision={onSubmitDecision}
+        />
       </div>
     </div>
   );

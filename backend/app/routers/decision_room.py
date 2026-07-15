@@ -28,7 +28,7 @@ _ERROR_STATUS = {
     "order_not_found": 404, "order_item_not_found": 404, "quote_line_item_not_found": 404,
     "file_not_found": 404, "proof_not_found": 404, "visual_markup_not_found": 404,
     "pricing_snapshot_not_found": 404, "room_not_found": 404, "option_not_found": 404,
-    "version_not_found": 404,
+    "version_not_found": 404, "decision_not_found": 404,
     "title_required": 400, "room_locked": 400, "invalid_transition": 400, "readiness_failed": 400,
     "invalid_badge_type": 400, "invalid_price_display_mode": 400, "reorder_mismatch": 400,
     "order_item_order_mismatch": 400,
@@ -54,6 +54,7 @@ class DecisionRoomCreateIn(BaseModel):
     allow_customer_comments: bool = False
     allow_customer_questions: bool = False
     allow_change_requests: bool = False
+    allow_reject_all: bool = False
     require_internal_acceptance: bool = True
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -72,6 +73,7 @@ class DecisionRoomUpdateIn(BaseModel):
     allow_customer_comments: Optional[bool] = None
     allow_customer_questions: Optional[bool] = None
     allow_change_requests: Optional[bool] = None
+    allow_reject_all: Optional[bool] = None
     require_internal_acceptance: Optional[bool] = None
     metadata: Optional[dict[str, Any]] = None
 
@@ -419,3 +421,28 @@ async def mint_share(room_id: str, payload: ShareMintIn, request: Request, user:
 async def revoke_share(token_id: str, user: dict = Depends(require_permission(Perm.DECISION_ROOM_WRITE))):
     await revoke_public_action_token(token_id, user["tenant_id"])
     return Response(status_code=204)
+
+
+# ---- EC10 Phase 10E-2 — staff-facing, READ-ONLY view of customer decisions
+# Staff may view pending/superseded decisions and acknowledge receipt only.
+# Accepting a decision, applying it to a Quote/Order Item, or changing
+# pricing is explicitly NOT built here — that is Phase 10F.
+@router.get("/{room_id}/decisions")
+async def list_decisions(room_id: str, user: dict = Depends(require_permission(Perm.DECISION_ROOM_READ))) -> dict:
+    try:
+        return {"items": await svc.list_customer_decisions(tenant_id=user["tenant_id"], room_id=room_id)}
+    except DecisionRoomError as ex:
+        _raise(ex)
+
+
+@router.post("/{room_id}/decisions/{decision_id}/acknowledge")
+async def acknowledge_decision(
+    room_id: str, decision_id: str, user: dict = Depends(require_permission(Perm.DECISION_ROOM_WRITE)),
+) -> dict:
+    try:
+        return await svc.acknowledge_customer_decision(
+            tenant_id=user["tenant_id"], room_id=room_id, decision_id=decision_id,
+            actor_user_id=user["id"], actor_email=user["email"],
+        )
+    except DecisionRoomError as ex:
+        _raise(ex)

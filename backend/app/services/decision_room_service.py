@@ -16,10 +16,15 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+import logging
+
 from ..core.db import db
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
-from ..models.decision_room import DecisionOption, DecisionRoom, DecisionRoomVersion
+from ..models.decision_room import CustomerDecision, DecisionOption, DecisionRoom, DecisionRoomVersion
 from ..services.audit import record_audit
+from ..services.notifications import notify_tenant_owners
+
+logger = logging.getLogger(__name__)
 
 # ---- Status lifecycle -------------------------------------------------
 # "published" is reachable only via `publish_room()` (a dedicated action
@@ -687,6 +692,7 @@ async def publish_room(*, tenant_id: str, room_id: str, actor_user_id: str, acto
         allow_customer_comments=room.get("allow_customer_comments", False),
         allow_customer_questions=room.get("allow_customer_questions", False),
         allow_change_requests=room.get("allow_change_requests", False),
+        allow_reject_all=room.get("allow_reject_all", False),
         require_internal_acceptance=room.get("require_internal_acceptance", True),
         expiration_at=room.get("expiration_at"), published_by_user_id=actor_user_id,
     ).model_dump()
@@ -789,6 +795,7 @@ async def internal_preview(*, tenant_id: str, room_id: str) -> dict:
         "allow_customer_comments": room.get("allow_customer_comments", False),
         "allow_customer_questions": room.get("allow_customer_questions", False),
         "allow_change_requests": room.get("allow_change_requests", False),
+        "allow_reject_all": room.get("allow_reject_all", False),
         "options": [_option_preview(o) for o in active_options],
     }
 
@@ -822,11 +829,13 @@ def _customer_safe_room_response(room: dict[str, Any], version: dict[str, Any]) 
         "customer_safe_intro": version.get("customer_safe_intro"),
         "status": room.get("status"),
         "version_number": version.get("version_number"),
+        "published_version_id": version.get("id"),
         "expiration_at": version.get("expiration_at"),
         "allow_save_for_later": version.get("allow_save_for_later", False),
         "allow_customer_comments": version.get("allow_customer_comments", False),
         "allow_customer_questions": version.get("allow_customer_questions", False),
         "allow_change_requests": version.get("allow_change_requests", False),
+        "allow_reject_all": version.get("allow_reject_all", False),
         "options": [_option_preview(o) for o in active_options],
     }
 
@@ -921,3 +930,204 @@ async def list_customer_rooms(*, tenant_id: str, customer_id: str) -> list[dict]
     ).sort("published_at", -1)
     return [d async for d in cur]
 
+
+# ---- EC10 Phase 10E-2 — Customer Option Selection, Rejection, and Change
+# Requests. Every function below writes ONLY to `customer_decisions`
+# (append-only, `internal_review_status` always starts "pending_review")
+# and NEVER to `quotes`/`quote_line_items`/`orders`/`order_items` or any
+# pricing field — the actual commercial write is a separate, explicit,
+# staff-controlled step deferred to Phase 10F per the EC10 preflight's
+# owner decision #1. A customer can never set `internal_review_status`,
+# `customer_id`, `public_token_id`, or any other identity/review field
+# themselves — those are always derived server-side from the authenticated
+# portal identity or resolved public token, never from request input.
+
+_CUSTOMER_DECISION_ACTION_TYPES = {"option_selected", "option_rejected", "all_options_rejected", "change_requested"}
+
+
+def _find_frozen_active_option(version: dict[str, Any], option_id: str) -> dict[str, Any]:
+    """An option must exist AND be active on the exact frozen
+    `options_snapshot` the customer was actually shown — never the live/
+    draft option list (a customer must never be able to reference an
+    option that was archived/removed after they were shown this version,
+    nor one that only exists in a later draft edit)."""
+    opt = next(
+        (o for o in (version.get("options_snapshot") or []) if o.get("id") == option_id and o.get("active", True)),
+        None,
+    )
+    if not opt:
+        raise DecisionRoomError("option_not_found", "Option not found in the Decision Room you were shown")
+    return opt
+
+
+async def submit_customer_decision(
+    *, tenant_id: str, room_id: str, action_type: str, option_id: Optional[str], comment: Optional[str],
+    source_access_mode: str, customer_id: Optional[str] = None, public_token_id: Optional[str] = None,
+    actor_display: Optional[str] = None, idempotency_key: Optional[str] = None,
+    ip: Optional[str] = None, user_agent: Optional[str] = None,
+) -> dict:
+    if action_type not in _CUSTOMER_DECISION_ACTION_TYPES:
+        raise DecisionRoomError("invalid_action_type", f"Unsupported action_type: {action_type!r}")
+
+    room, version = await _get_accessible_room_and_version(tenant_id, room_id, customer_id)
+    if room.get("status") != "published":
+        # Existence/readability was already established by the caller (a
+        # closed/expired room 200s on GET) — this is a distinct, explicit
+        # "no longer accepting new decisions" signal, never a 404, so the
+        # UI can show a clear historical-record message instead of a
+        # generic not-found.
+        raise DecisionRoomError(
+            "room_not_open_for_decisions",
+            f"This Decision Room is '{room.get('status')}' and no longer accepts new decisions",
+        )
+
+    # Idempotency: a retried/duplicated submission with the same
+    # client-generated key for this room returns the ALREADY-saved row
+    # rather than creating a second one (enforced again at the DB layer by
+    # the unique sparse index — this lookup just avoids a needless
+    # duplicate-key round trip on the common case).
+    if idempotency_key:
+        existing = await db.customer_decisions.find_one(
+            {"tenant_id": tenant_id, "decision_room_id": room_id, "idempotency_key": idempotency_key}, {"_id": 0},
+        )
+        if existing:
+            return serialize_doc(existing)
+
+    if action_type in {"option_selected", "option_rejected"}:
+        if not option_id:
+            raise DecisionRoomError("option_id_required", f"option_id is required for action_type={action_type!r}")
+        _find_frozen_active_option(version, option_id)
+    elif action_type == "all_options_rejected":
+        if option_id:
+            raise DecisionRoomError("option_id_not_allowed", "option_id must not be set for all_options_rejected")
+        if not version.get("allow_reject_all", False):
+            raise DecisionRoomError("reject_all_not_allowed", "This Decision Room does not permit rejecting all options")
+    elif action_type == "change_requested":
+        if not version.get("allow_change_requests", False):
+            raise DecisionRoomError("change_requests_not_allowed", "This Decision Room does not permit change requests")
+        if not (comment or "").strip():
+            raise DecisionRoomError("comment_required", "A comment is required to request a change")
+        if option_id:
+            _find_frozen_active_option(version, option_id)
+
+    # Selection superseding (§ owner instruction): selecting a DIFFERENT
+    # option supersedes this same actor's most recent unresolved selection
+    # for this exact room + published version. Prior history is never
+    # mutated — the new row simply points back at the one it supersedes.
+    supersedes_decision_id: Optional[str] = None
+    if action_type == "option_selected":
+        actor_filter: dict[str, Any] = {
+            "tenant_id": tenant_id, "decision_room_id": room_id, "published_version_id": version["id"],
+            "action_type": "option_selected", "source_access_mode": source_access_mode,
+        }
+        actor_filter["customer_id"] = customer_id
+        actor_filter["public_token_id"] = public_token_id
+        prior = await db.customer_decisions.find_one(actor_filter, {"_id": 0}, sort=[("created_at", -1)])
+        if prior and prior.get("option_id") != option_id:
+            supersedes_decision_id = prior["id"]
+
+    now = _now_iso()
+    decision = CustomerDecision(
+        tenant_id=tenant_id, decision_room_id=room_id,
+        published_version_id=version["id"], published_version_number=version.get("version_number"),
+        action_type=action_type, option_id=option_id, comment=(comment or "").strip() or None,
+        source_access_mode=source_access_mode, customer_id=customer_id, public_token_id=public_token_id,
+        actor_display=actor_display, supersedes_decision_id=supersedes_decision_id,
+        idempotency_key=idempotency_key, submitted_at=now, ip=ip, user_agent=user_agent,
+    ).model_dump()
+    try:
+        await db.customer_decisions.insert_one(prepare_for_mongo(dict(decision)))
+    except Exception as ex:
+        # Duplicate-key race on the idempotency index (two near-simultaneous
+        # duplicate clicks) — return the row the other request just saved
+        # instead of surfacing a 500/duplicate.
+        if "E11000" in str(ex) and idempotency_key:
+            existing = await db.customer_decisions.find_one(
+                {"tenant_id": tenant_id, "decision_room_id": room_id, "idempotency_key": idempotency_key}, {"_id": 0},
+            )
+            if existing:
+                return serialize_doc(existing)
+        raise
+
+    actor_user_id = f"portal:{customer_id}" if customer_id else f"public_token:{public_token_id}"
+    await record_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_display or "customer",
+        action=f"decision_room.customer_{action_type}", entity_type="decision_room", entity_id=room_id,
+        summary=f"Customer submitted '{action_type}' on Decision Room",
+        diff={"decision_id": decision["id"], "option_id": option_id, "published_version_id": version["id"]},
+    )
+    if supersedes_decision_id:
+        await record_audit(
+            tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_display or "customer",
+            action="decision_room.customer_decision_superseded", entity_type="decision_room", entity_id=room_id,
+            summary="A prior customer selection was superseded by a new one",
+            diff={"superseded_decision_id": supersedes_decision_id, "new_decision_id": decision["id"]},
+        )
+
+    # Reuse the existing notification contract exactly as-is (no new
+    # notification/retry system) — a failure here must never lose the
+    # customer decision that was already durably saved above.
+    try:
+        await notify_tenant_owners(
+            tenant_id=tenant_id, module="decision_room", kind="customer_decision_submitted",
+            title="Customer responded on a Decision Room",
+            body=f"Action: {action_type.replace('_', ' ')}",
+            entity_type="decision_room", entity_id=room_id,
+        )
+    except Exception:
+        logger.exception("decision_room customer_decision_submitted notification failed (decision already saved)")
+
+    return serialize_doc(decision)
+
+
+async def list_customer_decisions(*, tenant_id: str, room_id: str) -> list[dict]:
+    """Staff-only, read-only list of every `CustomerDecision` ever recorded
+    on this room (pending AND superseded — superseded rows stay visible as
+    history, never hidden or deleted)."""
+    await _get_room(tenant_id, room_id)
+    cur = db.customer_decisions.find(
+        {"tenant_id": tenant_id, "decision_room_id": room_id}, {"_id": 0},
+    ).sort("created_at", -1)
+    return [serialize_doc(d) async for d in cur]
+
+
+async def list_my_customer_decisions(
+    *, tenant_id: str, room_id: str, customer_id: Optional[str] = None, public_token_id: Optional[str] = None,
+) -> list[dict]:
+    """Portal/Public — a customer's own decision history on this room, so
+    the customer-facing UI can render "you already selected/rejected X"
+    state on reload without re-submitting."""
+    await _get_accessible_room_and_version(tenant_id, room_id, customer_id)
+    q: dict[str, Any] = {"tenant_id": tenant_id, "decision_room_id": room_id}
+    if customer_id is not None:
+        q["customer_id"] = customer_id
+    elif public_token_id is not None:
+        q["public_token_id"] = public_token_id
+    cur = db.customer_decisions.find(q, {"_id": 0}).sort("created_at", -1)
+    return [serialize_doc(d) async for d in cur]
+
+
+async def acknowledge_customer_decision(
+    *, tenant_id: str, room_id: str, decision_id: str, actor_user_id: str, actor_email: str,
+) -> dict:
+    """Staff-only, deliberately cheap: flips `internal_review_status` to
+    "acknowledged" so staff can signal "seen" without implying any
+    commercial acceptance. Never touches a Quote/Order/Order Item, never
+    changes `action_type`/`option_id`/pricing — that stays Phase 10F."""
+    await _get_room(tenant_id, room_id)
+    doc = await db.customer_decisions.find_one({"id": decision_id, "tenant_id": tenant_id, "decision_room_id": room_id})
+    if not doc:
+        raise DecisionRoomError("decision_not_found", "Customer decision not found")
+    now = _now_iso()
+    await db.customer_decisions.update_one(
+        {"id": decision_id, "tenant_id": tenant_id}, {"$set": {"internal_review_status": "acknowledged", "updated_at": now}},
+    )
+    await record_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+        action="decision_room.customer_decision_acknowledged", entity_type="decision_room", entity_id=room_id,
+        summary="Staff acknowledged receipt of a customer decision", diff={"decision_id": decision_id},
+    )
+    doc.pop("_id", None)
+    doc["internal_review_status"] = "acknowledged"
+    doc["updated_at"] = now
+    return serialize_doc(doc)

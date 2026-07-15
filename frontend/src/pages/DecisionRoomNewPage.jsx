@@ -33,6 +33,7 @@ export default function DecisionRoomNewPage() {
   const [allowComments, setAllowComments] = useState(false);
   const [allowQuestions, setAllowQuestions] = useState(false);
   const [allowChangeRequests, setAllowChangeRequests] = useState(false);
+  const [allowRejectAll, setAllowRejectAll] = useState(false);
 
   const { data: customers } = useQuery({ queryKey: ["customers", "all"], queryFn: async () => (await api.get("/customers", { params: { limit: 200 } })).data });
   const { data: quotes } = useQuery({ queryKey: ["quotes", "all"], queryFn: async () => (await api.get("/quotes", { params: { limit: 200 } })).data });
@@ -48,6 +49,7 @@ export default function DecisionRoomNewPage() {
         intake_id: intakeId || undefined, expiration_at: expirationAt || undefined,
         require_internal_acceptance: requireInternalAcceptance, allow_save_for_later: allowSaveForLater,
         allow_customer_comments: allowComments, allow_customer_questions: allowQuestions, allow_change_requests: allowChangeRequests,
+        allow_reject_all: allowRejectAll,
       });
       toast.success("Decision Room created as draft");
       navigate(`/decision-rooms/${data.id}`);
@@ -106,8 +108,9 @@ export default function DecisionRoomNewPage() {
           <label className="flex items-center gap-2 text-sm"><Checkbox checked={allowComments} onCheckedChange={(v) => setAllowComments(!!v)} data-testid="decision-room-allow-comments-checkbox" />Allow customer comments</label>
           <label className="flex items-center gap-2 text-sm"><Checkbox checked={allowQuestions} onCheckedChange={(v) => setAllowQuestions(!!v)} data-testid="decision-room-allow-questions-checkbox" />Allow customer questions</label>
           <label className="flex items-center gap-2 text-sm"><Checkbox checked={allowChangeRequests} onCheckedChange={(v) => setAllowChangeRequests(!!v)} data-testid="decision-room-allow-change-requests-checkbox" />Allow customer change requests</label>
+          <label className="flex items-center gap-2 text-sm"><Checkbox checked={allowRejectAll} onCheckedChange={(v) => setAllowRejectAll(!!v)} data-testid="decision-room-allow-reject-all-checkbox" />Allow customer to reject all options</label>
         </div>
-        <p className="text-xs text-muted-foreground">These behavior flags are prepared now but have no effect yet — customer access is Phase 10E (not built).</p>
+        <p className="text-xs text-muted-foreground">Select/reject/reject-all/change-request are live (Phase 10E-2). Save for later and comments/questions have no effect yet (Phase 10E-3).</p>
       </div>
       <div className="flex justify-end">
         <Button disabled={busy} onClick={create} data-testid="decision-room-create-button">Create draft</Button>

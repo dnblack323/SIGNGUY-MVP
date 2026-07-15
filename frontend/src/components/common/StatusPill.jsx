@@ -153,12 +153,25 @@ const DECISION_BADGE = {
   custom: "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
 };
 
+// EC10 phase 10E-2 — Customer Decisions (append-only, staff read-only view)
+const CUSTOMER_DECISION_ACTION = {
+  option_selected: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  option_rejected: "bg-slate-200 text-slate-600 ring-1 ring-slate-300",
+  all_options_rejected: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+  change_requested: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+};
+const DECISION_REVIEW_STATUS = {
+  pending_review: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  acknowledged: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
+};
+
 const MAPS = {
   quote: QUOTE, order: ORDER, production: PROD, priority: PRIORITY, invoice: INV, email: EMAIL,
   employee: EMPLOYEE, announcement: ANNOUNCEMENT, payroll: PAYROLL, equipment_status: EQUIPMENT_STATUS,
   access_policy: ACCESS_POLICY, certification: CERTIFICATION, training_assignment: TRAINING_ASSIGNMENT,
   intake: INTAKE, intake_priority: INTAKE_PRIORITY, intake_pricing: INTAKE_PRICING,
   decision_room: DECISION_ROOM, decision_badge: DECISION_BADGE,
+  customer_decision_action: CUSTOMER_DECISION_ACTION, decision_review_status: DECISION_REVIEW_STATUS,
 };
 
 export function StatusPill({ kind, value, className }) {

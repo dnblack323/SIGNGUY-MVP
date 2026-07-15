@@ -105,6 +105,10 @@ class DecisionRoom(BaseDoc):
     allow_customer_comments: bool = False
     allow_customer_questions: bool = False
     allow_change_requests: bool = False
+    # EC10 Phase 10E-2 — "reject all options" is a distinct, room-level
+    # customer action from rejecting a single option; per owner instruction
+    # it must NOT be assumed enabled — off by default, explicit opt-in.
+    allow_reject_all: bool = False
     require_internal_acceptance: bool = True  # matches EC10 owner decision #1's recommended default
 
     options: list[DecisionOption] = Field(default_factory=list)
@@ -132,7 +136,50 @@ class DecisionRoomVersion(BaseDoc):
     allow_customer_comments: bool = False
     allow_customer_questions: bool = False
     allow_change_requests: bool = False
+    allow_reject_all: bool = False
     require_internal_acceptance: bool = True
     expiration_at: Optional[str] = None
 
     published_by_user_id: Optional[str] = None
+
+
+CustomerDecisionActionType = Literal["option_selected", "option_rejected", "all_options_rejected", "change_requested"]
+CustomerDecisionAccessMode = Literal["portal", "public_token"]
+CustomerDecisionInternalReviewStatus = Literal["pending_review", "acknowledged"]
+
+
+class CustomerDecision(BaseDoc):
+    """EC10 Phase 10E-2 — append-only, customer-originated decision event
+    against the FROZEN `published_version_id` a customer actually viewed.
+
+    NEVER mutated to reflect a later choice — superseding a prior selection
+    is expressed by inserting a NEW row whose `supersedes_decision_id`
+    points at the old row; the old row is never edited or deleted (mirrors
+    the `Approval`/append-only precedent). `internal_review_status` starts
+    and stays `pending_review` from the customer's own action; only staff
+    (via a dedicated endpoint) can ever move it to `acknowledged` — no
+    customer-submitted field can set or influence it. Nothing in this model
+    or the service that writes it ever mutates a Quote/Order/Order Item
+    (that stays Phase 10F, an explicit, separate, staff-controlled step)."""
+
+    tenant_id: str
+    decision_room_id: str
+    published_version_id: str
+    published_version_number: Optional[int] = None  # display-only convenience, never authoritative
+
+    action_type: CustomerDecisionActionType
+    option_id: Optional[str] = None  # required for option_selected/option_rejected; must be None for all_options_rejected
+    comment: Optional[str] = None    # required (non-empty) for change_requested
+
+    source_access_mode: CustomerDecisionAccessMode
+    customer_id: Optional[str] = None       # set when source_access_mode == "portal"
+    public_token_id: Optional[str] = None   # set when source_access_mode == "public_token"
+    actor_display: Optional[str] = None
+
+    supersedes_decision_id: Optional[str] = None
+    internal_review_status: CustomerDecisionInternalReviewStatus = "pending_review"
+
+    idempotency_key: Optional[str] = None
+    submitted_at: Optional[str] = None
+    ip: Optional[str] = None
+    user_agent: Optional[str] = None

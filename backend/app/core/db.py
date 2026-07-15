@@ -481,4 +481,17 @@ async def ensure_indexes() -> None:
         [("tenant_id", 1), ("decision_room_id", 1), ("version_number", 1)], unique=True,
     )
 
+    # ---- EC10 phase 10E-2 — Customer Decisions (append-only) ----
+    await db.customer_decisions.create_index("id", unique=True)
+    # Idempotency: a duplicate submission with the same client-generated key
+    # for the same room must never create a second row. `sparse=True` (like
+    # the `quotes.number`/`orders.number` sparse indexes above) so multiple
+    # rows with no key at all never collide.
+    await db.customer_decisions.create_index(
+        [("tenant_id", 1), ("decision_room_id", 1), ("idempotency_key", 1)], unique=True, sparse=True,
+    )
+    await db.customer_decisions.create_index([("tenant_id", 1), ("decision_room_id", 1), ("created_at", -1)])
+    await db.customer_decisions.create_index([("tenant_id", 1), ("customer_id", 1)])
+    await db.customer_decisions.create_index([("tenant_id", 1), ("public_token_id", 1)])
+
     logger.info("MongoDB indexes ensured")
