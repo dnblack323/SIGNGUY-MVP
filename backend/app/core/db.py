@@ -468,4 +468,17 @@ async def ensure_indexes() -> None:
     await db.markup_versions.create_index("id", unique=True)
     await db.markup_versions.create_index([("tenant_id", 1), ("visual_markup_id", 1), ("version_number", 1)], unique=True)
 
+    # ---- EC10 phase 10D — Customer Decision Room (internal authoring only) ----
+    await db.decision_rooms.create_index("id", unique=True)
+    await db.decision_rooms.create_index([("tenant_id", 1), ("status", 1)])
+    await db.decision_rooms.create_index([("tenant_id", 1), ("customer_id", 1)])
+    await db.decision_rooms.create_index([("tenant_id", 1), ("quote_id", 1)])
+    await db.decision_rooms.create_index([("tenant_id", 1), ("order_id", 1)])
+    await db.decision_rooms.create_index([("tenant_id", 1), ("intake_id", 1)])
+    await db.decision_rooms.create_index([("tenant_id", 1), ("created_at", -1)])
+    await db.decision_room_versions.create_index("id", unique=True)
+    await db.decision_room_versions.create_index(
+        [("tenant_id", 1), ("decision_room_id", 1), ("version_number", 1)], unique=True,
+    )
+
     logger.info("MongoDB indexes ensured")

@@ -166,6 +166,16 @@ class Perm(str, Enum):
     # files) — markup is the structured annotation layer on top of a file.
     MARKUP_READ = "markup:read"
     MARKUP_WRITE = "markup:write"
+    # EC10 Phase 10D — Customer Decision Room (internal authoring only; no
+    # customer/public access exists yet). `publish`/`archive` are kept
+    # separate from ordinary `write` — every staff login may author/edit a
+    # room, but freezing a published version (customer-exposure-adjacent,
+    # even though 10E's actual customer access is not built) and archiving
+    # a room out of normal internal views are reserved for owner/admin.
+    DECISION_ROOM_READ = "decision_room:read"
+    DECISION_ROOM_WRITE = "decision_room:write"
+    DECISION_ROOM_PUBLISH = "decision_room:publish"
+    DECISION_ROOM_ARCHIVE = "decision_room:archive"
 
 
 class PlatformPerm(str, Enum):
@@ -228,6 +238,9 @@ STAFF_PERMS: list[str] = [
     # EC10 Phase 10C — every staff login may create/edit Visual Markup on an
     # intake asset, mirroring the intake self-service convention above.
     Perm.MARKUP_READ.value, Perm.MARKUP_WRITE.value,
+    # EC10 Phase 10D — every staff login may author/edit Decision Rooms;
+    # publish/archive remain owner/admin-only (see Perm docstring above).
+    Perm.DECISION_ROOM_READ.value, Perm.DECISION_ROOM_WRITE.value,
 ]
 
 ROLE_PERMISSIONS: dict[str, list[str]] = {

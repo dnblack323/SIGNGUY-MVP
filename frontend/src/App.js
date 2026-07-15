@@ -21,6 +21,9 @@ import ProductionBoardPage from "@/pages/ProductionBoardPage";
 import IntakePage from "@/pages/IntakePage";
 import IntakeNewPage from "@/pages/IntakeNewPage";
 import IntakeDetailPage from "@/pages/IntakeDetailPage";
+import DecisionRoomsPage from "@/pages/DecisionRoomsPage";
+import DecisionRoomNewPage from "@/pages/DecisionRoomNewPage";
+import DecisionRoomEditorPage from "@/pages/DecisionRoomEditorPage";
 import PortalApp from "@/portal/PortalApp";
 import PublicApp from "@/public/PublicApp";
 import InvoicesPage from "@/pages/InvoicesPage";
@@ -99,6 +102,9 @@ function AppRoutes() {
         <Route path="/intake" element={<IntakePage />} />
         <Route path="/intake/new" element={<IntakeNewPage />} />
         <Route path="/intake/:id" element={<IntakeDetailPage />} />
+        <Route path="/decision-rooms" element={<DecisionRoomsPage />} />
+        <Route path="/decision-rooms/new" element={<DecisionRoomNewPage />} />
+        <Route path="/decision-rooms/:id" element={<DecisionRoomEditorPage />} />
         <Route path="/invoices" element={<InvoicesPage />} />
         <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
         <Route path="/documents" element={<DocumentsPage />} />

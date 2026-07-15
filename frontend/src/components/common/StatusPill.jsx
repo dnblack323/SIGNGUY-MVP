@@ -134,11 +134,31 @@ const INTAKE_PRICING = {
   pricing_review_required: "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
 };
 
+// EC10 phase 10D — Customer Decision Room
+const DECISION_ROOM = {
+  draft: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+  ready: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
+  published: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  expired: "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
+  closed: "bg-slate-200 text-slate-600 ring-1 ring-slate-300",
+  archived: "bg-slate-200 text-slate-500 ring-1 ring-slate-300 line-through",
+};
+const DECISION_BADGE = {
+  none: "bg-slate-100 text-slate-500 ring-1 ring-slate-200",
+  recommended: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  best_value: "bg-teal-100 text-teal-800 ring-1 ring-teal-200",
+  premium: "bg-violet-100 text-violet-800 ring-1 ring-violet-200",
+  budget: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
+  fastest: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  custom: "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
+};
+
 const MAPS = {
   quote: QUOTE, order: ORDER, production: PROD, priority: PRIORITY, invoice: INV, email: EMAIL,
   employee: EMPLOYEE, announcement: ANNOUNCEMENT, payroll: PAYROLL, equipment_status: EQUIPMENT_STATUS,
   access_policy: ACCESS_POLICY, certification: CERTIFICATION, training_assignment: TRAINING_ASSIGNMENT,
   intake: INTAKE, intake_priority: INTAKE_PRIORITY, intake_pricing: INTAKE_PRICING,
+  decision_room: DECISION_ROOM, decision_badge: DECISION_BADGE,
 };
 
 export function StatusPill({ kind, value, className }) {

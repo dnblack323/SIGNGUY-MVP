@@ -38,7 +38,7 @@
 | EC | Name | Status | Notes |
 |---|---|---|---|
 | **EC9** | Pricing Foundation, Detailed Calculators, and Exact Order Workflow | **COMPLETE — CLOSED 2026-07 (Phases 9A-9H all delivered)** | Absorbs old Appendix A.2 (EC3.1). Controlling doc: `EC09_Pricing_Foundation_Calculators_and_Order_Pricing.docx`. Preflight: `/app/preflight/EC9_PRICING_FOUNDATION_CALCULATORS_AND_ORDER_PRICING_PREFLIGHT.md`. Closure record + full phase history: `/app/memory/PRD.md`. 196 EC9-targeted + 511 full-backend-regression + 25 frontend Jest tests all green; `testing_agent_v4` closure pass found and fixed 1 critical defect (Quote/Order item width/height not reaching the pricing engine); frontend production build + terminology guard both pass. |
-| **EC10** | Order Intake, Visual Markup, Customer Decision Room, and Templates | **Phase 10A/10B/10C COMPLETE (2026-02); Phase 10D–10H NOT STARTED** | Absorbs old Appendix A.1 (EC6.3); adds the previously-missing Customer Decision Room + Templates system. Controlling doc: `EC10_Order_Intake_Visual_Markup_Decision_Room_and_Templates.docx`. Held on H1 pending explicit per-phase owner authorization. Evidence: `/app/evidence/EC10_PHASE10A_COMPLETION_REPORT.md`, `/app/evidence/EC10_PHASE10B_COMPLETION_REPORT.md`, `/app/evidence/EC10_PHASE10C_COMPLETION_REPORT.md`. |
+| **EC10** | Order Intake, Visual Markup, Customer Decision Room, and Templates | **Phase 10A/10B/10C/10D COMPLETE (2026-02); Phase 10E–10H NOT STARTED** | Absorbs old Appendix A.1 (EC6.3); adds the previously-missing Customer Decision Room + Templates system. Controlling doc: `EC10_Order_Intake_Visual_Markup_Decision_Room_and_Templates.docx`. Held on H1 pending explicit per-phase owner authorization. Evidence: `/app/evidence/EC10_PHASE10A_COMPLETION_REPORT.md`, `/app/evidence/EC10_PHASE10B_COMPLETION_REPORT.md`, `/app/evidence/EC10_PHASE10C_COMPLETION_REPORT.md`, `/app/evidence/EC10_PHASE10D_COMPLETION_REPORT.md`. |
 | **EC11** | Production Timeline, Workflow Configuration, Stage Tracking, and Kiosk | NOT STARTED | Controlling doc: `EC11_Production_Timeline_Workflows_Kiosk_and_Advanced_Tracking.docx`. Advanced/paid half remains the pre-existing owner-locked add-on (`/app/docs/production_stage_timer_boundary.md`). Held on H1. |
 | **EC12** | Tasks, Kanban, Messages, Notes, Calendar, Appointments, Shop Schedule, and Community | NOT STARTED | Controlling doc: `EC12_Productivity_Messaging_Calendar_Appointments_and_Community.docx`. Held on H1. |
 | **EC13** | Commercial Billing, Entitlements, Fees, Trials, and Setup Packages | NOT STARTED | Controlling doc: `EC13_Commercial_Billing_Fees_Trials_Setup_and_Entitlements.docx`. Confirms `REVISED_COMMERCIAL_SOURCE_OF_TRUTH_2026-07.md`; contradictions C1/C2 RESOLVED 2026-02 by owner decision (see hold register). Held on H1. |
@@ -79,14 +79,14 @@
 
 ## Next Action
 
-**EC8 is DELIVERED / CLOSED (all phases 8a–8f complete). EC9 is COMPLETE / CLOSED (all phases 9A–9H complete, 2026-07) — owner formally accepted closure 2026-02.** EC10 preflight COMPLETE; Phase 10A COMPLETE; Phase 10B (Quick and Detailed Internal Intake) COMPLETE; **Phase 10C (Asset Upload and Visual Markup) COMPLETE (2026-02)** — see `/app/evidence/EC10_PHASE10C_COMPLETION_REPORT.md`. **Phase 10D is NOT authorized yet.**
+**EC8 is DELIVERED / CLOSED (all phases 8a–8f complete). EC9 is COMPLETE / CLOSED (all phases 9A–9H complete, 2026-07) — owner formally accepted closure 2026-02.** EC10 preflight COMPLETE; Phase 10A COMPLETE; Phase 10B (Quick and Detailed Internal Intake) COMPLETE; Phase 10C (Asset Upload and Visual Markup) COMPLETE; **Phase 10D (Customer Decision Room — internal authoring only) COMPLETE (2026-02)** — see `/app/evidence/EC10_PHASE10D_COMPLETION_REPORT.md`. **Phase 10E is NOT authorized yet.**
 
 - The remaining roadmap (EC10–EC22) is now governed by the SignGuy AI Checkpoint Specification Pack — see `/app/memory/checkpoint_reference_table.md`.
-- Do NOT begin EC10 Phase 10D (or any later phase/checkpoint implementation) without explicit owner authorization naming that phase (hold H1).
+- Do NOT begin EC10 Phase 10E (or any later phase/checkpoint implementation) without explicit owner authorization naming that phase (hold H1).
 - Do NOT begin EC14 (Webstores), EC15 (Wrap Lab), or EC16–EC18 (AI) without their additional separate authorizations (H2/H3/H4).
 - Do NOT begin EC17 until the owner completes the AI Tools Keep/Combine/Change/Rename/Defer/Remove worksheet (H5/H8).
 - Do NOT invoke or rerun the EC0–EC9 implementation prompts.
 
 ---
 
-**Register last updated:** 2026-02 — **EC10 Phase 10C (Asset Upload and Visual Markup) COMPLETE** — see `/app/evidence/EC10_PHASE10C_COMPLETION_REPORT.md`. EC9 (Pricing Foundation, Calculators, and Order Pricing) formally CLOSED — Phases 9A-9H all complete; see `/app/memory/PRD.md` for the full phase-by-phase closure record. Phase 10D and later have NOT started.
+**Register last updated:** 2026-02 — **EC10 Phase 10D (Customer Decision Room — internal authoring only) COMPLETE** — see `/app/evidence/EC10_PHASE10D_COMPLETION_REPORT.md`. EC9 (Pricing Foundation, Calculators, and Order Pricing) formally CLOSED — Phases 9A-9H all complete; see `/app/memory/PRD.md` for the full phase-by-phase closure record. Phase 10E and later have NOT started.
