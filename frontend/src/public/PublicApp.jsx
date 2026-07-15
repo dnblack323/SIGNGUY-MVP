@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import DecisionRoomCustomerView from "@/components/decisionRoom/DecisionRoomCustomerView";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -111,11 +112,39 @@ function QuoteRequest() {
   );
 }
 
+/**
+ * EC10 Phase 10E-1 — Public Token access to a published Decision Room.
+ * Read-only. No selection/rejection/comment controls exist yet.
+ */
+function PublicDecisionRoom() {
+  const { rid } = useParams();
+  const [sp] = useSearchParams();
+  const t = sp.get("t");
+  const [room, setRoom] = useState(null);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    if (!t) { setErr("Missing access link token."); return; }
+    axios.get(`${API}/public/decision-rooms/${rid}`, { params: { t } })
+      .then((r) => setRoom(r.data))
+      .catch((e) => setErr(e?.response?.data?.detail || "This Decision Room is not available."));
+  }, [rid, t]);
+
+  if (err) return <div className="min-h-screen bg-slate-50 grid place-items-center p-6"><div className="text-rose-700 text-sm max-w-md text-center" data-testid="public-decision-room-error">{err}</div></div>;
+  if (!room) return <div className="min-h-screen bg-slate-50 grid place-items-center p-6 text-sm text-slate-500" data-testid="public-decision-room-loading">Loading…</div>;
+  return (
+    <div className="min-h-screen bg-slate-50 py-8 px-4">
+      <div className="max-w-3xl mx-auto"><DecisionRoomCustomerView room={room} /></div>
+    </div>
+  );
+}
+
 export default function PublicApp() {
   return (
     <Routes>
       <Route path="proofs/:pid" element={<ProofAction />} />
       <Route path="quote-request" element={<QuoteRequest />} />
+      <Route path="decision-rooms/:rid" element={<PublicDecisionRoom />} />
     </Routes>
   );
 }

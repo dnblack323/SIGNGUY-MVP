@@ -33,6 +33,12 @@ PORTAL_PERMS = [
     "portal:view_messages",
     "portal:send_messages",
     "portal:manage_profile",
+    # EC10 Phase 10E-1 — customer-safe, read-only Decision Room display.
+    # Grouped with the decision-adjacent `portal:view_proofs` (approver_only
+    # scope) rather than the always-on `view_quotes`/`view_orders`, since a
+    # Decision Room is inherently about a pending decision even though 10E-1
+    # implements no selection/action yet.
+    "portal:view_decision_rooms",
 ]
 
 # EC8 phase 8c — Employee Portal permission strings. Disjoint namespace from
@@ -64,6 +70,7 @@ PRESET_BUNDLES: dict[str, list[str]] = {
         "portal:view_proofs", "portal:approve_proofs",
         "portal:view_orders", "portal:view_documents",
         "portal:sign_documents", "portal:view_messages", "portal:manage_profile",
+        "portal:view_decision_rooms",
     ],
     "viewer_only": [
         "portal:view_quotes", "portal:view_orders", "portal:view_invoices",

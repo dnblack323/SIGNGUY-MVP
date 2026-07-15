@@ -765,3 +765,76 @@ async def internal_preview(*, tenant_id: str, room_id: str) -> dict:
         "allow_change_requests": room.get("allow_change_requests", False),
         "options": [_option_preview(o) for o in active_options],
     }
+
+
+# ---- EC10 Phase 10E-1 — customer-safe access (portal + public token) -----
+# STAFF-ONLY code above this line manages the live/draft room. Everything
+# below serves an actual customer (via a Customer Portal identity OR a
+# resolved Public Token) and returns ONLY the frozen, published-version
+# content — never the live/draft `room["options"]`. This guarantees a
+# customer's later decision (Phase 10E-2+, not built here) always
+# references the exact version they were shown, per §9's "customer actions
+# in later phases must reference the exact version viewed."
+
+# A never-published (draft/ready) or archived room is treated exactly like
+# a nonexistent one (404) — existence of an unpublished room must never
+# leak to a customer or public token holder. `closed`/`expired` rooms
+# REMAIN viewable (read-only, with their real status surfaced) — the EC10
+# preflight explicitly frames Decision Rooms as historical records that
+# stay readable after the underlying commercial context changes.
+_CUSTOMER_ACCESSIBLE_STATUSES = {"published", "closed", "expired"}
+
+
+def _customer_safe_room_response(room: dict[str, Any], version: dict[str, Any]) -> dict[str, Any]:
+    active_options = sorted(
+        [o for o in (version.get("options_snapshot") or []) if o.get("active", True)],
+        key=lambda o: o.get("display_order", 0),
+    )
+    return {
+        "id": room.get("id"),
+        "title": version.get("title") or room.get("title"),
+        "customer_safe_intro": version.get("customer_safe_intro"),
+        "status": room.get("status"),
+        "version_number": version.get("version_number"),
+        "expiration_at": version.get("expiration_at"),
+        "allow_save_for_later": version.get("allow_save_for_later", False),
+        "allow_customer_comments": version.get("allow_customer_comments", False),
+        "allow_customer_questions": version.get("allow_customer_questions", False),
+        "allow_change_requests": version.get("allow_change_requests", False),
+        "options": [_option_preview(o) for o in active_options],
+    }
+
+
+async def get_customer_view(*, tenant_id: str, room_id: str, customer_id: Optional[str] = None) -> dict:
+    """Shared by both the Customer Portal route and the Public Token route.
+    `customer_id` is the requesting identity's own customer id (enforces
+    ownership for portal access); pass `None` for a public-token caller,
+    since the token itself is already parent-bound to this exact room."""
+    room = await db.decision_rooms.find_one({"id": room_id, "tenant_id": tenant_id}, {"_id": 0})
+    if not room:
+        raise DecisionRoomError("room_not_found", "Decision Room not found")
+    if customer_id is not None and room.get("customer_id") != customer_id:
+        raise DecisionRoomError("room_not_found", "Decision Room not found")
+    if room.get("status") not in _CUSTOMER_ACCESSIBLE_STATUSES or not room.get("published_version"):
+        raise DecisionRoomError("room_not_found", "Decision Room not found")
+
+    version = await db.decision_room_versions.find_one(
+        {"decision_room_id": room_id, "tenant_id": tenant_id, "version_number": room["published_version"]},
+        {"_id": 0},
+    )
+    if not version:
+        raise DecisionRoomError("room_not_found", "Decision Room not found")
+    return _customer_safe_room_response(room, version)
+
+
+async def list_customer_rooms(*, tenant_id: str, customer_id: str) -> list[dict]:
+    """Customer Portal list view — summary only (no version fetch per row)."""
+    cur = db.decision_rooms.find(
+        {
+            "tenant_id": tenant_id, "customer_id": customer_id,
+            "status": {"$in": list(_CUSTOMER_ACCESSIBLE_STATUSES)}, "published_version": {"$gt": 0},
+        },
+        {"_id": 0, "id": 1, "title": 1, "status": 1, "published_version": 1, "published_at": 1, "updated_at": 1},
+    ).sort("published_at", -1)
+    return [d async for d in cur]
+

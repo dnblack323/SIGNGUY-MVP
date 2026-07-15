@@ -517,7 +517,13 @@ async def test_no_public_or_unauthenticated_customer_access(ctx):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as anon:
         unauthenticated = await anon.get(f"/api/decision-rooms/{rid}")
         assert unauthenticated.status_code in (401, 403)
-        no_public_route = await anon.get(f"/api/p/decision-rooms/{rid}")
-        assert no_public_route.status_code == 404  # no public/customer route registered anywhere
-        no_portal_route = await anon.get(f"/api/portal/decision-rooms/{rid}")
-        assert no_portal_route.status_code == 404
+        no_such_route = await anon.get(f"/api/p/decision-rooms/{rid}")
+        assert no_such_route.status_code == 404  # no route registered under this made-up prefix
+        # Phase 10E-1 legitimately added `/api/portal/decision-rooms/{id}` (Customer
+        # Portal, JWT-gated) and `/api/public/decision-rooms/{id}` (Public Token-gated) —
+        # both reject a request with NO credentials at all, but neither is a bare 404
+        # anymore since the routes now exist. See test_ec10_phase10e1_decision_room_customer_access.py.
+        portal_route_needs_auth = await anon.get(f"/api/portal/decision-rooms/{rid}")
+        assert portal_route_needs_auth.status_code == 401
+        public_route_needs_token = await anon.get(f"/api/public/decision-rooms/{rid}")
+        assert public_route_needs_token.status_code == 422  # `t` query param is required

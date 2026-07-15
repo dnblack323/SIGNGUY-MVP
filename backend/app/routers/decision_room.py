@@ -1,19 +1,25 @@
 """EC10 Phase 10D — Customer Decision Room router.
 
-Staff-only. No customer-facing or public route exists here — see the module
-docstring on `services/decision_room_service.py` for the full scope boundary.
+Staff-only, EXCEPT the `/{room_id}/share` (mint) and `/share-tokens/{id}`
+(revoke) endpoints below, which are staff-only actions that produce a
+customer-facing artifact (a Public Token) — the actual customer-facing
+retrieval lives in `decision_room_portal.py` (Customer Portal) and
+`public_actions.py` (Public Token), added in Phase 10E-1.
 """
 from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from ..core.permissions import Perm, permissions_for_role
+from ..core.time_utils import serialize_doc
 from ..deps import require_permission
 from ..services import decision_room_service as svc
+from ..services.audit import record_audit
 from ..services.decision_room_service import DecisionRoomError
+from ..services.portal_tokens import mint_public_action_token, revoke_public_action_token
 
 router = APIRouter(prefix="/decision-rooms", tags=["decision-rooms"])
 
@@ -143,6 +149,12 @@ class AttachPricingSnapshotIn(BaseModel):
 
 class TransitionIn(BaseModel):
     target: str
+
+
+class ShareMintIn(BaseModel):
+    audience_email: Optional[str] = None
+    ttl_hours: int = 168
+    single_use: bool = False
 
 
 @router.post("", status_code=201)
@@ -375,3 +387,35 @@ async def restore_room(room_id: str, user: dict = Depends(require_permission(Per
         return await svc.restore_room(tenant_id=user["tenant_id"], room_id=room_id, actor_user_id=user["id"], actor_email=user["email"])
     except DecisionRoomError as ex:
         _raise(ex)
+
+
+# ---- EC10 Phase 10E-1 — mint/revoke a customer-facing share link ---------
+# The room itself must exist in-tenant, but is intentionally NOT required to
+# already be "published"/"ready" here — staff may prepare a link ahead of
+# time; `get_customer_view()` (Phase 10E-1) independently re-checks the
+# room's actual accessible status on every resolution, so an unpublished
+# room's link simply 404s until the room is actually published.
+@router.post("/{room_id}/share", status_code=201)
+async def mint_share(room_id: str, payload: ShareMintIn, request: Request, user: dict = Depends(require_permission(Perm.DECISION_ROOM_WRITE))) -> dict:
+    try:
+        await svc.get_room(tenant_id=user["tenant_id"], room_id=room_id)
+    except DecisionRoomError as ex:
+        _raise(ex)
+    raw, token_doc = await mint_public_action_token(
+        tenant_id=user["tenant_id"], action="decision_room_view", parent_type="decision_room", parent_id=room_id,
+        audience_email=payload.audience_email, ttl_hours=payload.ttl_hours, single_use=payload.single_use,
+        issued_by=user["id"], ip_issued=(request.client.host if request.client else None),
+    )
+    await record_audit(
+        tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
+        action="decision_room.share_token_mint", entity_type="decision_room", entity_id=room_id,
+        summary="Decision Room share token minted", diff={"audience_email": payload.audience_email},
+    )
+    token_doc.pop("token_hash", None)
+    return {"token": raw, "record": serialize_doc(token_doc)}
+
+
+@router.delete("/share-tokens/{token_id}", status_code=204)
+async def revoke_share(token_id: str, user: dict = Depends(require_permission(Perm.DECISION_ROOM_WRITE))):
+    await revoke_public_action_token(token_id, user["tenant_id"])
+    return Response(status_code=204)

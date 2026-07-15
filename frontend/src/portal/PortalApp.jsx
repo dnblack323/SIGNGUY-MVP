@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { PortalAuthProvider, usePortalAuth } from "./PortalAuthContext";
 import portalApi, { portalExtractError } from "./portalApi";
 import PortalInvoicePayPage from "./PortalInvoicePayPage";
+import PortalDecisionRoomPage from "./PortalDecisionRoomPage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +22,7 @@ function Shell({ children }) {
             <Link to="/portal/orders" data-testid="portal-nav-orders">Orders</Link>
             <Link to="/portal/invoices" data-testid="portal-nav-invoices">Invoices</Link>
             <Link to="/portal/proofs" data-testid="portal-nav-proofs">Proofs</Link>
+            <Link to="/portal/decision-rooms" data-testid="portal-nav-decision-rooms">Decision Rooms</Link>
             <Link to="/portal/documents" data-testid="portal-nav-documents">Documents</Link>
             <Link to="/portal/messages" data-testid="portal-nav-messages">Messages</Link>
             <Link to="/portal/profile" data-testid="portal-nav-profile">Profile</Link>
@@ -178,6 +180,8 @@ export default function PortalApp() {
         <Route path="invoices" element={<Guard><ListPage path="/portal/invoices" title="Invoices" testId="portal-invoices" cols={{title:(i)=>`I-${i.number} · ${i.document_status}/${i.financial_status}`, sub:(i)=>i.title||"", right:(i)=><a href={`/portal/invoices/${i.id}/pay`} className="underline" data-testid={`portal-invoice-pay-link-${i.id}`}>Pay {`$${((i.balance_due_cents||0)/100).toFixed(2)}`}</a>}} /></Guard>} />
         <Route path="invoices/:id/pay" element={<Guard><PortalInvoicePayPage /></Guard>} />
         <Route path="proofs" element={<Guard><ListPage path="/portal/proofs" title="Proofs" testId="portal-proofs" cols={{title:(p)=>`P-${p.number} · ${p.status}`, sub:(p)=>p.title||"", right:(p)=>`v${p.current_version}`}} /></Guard>} />
+        <Route path="decision-rooms" element={<Guard><ListPage path="/portal/decision-rooms" title="Decision Rooms" testId="portal-decision-rooms" cols={{title:(r)=>r.title, sub:(r)=>r.status, right:(r)=><a href={`/portal/decision-rooms/${r.id}`} className="underline" data-testid={`portal-decision-room-view-link-${r.id}`}>View options</a>}} /></Guard>} />
+        <Route path="decision-rooms/:id" element={<Guard><PortalDecisionRoomPage /></Guard>} />
         <Route path="documents" element={<Guard><ListPage path="/portal/documents" title="Documents" testId="portal-documents" cols={{title:(d)=>d.title, sub:(d)=>d.category, right:(d)=>`v${d.version}`}} /></Guard>} />
         <Route path="messages" element={<Guard><ListPage path="/portal/messages" title="Messages" testId="portal-messages" cols={{title:(m)=>m.subject, sub:(m)=>m.status, right:(m)=>m.created_at?.slice(0,10)}} /></Guard>} />
         <Route path="profile" element={<Guard><Profile /></Guard>} />

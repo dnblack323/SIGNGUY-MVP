@@ -19,6 +19,7 @@ PublicAction = Literal[
     "invoice_view",
     "invoice_pay",
     "customer_intake",
+    "decision_room_view",
 ]
 
 
@@ -26,7 +27,7 @@ class PublicActionToken(BaseDoc):
     tenant_id: str
     token_hash: str                       # sha256(raw)
     action: PublicAction
-    parent_type: str                      # "proof" | "invoice" | "quote" | "signature_request" | "customer_intake" | ...
+    parent_type: str                      # "proof" | "invoice" | "quote" | "signature_request" | "customer_intake" | "decision_room" | ...
     parent_id: str
     parent_version: Optional[int] = None  # locked at issue time when applicable
     audience_email: Optional[str] = None  # optional binding for extra safety

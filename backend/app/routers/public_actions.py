@@ -13,6 +13,7 @@ from ..core.db import db
 from ..core.time_utils import serialize_doc
 from ..deps_portal import resolve_public_token
 from ..services.approvals_signatures_service import record_approval, record_signature
+from ..services.decision_room_service import DecisionRoomError, get_customer_view
 from ..services.portal_tokens import consume_public_action_token
 from ..services.proofs_service import transition_proof
 from ..services.audit import record_audit
@@ -58,6 +59,20 @@ async def public_view_invoice(iid: str, request: Request, t: str = Query(...)) -
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return {"invoice": serialize_doc(inv)}
+
+
+# ---- EC10 Phase 10E-1 — Decision Room view (multi-use OK; published-version-only) ----
+
+@router.get("/decision-rooms/{room_id}")
+async def public_view_decision_room(room_id: str, request: Request, t: str = Query(...)) -> dict:
+    token = await resolve_public_token(
+        request, raw_token=t,
+        expected_action="decision_room_view", expected_parent_type="decision_room", expected_parent_id=room_id,
+    )
+    try:
+        return await get_customer_view(tenant_id=token["tenant_id"], room_id=room_id, customer_id=None)
+    except DecisionRoomError as ex:
+        raise HTTPException(status_code=404, detail=str(ex))
 
 
 # ---- Proof approve / request changes (single-use) ----
