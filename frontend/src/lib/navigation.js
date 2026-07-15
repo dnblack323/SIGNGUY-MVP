@@ -48,6 +48,7 @@ export const NAV_AREAS = [
     perm: null,
     flyout: [
       { key: "overview", label: "Overview", to: "/", perm: null, testId: "flyout-shop-overview" },
+      { key: "intake", label: "Intake", to: "/intake", perm: "intake:read", testId: "flyout-intake" },
       { key: "customers", label: "Customers", to: "/customers", perm: "customer:read", testId: "flyout-customers" },
       { key: "quotes", label: "Quotes", to: "/quotes", perm: "quote:read", testId: "flyout-quotes" },
       { key: "orders", label: "Orders", to: "/orders", perm: "order:read", testId: "flyout-orders" },

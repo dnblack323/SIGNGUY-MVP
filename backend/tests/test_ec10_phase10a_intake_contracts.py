@@ -174,7 +174,10 @@ async def test_questionnaire_reference_validation(ctx):
 async def test_status_transitions_valid_and_invalid(ctx):
     ua = ctx["ua"]
     async with await _client(ua) as c:
-        r = await c.post("/api/intake", json={"project_name": "Lifecycle test"})
+        r = await c.post("/api/intake", json={
+            "project_name": "Lifecycle test", "contact_name": "Jane Doe",
+            "items": [{"item_name": "Sign", "category": "banners", "quantity": 1}],
+        })
         iid = r.json()["id"]
         submitted = await c.post(f"/api/intake/{iid}/transition", json={"target": "submitted"})
         assert submitted.status_code == 200
@@ -188,7 +191,10 @@ async def test_status_transitions_valid_and_invalid(ctx):
         accepted = await c.post(f"/api/intake/{iid}/transition", json={"target": "accepted"})
         assert accepted.status_code == 200
         # Rejected/cancelled require a reason.
-        r2 = await c.post("/api/intake", json={"project_name": "To be rejected"})
+        r2 = await c.post("/api/intake", json={
+            "project_name": "To be rejected", "contact_name": "Jane Doe",
+            "items": [{"item_name": "Sign", "category": "banners", "quantity": 1}],
+        })
         iid2 = r2.json()["id"]
         await c.post(f"/api/intake/{iid2}/transition", json={"target": "submitted"})
         await c.post(f"/api/intake/{iid2}/transition", json={"target": "under_review"})
@@ -214,7 +220,8 @@ async def test_conversion_requires_quote_or_order_id_and_preserves_reference(ctx
         cid = cust.json()["id"]
         q = await c.post("/api/quotes", json={"customer_id": cid, "job_name": "Convert Quote"})
         qid = q.json()["id"]
-        r = await c.post("/api/intake", json={"project_name": "Convert me", "customer_id": cid})
+        r = await c.post("/api/intake", json={"project_name": "Convert me", "customer_id": cid,
+                                               "items": [{"item_name": "Sign", "category": "banners", "quantity": 1}]})
         iid = r.json()["id"]
         await c.post(f"/api/intake/{iid}/transition", json={"target": "submitted"})
         await c.post(f"/api/intake/{iid}/transition", json={"target": "under_review"})
@@ -307,7 +314,10 @@ async def test_internal_note_protection_helper():
 async def test_audit_events_emitted_for_create_and_transition(ctx):
     ua = ctx["ua"]
     async with await _client(ua) as c:
-        r = await c.post("/api/intake", json={"project_name": "Audited job"})
+        r = await c.post("/api/intake", json={
+            "project_name": "Audited job", "contact_name": "Jane Doe",
+            "items": [{"item_name": "Sign", "category": "banners", "quantity": 1}],
+        })
         iid = r.json()["id"]
         await c.post(f"/api/intake/{iid}/transition", json={"target": "submitted"})
     events = [

@@ -18,6 +18,9 @@ import OrderDetailPage from "@/pages/OrderDetailPage";
 import WorkOrdersPage from "@/pages/WorkOrdersPage";
 import WorkOrderDetailPage from "@/pages/WorkOrderDetailPage";
 import ProductionBoardPage from "@/pages/ProductionBoardPage";
+import IntakePage from "@/pages/IntakePage";
+import IntakeNewPage from "@/pages/IntakeNewPage";
+import IntakeDetailPage from "@/pages/IntakeDetailPage";
 import PortalApp from "@/portal/PortalApp";
 import PublicApp from "@/public/PublicApp";
 import InvoicesPage from "@/pages/InvoicesPage";
@@ -93,6 +96,9 @@ function AppRoutes() {
         <Route path="/work-orders" element={<WorkOrdersPage />} />
         <Route path="/work-orders/board" element={<ProductionBoardPage />} />
         <Route path="/work-orders/:id" element={<WorkOrderDetailPage />} />
+        <Route path="/intake" element={<IntakePage />} />
+        <Route path="/intake/new" element={<IntakeNewPage />} />
+        <Route path="/intake/:id" element={<IntakeDetailPage />} />
         <Route path="/invoices" element={<InvoicesPage />} />
         <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
         <Route path="/documents" element={<DocumentsPage />} />

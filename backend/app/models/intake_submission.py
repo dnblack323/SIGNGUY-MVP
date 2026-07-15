@@ -41,6 +41,16 @@ IntakeItemConversionStatus = Literal[
     "pending", "converted_to_quote_line_item", "converted_to_order_item",
 ]
 
+# EC10 Phase 10B — additive pricing workflow contract. NOT a pricing engine:
+# `calculate_pricing()` (EC9) remains the only place money is computed.
+# `pricing_snapshot_id` is a reference to an existing `pricing_snapshot_records`
+# row — never a copied snapshot. `manual_price_cents` is only ever set when a
+# human explicitly types a price (never invented).
+IntakePricingStatus = Literal[
+    "not_started", "information_needed", "ready_for_pricing",
+    "pricing_in_progress", "priced", "manual_price_entered", "pricing_review_required",
+]
+
 
 class IntakeItem(BaseModel):
     """One requested line within an IntakeSubmission (multi-item intake)."""
@@ -72,6 +82,17 @@ class IntakeItem(BaseModel):
     conversion_status: IntakeItemConversionStatus = "pending"
     quote_line_item_id: Optional[str] = None
     order_item_id: Optional[str] = None
+
+    # Phase 10B — additive pricing workflow state (reference-only; see
+    # `IntakePricingStatus` docstring above). Existing Phase 10A items without
+    # these keys remain valid — Pydantic fills in these defaults on read.
+    pricing_status: IntakePricingStatus = "not_started"
+    pricing_snapshot_id: Optional[str] = None
+    selected_price_source: Optional[str] = None  # "suggested" | "manual" — free-form, not enforced yet
+    manual_price_cents: Optional[int] = None
+    pricing_warning_codes: list[str] = Field(default_factory=list)
+    pricing_ready: bool = False
+    pricing_notes: Optional[str] = None
 
     # Phase 10C contract (not implemented yet — reference only)
     visual_markup_id: Optional[str] = None
@@ -134,6 +155,13 @@ class IntakeSubmission(BaseDoc):
 
     created_by_user_id: Optional[str] = None
     updated_by_user_id: Optional[str] = None
+    reviewed_by_user_id: Optional[str] = None
+
+    # Phase 10B — compact, embedded status history (actor + timestamp per
+    # transition) so the detail UI doesn't need a second query against
+    # `audit_events` just to render a timeline. `audit_events` remains the
+    # system of record; this is a display convenience mirror of it.
+    status_history: list[dict[str, Any]] = Field(default_factory=list)
 
     # Phase 10C/10D contracts (not implemented yet — reference only)
     visual_markup_ids: list[str] = Field(default_factory=list)
