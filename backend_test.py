@@ -18,7 +18,7 @@ import io
 from datetime import datetime, timedelta
 from typing import Optional
 
-BASE_URL = "https://checkpoint-validated.preview.emergentagent.com/api"
+BASE_URL = "https://markup-phase-10c.preview.emergentagent.com/api"
 
 class SignGuyTester:
     def __init__(self):
