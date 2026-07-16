@@ -215,6 +215,11 @@ api_router.include_router(templates_router_module.router)
 from app.routers import production_workflows as production_workflows_router_module
 api_router.include_router(production_workflows_router_module.router)
 
+# EC11 - Phase 11B Production Timeline and Event History Foundation. Staff-only,
+# read-only projection over existing source records; no live stage mutations.
+from app.routers import production_timeline as production_timeline_router_module
+api_router.include_router(production_timeline_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

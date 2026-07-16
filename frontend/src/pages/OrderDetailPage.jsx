@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import StatusPill from "@/components/common/StatusPill";
-import { AuditTimeline } from "@/components/audit/AuditTimeline";
+import ProductionTimeline from "@/components/production/ProductionTimeline";
 import { centsToDollarsString } from "@/lib/format";
 import { ArrowLeft, Plus, Pencil, Trash2, Wrench, Receipt, Zap, RefreshCw } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
@@ -27,7 +27,7 @@ function ItemsPanel({ orderId, items, totals, pricingSummary, canWrite, orderSta
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["order", orderId] });
-    qc.invalidateQueries({ queryKey: ["audit-order", orderId] });
+    qc.invalidateQueries({ queryKey: ["production-timeline"] });
   };
 
   async function addItem(payload) {
@@ -174,7 +174,6 @@ export default function OrderDetailPage() {
     queryKey: ["order", id],
     queryFn: async () => (await api.get(`/orders/${id}`)).data,
   });
-  const { data: audit } = useQuery({ queryKey: ["audit-order", id], queryFn: async () => (await api.get(`/audit`, { params: { entity_type: "order", entity_id: id } })).data, enabled: !!id });
   const { data: customer } = useQuery({ queryKey: ["customer", data?.order?.customer_id], queryFn: async () => (await api.get(`/customers/${data.order.customer_id}`)).data, enabled: !!data?.order?.customer_id });
   const { data: sourceQuote } = useQuery({
     queryKey: ["quote", data?.order?.source_quote_id || data?.order?.quote_id],
@@ -200,12 +199,12 @@ export default function OrderDetailPage() {
 
   const patch = useMutation({
     mutationFn: async (payload) => (await api.patch(`/orders/${id}`, payload)).data,
-    onSuccess: () => { toast.success("Saved"); qc.invalidateQueries({ queryKey: ["order", id] }); qc.invalidateQueries({ queryKey: ["audit-order", id] }); setForm({}); },
+    onSuccess: () => { toast.success("Saved"); qc.invalidateQueries({ queryKey: ["order", id] }); qc.invalidateQueries({ queryKey: ["production-timeline"] }); setForm({}); },
     onError: (e) => toast.error(extractError(e)),
   });
   const setStatus = useMutation({
     mutationFn: async (status) => (await api.post(`/orders/${id}/status`, { status })).data,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["order", id] }); qc.invalidateQueries({ queryKey: ["audit-order", id] }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["order", id] }); qc.invalidateQueries({ queryKey: ["production-timeline"] }); },
     onError: (e) => toast.error(extractError(e)),
   });
 
@@ -298,7 +297,7 @@ export default function OrderDetailPage() {
               </CardContent>
             </Card>
           </TabsContent>
-          <TabsContent value="activity"><AuditTimeline events={audit?.items || []} /></TabsContent>
+          <TabsContent value="activity"><ProductionTimeline scope="order" orderId={id} /></TabsContent>
         </Tabs>
 
         <aside className="space-y-4">
