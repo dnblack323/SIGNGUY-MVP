@@ -97,6 +97,10 @@ async def _create_published_room_with_activity(ctx):
         })
         assert opt_resp.status_code == 201, opt_resp.text
         opt_id = opt_resp.json()["options"][0]["id"]
+        alt_resp = await c.post(f"/api/decision-rooms/{rid}/options", json={
+            "customer_label": "Premium", "manual_price_cents": 35000,
+        })
+        assert alt_resp.status_code == 201, alt_resp.text
         assert (await c.post(f"/api/decision-rooms/{rid}/transition", json={"target": "ready"})).status_code == 200
         assert (await c.post(f"/api/decision-rooms/{rid}/publish")).status_code == 200
 

@@ -30,6 +30,8 @@
 - After dependency installation succeeded, the backend pytest step exposed CI environment setup gaps that were previously hidden: live/E2E modules dereferenced missing `REACT_APP_BACKEND_URL` during collection, and upload tests required object storage even though the CI unit job has no `EMERGENT_LLM_KEY`.
 - Added a test-only object-storage fallback in `app/services/storage.py` for `ENV=test` when no storage key is configured, keeping normal configured storage behavior unchanged.
 - Updated the live/E2E test modules to skip at module level when `REACT_APP_BACKEND_URL` is not configured.
+- Aligned the existing password-reset hardening test with the route's contract by explicitly patching development mode only for the dev-only raw reset token assertion.
+- Adjusted the Phase 10E-4 test room setup to satisfy the existing Phase 10D readiness contract requiring at least two active options before publish.
 
 ## 5. Targeted tests
 - Added `backend/tests/test_ec10_phase10e4_decision_room_review_queue.py`.
@@ -38,6 +40,8 @@
 ## 6. Verification performed
 - `python -m compileall app tests/test_ec8_api_spotcheck.py tests/test_ec9_phase9h_checkpoint_e2e.py tests/test_live_foundation_hardening.py tests/test_ec10_phase10e4_decision_room_review_queue.py` - passed.
 - `python -m pytest tests --collect-only -q -n 0` - passed locally; 599 tests collected with live URL-only modules skipped when `REACT_APP_BACKEND_URL` is absent.
+- `python -m compileall tests/test_foundation_hardening.py tests/test_ec10_phase10e4_decision_room_review_queue.py` - passed.
+- `python -m pytest tests/test_foundation_hardening.py tests/test_ec10_phase10e4_decision_room_review_queue.py --collect-only -q -n 0` - passed locally; 11 tests collected.
 - Test storage fallback check (`ENV=test`, no `EMERGENT_LLM_KEY`) - passed for put/get and missing-object behavior.
 - `yarn.cmd install --frozen-lockfile` - completed. Local Node 24 could not build optional `canvas`, but Yarn completed because it is optional.
 - `CI=true GENERATE_SOURCEMAP=false REACT_APP_BACKEND_URL=https://placeholder.invalid yarn.cmd build` - passed.
@@ -59,6 +63,7 @@
 - `backend/tests/test_ec8_api_spotcheck.py`
 - `backend/tests/test_ec10_phase10e4_decision_room_review_queue.py`
 - `backend/tests/test_ec9_phase9h_checkpoint_e2e.py`
+- `backend/tests/test_foundation_hardening.py`
 - `backend/tests/test_live_foundation_hardening.py`
 - `frontend/src/App.js`
 - `frontend/src/components/common/StatusPill.jsx`

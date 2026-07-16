@@ -85,15 +85,17 @@ async def test_password_reset_response_uniform_in_production_mode():
 
 @pytest.mark.asyncio
 async def test_password_reset_token_stored_hashed_not_plaintext_and_rate_limited():
+    from app.routers import auth as auth_module
     email = f"hash-{uuid.uuid4().hex[:6]}@example.com"
     async with await _anon_client() as c:
         slug = f"hash-shop-{uuid.uuid4().hex[:6]}"
         await _register_tenant(c, slug, email)
         raw_tokens = []
-        for _ in range(7):
-            r = await c.post("/api/auth/request-password-reset", json={"tenant_slug": slug, "email": email})
-            assert r.status_code == 202
-            raw_tokens.append(r.json().get("dev_reset_token"))
+        with patch.object(auth_module._settings, "env", "development"):
+            for _ in range(7):
+                r = await c.post("/api/auth/request-password-reset", json={"tenant_slug": slug, "email": email})
+                assert r.status_code == 202
+                raw_tokens.append(r.json().get("dev_reset_token"))
 
         # Rate limit: only the first 5 requests within the window create a token
         assert all(raw_tokens[:5]), "first 5 requests should each mint a token"
