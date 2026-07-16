@@ -46,11 +46,29 @@ Reusable workflow definitions do not carry live stage status.
 The resolver contract is deterministic:
 
 1. explicit Order Item workflow instance reference, when provided later
+2. tenant-custom category-assigned workflow
+3. tenant-scoped starter category workflow
+4. tenant default workflow
+5. manual/no-workflow fallback
+
+Tenant-custom category assignments supersede starter category templates during resolution. This preserves starter templates as fallbacks while allowing a duplicated tenant workflow to take over a category.
+
+Phase 11A exposes this as preview/contract behavior only and does not modify Order Items.
+
+## Backend CI follow-up
+
+Initial GitHub Actions backend run `29527594762` failed one assertion in `tests/test_ec11_phase11a_production_workflows.py`: after assigning `banners` to a duplicated workflow, category resolution returned another active workflow instead of the tenant-assigned duplicate.
+
+The fix keeps starter workflows available but changes category resolution to prefer non-starter tenant workflows before falling back to system starter workflows.
+
+## Original resolver order
+
+The original resolver intent remains:
+
+1. explicit Order Item workflow instance reference, when provided later
 2. category-assigned workflow
 3. tenant default workflow
 4. manual/no-workflow fallback
-
-Phase 11A exposes this as preview/contract behavior only and does not modify Order Items.
 
 ## Starter workflows
 
@@ -78,8 +96,9 @@ Audit events are emitted for workflow created, updated, duplicated, archived, re
 ## Validation
 
 - Backend compile passed for `backend/app` and `backend/tests/test_ec11_phase11a_production_workflows.py`.
-- Local targeted pytest could not run because both available local Python runtimes lack `pytest`.
-- GitHub Actions is the authoritative backend pytest environment for the targeted test file.
+- Local EC11 test collection passed for `tests/test_ec11_phase11a_production_workflows.py`.
+- Local targeted pytest execution could not run end-to-end because this Windows environment has no MongoDB service or Docker.
+- GitHub Actions is the authoritative backend pytest environment for the targeted test file and full backend suite.
 - Frontend production build passed: `CI=true GENERATE_SOURCEMAP=false REACT_APP_BACKEND_URL=https://placeholder.invalid yarn.cmd build`.
 
 ## Confirmed boundaries

@@ -354,7 +354,18 @@ async def resolve_workflow(*, tenant_id: str, category_id: Optional[str] = None,
         if doc:
             return {"source": "order_item_override", "workflow": serialize_doc(doc)}
     if category_id:
-        doc = await db.production_workflows.find_one({**base_q, "category_ids": category_id}, {"_id": 0}, sort=[("updated_at", -1)])
+        doc = await db.production_workflows.find_one(
+            {**base_q, "category_ids": category_id, "scope_type": {"$ne": "system_starter"}},
+            {"_id": 0},
+            sort=[("updated_at", -1)],
+        )
+        if doc:
+            return {"source": "category", "workflow": serialize_doc(doc)}
+        doc = await db.production_workflows.find_one(
+            {**base_q, "category_ids": category_id, "scope_type": "system_starter"},
+            {"_id": 0},
+            sort=[("updated_at", -1)],
+        )
         if doc:
             return {"source": "category", "workflow": serialize_doc(doc)}
     doc = await db.production_workflows.find_one({**base_q, "is_tenant_default": True}, {"_id": 0}, sort=[("updated_at", -1)])
