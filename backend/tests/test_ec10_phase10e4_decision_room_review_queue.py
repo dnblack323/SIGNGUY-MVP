@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app.core.db import db
@@ -37,7 +38,7 @@ def _clear():
     app.dependency_overrides.pop(get_current_user, None)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def ctx():
     suffix = uuid.uuid4().hex[:8]
     ta = f"t-ec10e4-a-{suffix}"
