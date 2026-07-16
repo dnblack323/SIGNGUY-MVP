@@ -533,4 +533,11 @@ async def ensure_indexes() -> None:
     await db.template_definitions.create_index([("tenant_id", 1), ("template_type", 1), ("active", 1)])
     await db.template_definitions.create_index([("tenant_id", 1), ("name", 1), ("template_type", 1)])
 
+    # ---- EC11 phase 11A - Production Workflow Definitions ----
+    await db.production_workflows.create_index("id", unique=True)
+    await db.production_workflows.create_index([("tenant_id", 1), ("workflow_key", 1)], unique=True)
+    await db.production_workflows.create_index([("tenant_id", 1), ("is_tenant_default", 1), ("active", 1)])
+    await db.production_workflows.create_index([("tenant_id", 1), ("category_ids", 1), ("active", 1)])
+    await db.production_workflows.create_index([("tenant_id", 1), ("scope_type", 1), ("archived_at", 1)])
+
     logger.info("MongoDB indexes ensured")

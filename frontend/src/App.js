@@ -37,6 +37,7 @@ import CompanySettingsPage from "@/pages/CompanySettingsPage";
 import IntegrationsPage from "@/pages/IntegrationsPage";
 import FeatureAccessPage from "@/pages/FeatureAccessPage";
 import DataSecurityPage from "@/pages/DataSecurityPage";
+import ProductionWorkflowsPage from "@/pages/ProductionWorkflowsPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 import PricingFoundationPage from "@/pages/PricingFoundationPage";
 import PricingCalculatorPage from "@/pages/PricingCalculatorPage";
@@ -142,6 +143,7 @@ function AppRoutes() {
         <Route path="/settings/company" element={<CompanySettingsPage />} />
         <Route path="/settings/integrations" element={<IntegrationsPage />} />
         <Route path="/settings/features" element={<FeatureAccessPage />} />
+        <Route path="/settings/production-workflows" element={<ProductionWorkflowsPage />} />
         <Route path="/settings/data-security" element={<DataSecurityPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
