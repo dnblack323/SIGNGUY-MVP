@@ -176,6 +176,8 @@ class Perm(str, Enum):
     DECISION_ROOM_WRITE = "decision_room:write"
     DECISION_ROOM_PUBLISH = "decision_room:publish"
     DECISION_ROOM_ARCHIVE = "decision_room:archive"
+    TEMPLATE_READ = "template:read"
+    TEMPLATE_WRITE = "template:write"
 
 
 class PlatformPerm(str, Enum):
@@ -241,6 +243,7 @@ STAFF_PERMS: list[str] = [
     # EC10 Phase 10D — every staff login may author/edit Decision Rooms;
     # publish/archive remain owner/admin-only (see Perm docstring above).
     Perm.DECISION_ROOM_READ.value, Perm.DECISION_ROOM_WRITE.value,
+    Perm.TEMPLATE_READ.value, Perm.TEMPLATE_WRITE.value,
 ]
 
 ROLE_PERMISSIONS: dict[str, list[str]] = {

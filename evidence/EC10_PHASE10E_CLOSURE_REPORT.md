@@ -12,7 +12,7 @@ Phase 10E was validated as the completed customer-facing Decision Room response 
 - **10E-4:** Internal review queue for customer decisions, questions, overlays, and save-for-later records.
 - **10E-5:** Final validation and closure documentation.
 
-Phase 10E is now **CLOSED**. EC10 is **not closed**; Phase 10F, Phase 10G, and final EC10 closure remain unfinished.
+Phase 10E is now **CLOSED**. At the time of this Phase 10E closure report, Phase 10F, Phase 10G, and final EC10 closure remained unfinished. Current EC10 closure status is tracked in `/app/evidence/EC10_CLOSURE_REPORT.md`.
 
 ## 2. Existing coverage inspected
 

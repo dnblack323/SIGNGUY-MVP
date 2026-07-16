@@ -31,7 +31,9 @@ _ERROR_STATUS = {
     "version_not_found": 404, "decision_not_found": 404,
     "title_required": 400, "room_locked": 400, "invalid_transition": 400, "readiness_failed": 400,
     "invalid_badge_type": 400, "invalid_price_display_mode": 400, "reorder_mismatch": 400,
-    "order_item_order_mismatch": 400,
+    "order_item_order_mismatch": 400, "quote_converted": 400,
+    "decision_not_applicable": 400, "decision_superseded": 409,
+    "decision_apply_target_required": 400,
     # EC10 Phase 10E-3
     "question_not_found": 404, "question_message_required": 400,
 }
@@ -159,6 +161,10 @@ class ShareMintIn(BaseModel):
     audience_email: Optional[str] = None
     ttl_hours: int = 168
     single_use: bool = False
+
+
+class DecisionApplyIn(BaseModel):
+    note: Optional[str] = None
 
 
 @router.post("", status_code=201)

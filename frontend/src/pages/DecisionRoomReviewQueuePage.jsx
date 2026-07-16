@@ -93,6 +93,11 @@ export default function DecisionRoomReviewQueuePage() {
     },
     onError,
   });
+  const applyDecision = useMutation({
+    mutationFn: async (item) => (await api.post(`/decision-rooms/${item.decision_room_id}/decisions/${item.record_id}/apply`, { note: "Applied from Decision Review Queue" })).data,
+    onSuccess: () => { invalidate(); toast.success("Decision applied"); },
+    onError,
+  });
 
   const items = queue.data?.items || [];
 
@@ -139,6 +144,7 @@ export default function DecisionRoomReviewQueuePage() {
               {items.map((item) => {
                 const key = `${item.record_type}:${item.record_id}`;
                 const canAcknowledge = ["customer_decision", "overlay"].includes(item.record_type) && item.unresolved;
+                const canApply = item.record_type === "customer_decision" && item.activity_type === "option_selected" && item.status !== "applied" && item.status !== "superseded";
                 return (
                   <TableRow key={key} data-testid={`decision-review-row-${item.record_id}`}>
                     <TableCell className="align-top">
@@ -178,6 +184,11 @@ export default function DecisionRoomReviewQueuePage() {
                         {canWrite && canAcknowledge && (
                           <Button size="icon" title="Mark reviewed" onClick={() => acknowledge.mutate(item)} data-testid={`decision-review-ack-${item.record_id}`}>
                             <CheckCircle2 className="size-4" />
+                          </Button>
+                        )}
+                        {canWrite && canApply && (
+                          <Button size="sm" onClick={() => applyDecision.mutate(item)} data-testid={`decision-review-apply-${item.record_id}`}>
+                            Apply
                           </Button>
                         )}
                       </div>

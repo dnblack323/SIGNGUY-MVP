@@ -528,4 +528,9 @@ async def ensure_indexes() -> None:
         [("tenant_id", 1), ("record_type", 1), ("record_id", 1), ("created_at", -1)],
     )
 
+    # ---- EC10 phase 10G - reusable intake/questionnaire/decision-option templates ----
+    await db.template_definitions.create_index("id", unique=True)
+    await db.template_definitions.create_index([("tenant_id", 1), ("template_type", 1), ("active", 1)])
+    await db.template_definitions.create_index([("tenant_id", 1), ("name", 1), ("template_type", 1)])
+
     logger.info("MongoDB indexes ensured")

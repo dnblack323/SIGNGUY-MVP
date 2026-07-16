@@ -29,6 +29,11 @@ export default function DecisionRoomCustomerDecisionsPanel({ roomId, canAcknowle
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["decision-room-decisions", roomId] }); toast.success("Acknowledged"); },
     onError: (err) => toast.error(extractError(err)),
   });
+  const applyDecision = useMutation({
+    mutationFn: async (decisionId) => (await api.post(`/decision-rooms/${roomId}/decisions/${decisionId}/apply`, { note: "Applied from Decision Room staff review" })).data,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["decision-room-decisions", roomId] }); toast.success("Decision applied"); },
+    onError: (err) => toast.error(extractError(err)),
+  });
 
   if (isLoading) return null;
   if (items.length === 0) return null;
@@ -52,14 +57,27 @@ export default function DecisionRoomCustomerDecisionsPanel({ roomId, canAcknowle
                 {d.comment && <div className="text-sm">"{d.comment}"</div>}
                 <div className="text-xs text-muted-foreground">{new Date(d.created_at).toLocaleString()}{d.actor_display ? ` · ${d.actor_display}` : ""}</div>
               </div>
-              {canAcknowledge && d.internal_review_status === "pending_review" && (
-                <Button
-                  size="sm" variant="outline" disabled={acknowledge.isPending}
-                  onClick={() => acknowledge.mutate(d.id)}
-                  data-testid={`decision-room-acknowledge-${d.id}-button`}
-                >
-                  Acknowledge
-                </Button>
+              {canAcknowledge && (
+                <div className="flex items-center gap-2">
+                  {d.action_type === "option_selected" && !superseded && d.internal_review_status !== "applied" && (
+                    <Button
+                      size="sm" disabled={applyDecision.isPending}
+                      onClick={() => applyDecision.mutate(d.id)}
+                      data-testid={`decision-room-apply-${d.id}-button`}
+                    >
+                      Apply
+                    </Button>
+                  )}
+                  {d.internal_review_status === "pending_review" && (
+                    <Button
+                      size="sm" variant="outline" disabled={acknowledge.isPending}
+                      onClick={() => acknowledge.mutate(d.id)}
+                      data-testid={`decision-room-acknowledge-${d.id}-button`}
+                    >
+                      Acknowledge
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           );

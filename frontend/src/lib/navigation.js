@@ -51,6 +51,7 @@ export const NAV_AREAS = [
       { key: "intake", label: "Intake", to: "/intake", perm: "intake:read", testId: "flyout-intake" },
       { key: "decision-rooms", label: "Decision Rooms", to: "/decision-rooms", perm: "decision_room:read", testId: "flyout-decision-rooms" },
       { key: "decision-room-review-queue", label: "Decision Review Queue", to: "/decision-room-review-queue", perm: "decision_room:read", testId: "flyout-decision-room-review-queue" },
+      { key: "templates", label: "Templates", to: "/templates", perm: "template:read", testId: "flyout-templates" },
       { key: "customers", label: "Customers", to: "/customers", perm: "customer:read", testId: "flyout-customers" },
       { key: "quotes", label: "Quotes", to: "/quotes", perm: "quote:read", testId: "flyout-quotes" },
       { key: "orders", label: "Orders", to: "/orders", perm: "order:read", testId: "flyout-orders" },

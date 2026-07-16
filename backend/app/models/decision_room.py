@@ -145,7 +145,7 @@ class DecisionRoomVersion(BaseDoc):
 
 CustomerDecisionActionType = Literal["option_selected", "option_rejected", "all_options_rejected", "change_requested"]
 CustomerDecisionAccessMode = Literal["portal", "public_token"]
-CustomerDecisionInternalReviewStatus = Literal["pending_review", "acknowledged"]
+CustomerDecisionInternalReviewStatus = Literal["pending_review", "acknowledged", "applied"]
 
 
 class CustomerDecision(BaseDoc):

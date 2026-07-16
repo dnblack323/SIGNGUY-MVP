@@ -163,6 +163,7 @@ const CUSTOMER_DECISION_ACTION = {
 const DECISION_REVIEW_STATUS = {
   pending_review: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
   acknowledged: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
+  applied: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
   open: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
   answered: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
   resolved: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",

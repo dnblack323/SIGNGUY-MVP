@@ -194,6 +194,9 @@ api_router.include_router(visual_markup_router_module.router)
 from app.routers import decision_room as decision_room_router_module
 api_router.include_router(decision_room_router_module.router)
 
+from app.routers import decision_room_apply as decision_room_apply_router_module
+api_router.include_router(decision_room_apply_router_module.router)
+
 # EC10 — Phase 10E-1 Customer Portal Decision Room access (read-only,
 # published-version-only; no selection/rejection/comment actions yet).
 from app.routers import decision_room_portal as decision_room_portal_router_module
@@ -204,6 +207,9 @@ api_router.include_router(decision_room_portal_router_module.router)
 # reviewed/acknowledged, and add staff-only notes. No commercial apply path.
 from app.routers import decision_room_review_queue as decision_room_review_queue_router_module
 api_router.include_router(decision_room_review_queue_router_module.router)
+
+from app.routers import templates as templates_router_module
+api_router.include_router(templates_router_module.router)
 
 app.include_router(api_router)
 
