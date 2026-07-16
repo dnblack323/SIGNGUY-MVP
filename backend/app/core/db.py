@@ -518,4 +518,14 @@ async def ensure_indexes() -> None:
         partialFilterExpression={"idempotency_key": {"$type": "string"}},
     )
 
+    # ---- EC10 phase 10E-4 — Internal review queue side metadata ----
+    await db.decision_room_review_meta.create_index("id", unique=True)
+    await db.decision_room_review_meta.create_index(
+        [("tenant_id", 1), ("record_type", 1), ("record_id", 1)], unique=True,
+    )
+    await db.decision_room_internal_notes.create_index("id", unique=True)
+    await db.decision_room_internal_notes.create_index(
+        [("tenant_id", 1), ("record_type", 1), ("record_id", 1), ("created_at", -1)],
+    )
+
     logger.info("MongoDB indexes ensured")

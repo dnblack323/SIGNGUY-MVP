@@ -178,6 +178,7 @@ class CustomerDecision(BaseDoc):
 
     supersedes_decision_id: Optional[str] = None
     internal_review_status: CustomerDecisionInternalReviewStatus = "pending_review"
+    acknowledged_by_user_id: Optional[str] = None  # EC10 10E-4 — who ran the staff acknowledge action
 
     idempotency_key: Optional[str] = None
     submitted_at: Optional[str] = None
@@ -276,3 +277,44 @@ class SavedForLater(BaseDoc):
     note: Optional[str] = None
     idempotency_key: Optional[str] = None
     saved_at: Optional[str] = None
+
+
+
+# ---- EC10 Phase 10E-4 — Internal Decision Room Review Queue. Neither
+# model below duplicates or copies any source record — both are PURELY
+# staff-only side metadata that has no equivalent field anywhere on
+# `CustomerDecision`/`DecisionRoomQuestion`/`DecisionRoomOverlay`/
+# `SavedForLater` today. The queue itself is a service-level NORMALIZED
+# VIEW computed at read time (see `decision_room_service.list_review_queue()`)
+# — it is never persisted as a merged "mega-record".
+
+ReviewRecordType = Literal["customer_decision", "question", "overlay", "saved_for_later"]
+
+
+class DecisionRoomReviewMeta(BaseDoc):
+    """One optional doc per (record_type, record_id) — reviewer assignment
+    plus the "reviewed" flag for overlays (which have no staff-review
+    concept of their own; questions/decisions already have their own
+    status field and are never duplicated here)."""
+
+    tenant_id: str
+    decision_room_id: str
+    record_type: ReviewRecordType
+    record_id: str
+    assigned_user_id: Optional[str] = None
+    overlay_reviewed: bool = False
+    overlay_reviewed_by_user_id: Optional[str] = None
+    overlay_reviewed_at: Optional[str] = None
+
+
+class DecisionRoomInternalNote(BaseDoc):
+    """Staff-only, append-only internal note attached to one review-queue
+    record. NEVER surfaced through any customer-safe endpoint/serializer."""
+
+    tenant_id: str
+    decision_room_id: str
+    record_type: ReviewRecordType
+    record_id: str
+    note: str
+    actor_user_id: str
+    actor_email: str

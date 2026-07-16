@@ -25,8 +25,10 @@ from ..models.decision_room import (
     CustomerDecision,
     DecisionOption,
     DecisionRoom,
+    DecisionRoomInternalNote,
     DecisionRoomOverlay,
     DecisionRoomQuestion,
+    DecisionRoomReviewMeta,
     DecisionRoomVersion,
     SavedForLater,
 )
@@ -1144,7 +1146,8 @@ async def acknowledge_customer_decision(
         raise DecisionRoomError("decision_not_found", "Customer decision not found")
     now = _now_iso()
     await db.customer_decisions.update_one(
-        {"id": decision_id, "tenant_id": tenant_id}, {"$set": {"internal_review_status": "acknowledged", "updated_at": now}},
+        {"id": decision_id, "tenant_id": tenant_id},
+        {"$set": {"internal_review_status": "acknowledged", "acknowledged_by_user_id": actor_user_id, "updated_at": now}},
     )
     await record_audit(
         tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
@@ -1153,6 +1156,7 @@ async def acknowledge_customer_decision(
     )
     doc.pop("_id", None)
     doc["internal_review_status"] = "acknowledged"
+    doc["acknowledged_by_user_id"] = actor_user_id
     doc["updated_at"] = now
     return serialize_doc(doc)
 
@@ -1599,4 +1603,322 @@ async def list_my_saved_for_later(*, tenant_id: str, room_id: str, customer_id: 
     elif public_token_id is not None:
         q["public_token_id"] = public_token_id
     cur = db.decision_room_saved_for_later.find(q, {"_id": 0}).sort("created_at", -1)
+    return [serialize_doc(d) async for d in cur]
+
+
+
+# ---- EC10 Phase 10E-4 — Internal Decision Room Review Queue. Every
+# function here is TRIAGE/COMMUNICATION ONLY — none ever writes to a
+# Quote/Order/Order Item/pricing/pricing-snapshot/Proof/production record,
+# and none ever writes to `MarkupVersion.structured_markup_json` or moves a
+# customer's `normalized_x`/`normalized_y`. Commercial acceptance is
+# Phase 10F, not this.
+
+_REVIEW_COLLECTION: dict[str, str] = {
+    "customer_decision": "customer_decisions",
+    "question": "decision_room_questions",
+    "overlay": "decision_room_overlays",
+    "saved_for_later": "decision_room_saved_for_later",
+}
+_DECISION_ACTIVITY_TYPES = {"option_selected", "option_rejected", "all_options_rejected", "change_requested"}
+_OVERLAY_ACTIVITY_TYPES = {"comment", "pin"}
+
+
+async def _validate_assignee(tenant_id: str, user_id: Optional[str]) -> None:
+    """Mirrors `intake_service._validate_user()` exactly — reviewer
+    assignment reuses the SAME plain `db.users` tenant-scoped lookup the
+    rest of the app already uses for assignment, no new team system."""
+    if not user_id:
+        return
+    doc = await db.users.find_one({"id": user_id, "tenant_id": tenant_id}, {"_id": 0, "id": 1})
+    if not doc:
+        raise DecisionRoomError("assigned_user_not_found", "Assigned user not found for this tenant")
+
+
+async def _get_review_record(tenant_id: str, record_type: str, record_id: str) -> dict:
+    collection = _REVIEW_COLLECTION.get(record_type)
+    if not collection:
+        raise DecisionRoomError("invalid_action_type", f"Unknown record_type: {record_type!r}")
+    doc = await db[collection].find_one({"id": record_id, "tenant_id": tenant_id}, {"_id": 0})
+    if not doc:
+        raise DecisionRoomError("review_record_not_found", "Review item not found")
+    return doc
+
+
+async def _get_or_create_review_meta(tenant_id: str, decision_room_id: str, record_type: str, record_id: str) -> dict:
+    doc = await db.decision_room_review_meta.find_one(
+        {"tenant_id": tenant_id, "record_type": record_type, "record_id": record_id},
+    )
+    if doc:
+        return doc
+    meta = DecisionRoomReviewMeta(
+        tenant_id=tenant_id, decision_room_id=decision_room_id, record_type=record_type, record_id=record_id,
+    ).model_dump()
+    await db.decision_room_review_meta.insert_one(prepare_for_mongo(dict(meta)))
+    return meta
+
+
+async def _get_review_meta_map(tenant_id: str, keys: list[tuple[str, str]]) -> dict[tuple[str, str], dict]:
+    if not keys:
+        return {}
+    cur = db.decision_room_review_meta.find(
+        {"tenant_id": tenant_id, "$or": [{"record_type": rt, "record_id": rid} for rt, rid in keys]}, {"_id": 0},
+    )
+    return {(d["record_type"], d["record_id"]): d async for d in cur}
+
+
+def _normalize_customer_decision(d: dict[str, Any], superseded_ids: set[str], meta: dict[str, Any]) -> dict[str, Any]:
+    superseded = d["id"] in superseded_ids
+    status = "superseded" if superseded else d.get("internal_review_status", "pending_review")
+    acknowledged = status == "acknowledged"
+    return {
+        "record_type": "customer_decision", "record_id": d["id"], "tenant_id": d["tenant_id"],
+        "decision_room_id": d["decision_room_id"], "published_version_id": d.get("published_version_id"),
+        "customer_id": d.get("customer_id"), "option_id": d.get("option_id"),
+        "activity_type": d.get("action_type"), "customer_message": d.get("comment"), "status": status,
+        "submitted_at": d.get("submitted_at") or d.get("created_at"), "source_access_mode": d.get("source_access_mode"),
+        "assigned_user_id": meta.get("assigned_user_id"),
+        "related_file_id": None, "visual_markup_id": None, "markup_version_id": None,
+        "page_number": None, "normalized_x": None, "normalized_y": None, "staff_response_summary": None,
+        "resolved_at": d.get("updated_at") if acknowledged else None,
+        "reviewed_by_user_id": d.get("acknowledged_by_user_id"),
+        "unresolved": (not superseded) and status == "pending_review",
+        "last_response_at": d.get("updated_at") if acknowledged else None,
+    }
+
+
+def _normalize_question(q: dict[str, Any], meta: dict[str, Any]) -> dict[str, Any]:
+    resolved = q.get("status") == "resolved"
+    return {
+        "record_type": "question", "record_id": q["id"], "tenant_id": q["tenant_id"],
+        "decision_room_id": q["decision_room_id"], "published_version_id": q.get("published_version_id"),
+        "customer_id": q.get("customer_id"), "option_id": q.get("option_id"),
+        "activity_type": "question", "customer_message": q.get("customer_message"), "status": q.get("status"),
+        "submitted_at": q.get("submitted_at") or q.get("created_at"), "source_access_mode": q.get("source_access_mode"),
+        "assigned_user_id": meta.get("assigned_user_id"),
+        "related_file_id": q.get("source_file_id"), "visual_markup_id": q.get("visual_markup_id"),
+        "markup_version_id": q.get("markup_version_id"), "page_number": q.get("page_number"),
+        "normalized_x": None, "normalized_y": None,
+        "staff_response_summary": ((q.get("staff_response") or "")[:140] or None),
+        "resolved_at": q.get("updated_at") if resolved else None,
+        "reviewed_by_user_id": q.get("responded_by_user_id"),
+        "unresolved": q.get("status") == "open",
+        "last_response_at": q.get("responded_at"),
+    }
+
+
+def _normalize_overlay(o: dict[str, Any], meta: dict[str, Any]) -> dict[str, Any]:
+    withdrawn = o.get("status") == "withdrawn"
+    reviewed = bool(meta.get("overlay_reviewed"))
+    status = "withdrawn" if withdrawn else ("reviewed" if reviewed else "pending_review")
+    return {
+        "record_type": "overlay", "record_id": o["id"], "tenant_id": o["tenant_id"],
+        "decision_room_id": o["decision_room_id"], "published_version_id": o.get("published_version_id"),
+        "customer_id": o.get("customer_id"), "option_id": None,
+        "activity_type": o.get("overlay_type"), "customer_message": o.get("customer_message"), "status": status,
+        "submitted_at": o.get("created_at"), "source_access_mode": o.get("source_access_mode"),
+        "assigned_user_id": meta.get("assigned_user_id"),
+        "related_file_id": o.get("source_file_id"), "visual_markup_id": o.get("visual_markup_id"),
+        "markup_version_id": o.get("markup_version_id"), "page_number": o.get("page_number"),
+        "normalized_x": o.get("normalized_x"), "normalized_y": o.get("normalized_y"), "staff_response_summary": None,
+        "resolved_at": meta.get("overlay_reviewed_at"), "reviewed_by_user_id": meta.get("overlay_reviewed_by_user_id"),
+        "unresolved": (not withdrawn) and (not reviewed),
+        "last_response_at": meta.get("overlay_reviewed_at"),
+    }
+
+
+def _normalize_saved_for_later(s: dict[str, Any], meta: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "record_type": "saved_for_later", "record_id": s["id"], "tenant_id": s["tenant_id"],
+        "decision_room_id": s["decision_room_id"], "published_version_id": s.get("published_version_id"),
+        "customer_id": s.get("customer_id"), "option_id": None,
+        "activity_type": "saved_for_later", "customer_message": s.get("note"), "status": "informational",
+        "submitted_at": s.get("saved_at") or s.get("created_at"), "source_access_mode": s.get("source_access_mode"),
+        "assigned_user_id": meta.get("assigned_user_id"),
+        "related_file_id": None, "visual_markup_id": None, "markup_version_id": None,
+        "page_number": None, "normalized_x": None, "normalized_y": None, "staff_response_summary": None,
+        "resolved_at": None, "reviewed_by_user_id": None,
+        "unresolved": False,  # never a pending commercial decision, never requires staff action
+        "last_response_at": None,
+    }
+
+
+async def list_review_queue(
+    *, tenant_id: str, activity_type: Optional[str] = None, status: Optional[str] = None,
+    decision_room_id: Optional[str] = None, customer_id: Optional[str] = None,
+    assigned_user_id: Optional[str] = None, date_from: Optional[str] = None, date_to: Optional[str] = None,
+    unresolved_only: bool = False, search: Optional[str] = None, limit: int = 50, offset: int = 0,
+) -> dict[str, Any]:
+    date_filter: dict[str, Any] = {}
+    if date_from:
+        date_filter["$gte"] = date_from
+    if date_to:
+        date_filter["$lte"] = date_to
+
+    def _q() -> dict[str, Any]:
+        q: dict[str, Any] = {"tenant_id": tenant_id}
+        if decision_room_id:
+            q["decision_room_id"] = decision_room_id
+        if customer_id:
+            q["customer_id"] = customer_id
+        if date_filter:
+            q["created_at"] = date_filter
+        return q
+
+    want_decisions = activity_type is None or activity_type in _DECISION_ACTIVITY_TYPES
+    want_questions = activity_type is None or activity_type == "question"
+    want_overlays = activity_type is None or activity_type in _OVERLAY_ACTIVITY_TYPES
+    want_saved = activity_type is None or activity_type == "saved_for_later"
+
+    decisions = [d async for d in db.customer_decisions.find(_q(), {"_id": 0})] if want_decisions else []
+    questions = [d async for d in db.decision_room_questions.find(_q(), {"_id": 0})] if want_questions else []
+    overlays = [d async for d in db.decision_room_overlays.find(_q(), {"_id": 0})] if want_overlays else []
+    saved = [d async for d in db.decision_room_saved_for_later.find(_q(), {"_id": 0})] if want_saved else []
+
+    superseded_ids = {d["supersedes_decision_id"] for d in decisions if d.get("supersedes_decision_id")}
+    keys = (
+        [("customer_decision", d["id"]) for d in decisions]
+        + [("question", d["id"]) for d in questions]
+        + [("overlay", d["id"]) for d in overlays]
+        + [("saved_for_later", d["id"]) for d in saved]
+    )
+    meta_map = await _get_review_meta_map(tenant_id, keys)
+
+    items: list[dict[str, Any]] = []
+    items += [_normalize_customer_decision(d, superseded_ids, meta_map.get(("customer_decision", d["id"]), {})) for d in decisions]
+    items += [_normalize_question(d, meta_map.get(("question", d["id"]), {})) for d in questions]
+    items += [_normalize_overlay(d, meta_map.get(("overlay", d["id"]), {})) for d in overlays]
+    items += [_normalize_saved_for_later(d, meta_map.get(("saved_for_later", d["id"]), {})) for d in saved]
+
+    if activity_type:
+        items = [it for it in items if it["activity_type"] == activity_type]
+    if status:
+        items = [it for it in items if it["status"] == status]
+    if unresolved_only:
+        items = [it for it in items if it["unresolved"]]
+    if assigned_user_id:
+        items = [it for it in items if it["assigned_user_id"] == assigned_user_id]
+
+    # Enrichment (room title / customer name / option label) is needed for
+    # display regardless of `search` — computed here, once, in the backend,
+    # never shipped as raw unfiltered source records for client-side search.
+    room_ids = {it["decision_room_id"] for it in items}
+    rooms = {}
+    if room_ids:
+        rooms = {r["id"]: r async for r in db.decision_rooms.find({"tenant_id": tenant_id, "id": {"$in": list(room_ids)}}, {"_id": 0})}
+    customer_ids = {it["customer_id"] for it in items if it["customer_id"]}
+    customers = {}
+    if customer_ids:
+        customers = {
+            c["id"]: c async for c in db.customers.find(
+                {"tenant_id": tenant_id, "id": {"$in": list(customer_ids)}}, {"_id": 0, "id": 1, "name": 1},
+            )
+        }
+    for it in items:
+        room = rooms.get(it["decision_room_id"], {})
+        it["decision_room_title"] = room.get("title")
+        it["customer_name"] = customers.get(it["customer_id"], {}).get("name") if it["customer_id"] else None
+        option = None
+        if it["option_id"]:
+            option = next((o for o in (room.get("options") or []) if o.get("id") == it["option_id"]), None)
+        it["option_label"] = option.get("customer_label") if option else None
+
+    if search:
+        s = search.strip().lower()
+        items = [
+            it for it in items
+            if s in (it.get("decision_room_title") or "").lower()
+            or s in (it.get("customer_name") or "").lower()
+            or s in (it.get("option_label") or "").lower()
+            or s in (it.get("customer_message") or "").lower()
+        ]
+
+    items.sort(key=lambda it: it.get("submitted_at") or "", reverse=True)
+    total = len(items)
+    page = items[offset: offset + limit]
+    return {"items": page, "total": total}
+
+
+async def acknowledge_review_item(
+    *, tenant_id: str, record_type: str, record_id: str, actor_user_id: str, actor_email: str,
+) -> dict[str, Any]:
+    """Generic "seen it" signal — dispatches to the existing owning
+    service for the type that supports it. Questions use `respond`/
+    `resolve` instead (a plain acknowledge has no meaning there); save-for-
+    later never needs staff action at all."""
+    if record_type == "customer_decision":
+        record = await _get_review_record(tenant_id, record_type, record_id)
+        return await acknowledge_customer_decision(
+            tenant_id=tenant_id, room_id=record["decision_room_id"], decision_id=record_id,
+            actor_user_id=actor_user_id, actor_email=actor_email,
+        )
+    if record_type == "overlay":
+        return await mark_overlay_reviewed(
+            tenant_id=tenant_id, record_id=record_id, actor_user_id=actor_user_id, actor_email=actor_email,
+        )
+    raise DecisionRoomError("acknowledge_not_supported", f"'{record_type}' has no generic acknowledge action")
+
+
+async def mark_overlay_reviewed(*, tenant_id: str, record_id: str, actor_user_id: str, actor_email: str) -> dict[str, Any]:
+    overlay = await _get_review_record(tenant_id, "overlay", record_id)
+    now = _now_iso()
+    meta = await _get_or_create_review_meta(tenant_id, overlay["decision_room_id"], "overlay", record_id)
+    await db.decision_room_review_meta.update_one(
+        {"id": meta["id"], "tenant_id": tenant_id},
+        {"$set": {"overlay_reviewed": True, "overlay_reviewed_by_user_id": actor_user_id, "overlay_reviewed_at": now, "updated_at": now}},
+    )
+    await record_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+        action="decision_room.review_overlay_reviewed", entity_type="decision_room", entity_id=overlay["decision_room_id"],
+        summary="Staff marked an anchored comment/pin as reviewed", diff={"overlay_id": record_id},
+    )
+    return _normalize_overlay(overlay, {"overlay_reviewed": True, "overlay_reviewed_by_user_id": actor_user_id, "overlay_reviewed_at": now})
+
+
+async def assign_review_item(
+    *, tenant_id: str, record_type: str, record_id: str, assigned_user_id: Optional[str], actor_user_id: str, actor_email: str,
+) -> dict[str, Any]:
+    record = await _get_review_record(tenant_id, record_type, record_id)
+    await _validate_assignee(tenant_id, assigned_user_id)
+    now = _now_iso()
+    meta = await _get_or_create_review_meta(tenant_id, record["decision_room_id"], record_type, record_id)
+    await db.decision_room_review_meta.update_one(
+        {"id": meta["id"], "tenant_id": tenant_id}, {"$set": {"assigned_user_id": assigned_user_id, "updated_at": now}},
+    )
+    await record_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+        action="decision_room.review_item_assigned" if assigned_user_id else "decision_room.review_item_unassigned",
+        entity_type="decision_room", entity_id=record["decision_room_id"],
+        summary="Reviewer assignment changed on a Decision Room activity item",
+        diff={"record_type": record_type, "record_id": record_id, "assigned_user_id": assigned_user_id},
+    )
+    return {"record_type": record_type, "record_id": record_id, "assigned_user_id": assigned_user_id}
+
+
+async def add_internal_note(
+    *, tenant_id: str, record_type: str, record_id: str, note: str, actor_user_id: str, actor_email: str,
+) -> dict[str, Any]:
+    record = await _get_review_record(tenant_id, record_type, record_id)
+    cleaned = _sanitize_customer_message(note, max_len=2000)
+    if not cleaned:
+        raise DecisionRoomError("question_message_required", "An internal note cannot be empty")
+    doc = DecisionRoomInternalNote(
+        tenant_id=tenant_id, decision_room_id=record["decision_room_id"], record_type=record_type,
+        record_id=record_id, note=cleaned, actor_user_id=actor_user_id, actor_email=actor_email,
+    ).model_dump()
+    await db.decision_room_internal_notes.insert_one(prepare_for_mongo(dict(doc)))
+    await record_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+        action="decision_room.review_internal_note_added", entity_type="decision_room", entity_id=record["decision_room_id"],
+        summary="Staff added an internal note on a Decision Room activity item",
+        diff={"record_type": record_type, "record_id": record_id, "note_length": len(cleaned)},
+    )
+    return serialize_doc(doc)
+
+
+async def list_internal_notes(*, tenant_id: str, record_type: str, record_id: str) -> list[dict[str, Any]]:
+    await _get_review_record(tenant_id, record_type, record_id)
+    cur = db.decision_room_internal_notes.find(
+        {"tenant_id": tenant_id, "record_type": record_type, "record_id": record_id}, {"_id": 0},
+    ).sort("created_at", -1)
     return [serialize_doc(d) async for d in cur]
