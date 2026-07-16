@@ -1822,6 +1822,7 @@ async def list_review_queue(
         if it["option_id"]:
             option = next((o for o in (room.get("options") or []) if o.get("id") == it["option_id"]), None)
         it["option_label"] = option.get("customer_label") if option else None
+        it["proof_id"] = option.get("proof_id") if option else None
 
     if search:
         s = search.strip().lower()

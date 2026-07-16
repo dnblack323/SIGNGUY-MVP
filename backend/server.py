@@ -199,6 +199,12 @@ api_router.include_router(decision_room_router_module.router)
 from app.routers import decision_room_portal as decision_room_portal_router_module
 api_router.include_router(decision_room_portal_router_module.router)
 
+# EC10 — Phase 10E-4 Internal Decision Room review queue. Triage-only:
+# list/filter customer activity, assign reviewers, mark supported items as
+# reviewed/acknowledged, and add staff-only notes. No commercial apply path.
+from app.routers import decision_room_review_queue as decision_room_review_queue_router_module
+api_router.include_router(decision_room_review_queue_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

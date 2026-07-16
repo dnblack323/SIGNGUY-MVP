@@ -24,6 +24,7 @@ import IntakeDetailPage from "@/pages/IntakeDetailPage";
 import DecisionRoomsPage from "@/pages/DecisionRoomsPage";
 import DecisionRoomNewPage from "@/pages/DecisionRoomNewPage";
 import DecisionRoomEditorPage from "@/pages/DecisionRoomEditorPage";
+import DecisionRoomReviewQueuePage from "@/pages/DecisionRoomReviewQueuePage";
 import PortalApp from "@/portal/PortalApp";
 import PublicApp from "@/public/PublicApp";
 import InvoicesPage from "@/pages/InvoicesPage";
@@ -103,6 +104,7 @@ function AppRoutes() {
         <Route path="/intake/new" element={<IntakeNewPage />} />
         <Route path="/intake/:id" element={<IntakeDetailPage />} />
         <Route path="/decision-rooms" element={<DecisionRoomsPage />} />
+        <Route path="/decision-room-review-queue" element={<DecisionRoomReviewQueuePage />} />
         <Route path="/decision-rooms/new" element={<DecisionRoomNewPage />} />
         <Route path="/decision-rooms/:id" element={<DecisionRoomEditorPage />} />
         <Route path="/invoices" element={<InvoicesPage />} />

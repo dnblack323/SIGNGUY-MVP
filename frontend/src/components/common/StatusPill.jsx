@@ -163,6 +163,13 @@ const CUSTOMER_DECISION_ACTION = {
 const DECISION_REVIEW_STATUS = {
   pending_review: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
   acknowledged: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
+  open: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  answered: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
+  resolved: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  reviewed: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  withdrawn: "bg-slate-200 text-slate-600 ring-1 ring-slate-300 line-through",
+  superseded: "bg-slate-200 text-slate-600 ring-1 ring-slate-300 line-through",
+  informational: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
 };
 
 const MAPS = {
