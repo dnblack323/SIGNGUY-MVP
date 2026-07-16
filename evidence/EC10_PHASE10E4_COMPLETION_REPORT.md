@@ -46,6 +46,7 @@
 - `yarn.cmd install --frozen-lockfile` - completed. Local Node 24 could not build optional `canvas`, but Yarn completed because it is optional.
 - `CI=true GENERATE_SOURCEMAP=false REACT_APP_BACKEND_URL=https://placeholder.invalid yarn.cmd build` - passed.
 - Targeted pytest command attempted locally: `python -m pytest tests/test_ec10_phase10e4_decision_room_review_queue.py -q`. Collection reached Mongo index setup, then failed because no local MongoDB service was listening at `localhost:27017`. GitHub Actions provides the MongoDB service for `backend-tests`.
+- GitHub Actions CI run `29480228139` for commit `088984e524516bab9948feeb4fd6483131fbdb4d` - passed: `backend-tests`, `frontend-tests`, and `frontend-build` all succeeded.
 
 ## 7. Explicit non-scope confirmations
 - Phase 10E-5 was not started.
