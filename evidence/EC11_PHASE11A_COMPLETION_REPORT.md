@@ -61,6 +61,8 @@ Initial GitHub Actions backend run `29527594762` failed one assertion in `tests/
 
 The fix keeps starter workflows available but changes category resolution to prefer non-starter tenant workflows before falling back to system starter workflows.
 
+Follow-up GitHub Actions run `29528530578` on commit `4aa32623918ba14539eb165951d2438757a87d26` passed `backend-tests`, `frontend-tests`, and `frontend-build`.
+
 ## Original resolver order
 
 The original resolver intent remains:
