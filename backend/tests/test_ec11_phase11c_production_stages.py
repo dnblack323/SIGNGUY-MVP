@@ -208,7 +208,14 @@ async def test_workflow_generation_override_snapshot_idempotency_and_no_commerci
         assert again.status_code == 200
         assert again.json()["stages"] == []
         assert await db.production_workflow_instances.count_documents({"tenant_id": ctx["tenant_id"], "work_order_id": ctx["wo_id"]}) == 3
-        assert await db.production_stage_instances.count_documents({"tenant_id": ctx["tenant_id"], "work_order_id": ctx["wo_id"], "stage_key": "design"}) == 1
+        persisted_stages = [
+            s async for s in db.production_stage_instances.find(
+                {"tenant_id": ctx["tenant_id"], "work_order_id": ctx["wo_id"]},
+                {"_id": 0, "workflow_instance_id": 1, "stage_key": 1},
+            )
+        ]
+        assert len(persisted_stages) == len(body["stages"])
+        assert len({(s["workflow_instance_id"], s["stage_key"]) for s in persisted_stages}) == len(persisted_stages)
 
         await db.production_workflows.update_one({"id": category_wf["id"]}, {"$set": {"stages.0.display_name": "Edited Template Name"}})
         listed = await c.get(f"/api/work-orders/{ctx['wo_id']}/stages")
