@@ -23,6 +23,7 @@ KNOWN_NAMESPACES: tuple[str, ...] = (
     "documents",
     "payroll",
     "certification",
+    "production_kiosk",
 )
 
 

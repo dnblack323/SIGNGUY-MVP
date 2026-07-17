@@ -7,7 +7,11 @@ import uuid
 import requests
 import pytest
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
+BASE_URL_ENV = os.environ.get("REACT_APP_BACKEND_URL")
+if not BASE_URL_ENV:
+    pytest.skip("REACT_APP_BACKEND_URL is required for live foundation hardening tests", allow_module_level=True)
+
+BASE_URL = BASE_URL_ENV.rstrip("/")
 
 
 def _register(slug, email, password="TestPass123!"):

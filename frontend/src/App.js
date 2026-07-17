@@ -18,12 +18,15 @@ import OrderDetailPage from "@/pages/OrderDetailPage";
 import WorkOrdersPage from "@/pages/WorkOrdersPage";
 import WorkOrderDetailPage from "@/pages/WorkOrderDetailPage";
 import ProductionBoardPage from "@/pages/ProductionBoardPage";
+import ProductionKioskPage from "@/pages/ProductionKioskPage";
 import IntakePage from "@/pages/IntakePage";
 import IntakeNewPage from "@/pages/IntakeNewPage";
 import IntakeDetailPage from "@/pages/IntakeDetailPage";
 import DecisionRoomsPage from "@/pages/DecisionRoomsPage";
 import DecisionRoomNewPage from "@/pages/DecisionRoomNewPage";
 import DecisionRoomEditorPage from "@/pages/DecisionRoomEditorPage";
+import DecisionRoomReviewQueuePage from "@/pages/DecisionRoomReviewQueuePage";
+import TemplatesPage from "@/pages/TemplatesPage";
 import PortalApp from "@/portal/PortalApp";
 import PublicApp from "@/public/PublicApp";
 import InvoicesPage from "@/pages/InvoicesPage";
@@ -35,6 +38,7 @@ import CompanySettingsPage from "@/pages/CompanySettingsPage";
 import IntegrationsPage from "@/pages/IntegrationsPage";
 import FeatureAccessPage from "@/pages/FeatureAccessPage";
 import DataSecurityPage from "@/pages/DataSecurityPage";
+import ProductionWorkflowsPage from "@/pages/ProductionWorkflowsPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 import PricingFoundationPage from "@/pages/PricingFoundationPage";
 import PricingCalculatorPage from "@/pages/PricingCalculatorPage";
@@ -86,6 +90,7 @@ function AppRoutes() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/portal/employee/*" element={<EmployeePortalApp />} />
+      <Route path="/kiosk/production" element={<ProductionKioskPage />} />
       <Route path="/portal/*" element={<PortalApp />} />
       <Route path="/p/*" element={<PublicApp />} />
       <Route element={<RequireAuth><AppShell /></RequireAuth>}>
@@ -103,6 +108,8 @@ function AppRoutes() {
         <Route path="/intake/new" element={<IntakeNewPage />} />
         <Route path="/intake/:id" element={<IntakeDetailPage />} />
         <Route path="/decision-rooms" element={<DecisionRoomsPage />} />
+        <Route path="/decision-room-review-queue" element={<DecisionRoomReviewQueuePage />} />
+        <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/decision-rooms/new" element={<DecisionRoomNewPage />} />
         <Route path="/decision-rooms/:id" element={<DecisionRoomEditorPage />} />
         <Route path="/invoices" element={<InvoicesPage />} />
@@ -138,6 +145,7 @@ function AppRoutes() {
         <Route path="/settings/company" element={<CompanySettingsPage />} />
         <Route path="/settings/integrations" element={<IntegrationsPage />} />
         <Route path="/settings/features" element={<FeatureAccessPage />} />
+        <Route path="/settings/production-workflows" element={<ProductionWorkflowsPage />} />
         <Route path="/settings/data-security" element={<DataSecurityPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

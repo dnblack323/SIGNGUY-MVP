@@ -17,7 +17,8 @@ from pydantic import BaseModel
 from ..core.db import db
 from ..core.time_utils import utc_now
 from ..deps_portal import require_employee_portal_permission
-from ..services import announcement_service, certification_service, payroll_service, schedule_service, time_clock_service, timesheet_service, training_service
+from ..services import announcement_service, certification_service, payroll_service, production_board_service, production_stage_service, schedule_service, time_clock_service, timesheet_service, training_service
+from ..services.production_stage_service import ProductionStageError
 from ..services.portal_identity import update_portal_identity
 from ..services.time_clock_service import TimeEntryError
 from ..services.timesheet_service import TimesheetError
@@ -38,6 +39,19 @@ def _raise(e):
     raise HTTPException(status_code=e.status_code, detail=e.detail)
 
 
+def _raise_stage(e: ProductionStageError) -> None:
+    status = {
+        "stage_not_found": 404,
+        "work_order_not_found": 404,
+        "invalid_transition": 400,
+        "previous_stage_incomplete": 409,
+        "proof_gate_blocked": 409,
+        "reason_required": 400,
+        "note_required": 400,
+    }.get(e.code, 400)
+    raise HTTPException(status_code=status, detail=str(e))
+
+
 def _public_employee_view(emp: dict) -> dict:
     """Strip manager-only / payroll-sensitive fields before returning to the portal."""
     hidden = {"hourly_rate_cents", "notes", "status_history", "linked_user_id", "overtime_policy"}
@@ -55,6 +69,28 @@ async def _refresh_timesheet(tenant_id: str, employee_id: str, entry: dict) -> N
     await timesheet_service.refresh_after_time_entry_change(
         tenant_id=tenant_id, employee_id=employee_id, work_date=entry["work_date"],
     )
+
+
+def _portal_actor(identity: dict) -> dict:
+    return {
+        "id": f"portal:{identity['id']}",
+        "tenant_id": identity["tenant_id"],
+        "email": identity.get("email") or "employee-portal",
+        "role": "employee_portal",
+        "permissions": [],
+    }
+
+
+async def _get_own_stage(identity: dict, stage_id: str) -> dict:
+    try:
+        stage = await production_stage_service.get_stage(tenant_id=identity["tenant_id"], stage_id=stage_id)
+    except ProductionStageError as e:
+        _raise_stage(e)
+    if not bool(stage.get("employee_visible", True)):
+        raise HTTPException(status_code=404, detail="Production task not found")
+    if stage.get("assigned_employee_id") != identity["employee_id"]:
+        raise HTTPException(status_code=403, detail="Production task is not assigned to this employee")
+    return stage
 
 
 # ---- Dashboard ----
@@ -94,6 +130,93 @@ async def dashboard(identity: dict = Depends(VIEW)) -> dict:
         "tasks": {"available": False, "items": []},
         "pay": latest_pay,
     }
+
+
+# ---- Production / Kiosk (EC11 Phase 11E) ----
+
+class ProductionActionIn(BaseModel):
+    reason: Optional[str] = None
+    completion_note: Optional[str] = None
+    note: Optional[str] = None
+
+
+@router.get("/production")
+async def production_home(search: Optional[str] = None, identity: dict = Depends(VIEW)) -> dict:
+    await _get_self_employee(identity)
+    return await production_board_service.get_employee_production_view(
+        tenant_id=identity["tenant_id"],
+        employee_id=identity["employee_id"],
+        search=search,
+    )
+
+
+@router.post("/production/stages/{stage_id}/start")
+async def production_start(stage_id: str, identity: dict = Depends(VIEW)) -> dict:
+    await _get_own_stage(identity, stage_id)
+    try:
+        return await production_stage_service.transition_stage(
+            tenant_id=identity["tenant_id"], stage_id=stage_id, target="in_progress", user=_portal_actor(identity),
+        )
+    except ProductionStageError as e:
+        _raise_stage(e)
+
+
+@router.post("/production/stages/{stage_id}/resume")
+async def production_resume(stage_id: str, identity: dict = Depends(VIEW)) -> dict:
+    await _get_own_stage(identity, stage_id)
+    try:
+        return await production_stage_service.transition_stage(
+            tenant_id=identity["tenant_id"], stage_id=stage_id, target="in_progress", user=_portal_actor(identity),
+        )
+    except ProductionStageError as e:
+        _raise_stage(e)
+
+
+@router.post("/production/stages/{stage_id}/wait")
+async def production_wait(stage_id: str, payload: ProductionActionIn, identity: dict = Depends(VIEW)) -> dict:
+    await _get_own_stage(identity, stage_id)
+    try:
+        return await production_stage_service.transition_stage(
+            tenant_id=identity["tenant_id"], stage_id=stage_id, target="waiting",
+            user=_portal_actor(identity), reason=payload.reason,
+        )
+    except ProductionStageError as e:
+        _raise_stage(e)
+
+
+@router.post("/production/stages/{stage_id}/block")
+async def production_block(stage_id: str, payload: ProductionActionIn, identity: dict = Depends(VIEW)) -> dict:
+    await _get_own_stage(identity, stage_id)
+    try:
+        return await production_stage_service.transition_stage(
+            tenant_id=identity["tenant_id"], stage_id=stage_id, target="blocked",
+            user=_portal_actor(identity), reason=payload.reason,
+        )
+    except ProductionStageError as e:
+        _raise_stage(e)
+
+
+@router.post("/production/stages/{stage_id}/complete")
+async def production_complete(stage_id: str, payload: ProductionActionIn, identity: dict = Depends(VIEW)) -> dict:
+    await _get_own_stage(identity, stage_id)
+    try:
+        return await production_stage_service.transition_stage(
+            tenant_id=identity["tenant_id"], stage_id=stage_id, target="completed",
+            user=_portal_actor(identity), completion_note=payload.completion_note,
+        )
+    except ProductionStageError as e:
+        _raise_stage(e)
+
+
+@router.post("/production/stages/{stage_id}/notes")
+async def production_note(stage_id: str, payload: ProductionActionIn, identity: dict = Depends(VIEW)) -> dict:
+    await _get_own_stage(identity, stage_id)
+    try:
+        return await production_stage_service.add_stage_note(
+            tenant_id=identity["tenant_id"], stage_id=stage_id, note=payload.note or "", user=_portal_actor(identity),
+        )
+    except ProductionStageError as e:
+        _raise_stage(e)
 
 
 # ---- Time Clock (thin wrappers over the Phase 8b service — no duplicate logic) ----

@@ -528,4 +528,46 @@ async def ensure_indexes() -> None:
         [("tenant_id", 1), ("record_type", 1), ("record_id", 1), ("created_at", -1)],
     )
 
+    # ---- EC10 phase 10G - reusable intake/questionnaire/decision-option templates ----
+    await db.template_definitions.create_index("id", unique=True)
+    await db.template_definitions.create_index([("tenant_id", 1), ("template_type", 1), ("active", 1)])
+    await db.template_definitions.create_index([("tenant_id", 1), ("name", 1), ("template_type", 1)])
+
+    # ---- EC11 phase 11A - Production Workflow Definitions ----
+    await db.production_workflows.create_index("id", unique=True)
+    await db.production_workflows.create_index([("tenant_id", 1), ("workflow_key", 1)], unique=True)
+    await db.production_workflows.create_index([("tenant_id", 1), ("is_tenant_default", 1), ("active", 1)])
+    await db.production_workflows.create_index([("tenant_id", 1), ("category_ids", 1), ("active", 1)])
+    await db.production_workflows.create_index([("tenant_id", 1), ("scope_type", 1), ("archived_at", 1)])
+
+    # ---- EC11 phase 11C - Live Work Order / Order Item production stages ----
+    await db.order_item_workflow_overrides.create_index("id", unique=True)
+    await db.order_item_workflow_overrides.create_index(
+        [("tenant_id", 1), ("order_item_id", 1)], unique=True,
+    )
+    await db.order_item_workflow_overrides.create_index([("tenant_id", 1), ("order_id", 1)])
+
+    await db.production_workflow_instances.create_index("id", unique=True)
+    await db.production_workflow_instances.create_index(
+        [("tenant_id", 1), ("work_order_id", 1), ("order_item_id", 1)], unique=True,
+    )
+    await db.production_workflow_instances.create_index([("tenant_id", 1), ("order_id", 1)])
+
+    await db.production_stage_instances.create_index("id", unique=True)
+    await db.production_stage_instances.create_index(
+        [("tenant_id", 1), ("workflow_instance_id", 1), ("stage_key", 1)], unique=True,
+    )
+    await db.production_stage_instances.create_index([("tenant_id", 1), ("work_order_id", 1), ("sequence", 1)])
+    await db.production_stage_instances.create_index([("tenant_id", 1), ("order_item_id", 1), ("sequence", 1)])
+    await db.production_stage_instances.create_index([("tenant_id", 1), ("assigned_employee_id", 1), ("status", 1)])
+
+    # EC11 Phase 11F - shared-device production kiosk sessions and one-time supervisor overrides.
+    await db.production_kiosk_sessions.create_index("id", unique=True)
+    await db.production_kiosk_sessions.create_index("device_token_hash", unique=True)
+    await db.production_kiosk_sessions.create_index([("tenant_id", 1), ("status", 1), ("expires_at", 1)])
+    await db.production_kiosk_sessions.create_index([("tenant_id", 1), ("activated_by_user_id", 1)])
+    await db.production_kiosk_supervisor_overrides.create_index("id", unique=True)
+    await db.production_kiosk_supervisor_overrides.create_index("override_token_hash", unique=True)
+    await db.production_kiosk_supervisor_overrides.create_index([("tenant_id", 1), ("kiosk_session_id", 1), ("expires_at", 1)])
+
     logger.info("MongoDB indexes ensured")

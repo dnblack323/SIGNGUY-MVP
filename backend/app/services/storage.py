@@ -17,11 +17,19 @@ logger = logging.getLogger(__name__)
 _settings = get_settings()
 
 _STORAGE_KEY: str | None = None
+_TEST_OBJECTS: dict[str, tuple[bytes, str]] = {}
+
+
+def _use_test_storage() -> bool:
+    return _settings.env == "test" and not _settings.emergent_llm_key
 
 
 def _init_storage_key() -> str:
     global _STORAGE_KEY
     if _STORAGE_KEY:
+        return _STORAGE_KEY
+    if _use_test_storage():
+        _STORAGE_KEY = "test-storage"
         return _STORAGE_KEY
     if not _settings.emergent_llm_key:
         raise RuntimeError("EMERGENT_LLM_KEY missing; object storage unavailable")
@@ -50,6 +58,9 @@ def build_key(tenant_id: str, filename: str) -> str:
 
 
 def put_bytes(storage_key: str, data: bytes, content_type: str) -> dict:
+    if _use_test_storage():
+        _TEST_OBJECTS[storage_key] = (data, content_type)
+        return {"storage_key": storage_key, "test_storage": True}
     key = _init_storage_key()
     resp = requests.put(
         f"{_settings.storage_url}/objects/{storage_key}",
@@ -62,6 +73,10 @@ def put_bytes(storage_key: str, data: bytes, content_type: str) -> dict:
 
 
 def get_bytes(storage_key: str) -> Tuple[bytes, str]:
+    if _use_test_storage():
+        if storage_key not in _TEST_OBJECTS:
+            raise FileNotFoundError(storage_key)
+        return _TEST_OBJECTS[storage_key]
     key = _init_storage_key()
     resp = requests.get(
         f"{_settings.storage_url}/objects/{storage_key}",

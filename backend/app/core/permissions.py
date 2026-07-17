@@ -31,7 +31,7 @@ class Perm(str, Enum):
     pricing, inventory, vendor, purchasing, employee, task, schedule,
     timeclock, timesheet, payroll, equipment, training, certification,
     report, webstore, wrap_lab, ai, settings, integration, subscription,
-    community, ai_credit, intake, markup.
+    community, ai_credit, intake, markup, production_workflow.
     """
     # Customers / Leads
     CUSTOMER_READ = "customer:read"
@@ -176,6 +176,12 @@ class Perm(str, Enum):
     DECISION_ROOM_WRITE = "decision_room:write"
     DECISION_ROOM_PUBLISH = "decision_room:publish"
     DECISION_ROOM_ARCHIVE = "decision_room:archive"
+    TEMPLATE_READ = "template:read"
+    TEMPLATE_WRITE = "template:write"
+    # EC11 Phase 11A - Production Workflow Definitions. Read is staff-visible;
+    # manage is owner/admin-only in the current role model.
+    PRODUCTION_WORKFLOW_READ = "production_workflow:read"
+    PRODUCTION_WORKFLOW_MANAGE = "production_workflow:manage"
 
 
 class PlatformPerm(str, Enum):
@@ -241,6 +247,8 @@ STAFF_PERMS: list[str] = [
     # EC10 Phase 10D — every staff login may author/edit Decision Rooms;
     # publish/archive remain owner/admin-only (see Perm docstring above).
     Perm.DECISION_ROOM_READ.value, Perm.DECISION_ROOM_WRITE.value,
+    Perm.TEMPLATE_READ.value, Perm.TEMPLATE_WRITE.value,
+    Perm.PRODUCTION_WORKFLOW_READ.value,
 ]
 
 ROLE_PERMISSIONS: dict[str, list[str]] = {

@@ -12,13 +12,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import StatusPill from "@/components/common/StatusPill";
-import { AuditTimeline } from "@/components/audit/AuditTimeline";
+import ProductionTimeline from "@/components/production/ProductionTimeline";
 import { centsToDollarsString } from "@/lib/format";
 import { ArrowLeft, Save, RefreshCw, Users as UsersIcon, Printer, AlertTriangle, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { RegenerateDialog, TransitionReasonDialog, AssignDialog } from "@/components/work-orders/GenerateWorkOrderDialog";
 import RequirementsDialog from "@/components/work-orders/RequirementsDialog";
 import PrintSummaryDialog from "@/components/work-orders/PrintSummaryDialog";
+import WorkOrderStagesPanel from "@/components/production/WorkOrderStagesPanel";
 
 const ALLOWED = {
   draft: ["released", "cancelled"],
@@ -43,7 +44,6 @@ export default function WorkOrderDetailPage() {
   const canWrite = hasPerm("work_order:write");
 
   const { data: w } = useQuery({ queryKey: ["work-order", id], queryFn: async () => (await api.get(`/work-orders/${id}`)).data });
-  const { data: audit } = useQuery({ queryKey: ["audit-wo", id], queryFn: async () => (await api.get(`/audit`, { params: { entity_type: "work_order", entity_id: id } })).data, enabled: !!id });
   const { data: users } = useQuery({ queryKey: ["users"], queryFn: async () => (await api.get(`/users`)).data });
   const { data: equipment } = useQuery({ queryKey: ["equipment-for-wo"], queryFn: async () => (await api.get("/equipment")).data.items, retry: false });
 
@@ -67,7 +67,7 @@ export default function WorkOrderDetailPage() {
 
   const save = useMutation({
     mutationFn: async (payload) => (await api.patch(`/work-orders/${id}`, payload)).data,
-    onSuccess: () => { toast.success("Saved"); qc.invalidateQueries({ queryKey: ["work-order", id] }); qc.invalidateQueries({ queryKey: ["audit-wo", id] }); setForm({}); },
+    onSuccess: () => { toast.success("Saved"); qc.invalidateQueries({ queryKey: ["work-order", id] }); qc.invalidateQueries({ queryKey: ["production-timeline"] }); setForm({}); },
     onError: (e) => toast.error(extractError(e)),
   });
 
@@ -76,7 +76,7 @@ export default function WorkOrderDetailPage() {
     onSuccess: (res) => {
       toast.success(`Moved to ${res.production_status}`);
       qc.invalidateQueries({ queryKey: ["work-order", id] });
-      qc.invalidateQueries({ queryKey: ["audit-wo", id] });
+      qc.invalidateQueries({ queryKey: ["production-timeline"] });
     },
     onError: (e) => toast.error(extractError(e)),
   });
@@ -141,6 +141,7 @@ export default function WorkOrderDetailPage() {
         <Tabs defaultValue="items" data-testid="detail-tabs">
           <TabsList>
             <TabsTrigger value="items" data-testid="detail-tab-items">Items</TabsTrigger>
+            <TabsTrigger value="stages" data-testid="detail-tab-stages">Stages</TabsTrigger>
             <TabsTrigger value="details" data-testid="detail-tab-details">Details</TabsTrigger>
             <TabsTrigger value="activity" data-testid="detail-tab-activity">Activity</TabsTrigger>
           </TabsList>
@@ -174,6 +175,9 @@ export default function WorkOrderDetailPage() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+          <TabsContent value="stages">
+            <WorkOrderStagesPanel workOrderId={id} />
           </TabsContent>
           <TabsContent value="details" className="space-y-4">
             <Card>
@@ -213,7 +217,7 @@ export default function WorkOrderDetailPage() {
               </CardContent>
             </Card>
           </TabsContent>
-          <TabsContent value="activity"><AuditTimeline events={audit?.items || []} /></TabsContent>
+          <TabsContent value="activity"><ProductionTimeline scope="work_order" workOrderId={id} /></TabsContent>
         </Tabs>
 
         <aside className="space-y-4">

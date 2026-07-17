@@ -194,10 +194,40 @@ api_router.include_router(visual_markup_router_module.router)
 from app.routers import decision_room as decision_room_router_module
 api_router.include_router(decision_room_router_module.router)
 
+from app.routers import decision_room_apply as decision_room_apply_router_module
+api_router.include_router(decision_room_apply_router_module.router)
+
 # EC10 — Phase 10E-1 Customer Portal Decision Room access (read-only,
 # published-version-only; no selection/rejection/comment actions yet).
 from app.routers import decision_room_portal as decision_room_portal_router_module
 api_router.include_router(decision_room_portal_router_module.router)
+
+# EC10 — Phase 10E-4 Internal Decision Room review queue. Triage-only:
+# list/filter customer activity, assign reviewers, mark supported items as
+# reviewed/acknowledged, and add staff-only notes. No commercial apply path.
+from app.routers import decision_room_review_queue as decision_room_review_queue_router_module
+api_router.include_router(decision_room_review_queue_router_module.router)
+
+from app.routers import templates as templates_router_module
+api_router.include_router(templates_router_module.router)
+
+# EC11 - Phase 11A Production Workflow Definitions and canonical stage contracts.
+from app.routers import production_workflows as production_workflows_router_module
+api_router.include_router(production_workflows_router_module.router)
+
+# EC11 - Phase 11B Production Timeline and Event History Foundation. Staff-only,
+# read-only projection over existing source records; no live stage mutations.
+from app.routers import production_timeline as production_timeline_router_module
+api_router.include_router(production_timeline_router_module.router)
+
+# EC11 - Phase 11C Live Work Order / Order Item production stage instances.
+from app.routers import production_stages as production_stages_router_module
+api_router.include_router(production_stages_router_module.router)
+
+# EC11 - Phase 11F Shop-Floor Production Kiosk Mode. Restricted kiosk-device
+# sessions delegate stage actions to Phase 11C and Time Clock actions to EC8.
+from app.routers import production_kiosk as production_kiosk_router_module
+api_router.include_router(production_kiosk_router_module.router)
 
 app.include_router(api_router)
 

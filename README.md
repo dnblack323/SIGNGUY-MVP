@@ -38,7 +38,7 @@ Required backend environment variables (`backend/.env`, never committed):
 | `JWT_SECRET` | Secret for signing access tokens |
 | `ENV` | `development` or `production` — gates all `/api/*/dev-*` routes and dev-only response fields |
 | `AUTH_DEV_BYPASS` | `true` only in development — enables `/api/auth/dev-login` |
-| `EMERGENT_LLM_KEY` | Universal key for OpenAI/Anthropic/Gemini via `emergentintegrations` |
+| `EMERGENT_LLM_KEY` | Universal key used by AI and object-storage integrations when those optional features are enabled |
 | `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, `SENDGRID_FROM_NAME` | Transactional email |
 | `STRIPE_API_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WRITES_ENABLED` | Payments |
 

@@ -33,7 +33,10 @@ from ..models.decision_room import (
     SavedForLater,
 )
 from ..services.audit import record_audit
+from ..services.commerce_totals import compute_line_totals
 from ..services.notifications import notify_tenant_owners
+from ..services.pricing_snapshot import build_manual_snapshot
+from ..services.pricing_snapshot_records import create_snapshot_record
 
 logger = logging.getLogger(__name__)
 
@@ -1161,6 +1164,253 @@ async def acknowledge_customer_decision(
     return serialize_doc(doc)
 
 
+def _dollars_from_cents(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return round(int(value) / 100, 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def _embedded_snapshot_from_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Rehydrate the frozen PricingSnapshotRecord into the embedded line-item
+    snapshot shape expected by `create_snapshot_record`, without re-reading
+    live Pricing Foundation defaults or Material/Profile/Component records."""
+    labor = record.get("labor_breakdown_cents") or {}
+    return {
+        "source": "decision_room_snapshot",
+        "pricing_method": record.get("formula_version"),
+        "calculator_version": record.get("starter_default_version"),
+        "formula_version": record.get("formula_version"),
+        "category": record.get("category"),
+        "quantity": record.get("quantity"),
+        "calculated_unit_price_cents": record.get("suggested_price_cents"),
+        "override_unit_price_cents": record.get("manual_price_cents"),
+        "suggested_price_dollars": _dollars_from_cents(record.get("suggested_price_cents")),
+        "defaults_snapshot": record.get("shop_defaults_used") or {},
+        "foundation_effective_at": record.get("pricing_foundation_effective_at"),
+        "category_inputs": record.get("category_inputs") or {},
+        "source_labels": record.get("source_labels") or {},
+        "calculation_warnings": record.get("calculation_warnings") or [],
+        "breakdown": [
+            {"label": row.get("label"), "amount": _dollars_from_cents(row.get("amount_cents")) or 0}
+            for row in (record.get("cost_breakdown") or [])
+        ],
+        "labor_cost_dollars": _dollars_from_cents(labor.get("labor_cost_cents")),
+        "design_cost_dollars": _dollars_from_cents(labor.get("design_cost_cents")),
+        "install_cost_dollars": _dollars_from_cents(labor.get("install_cost_cents")),
+        "overhead_cost_dollars": _dollars_from_cents(record.get("overhead_cost_cents")),
+        "saved_item_id": record.get("saved_item_id"),
+        "material_profile_id": (record.get("material_profile_ids") or [None])[0],
+        "pricing_component_ids": record.get("pricing_component_ids") or [],
+        "material_profile_snapshot": record.get("material_values_used") or {},
+        "pricing_components_snapshot": record.get("pricing_component_values_used") or [],
+        "saved_item_snapshot": record.get("saved_item_values_used") or {},
+        "category_defaults_used": record.get("category_defaults_used") or {},
+        "minimum_charge_applied": bool(record.get("minimum_applied")),
+        "rush_applied": bool(record.get("rush_adjustment_applied")),
+        "captured_at": record.get("created_at"),
+    }
+
+
+def _line_updates_from_selected_option(
+    *, option: dict[str, Any], snapshot_record: Optional[dict[str, Any]], current_line: dict[str, Any],
+    actor_user_id: str, actor_email: str, note: Optional[str],
+) -> dict[str, Any]:
+    now = _now_iso()
+    if snapshot_record:
+        selected_source = snapshot_record.get("selected_price_source") or "suggested"
+        final_price = int(snapshot_record.get("selected_final_price_cents") or option.get("selected_display_price_cents") or 0)
+        updates: dict[str, Any] = {
+            "category": snapshot_record.get("category"),
+            "item_name": snapshot_record.get("item_name"),
+            "description": snapshot_record.get("description") or current_line.get("description"),
+            "quantity": int(snapshot_record.get("quantity") or current_line.get("quantity") or 1),
+            "category_inputs": dict(snapshot_record.get("category_inputs") or {}),
+            "material_profile_id": (snapshot_record.get("material_profile_ids") or [None])[0],
+            "pricing_component_ids": list(snapshot_record.get("pricing_component_ids") or []),
+            "saved_item_id": snapshot_record.get("saved_item_id"),
+            "unit_price_cents": final_price,
+            "suggested_price_cents": snapshot_record.get("suggested_price_cents"),
+            "manual_price_cents": snapshot_record.get("manual_price_cents"),
+            "selected_price_source": selected_source,
+            "pricing_status": "calculated" if selected_source == "suggested" else "manual",
+            "estimated_profit_cents": snapshot_record.get("estimated_profit_cents"),
+            "estimated_margin_percent": snapshot_record.get("estimated_margin_percent"),
+            "calculation_warnings": list(snapshot_record.get("calculation_warnings") or []),
+            "source_labels": dict(snapshot_record.get("source_labels") or {}),
+            "pricing_snapshot": _embedded_snapshot_from_record(snapshot_record),
+            "price_selected_by_user_id": actor_user_id,
+        }
+    else:
+        final_price = int(option.get("manual_price_cents") or option.get("selected_display_price_cents") or 0)
+        reason = (note or "").strip() or "Decision Room staff acceptance"
+        updates = {
+            "unit_price_cents": final_price,
+            "manual_price_cents": final_price,
+            "selected_price_source": "manual",
+            "pricing_status": "manual",
+            "pricing_snapshot": build_manual_snapshot(
+                unit_price_cents=final_price,
+                quantity=int(current_line.get("quantity") or 1),
+                reason=reason,
+                actor_user_id=actor_user_id,
+                actor_email=actor_email,
+                source="decision_room",
+            ),
+            "manual_override_reason": reason,
+            "manual_override_actor_user_id": actor_user_id,
+            "manual_override_actor_email": actor_email,
+            "manual_override_at": now,
+            "price_selected_by_user_id": actor_user_id,
+        }
+    updates = {k: v for k, v in updates.items() if v is not None}
+    merged = {**current_line, **updates}
+    updates.update(compute_line_totals(
+        quantity=int(merged.get("quantity") or 1),
+        unit_price_cents=int(merged.get("unit_price_cents") or 0),
+        discount_cents=int(merged.get("discount_cents") or 0),
+        tax_cents=int(merged.get("tax_cents") or 0),
+    ))
+    updates["updated_at"] = now
+    return updates
+
+
+async def _apply_option_to_quote_line_item(
+    *, tenant_id: str, quote_line_item_id: str, option: dict[str, Any], snapshot_record: Optional[dict[str, Any]],
+    actor_user_id: str, actor_email: str, note: Optional[str],
+) -> tuple[str, str, Optional[str]]:
+    from ..routers import quotes as quotes_router
+
+    line = await db.quote_line_items.find_one({"id": quote_line_item_id, "tenant_id": tenant_id})
+    if not line:
+        raise DecisionRoomError("quote_line_item_not_found", "Quote line item not found for this tenant")
+    quote = await db.quotes.find_one({"id": line["quote_id"], "tenant_id": tenant_id})
+    if not quote:
+        raise DecisionRoomError("quote_not_found", "Quote not found for this tenant")
+    if quote.get("status") == "converted":
+        raise DecisionRoomError("quote_converted", "Cannot apply a Decision Room option to a converted quote")
+    user = {"tenant_id": tenant_id, "id": actor_user_id, "email": actor_email}
+    if quote.get("status") not in {"draft"}:
+        new_rev = await quotes_router._create_revision_before_edit(quote, user, reason="decision_room_apply")
+        await db.quotes.update_one({"id": quote["id"]}, {"$set": {"revision_number": new_rev, "updated_at": _now_iso()}})
+        line = await db.quote_line_items.find_one({"id": quote_line_item_id, "tenant_id": tenant_id})
+
+    updates = _line_updates_from_selected_option(
+        option=option, snapshot_record=snapshot_record, current_line=line,
+        actor_user_id=actor_user_id, actor_email=actor_email, note=note,
+    )
+    await db.quote_line_items.update_one({"id": quote_line_item_id, "tenant_id": tenant_id}, {"$set": updates})
+    totals = await quotes_router._recompute_quote_totals(tenant_id, quote["id"])
+    await db.quotes.update_one({"id": quote["id"], "tenant_id": tenant_id}, {"$set": {**totals, "updated_at": _now_iso()}})
+    record = await create_snapshot_record(
+        tenant_id=tenant_id, source_type="quote_line_item", source_id=quote_line_item_id,
+        quote_id=quote["id"], item_doc={**line, **updates}, calculated_by_user_id=actor_user_id,
+    )
+    return "quote_line_item", quote_line_item_id, record["id"]
+
+
+async def _apply_option_to_order_item(
+    *, tenant_id: str, order_item_id: str, option: dict[str, Any], snapshot_record: Optional[dict[str, Any]],
+    actor_user_id: str, actor_email: str, note: Optional[str],
+) -> tuple[str, str, Optional[str]]:
+    from ..routers import orders as orders_router
+
+    line = await db.order_items.find_one({"id": order_item_id, "tenant_id": tenant_id})
+    if not line:
+        raise DecisionRoomError("order_item_not_found", "Order Item not found for this tenant")
+    order = await db.orders.find_one({"id": line["order_id"], "tenant_id": tenant_id})
+    if not order:
+        raise DecisionRoomError("order_not_found", "Order not found for this tenant")
+    updates = _line_updates_from_selected_option(
+        option=option, snapshot_record=snapshot_record, current_line=line,
+        actor_user_id=actor_user_id, actor_email=actor_email, note=note,
+    )
+    await db.order_items.update_one({"id": order_item_id, "tenant_id": tenant_id}, {"$set": updates})
+    await orders_router._recompute_order_totals(tenant_id, order["id"])
+    record = await create_snapshot_record(
+        tenant_id=tenant_id, source_type="order_item", source_id=order_item_id,
+        order_id=order["id"], item_doc={**line, **updates}, calculated_by_user_id=actor_user_id,
+    )
+    return "order_item", order_item_id, record["id"]
+
+
+async def apply_customer_decision(
+    *, tenant_id: str, room_id: str, decision_id: str, actor_user_id: str, actor_email: str, note: Optional[str] = None,
+) -> dict[str, Any]:
+    """EC10 Phase 10F - explicit staff-controlled commercial acceptance.
+
+    Customer submissions remain append-only. This function is the only
+    Decision Room path that mutates Quote Line Items or Order Items, and it
+    runs only when staff accepts a non-superseded `option_selected` decision.
+    """
+    room = await _get_room(tenant_id, room_id)
+    decision = await db.customer_decisions.find_one({"id": decision_id, "tenant_id": tenant_id, "decision_room_id": room_id})
+    if not decision:
+        raise DecisionRoomError("decision_not_found", "Customer decision not found")
+    if decision.get("internal_review_status") == "applied":
+        decision.pop("_id", None)
+        return serialize_doc(decision)
+    if decision.get("action_type") != "option_selected" or not decision.get("option_id"):
+        raise DecisionRoomError("decision_not_applicable", "Only option_selected decisions can be applied")
+    superseding = await db.customer_decisions.find_one(
+        {"tenant_id": tenant_id, "decision_room_id": room_id, "supersedes_decision_id": decision_id}, {"_id": 0, "id": 1},
+    )
+    if superseding:
+        raise DecisionRoomError("decision_superseded", "This customer selection was superseded by a later selection")
+    version = await db.decision_room_versions.find_one(
+        {"id": decision["published_version_id"], "tenant_id": tenant_id, "decision_room_id": room_id}, {"_id": 0},
+    )
+    if not version:
+        raise DecisionRoomError("version_not_found", "Decision Room version not found")
+    option = _find_frozen_active_option(version, decision["option_id"])
+
+    snapshot_record = None
+    if option.get("pricing_snapshot_id"):
+        snapshot_record = await db.pricing_snapshot_records.find_one(
+            {"id": option["pricing_snapshot_id"], "tenant_id": tenant_id}, {"_id": 0},
+        )
+        if not snapshot_record:
+            raise DecisionRoomError("pricing_snapshot_not_found", "Pricing snapshot not found for this tenant")
+
+    if option.get("order_item_id") or room.get("order_item_id"):
+        target_type, target_id, snapshot_id = await _apply_option_to_order_item(
+            tenant_id=tenant_id, order_item_id=option.get("order_item_id") or room.get("order_item_id"),
+            option=option, snapshot_record=snapshot_record, actor_user_id=actor_user_id, actor_email=actor_email, note=note,
+        )
+    elif option.get("quote_line_item_id"):
+        target_type, target_id, snapshot_id = await _apply_option_to_quote_line_item(
+            tenant_id=tenant_id, quote_line_item_id=option["quote_line_item_id"],
+            option=option, snapshot_record=snapshot_record, actor_user_id=actor_user_id, actor_email=actor_email, note=note,
+        )
+    else:
+        raise DecisionRoomError("decision_apply_target_required", "Selected option has no linked Quote Line Item or Order Item")
+
+    now = _now_iso()
+    updates = {
+        "internal_review_status": "applied",
+        "acknowledged_by_user_id": actor_user_id,
+        "applied_by_user_id": actor_user_id,
+        "applied_at": now,
+        "applied_target_type": target_type,
+        "applied_target_id": target_id,
+        "applied_pricing_snapshot_record_id": snapshot_id,
+        "applied_note": _sanitize_customer_message(note, max_len=1000),
+        "updated_at": now,
+    }
+    await db.customer_decisions.update_one({"id": decision_id, "tenant_id": tenant_id}, {"$set": updates})
+    await record_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+        action="decision_room.customer_decision_applied", entity_type="decision_room", entity_id=room_id,
+        summary="Staff applied a customer-selected Decision Room option",
+        diff={"decision_id": decision_id, "target_type": target_type, "target_id": target_id, "snapshot_record_id": snapshot_id},
+    )
+    decision.update(updates)
+    decision.pop("_id", None)
+    return serialize_doc(decision)
+
+
 
 # ---- EC10 Phase 10E-3 — Customer Questions, Anchored Comments/Pins, and
 # Save for Later. Every write below is scoped to the exact frozen
@@ -1670,7 +1920,7 @@ async def _get_review_meta_map(tenant_id: str, keys: list[tuple[str, str]]) -> d
 def _normalize_customer_decision(d: dict[str, Any], superseded_ids: set[str], meta: dict[str, Any]) -> dict[str, Any]:
     superseded = d["id"] in superseded_ids
     status = "superseded" if superseded else d.get("internal_review_status", "pending_review")
-    acknowledged = status == "acknowledged"
+    resolved = status in {"acknowledged", "applied"}
     return {
         "record_type": "customer_decision", "record_id": d["id"], "tenant_id": d["tenant_id"],
         "decision_room_id": d["decision_room_id"], "published_version_id": d.get("published_version_id"),
@@ -1680,10 +1930,10 @@ def _normalize_customer_decision(d: dict[str, Any], superseded_ids: set[str], me
         "assigned_user_id": meta.get("assigned_user_id"),
         "related_file_id": None, "visual_markup_id": None, "markup_version_id": None,
         "page_number": None, "normalized_x": None, "normalized_y": None, "staff_response_summary": None,
-        "resolved_at": d.get("updated_at") if acknowledged else None,
-        "reviewed_by_user_id": d.get("acknowledged_by_user_id"),
+        "resolved_at": d.get("applied_at") or (d.get("updated_at") if resolved else None),
+        "reviewed_by_user_id": d.get("applied_by_user_id") or d.get("acknowledged_by_user_id"),
         "unresolved": (not superseded) and status == "pending_review",
-        "last_response_at": d.get("updated_at") if acknowledged else None,
+        "last_response_at": d.get("applied_at") or (d.get("updated_at") if resolved else None),
     }
 
 
@@ -1822,6 +2072,7 @@ async def list_review_queue(
         if it["option_id"]:
             option = next((o for o in (room.get("options") or []) if o.get("id") == it["option_id"]), None)
         it["option_label"] = option.get("customer_label") if option else None
+        it["proof_id"] = option.get("proof_id") if option else None
 
     if search:
         s = search.strip().lower()
