@@ -234,6 +234,12 @@ api_router.include_router(production_kiosk_router_module.router)
 from app.routers import tasks as tasks_router_module
 api_router.include_router(tasks_router_module.router)
 
+# EC12 Phases 12C/12D - employee time-off workflow and shared calendar.
+from app.routers import time_off as time_off_router_module
+from app.routers import calendar as calendar_router_module
+api_router.include_router(time_off_router_module.router)
+api_router.include_router(calendar_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

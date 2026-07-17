@@ -17,9 +17,11 @@ from pydantic import BaseModel
 from ..core.db import db
 from ..core.time_utils import utc_now
 from ..deps_portal import require_employee_portal_permission
-from ..services import announcement_service, certification_service, payroll_service, production_board_service, production_stage_service, schedule_service, task_service, time_clock_service, timesheet_service, training_service
+from ..services import announcement_service, calendar_service, certification_service, payroll_service, production_board_service, production_stage_service, schedule_service, task_service, time_clock_service, time_off_service, timesheet_service, training_service
+from ..services.calendar_service import CalendarError
 from ..services.production_stage_service import ProductionStageError
 from ..services.task_service import TaskError
+from ..services.time_off_service import TimeOffError
 from ..services.portal_identity import update_portal_identity
 from ..services.time_clock_service import TimeEntryError
 from ..services.timesheet_service import TimesheetError
@@ -517,6 +519,86 @@ async def task_detail(task_id: str, identity: dict = Depends(TASKS)) -> dict:
         )
         return {"task": task, "comments": comments}
     except TaskError as e:
+        _raise(e)
+
+
+class TimeOffCreateIn(BaseModel):
+    request_type: str = "other"
+    start_at: str
+    end_at: str
+    all_day: bool = False
+    reason: Optional[str] = None
+    private_reason: Optional[str] = None
+
+
+class TimeOffClarificationIn(BaseModel):
+    response: str
+    private_reason: Optional[str] = None
+
+
+class TimeOffCancelIn(BaseModel):
+    reason: Optional[str] = None
+
+
+@router.get("/time-off")
+async def my_time_off(status: Optional[str] = None, identity: dict = Depends(SCHEDULE)) -> dict:
+    return await time_off_service.list_requests(
+        tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], status=status, include_private=True,
+    )
+
+
+@router.post("/time-off", status_code=201)
+async def submit_time_off(payload: TimeOffCreateIn, identity: dict = Depends(SCHEDULE)) -> dict:
+    try:
+        return await time_off_service.create_request(
+            tenant_id=identity["tenant_id"], employee_id=identity["employee_id"],
+            actor_employee_id=identity["employee_id"], actor_email=identity.get("email", "employee-portal"),
+            payload=payload.model_dump(exclude_none=True),
+        )
+    except TimeOffError as e:
+        _raise(e)
+
+
+@router.get("/time-off/{request_id}")
+async def my_time_off_detail(request_id: str, identity: dict = Depends(SCHEDULE)) -> dict:
+    try:
+        return await time_off_service.employee_get_request(
+            tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], request_id=request_id,
+        )
+    except TimeOffError as e:
+        _raise(e)
+
+
+@router.post("/time-off/{request_id}/clarification")
+async def respond_time_off(request_id: str, payload: TimeOffClarificationIn, identity: dict = Depends(SCHEDULE)) -> dict:
+    try:
+        return await time_off_service.respond_to_clarification(
+            tenant_id=identity["tenant_id"], request_id=request_id, employee_id=identity["employee_id"],
+            actor_email=identity.get("email", "employee-portal"), response=payload.response,
+            private_reason=payload.private_reason,
+        )
+    except TimeOffError as e:
+        _raise(e)
+
+
+@router.post("/time-off/{request_id}/cancel")
+async def cancel_time_off(request_id: str, payload: TimeOffCancelIn, identity: dict = Depends(SCHEDULE)) -> dict:
+    try:
+        return await time_off_service.cancel_request(
+            tenant_id=identity["tenant_id"], request_id=request_id, employee_id=identity["employee_id"],
+            actor_email=identity.get("email", "employee-portal"), reason=payload.reason,
+        )
+    except TimeOffError as e:
+        _raise(e)
+
+
+@router.get("/calendar")
+async def my_calendar(start_at: str, end_at: str, identity: dict = Depends(SCHEDULE)) -> dict:
+    try:
+        return await calendar_service.employee_feed(
+            tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], start_at=start_at, end_at=end_at,
+        )
+    except CalendarError as e:
         _raise(e)
 
 

@@ -598,4 +598,17 @@ async def ensure_indexes() -> None:
         unique=True,
     )
 
+    # ---- EC12 Phase 12C - employee time-off and absence workflow ----
+    await db.time_off_requests.create_index("id", unique=True)
+    await db.time_off_requests.create_index([("tenant_id", 1), ("employee_id", 1), ("status", 1), ("start_at", 1)])
+    await db.time_off_requests.create_index([("tenant_id", 1), ("status", 1), ("start_at", 1)])
+
+    # ---- EC12 Phase 12D - stored appointments for shared calendar feed ----
+    await db.calendar_events.create_index("id", unique=True)
+    await db.calendar_events.create_index([("tenant_id", 1), ("start_at", 1), ("end_at", 1), ("status", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("employee_id", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("customer_id", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("work_order_id", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("source_type", 1), ("source_id", 1)])
+
     logger.info("MongoDB indexes ensured")

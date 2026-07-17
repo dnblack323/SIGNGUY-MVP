@@ -30,6 +30,7 @@ function Shell({ children }) {
             <Link to="/portal/employee/time-clock" data-testid="employee-portal-nav-time-clock">Time Clock</Link>
             <Link to="/portal/employee/production" data-testid="employee-portal-nav-production">Production</Link>
             <Link to="/portal/employee/schedule" data-testid="employee-portal-nav-schedule">My Schedule</Link>
+            <Link to="/portal/employee/time-off" data-testid="employee-portal-nav-time-off">My Time Off</Link>
             <Link to="/portal/employee/timesheet" data-testid="employee-portal-nav-timesheet">My Timesheet</Link>
             <Link to="/portal/employee/pay" data-testid="employee-portal-nav-pay">My Pay</Link>
             <Link to="/portal/employee/training" data-testid="employee-portal-nav-training">My Training</Link>
@@ -283,6 +284,7 @@ function Dashboard() {
           <Link className="underline" to="/portal/employee/time-clock">Clock In/Out</Link>
           <Link className="underline" to="/portal/employee/production">Production</Link>
           <Link className="underline" to="/portal/employee/schedule">My Schedule</Link>
+          <Link className="underline" to="/portal/employee/time-off">My Time Off</Link>
           <Link className="underline" to="/portal/employee/timesheet">My Timesheet</Link>
           <Link className="underline" to="/portal/employee/pay">My Pay</Link>
           <Link className="underline" to="/portal/employee/training">My Training</Link>
@@ -604,10 +606,17 @@ function ProductionPage() {
 
 function MySchedulePage() {
   const [data, setData] = useState(null);
+  const [calendarData, setCalendarData] = useState(null);
   const [err, setErr] = useState(null);
   useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const end = new Date();
+    end.setDate(end.getDate() + 7);
     employeePortalApi.get("/portal/employee/schedule/week").then((r) => setData(r.data))
       .catch((e) => setErr(employeePortalExtractError(e)));
+    employeePortalApi.get("/portal/employee/calendar", {
+      params: { start_at: `${today}T00:00:00.000Z`, end_at: `${end.toISOString().slice(0, 10)}T00:00:00.000Z` },
+    }).then((r) => setCalendarData(r.data)).catch(() => {});
   }, []);
   return (
     <div className="space-y-4" data-testid="employee-portal-schedule-page">
@@ -624,6 +633,134 @@ function MySchedulePage() {
                 <div className="text-xs text-slate-500">{s.title || ""} {s.location ? `· ${s.location}` : ""}</div>
               </div>
               <Badge variant={s.status === "cancelled" ? "destructive" : "outline"}>{s.status}</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+      <Card data-testid="employee-portal-calendar-card">
+        <CardHeader><CardTitle className="text-base">Calendar overlays</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {!calendarData ? <p className="text-sm text-slate-500">Loading calendar...</p> : calendarData.items.length === 0 ? (
+            <p className="text-sm text-slate-500 italic">No appointments, absences, or due dates in this range.</p>
+          ) : calendarData.items.map((item) => (
+            <div key={item.id} className="rounded border bg-white p-3 text-sm" data-testid={`employee-portal-calendar-item-${item.source_type}-${item.source_id}`}>
+              <div className="font-medium">{item.display_title || item.title}</div>
+              <div className="text-xs text-slate-500">{String(item.event_type || item.source_type).replace(/_/g, " ")} - {fmtDate(item.start_at)} {fmtTime(item.start_at)}</div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function MyTimeOffPage() {
+  const [items, setItems] = useState(null);
+  const [status, setStatus] = useState("all");
+  const [form, setForm] = useState({ request_type: "vacation", date: new Date().toISOString().slice(0, 10), start: "09:00", end: "17:00", reason: "", private_reason: "" });
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const params = status === "all" ? {} : { status };
+      const r = await employeePortalApi.get("/portal/employee/time-off", { params });
+      setItems(r.data.items || []);
+      setErr(null);
+    } catch (e) { setErr(employeePortalExtractError(e)); }
+  }, [status]);
+  useEffect(() => { load(); }, [load]);
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await employeePortalApi.post("/portal/employee/time-off", {
+        request_type: form.request_type,
+        start_at: new Date(`${form.date}T${form.start}:00`).toISOString(),
+        end_at: new Date(`${form.date}T${form.end}:00`).toISOString(),
+        reason: form.reason || undefined,
+        private_reason: form.private_reason || undefined,
+      });
+      toast.success("Time-off request submitted");
+      setForm((cur) => ({ ...cur, reason: "", private_reason: "" }));
+      await load();
+    } catch (e2) { toast.error(employeePortalExtractError(e2)); }
+    setBusy(false);
+  }
+
+  async function cancel(item) {
+    try {
+      await employeePortalApi.post(`/portal/employee/time-off/${item.id}/cancel`, { reason: "Canceled from Employee Portal" });
+      toast.success("Request canceled");
+      await load();
+    } catch (e) { toast.error(employeePortalExtractError(e)); }
+  }
+
+  async function clarify(item) {
+    const response = window.prompt("Clarification response");
+    if (!response) return;
+    try {
+      await employeePortalApi.post(`/portal/employee/time-off/${item.id}/clarification`, { response });
+      toast.success("Clarification sent");
+      await load();
+    } catch (e) { toast.error(employeePortalExtractError(e)); }
+  }
+
+  return (
+    <div className="space-y-4" data-testid="employee-portal-time-off-page">
+      <h1 className="text-xl font-semibold flex items-center gap-2"><Calendar className="h-5 w-5" /> My Time Off</h1>
+      {err && <div className="text-sm text-rose-700">{err}</div>}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Request time off</CardTitle></CardHeader>
+        <CardContent>
+          <form className="space-y-3" onSubmit={submit}>
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="grid gap-1.5">
+                <Label>Type</Label>
+                <Select value={form.request_type} onValueChange={(v) => setForm((cur) => ({ ...cur, request_type: v }))}>
+                  <SelectTrigger data-testid="employee-time-off-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {["vacation", "sick", "personal", "bereavement", "jury_duty", "unpaid", "other"].map((v) => <SelectItem key={v} value={v}>{v.replace(/_/g, " ")}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5"><Label>Date</Label><Input type="date" value={form.date} onChange={(e) => setForm((cur) => ({ ...cur, date: e.target.value }))} /></div>
+              <div className="grid gap-1.5"><Label>Start</Label><Input type="time" value={form.start} onChange={(e) => setForm((cur) => ({ ...cur, start: e.target.value }))} /></div>
+              <div className="grid gap-1.5"><Label>End</Label><Input type="time" value={form.end} onChange={(e) => setForm((cur) => ({ ...cur, end: e.target.value }))} /></div>
+            </div>
+            <div className="grid gap-1.5"><Label>Reason</Label><Input value={form.reason} onChange={(e) => setForm((cur) => ({ ...cur, reason: e.target.value }))} data-testid="employee-time-off-reason" /></div>
+            <div className="grid gap-1.5"><Label>Private note</Label><Input value={form.private_reason} onChange={(e) => setForm((cur) => ({ ...cur, private_reason: e.target.value }))} data-testid="employee-time-off-private-reason" /></div>
+            <Button type="submit" disabled={busy} data-testid="employee-time-off-submit">Submit request</Button>
+          </form>
+        </CardContent>
+      </Card>
+      <div className="flex items-center gap-2">
+        <Label className="text-xs">Filter</Label>
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger className="w-48" data-testid="employee-time-off-status-filter"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All requests</SelectItem>
+            {["pending", "clarification_requested", "approved", "denied", "canceled"].map((v) => <SelectItem key={v} value={v}>{v.replace(/_/g, " ")}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      {!items ? <p className="text-sm text-slate-500">Loading...</p> : items.length === 0 ? (
+        <p className="text-sm text-slate-500 italic" data-testid="employee-time-off-empty">No time-off requests.</p>
+      ) : (
+        <div className="rounded border bg-white divide-y" data-testid="employee-time-off-list">
+          {items.map((item) => (
+            <div key={item.id} className="p-3 text-sm flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between" data-testid={`employee-time-off-${item.id}`}>
+              <div>
+                <div className="font-medium">{fmtDate(item.start_at)} {fmtTime(item.start_at)}-{fmtTime(item.end_at)}</div>
+                <div className="text-xs text-slate-500">{item.request_type?.replace(/_/g, " ")}{item.reason ? ` - ${item.reason}` : ""}</div>
+                {item.manager_note && <div className="text-xs text-amber-700">Manager note: {item.manager_note}</div>}
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant={item.status === "approved" ? "default" : item.status === "denied" ? "destructive" : "outline"}>{item.status.replace(/_/g, " ")}</Badge>
+                {item.status === "clarification_requested" && <Button size="sm" variant="outline" onClick={() => clarify(item)}>Respond</Button>}
+                {["pending", "clarification_requested", "approved"].includes(item.status) && <Button size="sm" variant="outline" onClick={() => cancel(item)}>Cancel</Button>}
+              </div>
             </div>
           ))}
         </div>
@@ -816,6 +953,7 @@ export default function EmployeePortalApp() {
         <Route path="time-clock" element={<Guard><TimeClockPage /></Guard>} />
         <Route path="production" element={<Guard><ProductionPage /></Guard>} />
         <Route path="schedule" element={<Guard><MySchedulePage /></Guard>} />
+        <Route path="time-off" element={<Guard><MyTimeOffPage /></Guard>} />
         <Route path="timesheet" element={<Guard><MyTimesheetPage /></Guard>} />
         <Route path="pay" element={<Guard><MyPayPage /></Guard>} />
         <Route path="training" element={<Guard><MyTrainingPage /></Guard>} />

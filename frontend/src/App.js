@@ -64,6 +64,7 @@ import TasksPage from "@/pages/TasksPage";
 import TimeClockPage from "@/pages/TimeClockPage";
 import TimesheetsPage from "@/pages/TimesheetsPage";
 import TeamSchedulePage from "@/pages/TeamSchedulePage";
+import ShopSchedulePage from "@/pages/ShopSchedulePage";
 import PayrollPage from "@/pages/PayrollPage";
 import EmployeePortalAccessPage from "@/pages/EmployeePortalAccessPage";
 import EmployeePortalApp from "@/portal/employee/EmployeePortalApp";
@@ -139,6 +140,7 @@ function AppRoutes() {
         <Route path="/team/tasks" element={<TasksPage />} />
         <Route path="/team/announcements" element={<AnnouncementsPage />} />
         <Route path="/team/schedule" element={<TeamSchedulePage />} />
+        <Route path="/shop-schedule" element={<ShopSchedulePage />} />
         <Route path="/team/employee-portal" element={<EmployeePortalAccessPage />} />
         <Route path="/team/time-clock" element={<TimeClockPage />} />
         <Route path="/team/timesheets" element={<TimesheetsPage />} />

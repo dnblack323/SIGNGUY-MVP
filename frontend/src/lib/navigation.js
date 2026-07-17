@@ -58,7 +58,7 @@ export const NAV_AREAS = [
       { key: "production", label: "Production", to: "/work-orders", perm: "work_order:read", testId: "flyout-production" },
       { key: "production-board", label: "Production Board", to: "/work-orders/board", perm: "work_order:read", testId: "flyout-production-board" },
       { key: "production-kiosk", label: "Production Kiosk", to: "/kiosk/production", perm: "work_order:read", testId: "flyout-production-kiosk" },
-      { key: "shop-schedule", label: "Shop Schedule", to: "/shop-schedule", perm: "schedule:read", testId: "flyout-shop-schedule", disabled: true },
+      { key: "shop-schedule", label: "Shop Schedule", to: "/shop-schedule", perm: "schedule:read", testId: "flyout-shop-schedule" },
       { key: "asset-library", label: "Asset Library", to: "/documents", perm: "document:read", testId: "flyout-asset-library" },
       { key: "inventory-purchasing", label: "Inventory & Purchasing", to: "/inventory", perm: "inventory:read", testId: "flyout-inventory-purchasing" },
       { key: "supply-center", label: "Supply Center", to: "/supply-center", perm: "purchasing:read", testId: "flyout-supply-center" },
