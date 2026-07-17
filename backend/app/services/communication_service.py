@@ -464,7 +464,8 @@ async def update_preferences(*, tenant_id: str, identity_type: str, identity_id:
         }
     clean["updated_at"] = utc_now()
     base = CommunicationPreference(tenant_id=tenant_id, identity_type=identity_type, identity_id=identity_id).model_dump()
-    base.pop("updated_at", None)
+    for key in clean:
+        base.pop(key, None)
     await db.communication_preferences.update_one(
         {"tenant_id": tenant_id, "identity_type": identity_type, "identity_id": identity_id},
         {"$set": prepare_for_mongo(clean), "$setOnInsert": prepare_for_mongo(base)},
