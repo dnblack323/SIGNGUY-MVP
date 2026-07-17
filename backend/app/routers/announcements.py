@@ -25,14 +25,14 @@ class AnnouncementIn(BaseModel):
 
 @router.get("")
 async def list_announcements(status: Optional[str] = None,
-                              user: dict = Depends(require_permission(Perm.EMPLOYEE_READ))) -> dict:
+                              user: dict = Depends(require_permission(Perm.ANNOUNCEMENT_READ))) -> dict:
     items = await announcement_service.list_announcements(tenant_id=user["tenant_id"], status=status)
     return {"items": items}
 
 
 @router.post("", status_code=201)
 async def create_announcement(payload: AnnouncementIn,
-                               user: dict = Depends(require_permission(Perm.EMPLOYEE_MANAGE))) -> dict:
+                               user: dict = Depends(require_permission(Perm.ANNOUNCEMENT_MANAGE))) -> dict:
     return await announcement_service.create_announcement(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         payload=payload.model_dump(),
@@ -41,7 +41,7 @@ async def create_announcement(payload: AnnouncementIn,
 
 @router.post("/{announcement_id}/publish")
 async def publish_announcement(announcement_id: str,
-                                user: dict = Depends(require_permission(Perm.EMPLOYEE_MANAGE))) -> dict:
+                                user: dict = Depends(require_permission(Perm.ANNOUNCEMENT_MANAGE))) -> dict:
     try:
         return await announcement_service.publish_announcement(
             tenant_id=user["tenant_id"], announcement_id=announcement_id,

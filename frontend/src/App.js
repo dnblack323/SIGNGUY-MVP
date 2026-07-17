@@ -61,6 +61,7 @@ import TrainingPage from "@/pages/TrainingPage";
 import CertificationsPage from "@/pages/CertificationsPage";
 import AnnouncementsPage from "@/pages/AnnouncementsPage";
 import TasksPage from "@/pages/TasksPage";
+import CommunicationsPage from "@/pages/CommunicationsPage";
 import TimeClockPage from "@/pages/TimeClockPage";
 import TimesheetsPage from "@/pages/TimesheetsPage";
 import TeamSchedulePage from "@/pages/TeamSchedulePage";
@@ -138,6 +139,7 @@ function AppRoutes() {
         <Route path="/team/training" element={<TrainingPage />} />
         <Route path="/team/certifications" element={<CertificationsPage />} />
         <Route path="/team/tasks" element={<TasksPage />} />
+        <Route path="/team/messages" element={<CommunicationsPage />} />
         <Route path="/team/announcements" element={<AnnouncementsPage />} />
         <Route path="/team/schedule" element={<TeamSchedulePage />} />
         <Route path="/shop-schedule" element={<ShopSchedulePage />} />

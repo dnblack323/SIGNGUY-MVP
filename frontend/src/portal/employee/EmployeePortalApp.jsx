@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { AlertTriangle, Briefcase, Calendar, CheckCircle2, Clock, FileClock, GraduationCap, Hourglass, Megaphone, MessageSquare, Play, RotateCw, Search, ShieldCheck, User, Wallet } from "lucide-react";
@@ -36,6 +37,7 @@ function Shell({ children }) {
             <Link to="/portal/employee/training" data-testid="employee-portal-nav-training">My Training</Link>
             <Link to="/portal/employee/certifications" data-testid="employee-portal-nav-certifications">My Certifications</Link>
             <Link to="/portal/employee/tasks" data-testid="employee-portal-nav-tasks">My Tasks</Link>
+            <Link to="/portal/employee/messages" data-testid="employee-portal-nav-messages">Messages</Link>
             <Link to="/portal/employee/announcements" data-testid="employee-portal-nav-announcements">Announcements</Link>
             <Link to="/portal/employee/profile" data-testid="employee-portal-nav-profile">Profile</Link>
           </nav>
@@ -290,6 +292,7 @@ function Dashboard() {
           <Link className="underline" to="/portal/employee/training">My Training</Link>
           <Link className="underline" to="/portal/employee/certifications">My Certifications</Link>
           <Link className="underline" to="/portal/employee/tasks">My Tasks</Link>
+          <Link className="underline" to="/portal/employee/messages">Messages</Link>
           <Link className="underline" to="/portal/employee/announcements">Announcements</Link>
           <Link className="underline" to="/portal/employee/profile">Profile</Link>
         </CardContent>
@@ -822,17 +825,123 @@ function AnnouncementsPage() {
   );
 }
 
+function MessagesPage() {
+  const [threads, setThreads] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [reply, setReply] = useState("");
+  const [digest, setDigest] = useState(null);
+  const [err, setErr] = useState(null);
+  const load = useCallback(async () => {
+    try {
+      const r = await employeePortalApi.get("/portal/employee/messages");
+      setThreads(r.data.items || []);
+      setSelected((cur) => cur || r.data.items?.[0] || null);
+      const d = await employeePortalApi.get("/portal/employee/digest/preview");
+      setDigest(d.data);
+    } catch (e) { setErr(employeePortalExtractError(e)); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!selected?.id) return;
+    employeePortalApi.get(`/portal/employee/messages/${selected.id}`)
+      .then((r) => setMessages(r.data.messages || []))
+      .catch((e) => setErr(employeePortalExtractError(e)));
+  }, [selected?.id]);
+  async function send(e) {
+    e.preventDefault();
+    if (!selected || !reply.trim()) return;
+    try {
+      await employeePortalApi.post(`/portal/employee/messages/${selected.id}/messages`, { body: reply });
+      setReply("");
+      const r = await employeePortalApi.get(`/portal/employee/messages/${selected.id}`);
+      setMessages(r.data.messages || []);
+      await load();
+    } catch (e2) { toast.error(employeePortalExtractError(e2)); }
+  }
+  return (
+    <div className="space-y-4" data-testid="employee-portal-messages-page">
+      <h1 className="text-xl font-semibold flex items-center gap-2"><MessageSquare className="h-5 w-5" /> Messages</h1>
+      {err && <div className="text-sm text-rose-700">{err}</div>}
+      {!threads ? <p className="text-sm text-slate-500">Loading...</p> : (
+        <div className="grid gap-4 md:grid-cols-[240px_1fr]">
+          <div className="space-y-3">
+            <div className="rounded border bg-white divide-y" data-testid="employee-message-thread-list">
+              {threads.length === 0 ? <div className="p-3 text-sm text-slate-500">No employee-visible threads.</div> : threads.map((t) => (
+                <button key={t.id} onClick={() => setSelected(t)} className={`w-full text-left p-3 text-sm ${selected?.id === t.id ? "bg-slate-100" : ""}`}>
+                  <div className="font-medium">{t.title}</div>
+                  <div className="text-xs text-slate-500">{t.thread_type}{t.unread_count > 0 ? ` - ${t.unread_count} unread` : ""}</div>
+                </button>
+              ))}
+            </div>
+            {digest && (
+              <Card data-testid="employee-digest-card">
+                <CardHeader><CardTitle className="text-base">Today</CardTitle></CardHeader>
+                <CardContent className="text-xs space-y-1">
+                  <div>Tasks due: {digest.sections?.tasks?.due_today || 0}</div>
+                  <div>Unread messages: {digest.sections?.messages?.unread || 0}</div>
+                  <div>Appointments: {digest.sections?.appointments?.upcoming || 0}</div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+          <Card data-testid="employee-message-detail">
+            <CardHeader><CardTitle className="text-base">{selected?.title || "Select a thread"}</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {!selected ? <p className="text-sm text-slate-500">No thread selected.</p> : (
+                <>
+                  <div className="space-y-2 max-h-80 overflow-auto">
+                    {messages.length === 0 ? <p className="text-sm text-slate-500 italic">No messages yet.</p> : messages.map((m) => (
+                      <div key={m.id} className="rounded border p-2 text-sm">
+                        <div className="text-xs text-slate-500">{m.sender_employee_id ? "You" : "Staff"} - {fmtDate(m.created_at)}</div>
+                        <div className="whitespace-pre-wrap">{m.body}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <form onSubmit={send} className="flex gap-2">
+                    <Input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply" data-testid="employee-message-reply" />
+                    <Button type="submit" data-testid="employee-message-send">Send</Button>
+                  </form>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProfilePage() {
   const [data, setData] = useState(null);
   const [phone, setPhone] = useState("");
+  const [form, setForm] = useState({ preferred_name: "", contact_email: "", profile_image_file_id: "", availability: "", timezone: "" });
+  const [prefs, setPrefs] = useState(null);
   const [err, setErr] = useState(null);
   const load = useCallback(async () => {
-    try { const r = await employeePortalApi.get("/portal/employee/profile"); setData(r.data); setPhone(r.data.portal_phone || ""); }
+    try {
+      const r = await employeePortalApi.get("/portal/employee/profile");
+      setData(r.data);
+      setPhone(r.data.portal_phone || r.data.employee?.phone || "");
+      setPrefs(r.data.preferences);
+      setForm({
+        preferred_name: r.data.employee?.preferred_name || "",
+        contact_email: r.data.employee?.email || "",
+        profile_image_file_id: r.data.employee?.profile_image_file_id || "",
+        availability: r.data.employee?.availability || "",
+        timezone: r.data.employee?.timezone || "",
+      });
+    }
     catch (e) { setErr(employeePortalExtractError(e)); }
   }, []);
   useEffect(() => { load(); }, [load]);
   async function save() {
-    try { await employeePortalApi.patch("/portal/employee/profile", { phone }); toast.success("Saved"); load(); }
+    try { await employeePortalApi.patch("/portal/employee/profile", { phone, ...form }); toast.success("Saved"); load(); }
+    catch (e) { toast.error(employeePortalExtractError(e)); }
+  }
+  async function savePref(next) {
+    setPrefs(next);
+    try { const r = await employeePortalApi.patch("/portal/employee/preferences", next); setPrefs(r.data); }
     catch (e) { toast.error(employeePortalExtractError(e)); }
   }
   return (
@@ -849,7 +958,29 @@ function ProfilePage() {
               <Label>Preferred contact phone</Label>
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} data-testid="employee-portal-profile-phone" />
             </div>
-            <Button onClick={save} data-testid="employee-portal-profile-save">Save</Button>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5"><Label>Preferred name</Label><Input value={form.preferred_name} onChange={(e) => setForm((f) => ({ ...f, preferred_name: e.target.value }))} /></div>
+              <div className="grid gap-1.5"><Label>Contact email</Label><Input value={form.contact_email} onChange={(e) => setForm((f) => ({ ...f, contact_email: e.target.value }))} /></div>
+              <div className="grid gap-1.5"><Label>Timezone</Label><Input value={form.timezone} onChange={(e) => setForm((f) => ({ ...f, timezone: e.target.value }))} /></div>
+              <div className="grid gap-1.5"><Label>Profile image file ID</Label><Input value={form.profile_image_file_id} onChange={(e) => setForm((f) => ({ ...f, profile_image_file_id: e.target.value }))} /></div>
+              <div className="grid gap-1.5 sm:col-span-2"><Label>Availability notes</Label><Input value={form.availability} onChange={(e) => setForm((f) => ({ ...f, availability: e.target.value }))} /></div>
+            </div>
+            <Button onClick={save} data-testid="employee-portal-profile-save">Save profile</Button>
+          </CardContent>
+        </Card>
+      )}
+      {prefs && (
+        <Card data-testid="employee-portal-preferences-card">
+          <CardHeader><CardTitle className="text-base">Notification Preferences</CardTitle></CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2 text-sm">
+            {["in_app_messages", "task_notifications", "schedule_changes", "time_off_decisions", "appointment_reminders", "announcements", "daily_digest", "email_delivery"].map((key) => (
+              <label key={key} className="flex items-center gap-2">
+                <Checkbox checked={!!prefs[key]} onCheckedChange={(v) => savePref({ ...prefs, [key]: !!v })} />
+                {key.replaceAll("_", " ")}
+              </label>
+            ))}
+            <div className="grid gap-1.5"><Label>Digest time</Label><Input value={prefs.digest_time || ""} onChange={(e) => setPrefs((p) => ({ ...p, digest_time: e.target.value }))} onBlur={() => savePref(prefs)} /></div>
+            <div className="grid gap-1.5"><Label>Quiet hours start</Label><Input value={prefs.quiet_hours?.start_time || ""} onChange={(e) => setPrefs((p) => ({ ...p, quiet_hours: { ...p.quiet_hours, start_time: e.target.value } }))} onBlur={() => savePref(prefs)} /></div>
           </CardContent>
         </Card>
       )}
@@ -960,6 +1091,7 @@ export default function EmployeePortalApp() {
         <Route path="training/:assignmentId" element={<Guard><MyTrainingAssignmentDetailPage /></Guard>} />
         <Route path="certifications" element={<Guard><MyCertificationsPage /></Guard>} />
         <Route path="tasks" element={<Guard><MyTasksPage /></Guard>} />
+        <Route path="messages" element={<Guard><MessagesPage /></Guard>} />
         <Route path="announcements" element={<Guard><AnnouncementsPage /></Guard>} />
         <Route path="profile" element={<Guard><ProfilePage /></Guard>} />
       </Routes>

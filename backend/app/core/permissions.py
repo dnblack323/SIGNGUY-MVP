@@ -118,6 +118,16 @@ class Perm(str, Enum):
     TASK_COMPLETE = "task:complete"
     TASK_ARCHIVE = "task:archive"
     TASK_MANAGE = "task:manage"
+    MESSAGE_READ = "message:read"
+    MESSAGE_CREATE = "message:create"
+    MESSAGE_MANAGE = "message:manage"
+    NOTE_READ = "note:read"
+    NOTE_CREATE = "note:create"
+    NOTE_MANAGE = "note:manage"
+    ANNOUNCEMENT_READ = "announcement:read"
+    ANNOUNCEMENT_MANAGE = "announcement:manage"
+    DIGEST_READ = "digest:read"
+    DIGEST_MANAGE = "digest:manage"
     SCHEDULE_READ = "schedule:read"
     SCHEDULE_MANAGE = "schedule:manage"
     TIMECLOCK_SELF = "timeclock:self"
@@ -217,6 +227,8 @@ class PortalPerm(str, Enum):
     PORTAL_EMPLOYEE_TRAINING_VIEW = "portal:employee_training_view"
     PORTAL_EMPLOYEE_CERTIFICATION_VIEW = "portal:employee_certification_view"
     PORTAL_EMPLOYEE_TASKS = "portal:employee_tasks"
+    PORTAL_EMPLOYEE_MESSAGES = "portal:employee_messages"
+    PORTAL_EMPLOYEE_PROFILE = "portal:employee_profile"
     PORTAL_WEBSTORE_OWNER_ADMIN = "portal:webstore_owner_admin"
     PORTAL_WEBSTORE_MANAGER_OPS = "portal:webstore_manager_ops"
 
@@ -244,6 +256,11 @@ STAFF_PERMS: list[str] = [
     # EC12 Phase 12A - staff may read shared tenant tasks. Mutations stay
     # owner/admin-only under the finer task:* action permissions.
     Perm.TASK_READ.value,
+    # EC12 Phase 12E - staff may participate in communication threads and
+    # create ordinary notes; manage/delete-style operations stay owner/admin.
+    Perm.MESSAGE_READ.value, Perm.MESSAGE_CREATE.value,
+    Perm.NOTE_READ.value, Perm.NOTE_CREATE.value,
+    Perm.ANNOUNCEMENT_READ.value, Perm.DIGEST_READ.value,
     # EC8 phase 8e — every staff login may view/complete their OWN assigned
     # Training (if linked to an Employee record), mirroring the
     # TIMECLOCK_SELF/TIMESHEET_SELF self-service convention above.

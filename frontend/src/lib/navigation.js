@@ -100,7 +100,7 @@ export const NAV_AREAS = [
       { key: "time-clock", label: "Time Clock", to: "/team/time-clock", perm: "timeclock:self", testId: "flyout-time-clock" },
       { key: "timesheets", label: "Timesheets", to: "/team/timesheets", perm: "timesheet:self", testId: "flyout-timesheets" },
       { key: "payroll", label: "Payroll", to: "/team/payroll", perm: "payroll:read", testId: "flyout-payroll" },
-      { key: "messages-notes", label: "Messages & Notes", to: "/team/messages", perm: null, testId: "flyout-messages-notes", disabled: true },
+      { key: "messages-notes", label: "Messages & Notes", to: "/team/messages", perm: "message:read", testId: "flyout-messages-notes" },
       { key: "announcements", label: "Announcements", to: "/team/announcements", perm: null, testId: "flyout-announcements" },
       { key: "employee-portal", label: "Employee Portal", to: "/team/employee-portal", perm: "employee:manage", testId: "flyout-employee-portal" },
     ],

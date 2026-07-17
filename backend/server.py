@@ -240,6 +240,10 @@ from app.routers import calendar as calendar_router_module
 api_router.include_router(time_off_router_module.router)
 api_router.include_router(calendar_router_module.router)
 
+# EC12 Phases 12E/12F - shared communications and Employee Portal account experience.
+from app.routers import communications as communications_router_module
+api_router.include_router(communications_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

@@ -611,4 +611,43 @@ async def ensure_indexes() -> None:
     await db.calendar_events.create_index([("tenant_id", 1), ("work_order_id", 1), ("start_at", 1)])
     await db.calendar_events.create_index([("tenant_id", 1), ("source_type", 1), ("source_id", 1)])
 
+    # ---- EC12 Phases 12E/12F - shared communications, notes, preferences, digest ----
+    await db.message_threads.create_index("id", unique=True)
+    await db.message_threads.create_index([("tenant_id", 1), ("thread_type", 1), ("last_message_at", -1)])
+    await db.message_threads.create_index([("tenant_id", 1), ("participant_user_ids", 1), ("archived_at", 1)])
+    await db.message_threads.create_index([("tenant_id", 1), ("participant_employee_ids", 1), ("visibility", 1), ("archived_at", 1)])
+    await db.message_threads.create_index([("tenant_id", 1), ("task_id", 1)])
+    await db.message_threads.create_index([("tenant_id", 1), ("order_id", 1)])
+    await db.message_threads.create_index([("tenant_id", 1), ("work_order_id", 1)])
+    await db.message_threads.create_index([("tenant_id", 1), ("production_stage_id", 1)])
+    await db.message_threads.create_index([("tenant_id", 1), ("calendar_event_id", 1)])
+    await db.thread_messages.create_index("id", unique=True)
+    await db.thread_messages.create_index([("tenant_id", 1), ("thread_id", 1), ("created_at", 1)])
+    await db.thread_messages.create_index(
+        [("tenant_id", 1), ("thread_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.message_read_states.create_index("id", unique=True)
+    await db.message_read_states.create_index(
+        [("tenant_id", 1), ("thread_id", 1), ("identity_type", 1), ("identity_id", 1)],
+        unique=True,
+    )
+    await db.internal_notes.create_index("id", unique=True)
+    await db.internal_notes.create_index([("tenant_id", 1), ("visibility", 1), ("created_at", -1)])
+    await db.internal_notes.create_index([("tenant_id", 1), ("task_id", 1), ("created_at", -1)])
+    await db.internal_notes.create_index([("tenant_id", 1), ("order_id", 1), ("created_at", -1)])
+    await db.internal_notes.create_index([("tenant_id", 1), ("work_order_id", 1), ("created_at", -1)])
+    await db.internal_notes.create_index([("tenant_id", 1), ("employee_id", 1), ("created_at", -1)])
+    await db.communication_preferences.create_index("id", unique=True)
+    await db.communication_preferences.create_index(
+        [("tenant_id", 1), ("identity_type", 1), ("identity_id", 1)],
+        unique=True,
+    )
+    await db.daily_digests.create_index("id", unique=True)
+    await db.daily_digests.create_index(
+        [("tenant_id", 1), ("recipient_type", 1), ("recipient_id", 1), ("digest_date", 1)],
+        unique=True,
+    )
+
     logger.info("MongoDB indexes ensured")
