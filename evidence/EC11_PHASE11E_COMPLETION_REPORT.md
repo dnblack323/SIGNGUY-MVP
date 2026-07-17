@@ -2,7 +2,7 @@
 
 Phase 11E: Employee Production Portal and Shop-Floor Kiosk Surface
 
-Status: IMPLEMENTED / CI PENDING (2026-07-17)
+Status: COMPLETE (2026-07-17)
 
 EC11 status: IN PROGRESS. Phase 11F is NOT STARTED. Phases 11G and 11H remain NOT AUTHORIZED. EC12 is NOT STARTED.
 
@@ -109,7 +109,7 @@ Local validation:
 - `python -m compileall backend/app/services/production_board_service.py backend/app/routers/portal_employee.py backend/tests/test_ec11_phase11e_employee_production_kiosk.py` - PASSED
 - local targeted pytest - NOT RUNNABLE in this environment because the bundled Python runtime lacks `pytest`
 
-GitHub Actions remains the authoritative MongoDB-backed backend execution environment.
+GitHub Actions run `29549050399` passed the authoritative MongoDB-backed backend test environment.
 
 ## Frontend Build Result
 
@@ -117,9 +117,13 @@ Local production build:
 
 - `yarn.cmd build` from `frontend/` - PASSED
 
+GitHub Actions run `29549050399` also passed:
+
+- `frontend-tests`
+- `frontend-build`
+
 ## Known Gaps Carried Forward
 
-- GitHub Actions CI is pending for this implementation commit.
 - Phase 11F is NOT STARTED.
 - Phases 11G and 11H are NOT AUTHORIZED.
 - Advanced production timer/session behavior is NOT STARTED.
