@@ -370,7 +370,7 @@ async def end_employee_session(*, device_token: Optional[str]) -> dict:
         summary="Employee kiosk session cleared", diff={"employee_id": previous_employee_id},
     )
     updated = await db.production_kiosk_sessions.find_one({"tenant_id": session["tenant_id"], "id": session["id"]}, {"_id": 0})
-    return {"session": _session_public(updated or session)}
+    return {"session": _session_public(updated or session, include_employee=False)}
 
 
 async def require_employee_session(device_token: Optional[str], employee_token: Optional[str]) -> dict:
