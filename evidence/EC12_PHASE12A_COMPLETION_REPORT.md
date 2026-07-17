@@ -112,7 +112,11 @@ Local compile validation passed:
 
 ## 15. GitHub CI Result
 
-Pending GitHub Actions validation after push. GitHub CI is the authoritative backend pytest proof for this environment.
+GitHub Actions run `29562558150` passed at commit `aedbff177ac2774beb6ce6b71fc423bf0ad6a0f5`:
+
+- `backend-tests` passed
+- `frontend-tests` passed
+- `frontend-build` passed
 
 ## 16. Frontend Build Result
 
