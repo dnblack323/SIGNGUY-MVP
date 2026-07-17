@@ -15,6 +15,8 @@ from ..services.work_order_service import (
     ALLOWED_TRANSITIONS, assign, build_summary, generate, regenerate, transition,
 )
 from ..services.audit import record_audit
+from ..services import production_board_service
+from ..services.production_board_service import ProductionBoardError
 
 router = APIRouter(prefix="/work-orders", tags=["work_orders"])
 prod_router = APIRouter(prefix="/production", tags=["production"])
@@ -89,6 +91,32 @@ class PatchIn(BaseModel):
 
 class AssignmentCheckIn(BaseModel):
     user_ids: list[str] = Field(default_factory=list)
+
+
+class BoardBulkAssignIn(BaseModel):
+    stage_ids: list[str] = Field(default_factory=list)
+    employee_id: str
+    override_reason: Optional[str] = None
+
+
+class BoardBulkDueDateIn(BaseModel):
+    stage_ids: list[str] = Field(default_factory=list)
+    due_at: Optional[str] = None
+
+
+class BoardBulkWaitIn(BaseModel):
+    stage_ids: list[str] = Field(default_factory=list)
+    reason: Optional[str] = None
+
+
+class BoardBulkNoteIn(BaseModel):
+    stage_ids: list[str] = Field(default_factory=list)
+    note: str = Field(min_length=1, max_length=2000)
+
+
+class BoardBulkActionIn(BaseModel):
+    action: str
+    stage_ids: list[str] = Field(default_factory=list)
 
 
 # ---- List / Detail ----
@@ -276,22 +304,105 @@ async def get_summary(wo_id: str, user: dict = Depends(require_permission(Perm.W
 @prod_router.get("/board")
 async def board(
     customer_id: Optional[str] = Query(None),
+    customer: Optional[str] = Query(None),
     priority: Optional[str] = Query(None),
+    stage: Optional[str] = Query(None),
+    stage_status: Optional[str] = Query(None),
+    employee: Optional[str] = Query(None),
     assigned_user_id: Optional[str] = Query(None),
+    workflow: Optional[str] = Query(None),
+    due_from: Optional[str] = Query(None),
+    due_to: Optional[str] = Query(None),
+    overdue: Optional[bool] = Query(None),
+    blocked: Optional[bool] = Query(None),
+    waiting: Optional[bool] = Query(None),
+    unassigned: Optional[bool] = Query(None),
+    work_order_status: Optional[str] = Query(None),
+    order_status: Optional[str] = Query(None),
+    production_category: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    view: Optional[str] = Query("active"),
+    group_by: str = Query("status"),
+    sort: str = Query("due_date"),
+    limit: int = Query(100, ge=1, le=200),
+    skip: int = Query(0, ge=0),
     user: dict = Depends(require_permission(Perm.WORK_ORDER_READ)),
 ) -> dict:
-    q: dict = {"tenant_id": user["tenant_id"], "current_version": True}
-    if customer_id:
-        q["customer_id"] = customer_id
-    if priority:
-        q["priority"] = priority
-    if assigned_user_id:
-        q["assigned_user_ids"] = assigned_user_id
-    cursor = db.work_orders.find(q, {"_id": 0}).sort([("priority", -1), ("due_date", 1)]).limit(500)
-    columns: dict[str, list] = {s: [] for s in ["draft", "released", "queued", "in_progress", "blocked", "ready", "completed"]}
-    async for wo in cursor:
-        st = effective_status(wo.get("production_status"))
-        wo["effective_status"] = st
-        wo["overdue"] = bool(wo.get("due_date") and wo["due_date"] < utc_now().date().isoformat() and st not in {"completed", "cancelled"})
-        columns.setdefault(st, []).append(serialize_doc(wo))
-    return {"columns": columns, "counts": {k: len(v) for k, v in columns.items()}}
+    filters = {
+        "customer": customer or customer_id,
+        "priority": priority,
+        "stage": stage,
+        "stage_status": stage_status,
+        "employee": employee or assigned_user_id,
+        "workflow": workflow,
+        "due_from": due_from,
+        "due_to": due_to,
+        "overdue": overdue,
+        "blocked": blocked,
+        "waiting": waiting,
+        "unassigned": unassigned,
+        "work_order_status": work_order_status,
+        "order_status": order_status,
+        "production_category": production_category,
+        "search": search,
+        "view": view,
+    }
+    return await production_board_service.get_board(
+        tenant_id=user["tenant_id"], user=user, filters=filters,
+        group_by=group_by, sort=sort, limit=limit, skip=skip,
+    )
+
+
+def _raise_board(ex: ProductionBoardError) -> None:
+    status = 403 if ex.code == "manager_required" else 400
+    raise HTTPException(status_code=status, detail=str(ex))
+
+
+@prod_router.post("/board/bulk-assign")
+async def board_bulk_assign(payload: BoardBulkAssignIn, user: dict = Depends(require_permission(Perm.WORK_ORDER_WRITE))) -> dict:
+    try:
+        return await production_board_service.bulk_assign(
+            tenant_id=user["tenant_id"], stage_ids=payload.stage_ids,
+            employee_id=payload.employee_id, override_reason=payload.override_reason, user=user,
+        )
+    except ProductionBoardError as ex:
+        _raise_board(ex)
+
+
+@prod_router.post("/board/bulk-due-date")
+async def board_bulk_due_date(payload: BoardBulkDueDateIn, user: dict = Depends(require_permission(Perm.WORK_ORDER_WRITE))) -> dict:
+    try:
+        return await production_board_service.bulk_due_date(
+            tenant_id=user["tenant_id"], stage_ids=payload.stage_ids, due_at=payload.due_at, user=user,
+        )
+    except ProductionBoardError as ex:
+        _raise_board(ex)
+
+
+@prod_router.post("/board/bulk-wait")
+async def board_bulk_wait(payload: BoardBulkWaitIn, user: dict = Depends(require_permission(Perm.WORK_ORDER_WRITE))) -> dict:
+    try:
+        return await production_board_service.bulk_wait(
+            tenant_id=user["tenant_id"], stage_ids=payload.stage_ids, reason=payload.reason, user=user,
+        )
+    except ProductionBoardError as ex:
+        _raise_board(ex)
+
+
+@prod_router.post("/board/bulk-note")
+async def board_bulk_note(payload: BoardBulkNoteIn, user: dict = Depends(require_permission(Perm.WORK_ORDER_WRITE))) -> dict:
+    try:
+        return await production_board_service.bulk_note(
+            tenant_id=user["tenant_id"], stage_ids=payload.stage_ids, note=payload.note, user=user,
+        )
+    except ProductionBoardError as ex:
+        _raise_board(ex)
+
+
+@prod_router.post("/board/bulk-action")
+async def board_bulk_action(payload: BoardBulkActionIn, user: dict = Depends(require_permission(Perm.WORK_ORDER_WRITE))) -> dict:
+    try:
+        await production_board_service.reject_unsupported_bulk(payload.action)
+    except ProductionBoardError as ex:
+        _raise_board(ex)
+    return {"ok": False}
