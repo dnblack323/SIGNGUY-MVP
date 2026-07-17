@@ -1,6 +1,7 @@
 """EC12 Phase 12A - canonical shared task service."""
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any, Optional
 
 from pymongo.errors import DuplicateKeyError
@@ -36,17 +37,21 @@ TRANSITIONS: dict[str, set[str]] = {
 
 RELATION_COLLECTIONS = {
     "customer_id": "customers",
+    "quote_id": "quotes",
     "order_id": "orders",
     "order_item_id": "order_items",
     "work_order_id": "work_orders",
+    "invoice_id": "invoices",
     "production_stage_id": "production_stage_instances",
 }
 
 SOURCE_TYPE_TO_FIELD = {
     "customer": "customer_id",
+    "quote": "quote_id",
     "order": "order_id",
     "order_item": "order_item_id",
     "work_order": "work_order_id",
+    "invoice": "invoice_id",
     "production_stage": "production_stage_id",
     "employee": "assigned_employee_id",
     "user": "assigned_user_id",
@@ -54,9 +59,12 @@ SOURCE_TYPE_TO_FIELD = {
 
 MUTABLE_FIELDS = {
     "title", "description", "priority", "task_type", "source_type", "source_id",
-    "customer_id", "order_id", "order_item_id", "work_order_id", "production_stage_id",
+    "customer_id", "quote_id", "order_id", "order_item_id", "work_order_id", "invoice_id", "production_stage_id",
     "due_at", "start_at", "visibility", "employee_visible", "internal_only",
 }
+
+KANBAN_COLUMNS = ["not_started", "in_progress", "waiting", "blocked", "completed"]
+PRIORITY_ORDER = {"rush": 0, "high": 1, "normal": 2, "low": 3}
 
 
 def _now() -> str:
@@ -68,7 +76,15 @@ def _query(tenant_id: str, task_id: str) -> dict[str, Any]:
 
 
 def _clean_task(doc: dict | None) -> dict | None:
-    return serialize_doc(doc) if doc else None
+    if not doc:
+        return None
+    out = serialize_doc(doc)
+    if out:
+        out["overdue"] = _is_overdue(out)
+        out["due_bucket"] = _due_bucket(out)
+        out["linked_record_label"] = _linked_record_label(out)
+        out["allowed_actions"] = _staff_actions(out)
+    return out
 
 
 def _public_employee_task(doc: dict) -> dict:
@@ -80,7 +96,55 @@ def _public_employee_task(doc: dict) -> dict:
     }
     out = {k: doc.get(k) for k in allowed if k in doc}
     out["allowed_actions"] = _employee_actions(doc)
+    out["overdue"] = _is_overdue(out)
+    out["due_bucket"] = _due_bucket(out)
+    out["linked_record_label"] = _linked_record_label(out)
     return out
+
+
+def _today() -> str:
+    return utc_now().date().isoformat()
+
+
+def _is_overdue(doc: dict) -> bool:
+    due = str(doc.get("due_at") or "")[:10]
+    return bool(due and due < _today() and doc.get("status") not in {"completed", "canceled"})
+
+
+def _due_bucket(doc: dict) -> str:
+    due = str(doc.get("due_at") or "")[:10]
+    if not due:
+        return "no_due_date"
+    today = _today()
+    if due < today:
+        return "overdue"
+    if due == today:
+        return "today"
+    return "upcoming"
+
+
+def _linked_record_label(doc: dict) -> Optional[str]:
+    for source_type, field in (
+        ("customer", "customer_id"),
+        ("quote", "quote_id"),
+        ("order", "order_id"),
+        ("order_item", "order_item_id"),
+        ("work_order", "work_order_id"),
+        ("invoice", "invoice_id"),
+        ("production_stage", "production_stage_id"),
+    ):
+        if doc.get(field):
+            return f"{source_type.replace('_', ' ')} {str(doc[field])[:10]}"
+    return None
+
+
+def _staff_actions(doc: dict) -> list[str]:
+    actions = _employee_actions(doc)
+    if doc.get("status") in {"in_progress", "waiting", "blocked", "not_started"}:
+        actions.append("cancel")
+    if doc.get("status") in {"completed", "canceled"}:
+        actions.append("reopen")
+    return actions
 
 
 def _employee_actions(doc: dict) -> list[str]:
@@ -166,6 +230,8 @@ async def validate_linked_records(tenant_id: str, payload: dict) -> dict[str, di
         raise TaskError("link_mismatch", "order_item_id does not belong to order_id", 400)
     if refs.get("work_order_id") and payload.get("order_id") and refs["work_order_id"].get("order_id") != payload["order_id"]:
         raise TaskError("link_mismatch", "work_order_id does not belong to order_id", 400)
+    if refs.get("invoice_id") and payload.get("order_id") and refs["invoice_id"].get("order_id") != payload["order_id"]:
+        raise TaskError("link_mismatch", "invoice_id does not belong to order_id", 400)
     if refs.get("production_stage_id"):
         stage = refs["production_stage_id"]
         for field in ("order_id", "order_item_id", "work_order_id"):
@@ -238,11 +304,23 @@ async def list_tasks(
     assigned_employee_id: Optional[str] = None,
     priority: Optional[str] = None,
     task_type: Optional[str] = None,
+    source_type: Optional[str] = None,
+    linked_entity_type: Optional[str] = None,
+    created_by_user_id: Optional[str] = None,
     customer_id: Optional[str] = None,
+    quote_id: Optional[str] = None,
     order_id: Optional[str] = None,
+    order_item_id: Optional[str] = None,
     work_order_id: Optional[str] = None,
+    invoice_id: Optional[str] = None,
+    production_stage_id: Optional[str] = None,
     due_from: Optional[str] = None,
     due_to: Optional[str] = None,
+    overdue: Optional[bool] = None,
+    unassigned: Optional[bool] = None,
+    view: Optional[str] = None,
+    current_user_id: Optional[str] = None,
+    sort: str = "due_date",
     q: Optional[str] = None,
     include_archived: bool = False,
     limit: int = 100,
@@ -261,12 +339,32 @@ async def list_tasks(
         filt["priority"] = priority
     if task_type:
         filt["task_type"] = task_type
+    if source_type:
+        filt["source_type"] = source_type
+    if created_by_user_id:
+        filt["created_by_user_id"] = created_by_user_id
     if customer_id:
         filt["customer_id"] = customer_id
+    if quote_id:
+        filt["quote_id"] = quote_id
     if order_id:
         filt["order_id"] = order_id
+    if order_item_id:
+        filt["order_item_id"] = order_item_id
     if work_order_id:
         filt["work_order_id"] = work_order_id
+    if invoice_id:
+        filt["invoice_id"] = invoice_id
+    if production_stage_id:
+        filt["production_stage_id"] = production_stage_id
+    if linked_entity_type:
+        field = SOURCE_TYPE_TO_FIELD.get(linked_entity_type)
+        if not field or field not in RELATION_COLLECTIONS:
+            raise TaskError("unsupported_linked_entity_type", "Unsupported linked entity type", 400)
+        filt[field] = {"$exists": True, "$nin": [None, ""]}
+    if unassigned is True:
+        filt["assigned_user_id"] = None
+        filt["assigned_employee_id"] = None
     if due_from or due_to:
         due_filter: dict[str, Any] = {}
         if due_from:
@@ -274,14 +372,131 @@ async def list_tasks(
         if due_to:
             due_filter["$lte"] = due_to
         filt["due_at"] = due_filter
+    today = _today()
+    if overdue is True:
+        filt["due_at"] = {"$lt": today}
+        filt["status"] = {"$nin": ["completed", "canceled"]}
+    if view:
+        _apply_system_view(filt, view, today, user_id=current_user_id)
     if q:
         filt["$or"] = [
             {"title": {"$regex": q, "$options": "i"}},
             {"description": {"$regex": q, "$options": "i"}},
         ]
     total = await db.tasks.count_documents(filt)
-    cursor = db.tasks.find(filt, {"_id": 0}).sort([("due_at", 1), ("created_at", -1)]).skip(skip).limit(min(limit, 200))
+    cursor = db.tasks.find(filt, {"_id": 0}).sort(_sort_spec(sort)).skip(skip).limit(min(limit, 200))
     return {"items": [_clean_task(d) async for d in cursor], "total": total, "limit": min(limit, 200), "skip": skip}
+
+
+async def list_my_tasks(*, tenant_id: str, user_id: str, view: Optional[str] = None, limit: int = 100, skip: int = 0) -> dict:
+    filt: dict[str, Any] = {
+        "tenant_id": tenant_id,
+        "archived_at": None,
+        "$or": [{"assigned_user_id": user_id}, {"created_by_user_id": user_id}],
+    }
+    today = _today()
+    if view:
+        _apply_system_view(filt, view, today, user_id=user_id)
+    total = await db.tasks.count_documents(filt)
+    cursor = db.tasks.find(filt, {"_id": 0}).sort(_sort_spec("due_date")).skip(skip).limit(min(limit, 200))
+    items = [_clean_task(d) async for d in cursor]
+    summary = _summary(items)
+    summary["assigned_to_me"] = sum(1 for t in items if t.get("assigned_user_id") == user_id)
+    summary["created_by_me"] = sum(1 for t in items if t.get("created_by_user_id") == user_id)
+    return {"items": items, "total": total, "limit": min(limit, 200), "skip": skip, "summary": summary}
+
+
+async def kanban_tasks(
+    *,
+    tenant_id: str,
+    include_completed: bool = False,
+    include_archived: bool = False,
+    group_by: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 200,
+) -> dict:
+    status_filter = {"$in": KANBAN_COLUMNS if include_completed else [s for s in KANBAN_COLUMNS if s != "completed"]}
+    result = await list_tasks(
+        tenant_id=tenant_id, status=None, q=q, include_archived=include_archived,
+        limit=limit, skip=0, sort="due_date",
+    )
+    items = [t for t in result["items"] if t.get("status") in status_filter["$in"] and t.get("status") != "canceled"]
+    columns = {status: [t for t in items if t.get("status") == status] for status in KANBAN_COLUMNS}
+    if not include_completed:
+        columns.pop("completed", None)
+    swimlanes: dict[str, list[dict]] = {}
+    if group_by:
+        for task in items:
+            key = _group_key(task, group_by)
+            swimlanes.setdefault(key, []).append(task)
+    return {"columns": columns, "items": items, "total": len(items), "summary": _summary(items), "group_by": group_by, "swimlanes": swimlanes}
+
+
+def _group_key(task: dict, group_by: str) -> str:
+    if group_by == "assignee":
+        return task.get("assigned_employee_id") or task.get("assigned_user_id") or "unassigned"
+    if group_by == "priority":
+        return task.get("priority") or "normal"
+    if group_by == "task_type":
+        return task.get("task_type") or "general"
+    if group_by == "linked_module":
+        label = task.get("linked_record_label") or "unlinked"
+        return label.split(" ")[0]
+    return "all"
+
+
+def _summary(items: list[dict]) -> dict[str, int]:
+    today = _today()
+    recent_cutoff = (utc_now() - timedelta(days=14)).isoformat()
+    return {
+        "assigned_to_me": 0,
+        "created_by_me": 0,
+        "due_today": sum(1 for t in items if str(t.get("due_at") or "")[:10] == today),
+        "overdue": sum(1 for t in items if t.get("overdue")),
+        "upcoming": sum(1 for t in items if t.get("due_bucket") == "upcoming"),
+        "blocked": sum(1 for t in items if t.get("status") == "blocked"),
+        "waiting": sum(1 for t in items if t.get("status") == "waiting"),
+        "completed_recently": sum(1 for t in items if t.get("status") == "completed" and str(t.get("completed_at") or "") >= recent_cutoff),
+        "unassigned": sum(1 for t in items if not t.get("assigned_user_id") and not t.get("assigned_employee_id")),
+    }
+
+
+def _apply_system_view(filt: dict[str, Any], view: str, today: str, *, user_id: Optional[str] = None) -> None:
+    if view == "all_active":
+        filt["status"] = {"$nin": ["completed", "canceled"]}
+    elif view == "my_tasks" and user_id:
+        filt["$or"] = [{"assigned_user_id": user_id}, {"created_by_user_id": user_id}]
+        filt["status"] = {"$ne": "canceled"}
+    elif view == "due_today":
+        tomorrow = (utc_now().date() + timedelta(days=1)).isoformat()
+        filt["due_at"] = {"$gte": today, "$lt": tomorrow}
+        filt["status"] = {"$nin": ["completed", "canceled"]}
+    elif view == "overdue":
+        filt["due_at"] = {"$lt": today}
+        filt["status"] = {"$nin": ["completed", "canceled"]}
+    elif view == "unassigned":
+        filt["assigned_user_id"] = None
+        filt["assigned_employee_id"] = None
+        filt["status"] = {"$nin": ["completed", "canceled"]}
+    elif view in {"blocked", "waiting"}:
+        filt["status"] = view
+    elif view == "completed_recently":
+        filt["status"] = "completed"
+        filt["completed_at"] = {"$gte": (utc_now() - timedelta(days=14)).isoformat()}
+    elif view:
+        raise TaskError("unsupported_view", "Unsupported task view", 400)
+
+
+def _sort_spec(sort: str) -> list[tuple[str, int]]:
+    return {
+        "due_date": [("due_at", 1), ("priority", 1), ("created_at", -1)],
+        "priority": [("priority", -1), ("due_at", 1), ("created_at", -1)],
+        "newest": [("created_at", -1)],
+        "oldest": [("created_at", 1)],
+        "recently_updated": [("updated_at", -1)],
+        "assignee": [("assigned_employee_id", 1), ("assigned_user_id", 1), ("due_at", 1)],
+        "title": [("title", 1)],
+    }.get(sort, [("due_at", 1), ("created_at", -1)])
 
 
 async def get_task(*, tenant_id: str, task_id: str, include_archived: bool = False) -> dict:
@@ -303,7 +518,15 @@ async def update_task(*, tenant_id: str, task_id: str, actor_user_id: str, actor
         summary=f"Task updated: {existing.get('title')}",
         diff={"before": {k: existing.get(k) for k in data}, "after": data},
     )
-    return await get_task(tenant_id=tenant_id, task_id=task_id, include_archived=True)
+    updated = await get_task(tenant_id=tenant_id, task_id=task_id, include_archived=True)
+    if "due_at" in data and data.get("due_at") != existing.get("due_at"):
+        await _best_effort_task_notify(
+            tenant_id, updated, kind="task.due_date_changed",
+            title=f"Task due date changed: {updated.get('title')}",
+            body=f"Due: {updated.get('due_at') or 'not set'}",
+            skip_user_id=actor_user_id,
+        )
+    return updated
 
 
 async def assign_task(
@@ -318,6 +541,8 @@ async def assign_task(
     existing = await _get_task(tenant_id, task_id, include_archived=True)
     data = {"assigned_user_id": assigned_user_id, "assigned_employee_id": assigned_employee_id}
     await _validate_assignments(tenant_id, data)
+    if existing.get("assigned_user_id") == assigned_user_id and existing.get("assigned_employee_id") == assigned_employee_id:
+        return _clean_task(existing) or {}
     now = _now()
     history = {
         "from_user_id": existing.get("assigned_user_id"),
@@ -360,7 +585,7 @@ async def transition_task(
     if allow_employee and existing.get("assigned_employee_id") != actor_employee_id:
         raise TaskError("employee_scope_denied", "Task is not assigned to this employee", 403)
     current = existing["status"]
-    if current == target and target == "completed":
+    if current == target:
         return _clean_task(existing) or {}
     if current in {"completed", "canceled"} and target == "in_progress" and not allow_reopen:
         raise TaskError("reopen_action_required", "Completed or canceled tasks must be reopened through the reopen action", 400)
@@ -570,7 +795,7 @@ async def generate_reminder(*, tenant_id: str, task_id: str, reminder_kind: str,
     return {"created": True, "reminder": serialize_doc(doc)}
 
 
-async def list_employee_tasks(*, tenant_id: str, employee_id: str, status: Optional[str] = None) -> dict:
+async def list_employee_tasks(*, tenant_id: str, employee_id: str, status: Optional[str] = None, view: Optional[str] = None) -> dict:
     filt: dict[str, Any] = {
         "tenant_id": tenant_id,
         "assigned_employee_id": employee_id,
@@ -579,9 +804,11 @@ async def list_employee_tasks(*, tenant_id: str, employee_id: str, status: Optio
     }
     if status:
         filt["status"] = status
+    if view:
+        _apply_system_view(filt, view, _today())
     cursor = db.tasks.find(filt, {"_id": 0}).sort([("due_at", 1), ("created_at", -1)])
     items = [_public_employee_task(d) async for d in cursor]
-    return {"available": True, "items": items, "total": len(items)}
+    return {"available": True, "items": items, "total": len(items), "summary": _summary(items)}
 
 
 async def get_employee_task(*, tenant_id: str, employee_id: str, task_id: str) -> dict:

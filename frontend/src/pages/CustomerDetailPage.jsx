@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import StatusPill from "@/components/common/StatusPill";
+import TaskHandoffButton from "@/components/tasks/TaskHandoffButton";
 import { centsToDollarsString, relativeTime } from "@/lib/format";
 import { ArrowLeft, Save } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
@@ -70,10 +71,15 @@ export default function CustomerDetailPage() {
         <PageHeader
           title={c.name}
           subtitle={c.company || c.email || "Customer"}
-          actions={canWrite && Object.keys(form).length > 0 && (
-            <Button onClick={() => save.mutate(form)} disabled={save.isPending} data-testid="customer-save-button">
-              <Save className="size-4 mr-1" /> Save changes
-            </Button>
+          actions={(
+            <div className="flex flex-wrap gap-2">
+              <TaskHandoffButton sourceType="customer" sourceId={id} defaults={{ title: `Follow up with ${c.name}`, task_type: "customer_followup" }} />
+              {canWrite && Object.keys(form).length > 0 && (
+                <Button onClick={() => save.mutate(form)} disabled={save.isPending} data-testid="customer-save-button">
+                  <Save className="size-4 mr-1" /> Save changes
+                </Button>
+              )}
+            </div>
           )}
         />
       </div>

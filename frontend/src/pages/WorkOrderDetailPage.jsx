@@ -20,6 +20,7 @@ import { RegenerateDialog, TransitionReasonDialog, AssignDialog } from "@/compon
 import RequirementsDialog from "@/components/work-orders/RequirementsDialog";
 import PrintSummaryDialog from "@/components/work-orders/PrintSummaryDialog";
 import WorkOrderStagesPanel from "@/components/production/WorkOrderStagesPanel";
+import TaskHandoffButton from "@/components/tasks/TaskHandoffButton";
 
 const ALLOWED = {
   draft: ["released", "cancelled"],
@@ -107,6 +108,7 @@ export default function WorkOrderDetailPage() {
           subtitle={<span>Order: <Link className="link-underline" to={`/orders/${w.order_id}`}>Open order</Link></span>}
           actions={
             <div className="flex items-center gap-2 flex-wrap">
+              <TaskHandoffButton sourceType="work_order" sourceId={id} defaults={{ title: `Follow up on W-${w.number}`, task_type: "production_followup" }} />
               <Button variant="outline" size="sm" onClick={() => setPrintOpen(true)} data-testid="wo-print-summary-button">
                 <Printer className="size-4 mr-1" />Print summary
               </Button>

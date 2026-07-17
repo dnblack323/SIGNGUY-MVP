@@ -24,9 +24,11 @@ class Task(BaseDoc):
     source_type: Optional[str] = None
     source_id: Optional[str] = None
     customer_id: Optional[str] = None
+    quote_id: Optional[str] = None
     order_id: Optional[str] = None
     order_item_id: Optional[str] = None
     work_order_id: Optional[str] = None
+    invoice_id: Optional[str] = None
     production_stage_id: Optional[str] = None
 
     assigned_user_id: Optional[str] = None

@@ -573,12 +573,17 @@ async def ensure_indexes() -> None:
     # ---- EC12 Phase 12A - shared task foundation ----
     await db.tasks.create_index("id", unique=True)
     await db.tasks.create_index([("tenant_id", 1), ("status", 1), ("archived_at", 1), ("due_at", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("priority", 1), ("status", 1), ("due_at", 1)])
     await db.tasks.create_index([("tenant_id", 1), ("assigned_user_id", 1), ("status", 1)])
     await db.tasks.create_index([("tenant_id", 1), ("assigned_employee_id", 1), ("status", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("created_by_user_id", 1), ("status", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("task_type", 1), ("status", 1)])
     await db.tasks.create_index([("tenant_id", 1), ("customer_id", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("quote_id", 1)])
     await db.tasks.create_index([("tenant_id", 1), ("order_id", 1)])
     await db.tasks.create_index([("tenant_id", 1), ("order_item_id", 1)])
     await db.tasks.create_index([("tenant_id", 1), ("work_order_id", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("invoice_id", 1)])
     await db.tasks.create_index([("tenant_id", 1), ("production_stage_id", 1)])
     await db.tasks.create_index(
         [("tenant_id", 1), ("idempotency_key", 1)],

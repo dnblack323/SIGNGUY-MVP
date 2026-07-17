@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { AlertTriangle, Briefcase, Calendar, CheckCircle2, Clock, FileClock, GraduationCap, Hourglass, Megaphone, MessageSquare, Play, RotateCw, Search, ShieldCheck, User, Wallet } from "lucide-react";
 
@@ -315,13 +316,15 @@ function MyTasksPage() {
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
   const [comment, setComment] = useState("");
+  const [view, setView] = useState("all_active");
   const load = useCallback(async () => {
     try {
-      const r = await employeePortalApi.get("/portal/employee/tasks");
+      const params = view === "all_active" ? {} : { view };
+      const r = await employeePortalApi.get("/portal/employee/tasks", { params });
       setItems(r.data.items || []);
-      setSelected((cur) => cur || r.data.items?.[0] || null);
+      setSelected((cur) => (cur && (r.data.items || []).some((t) => t.id === cur.id)) ? cur : r.data.items?.[0] || null);
     } catch (e) { toast.error(employeePortalExtractError(e)); }
-  }, []);
+  }, [view]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     if (!selected?.id) { setDetail(null); return; }
@@ -334,7 +337,6 @@ function MyTasksPage() {
     try {
       await employeePortalApi.post(`/portal/employee/tasks/${selected.id}/${action}`, { reason: `${action} from Employee Portal` });
       toast.success("Task updated");
-      setSelected(null);
       await load();
     } catch (e) { toast.error(employeePortalExtractError(e)); }
   }
@@ -354,7 +356,20 @@ function MyTasksPage() {
   const actions = detail?.task?.allowed_actions || selected?.allowed_actions || [];
   return (
     <div className="space-y-4" data-testid="employee-portal-tasks-page">
-      <h1 className="text-xl font-semibold flex items-center gap-2"><CheckCircle2 className="h-5 w-5" /> My Tasks</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl font-semibold flex items-center gap-2"><CheckCircle2 className="h-5 w-5" /> My Tasks</h1>
+        <Select value={view} onValueChange={setView}>
+          <SelectTrigger className="w-full sm:w-56" data-testid="employee-task-view-select"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all_active">Current</SelectItem>
+            <SelectItem value="due_today">Due Today</SelectItem>
+            <SelectItem value="overdue">Overdue</SelectItem>
+            <SelectItem value="waiting">Waiting</SelectItem>
+            <SelectItem value="blocked">Blocked</SelectItem>
+            <SelectItem value="completed_recently">Completed Recently</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       {!items ? <p className="text-sm text-slate-500">Loading...</p> : !items.length ? (
         <Card><CardContent className="py-8 text-sm text-slate-500 italic">No assigned tasks.</CardContent></Card>
       ) : (
@@ -369,7 +384,11 @@ function MyTasksPage() {
                   </div>
                   {statusBadge(task.status)}
                 </div>
-                <div className="mt-2 text-xs text-slate-500">{fmtDate(task.due_at)}</div>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                  <span>{fmtDate(task.due_at)}</span>
+                  {task.linked_record_label && <span>{task.linked_record_label}</span>}
+                  {task.overdue && <Badge variant="destructive">overdue</Badge>}
+                </div>
               </button>
             ))}
           </div>
@@ -379,6 +398,7 @@ function MyTasksPage() {
               <CardContent className="space-y-4">
                 <div className="flex gap-2 flex-wrap">{statusBadge(detail?.task?.status || selected.status)}<Badge variant="outline">{detail?.task?.priority || selected.priority}</Badge></div>
                 {(detail?.task?.description || selected.description) && <p className="text-sm text-slate-600 whitespace-pre-wrap">{detail?.task?.description || selected.description}</p>}
+                {(detail?.task?.linked_record_label || selected.linked_record_label) && <div className="text-sm text-slate-500">Linked: {detail?.task?.linked_record_label || selected.linked_record_label}</div>}
                 <div className="flex gap-2 flex-wrap">
                   {actions.includes("start") && <Button size="sm" onClick={() => act("start")}><Play className="h-4 w-4 mr-1" />Start</Button>}
                   {actions.includes("resume") && <Button size="sm" variant="outline" onClick={() => act("resume")}>Resume</Button>}

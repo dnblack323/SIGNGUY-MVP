@@ -500,9 +500,9 @@ class PortalTaskCommentIn(BaseModel):
 
 
 @router.get("/tasks")
-async def my_tasks(status: Optional[str] = None, identity: dict = Depends(TASKS)) -> dict:
+async def my_tasks(status: Optional[str] = None, view: Optional[str] = None, identity: dict = Depends(TASKS)) -> dict:
     return await task_service.list_employee_tasks(
-        tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], status=status,
+        tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], status=status, view=view,
     )
 
 
