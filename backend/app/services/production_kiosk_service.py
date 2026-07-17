@@ -580,7 +580,7 @@ async def clock_in(*, session: dict, work_order_id: Optional[str] = None, notes:
         return await time_clock_service.clock_in(
             tenant_id=session["tenant_id"], employee_id=session["employee_id"],
             actor_user_id=_kiosk_actor(session)["id"], actor_email="production-kiosk",
-            source="kiosk", work_order_id=work_order_id, notes=notes,
+            source="self", work_order_id=work_order_id, notes=notes,
         )
     except TimeEntryError as e:
         raise ProductionKioskError("time_clock_error", e.detail, e.status_code)

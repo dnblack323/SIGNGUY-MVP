@@ -297,7 +297,9 @@ async def test_time_clock_panel_is_separate_from_stage_status(ctx):
         assert clock_out.status_code == 200
         stage_after = await db.production_stage_instances.find_one({"tenant_id": ctx["tenant_id"], "id": ctx["assigned_stage_id"]}, {"_id": 0})
         assert stage_after["status"] == "not_started"
-        assert await db.time_entries.count_documents({"tenant_id": ctx["tenant_id"], "source": "kiosk"}) == 1
+        entry = await db.time_entries.find_one({"tenant_id": ctx["tenant_id"], "employee_id": ctx["employee_id"]}, {"_id": 0})
+        assert entry["source"] == "self"
+        assert str(entry["created_by"]).startswith("kiosk:")
 
 
 @pytest.mark.asyncio
