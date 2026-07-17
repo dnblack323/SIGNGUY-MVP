@@ -34,9 +34,14 @@
 
 - Local compile passed: `python -m compileall backend/app backend/tests/test_ec12_phase12e_communications.py backend/tests/test_ec12_phase12f_employee_account_experience.py`.
 - Targeted pytest collection passed for the new Phase 12E/12F tests: 2 tests collected.
-- Local DB-backed pytest execution was attempted for Phase 12A-12F targeted files with the bundled Python runtime, but local MongoDB was unavailable (`localhost:27017` connection refused). GitHub Actions is the authoritative DB-backed proof.
+- Local DB-backed targeted pytest passed after starting a throwaway local MongoDB instance:
+  `python -m pytest backend/tests/test_ec12_phase12e_communications.py backend/tests/test_ec12_phase12f_employee_account_experience.py -q` -> 2 passed.
+- Local directly affected EC12 stack pytest passed:
+  `python -m pytest backend/tests/test_ec12_phase12a_tasks.py backend/tests/test_ec12_phase12b_tasks_experience.py backend/tests/test_ec12_phase12c_time_off.py backend/tests/test_ec12_phase12d_calendar_appointments.py backend/tests/test_ec12_phase12e_communications.py backend/tests/test_ec12_phase12f_employee_account_experience.py -q` -> 10 passed.
 - Frontend tests passed: `yarn.cmd test --watchAll=false` -> 7 suites, 29 tests.
 - Frontend production build passed: `yarn.cmd build`.
+- GitHub Actions run `29573599455` passed: `backend-tests`, `frontend-tests`, and `frontend-build`.
+- CI failure on run `29572535798` was caused by Mongo rejecting `communication_preferences` upserts where `$setOnInsert` default fields overlapped with `$set` update fields. Fixed by removing all update keys from the insert-default document before upsert.
 
 ## Targeted Test File
 
