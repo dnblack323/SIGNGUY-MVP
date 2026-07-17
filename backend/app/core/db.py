@@ -650,4 +650,51 @@ async def ensure_indexes() -> None:
         unique=True,
     )
 
+    # ---- EC12 Phase 12G - community, founders, feedback, voting, support ----
+    await db.community_spaces.create_index("id", unique=True)
+    await db.community_spaces.create_index([("scope_type", 1), ("tenant_id", 1), ("active", 1), ("archived_at", 1)])
+    await db.community_posts.create_index("id", unique=True)
+    await db.community_posts.create_index([("space_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.community_posts.create_index([("scope_type", 1), ("tenant_id", 1), ("post_type", 1), ("updated_at", -1)])
+    await db.community_posts.create_index(
+        [("author_user_id", 1), ("space_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.community_comments.create_index("id", unique=True)
+    await db.community_comments.create_index([("post_id", 1), ("parent_comment_id", 1), ("created_at", 1)])
+    await db.community_votes.create_index("id", unique=True)
+    await db.community_votes.create_index(
+        [("record_type", 1), ("record_id", 1), ("identity_type", 1), ("identity_id", 1)],
+        unique=True,
+    )
+    await db.feature_requests.create_index("id", unique=True)
+    await db.feature_requests.create_index([("status", 1), ("vote_count", -1), ("created_at", -1)])
+    await db.feature_requests.create_index(
+        [("tenant_id", 1), ("submitter_user_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.bug_reports.create_index("id", unique=True)
+    await db.bug_reports.create_index([("status", 1), ("created_at", -1)])
+    await db.bug_reports.create_index([("tenant_id", 1), ("submitter_user_id", 1), ("created_at", -1)])
+    await db.bug_reports.create_index(
+        [("tenant_id", 1), ("submitter_user_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.founder_access.create_index("id", unique=True)
+    await db.founder_access.create_index([("user_id", 1), ("tenant_id", 1), ("revoked_at", 1)])
+    await db.support_requests.create_index("id", unique=True)
+    await db.support_requests.create_index([("tenant_id", 1), ("destination_type", 1), ("status", 1), ("created_at", -1)])
+    await db.support_requests.create_index([("destination_type", 1), ("status", 1), ("created_at", -1)])
+    await db.support_requests.create_index(
+        [("tenant_id", 1), ("requester_user_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.support_request_notes.create_index("id", unique=True)
+    await db.support_request_notes.create_index([("tenant_id", 1), ("support_request_id", 1), ("created_at", 1)])
+    await db.community_moderation_reports.create_index([("post_id", 1), ("status", 1), ("created_at", -1)])
+
     logger.info("MongoDB indexes ensured")

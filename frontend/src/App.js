@@ -68,6 +68,7 @@ import TeamSchedulePage from "@/pages/TeamSchedulePage";
 import ShopSchedulePage from "@/pages/ShopSchedulePage";
 import PayrollPage from "@/pages/PayrollPage";
 import EmployeePortalAccessPage from "@/pages/EmployeePortalAccessPage";
+import CommunityPage from "@/pages/CommunityPage";
 import EmployeePortalApp from "@/portal/employee/EmployeePortalApp";
 import { Toaster } from "sonner";
 
@@ -147,6 +148,10 @@ function AppRoutes() {
         <Route path="/team/time-clock" element={<TimeClockPage />} />
         <Route path="/team/timesheets" element={<TimesheetsPage />} />
         <Route path="/team/payroll" element={<PayrollPage />} />
+        <Route path="/help/community" element={<CommunityPage />} />
+        <Route path="/help/bugs" element={<CommunityPage />} />
+        <Route path="/help/feature-requests" element={<CommunityPage />} />
+        <Route path="/help/contact" element={<CommunityPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/company" element={<CompanySettingsPage />} />
         <Route path="/settings/integrations" element={<IntegrationsPage />} />

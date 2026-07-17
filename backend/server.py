@@ -244,6 +244,10 @@ api_router.include_router(calendar_router_module.router)
 from app.routers import communications as communications_router_module
 api_router.include_router(communications_router_module.router)
 
+# EC12 Phase 12G - community, founders, feedback, voting, and support routing.
+from app.routers import community as community_router_module
+api_router.include_router(community_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

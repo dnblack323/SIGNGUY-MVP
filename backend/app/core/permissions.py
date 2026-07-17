@@ -261,6 +261,10 @@ STAFF_PERMS: list[str] = [
     Perm.MESSAGE_READ.value, Perm.MESSAGE_CREATE.value,
     Perm.NOTE_READ.value, Perm.NOTE_CREATE.value,
     Perm.ANNOUNCEMENT_READ.value, Perm.DIGEST_READ.value,
+    # EC12 Phase 12G - staff can participate in community/feedback/support;
+    # moderation remains owner/admin-only through OWNER_ADMIN_PERMS.
+    Perm.COMMUNITY_READ.value, Perm.COMMUNITY_POST.value,
+    Perm.SUPPORT_READ.value, Perm.SUPPORT_WRITE.value,
     # EC8 phase 8e — every staff login may view/complete their OWN assigned
     # Training (if linked to an Employee record), mirroring the
     # TIMECLOCK_SELF/TIMESHEET_SELF self-service convention above.
