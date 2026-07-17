@@ -220,6 +220,10 @@ api_router.include_router(production_workflows_router_module.router)
 from app.routers import production_timeline as production_timeline_router_module
 api_router.include_router(production_timeline_router_module.router)
 
+# EC11 - Phase 11C Live Work Order / Order Item production stage instances.
+from app.routers import production_stages as production_stages_router_module
+api_router.include_router(production_stages_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

@@ -19,6 +19,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { RegenerateDialog, TransitionReasonDialog, AssignDialog } from "@/components/work-orders/GenerateWorkOrderDialog";
 import RequirementsDialog from "@/components/work-orders/RequirementsDialog";
 import PrintSummaryDialog from "@/components/work-orders/PrintSummaryDialog";
+import WorkOrderStagesPanel from "@/components/production/WorkOrderStagesPanel";
 
 const ALLOWED = {
   draft: ["released", "cancelled"],
@@ -140,6 +141,7 @@ export default function WorkOrderDetailPage() {
         <Tabs defaultValue="items" data-testid="detail-tabs">
           <TabsList>
             <TabsTrigger value="items" data-testid="detail-tab-items">Items</TabsTrigger>
+            <TabsTrigger value="stages" data-testid="detail-tab-stages">Stages</TabsTrigger>
             <TabsTrigger value="details" data-testid="detail-tab-details">Details</TabsTrigger>
             <TabsTrigger value="activity" data-testid="detail-tab-activity">Activity</TabsTrigger>
           </TabsList>
@@ -173,6 +175,9 @@ export default function WorkOrderDetailPage() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+          <TabsContent value="stages">
+            <WorkOrderStagesPanel workOrderId={id} />
           </TabsContent>
           <TabsContent value="details" className="space-y-4">
             <Card>

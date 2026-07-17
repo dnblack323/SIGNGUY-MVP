@@ -6,9 +6,17 @@ from pydantic import Field
 
 from .base import BaseDoc
 
-ProductionWorkflowScope = Literal["tenant_default", "category", "reusable_custom", "system_starter"]
+ProductionWorkflowScope = Literal[
+    "tenant_default",
+    "category",
+    "reusable_custom",
+    "system_starter",
+    "order_item_override",
+]
 
 ProductionStageStatus = Literal["not_started", "in_progress", "waiting", "blocked", "completed", "skipped"]
+ProductionWorkflowInstanceStatus = Literal["active", "manual_no_workflow", "completed", "cancelled"]
+ProductionWorkflowInstanceSource = Literal["order_item_override", "category", "tenant_default", "explicit_workflow", "manual_no_workflow"]
 
 
 class ProductionWorkflowStageDefinition(BaseDoc):
@@ -51,3 +59,74 @@ class ProductionWorkflowDefinition(BaseDoc):
     stages: list[ProductionWorkflowStageDefinition] = Field(default_factory=list)
     created_by_user_id: Optional[str] = None
     updated_by_user_id: Optional[str] = None
+
+
+class OrderItemWorkflowOverride(BaseDoc):
+    tenant_id: str
+    order_id: str
+    order_item_id: str
+    source_workflow_id: Optional[str] = None
+    source_workflow_version: Optional[int] = None
+    source_type: ProductionWorkflowInstanceSource = "order_item_override"
+    workflow_name: str
+    workflow_key: str
+    stages: list[ProductionWorkflowStageDefinition] = Field(default_factory=list)
+    created_by_user_id: str
+    updated_by_user_id: Optional[str] = None
+    locked_at: Optional[str] = None
+    locked_workflow_instance_id: Optional[str] = None
+
+
+class ProductionWorkflowInstance(BaseDoc):
+    tenant_id: str
+    order_id: str
+    order_item_id: str
+    work_order_id: str
+    source_workflow_id: Optional[str] = None
+    source_workflow_version: Optional[int] = None
+    source_type: ProductionWorkflowInstanceSource
+    source_name: Optional[str] = None
+    created_by_user_id: str
+    status: ProductionWorkflowInstanceStatus = "active"
+    resolution_source: str
+    stage_definitions: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ProductionStageInstance(BaseDoc):
+    tenant_id: str
+    workflow_instance_id: str
+    order_id: str
+    order_item_id: str
+    work_order_id: str
+    stage_key: str
+    stage_name: str
+    description: Optional[str] = None
+    sequence: int
+    required: bool = True
+    may_skip: bool = True
+    requires_reason_to_skip: bool = False
+    status: ProductionStageStatus = "not_started"
+    assigned_employee_id: Optional[str] = None
+    assigned_user_id: Optional[str] = None
+    assigned_role: Optional[str] = None
+    due_at: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    skipped_at: Optional[str] = None
+    blocked_at: Optional[str] = None
+    waiting_since: Optional[str] = None
+    blocker_reason: Optional[str] = None
+    completion_note: Optional[str] = None
+    skip_reason: Optional[str] = None
+    reopened_at: Optional[str] = None
+    reopened_by_user_id: Optional[str] = None
+    reopen_reason: Optional[str] = None
+    proof_gate_type: Optional[str] = None
+    proof_gate_snapshot: Optional[dict[str, Any]] = None
+    equipment_requirement_ids: list[str] = Field(default_factory=list)
+    certification_requirement_ids: list[str] = Field(default_factory=list)
+    customer_visible: bool = False
+    employee_visible: bool = True
+    requires_previous_stage_complete: bool = True
+    production_notes: list[dict[str, Any]] = Field(default_factory=list)
+    history: list[dict[str, Any]] = Field(default_factory=list)

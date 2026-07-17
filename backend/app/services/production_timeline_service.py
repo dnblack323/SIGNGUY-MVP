@@ -60,10 +60,15 @@ SAFE_METADATA_KEYS = {
     "parent_type",
     "payment_status",
     "proof_number",
+    "resolution_source",
     "size_bytes",
+    "stage_key",
+    "stage_name",
     "status",
     "version",
     "visibility",
+    "workflow_instance_id",
+    "workflow_name",
 }
 
 
@@ -281,6 +286,30 @@ async def _collect_related(tenant_id: str, data: dict[str, Any]) -> dict[str, An
     invoice_ids = _id_list(i.get("id") for i in invoices)
     payments = await _docs("payments", {"tenant_id": tenant_id, "$or": [{"invoice_id": {"$in": invoice_ids}}, {"order_id": order_id}]}) if invoice_ids or order_id else []
 
+    workflow_query: dict[str, Any] = {"tenant_id": tenant_id}
+    if work_order_ids:
+        workflow_query["work_order_id"] = {"$in": work_order_ids}
+    elif item_ids:
+        workflow_query["order_item_id"] = {"$in": item_ids}
+    elif order_id:
+        workflow_query["order_id"] = order_id
+    else:
+        workflow_query["id"] = "__none__"
+    workflow_instances = await _docs("production_workflow_instances", workflow_query)
+    workflow_instance_ids = _id_list(w.get("id") for w in workflow_instances)
+    stage_query: dict[str, Any] = {"tenant_id": tenant_id}
+    if workflow_instance_ids:
+        stage_query["workflow_instance_id"] = {"$in": workflow_instance_ids}
+    elif work_order_ids:
+        stage_query["work_order_id"] = {"$in": work_order_ids}
+    elif item_ids:
+        stage_query["order_item_id"] = {"$in": item_ids}
+    elif order_id:
+        stage_query["order_id"] = order_id
+    else:
+        stage_query["id"] = "__none__"
+    production_stages = await _docs("production_stage_instances", stage_query)
+
     return {
         "proofs": proofs,
         "proof_versions": proof_versions,
@@ -289,6 +318,8 @@ async def _collect_related(tenant_id: str, data: dict[str, Any]) -> dict[str, An
         "files_by_id": files_by_id,
         "invoices": invoices,
         "payments": payments,
+        "workflow_instances": workflow_instances,
+        "production_stages": production_stages,
     }
 
 
@@ -487,6 +518,84 @@ def _project_direct_events(tenant_id: str, data: dict[str, Any], related: dict[s
             metadata={"amount_cents": pay.get("amount_cents"), "payment_status": pay.get("status")},
         ))
 
+    for instance in related.get("workflow_instances") or []:
+        _add_event(events, _make_event(
+            tenant_id=tenant_id, event_type="workflow_instance_created", event_category="production",
+            source_type="production_workflow_instance", source_id=instance["id"],
+            order_id=instance.get("order_id"), order_item_id=instance.get("order_item_id"),
+            work_order_id=instance.get("work_order_id"), occurred_at=instance.get("created_at"),
+            title="Production workflow instance created",
+            internal_summary=f"Workflow resolved from {instance.get('resolution_source')}: {instance.get('source_name') or 'manual/no workflow'}",
+            actor=_actor_from_user(instance.get("created_by_user_id")),
+            related_workflow_id=instance.get("source_workflow_id"),
+            metadata={
+                "workflow_instance_id": instance.get("id"),
+                "workflow_name": instance.get("source_name"),
+                "resolution_source": instance.get("resolution_source"),
+                "status": instance.get("status"),
+            },
+        ))
+
+    for stage in related.get("production_stages") or []:
+        base = {
+            "tenant_id": tenant_id,
+            "event_category": "production",
+            "source_type": "production_stage",
+            "source_id": stage["id"],
+            "order_id": stage.get("order_id"),
+            "order_item_id": stage.get("order_item_id"),
+            "work_order_id": stage.get("work_order_id"),
+            "metadata": {
+                "stage_key": stage.get("stage_key"),
+                "stage_name": stage.get("stage_name"),
+                "workflow_instance_id": stage.get("workflow_instance_id"),
+                "status": stage.get("status"),
+            },
+        }
+        if stage.get("started_at"):
+            _add_event(events, _make_event(
+                **base, event_type="stage_started", occurred_at=stage.get("started_at"),
+                title=f"Stage started: {stage.get('stage_name')}",
+                internal_summary=f"Production stage started: {stage.get('stage_name')}",
+                status_to="in_progress",
+            ))
+        if stage.get("waiting_since"):
+            _add_event(events, _make_event(
+                **base, event_type="stage_waiting", occurred_at=stage.get("waiting_since"),
+                title=f"Stage waiting: {stage.get('stage_name')}",
+                internal_summary=f"Production stage waiting: {stage.get('stage_name')}",
+                status_to="waiting",
+            ))
+        if stage.get("blocked_at"):
+            _add_event(events, _make_event(
+                **base, event_type="stage_blocked", occurred_at=stage.get("blocked_at"),
+                title=f"Stage blocked: {stage.get('stage_name')}",
+                internal_summary=stage.get("blocker_reason") or f"Production stage blocked: {stage.get('stage_name')}",
+                status_to="blocked",
+            ))
+        if stage.get("completed_at"):
+            _add_event(events, _make_event(
+                **base, event_type="stage_completed", occurred_at=stage.get("completed_at"),
+                title=f"Stage completed: {stage.get('stage_name')}",
+                internal_summary=stage.get("completion_note") or f"Production stage completed: {stage.get('stage_name')}",
+                status_to="completed",
+            ))
+        if stage.get("skipped_at"):
+            _add_event(events, _make_event(
+                **base, event_type="stage_skipped", occurred_at=stage.get("skipped_at"),
+                title=f"Stage skipped: {stage.get('stage_name')}",
+                internal_summary=stage.get("skip_reason") or f"Production stage skipped: {stage.get('stage_name')}",
+                status_to="skipped",
+            ))
+        if stage.get("reopened_at"):
+            _add_event(events, _make_event(
+                **base, event_type="stage_reopened", occurred_at=stage.get("reopened_at"),
+                title=f"Stage reopened: {stage.get('stage_name')}",
+                internal_summary=stage.get("reopen_reason") or f"Production stage reopened: {stage.get('stage_name')}",
+                actor=_actor_from_user(stage.get("reopened_by_user_id")),
+                status_to="in_progress",
+            ))
+
     return events
 
 
@@ -515,6 +624,7 @@ def _map_audit_event(audit: dict[str, Any], data: dict[str, Any], related: dict[
     invoice_id = entity_id if entity_type == "invoice" else None
     payment_id = diff.get("payment_id")
     file_id = diff.get("file_id")
+    workflow_instance_id = diff.get("workflow_instance_id")
     visibility = "internal_only"
     source_type = entity_type or "audit"
     title = audit.get("summary") or action
@@ -597,6 +707,41 @@ def _map_audit_event(audit: dict[str, Any], data: dict[str, Any], related: dict[
         if payment_id:
             source_id = payment_id
             source_type = "payment"
+    elif action == "production_workflow_instance.resolved":
+        event_type = "workflow_resolved"
+        category = "production"
+        source_type = "production_workflow_instance"
+    elif action == "production_workflow_instance.created":
+        event_type = "workflow_instance_created"
+        category = "production"
+        source_type = "production_workflow_instance"
+    elif action in {"production_item_workflow_override.created", "production_item_workflow_override.updated"}:
+        event_type = "item_workflow_override_changed"
+        category = "production"
+        item_id = diff.get("item_id") or diff.get("order_item_id")
+        source_type = "order_item_workflow_override"
+    elif action.startswith("production_stage."):
+        category = "production"
+        source_type = "production_stage"
+        stage_action = action.split(".", 1)[1]
+        event_type = {
+            "assigned": "stage_assigned",
+            "unassigned": "stage_unassigned",
+            "started": "stage_started",
+            "waiting": "stage_waiting",
+            "blocked": "stage_blocked",
+            "resumed": "stage_resumed",
+            "completed": "stage_completed",
+            "skipped": "stage_skipped",
+            "reopened": "stage_reopened",
+            "due_date_changed": "due_date_changed",
+            "production_note_added": "production_note_added",
+        }.get(stage_action)
+        item_id = diff.get("order_item_id")
+        wo_id = diff.get("work_order_id")
+        workflow_instance_id = diff.get("workflow_instance_id")
+        if not event_type:
+            return None
 
     if not event_type:
         return None
@@ -615,18 +760,30 @@ def _map_audit_event(audit: dict[str, Any], data: dict[str, Any], related: dict[
         title=title, internal_summary=audit.get("summary") or title,
         customer_safe_summary=title, actor=actor, status_from=status_from, status_to=status_to,
         related_file_id=file_id, related_proof_id=proof_id, related_invoice_id=invoice_id,
-        related_payment_id=payment_id, visibility=visibility,
-        metadata={"action": action},
+        related_payment_id=payment_id, related_workflow_id=workflow_instance_id, visibility=visibility,
+        metadata={"action": action, "workflow_instance_id": workflow_instance_id},
     )
 
 
 async def _project_audit_events(tenant_id: str, data: dict[str, Any], related: dict[str, Any], events: dict[str, dict[str, Any]]) -> None:
+    item_ids = _id_list(item.get("id") for item in data.get("items") or [])
+    override_ids: list[str] = []
+    if item_ids:
+        override_ids = [
+            d["id"] async for d in db.order_item_workflow_overrides.find(
+                {"tenant_id": tenant_id, "order_item_id": {"$in": item_ids}},
+                {"_id": 0, "id": 1},
+            )
+        ]
     ids_by_type: dict[str, list[str]] = {
         "order": _id_list([(data.get("order") or {}).get("id")]),
-        "order_item": _id_list(item.get("id") for item in data.get("items") or []),
+        "order_item": item_ids,
         "work_order": _id_list(wo.get("id") for wo in data.get("work_orders") or []),
         "proof": _id_list(p.get("id") for p in related["proofs"]),
         "invoice": _id_list(i.get("id") for i in related["invoices"]),
+        "production_workflow_instance": _id_list(w.get("id") for w in related.get("workflow_instances") or []),
+        "production_stage": _id_list(s.get("id") for s in related.get("production_stages") or []),
+        "order_item_workflow_override": override_ids,
     }
     filters = [{"entity_type": typ, "entity_id": {"$in": ids}} for typ, ids in ids_by_type.items() if ids]
     if not filters:
