@@ -561,4 +561,13 @@ async def ensure_indexes() -> None:
     await db.production_stage_instances.create_index([("tenant_id", 1), ("order_item_id", 1), ("sequence", 1)])
     await db.production_stage_instances.create_index([("tenant_id", 1), ("assigned_employee_id", 1), ("status", 1)])
 
+    # EC11 Phase 11F - shared-device production kiosk sessions and one-time supervisor overrides.
+    await db.production_kiosk_sessions.create_index("id", unique=True)
+    await db.production_kiosk_sessions.create_index("device_token_hash", unique=True)
+    await db.production_kiosk_sessions.create_index([("tenant_id", 1), ("status", 1), ("expires_at", 1)])
+    await db.production_kiosk_sessions.create_index([("tenant_id", 1), ("activated_by_user_id", 1)])
+    await db.production_kiosk_supervisor_overrides.create_index("id", unique=True)
+    await db.production_kiosk_supervisor_overrides.create_index("override_token_hash", unique=True)
+    await db.production_kiosk_supervisor_overrides.create_index([("tenant_id", 1), ("kiosk_session_id", 1), ("expires_at", 1)])
+
     logger.info("MongoDB indexes ensured")

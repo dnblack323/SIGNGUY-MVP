@@ -478,8 +478,49 @@ def _portal_row(row: dict, *, employee_id: str) -> dict:
     }
 
 
+def _kiosk_action_filter(actions: list[str], allowed_basic_actions: list[str]) -> list[str]:
+    allowed = set(allowed_basic_actions or [])
+    out: list[str] = []
+    for action in actions:
+        mapped = "notes" if action == "add_note" else action
+        if mapped in allowed:
+            out.append(action)
+    return out
+
+
+def _kiosk_row(
+    row: dict,
+    *,
+    employee_id: str,
+    allowed_basic_actions: list[str],
+    customer_name_visible: bool,
+    include_actions: bool = True,
+) -> dict:
+    data = _portal_row(row, employee_id=employee_id)
+    if not customer_name_visible:
+        data["customer_name"] = None
+    if include_actions:
+        data["allowed_actions"] = _kiosk_action_filter(data.get("allowed_actions") or [], allowed_basic_actions)
+    else:
+        data["allowed_actions"] = []
+    data["queue_bucket"] = (
+        "assigned_to_me" if data["assigned_to_self"]
+        else "ready_for_role" if row.get("current_stage_status") == "not_started" and not row.get("assigned_employee_id")
+        else "shop_queue"
+    )
+    return data
+
+
 def _active_portal_row(row: dict) -> bool:
     return bool(row.get("current_stage_id")) and bool(row.get("employee_visible", True)) and row.get("current_stage_status") not in TERMINAL_STAGE_STATUSES
+
+
+def _role_compatible(row: dict, employee: dict) -> bool:
+    required = (row.get("assigned_role") or "").strip().lower()
+    if not required:
+        return True
+    employee_role = (employee.get("role_label") or "").strip().lower()
+    return required == employee_role
 
 
 async def get_employee_production_view(
@@ -525,6 +566,109 @@ async def get_employee_production_view(
             "waiting": sum(1 for r in assigned if r["stage_status"] == "waiting"),
             "overdue": sum(1 for r in assigned if r["overdue"]),
         },
+        "search": search or None,
+        "limit": limit,
+    }
+
+
+async def get_employee_kiosk_view(
+    *,
+    tenant_id: str,
+    employee_id: str,
+    search: Optional[str] = None,
+    limit: int = 100,
+    shop_queue_visibility: str = "assigned_only",
+    customer_name_visible: bool = True,
+    allowed_basic_actions: Optional[list[str]] = None,
+) -> dict:
+    employee = await db.employees.find_one({"tenant_id": tenant_id, "id": employee_id}, {"_id": 0})
+    if not employee:
+        raise ProductionBoardError("employee_not_found", "Employee not found")
+    work_orders = [serialize_doc(w) async for w in db.work_orders.find(
+        {"tenant_id": tenant_id, "current_version": {"$ne": False}}, {"_id": 0},
+    ).limit(1000)]
+    synthetic_user = {"id": f"kiosk:{employee_id}", "tenant_id": tenant_id, "email": "", "role": "employee_kiosk", "permissions": []}
+    rows = await _build_rows(tenant_id, work_orders, synthetic_user)
+    q = (search or "").strip().lower()
+    allowed = allowed_basic_actions or ["start", "resume", "wait", "block", "complete", "notes"]
+
+    visible_rows: list[dict] = []
+    recent_rows: list[dict] = []
+    for row in rows:
+        if not row.get("current_stage_id") or not row.get("employee_visible", True):
+            continue
+        if q:
+            haystack = " ".join(str(row.get(k) or "") for k in [
+                "work_order_number", "order_number", "customer_name", "order_item_name",
+                "current_stage_name", "assigned_employee_name",
+            ]).lower()
+            if q not in haystack:
+                continue
+        if row.get("current_stage_status") in TERMINAL_STAGE_STATUSES:
+            if row.get("assigned_employee_id") == employee_id and row.get("completed_recently"):
+                recent_rows.append(row)
+            continue
+        visible_rows.append(row)
+
+    assigned_rows = [r for r in visible_rows if r.get("assigned_employee_id") == employee_id]
+    ready_rows = [
+        r for r in visible_rows
+        if not r.get("assigned_employee_id") and r.get("current_stage_status") == "not_started" and _role_compatible(r, employee)
+    ]
+    blocked_waiting_rows = [r for r in assigned_rows if r.get("current_stage_status") in {"blocked", "waiting"}]
+    current_rows = [r for r in assigned_rows if r.get("current_stage_status") in ACTIVE_STAGE_STATUSES]
+
+    if shop_queue_visibility == "assigned_plus_ready_for_role":
+        queue_rows = ready_rows
+    elif shop_queue_visibility == "full_safe_production_queue":
+        queue_rows = [r for r in visible_rows if r.get("assigned_employee_id") != employee_id]
+    else:
+        queue_rows = []
+
+    assigned = [
+        _kiosk_row(r, employee_id=employee_id, allowed_basic_actions=allowed, customer_name_visible=customer_name_visible)
+        for r in _sort_portal_rows(assigned_rows)
+    ][:limit]
+    ready = [
+        _kiosk_row(r, employee_id=employee_id, allowed_basic_actions=[], customer_name_visible=customer_name_visible, include_actions=False)
+        for r in _sort_portal_rows(ready_rows)
+    ][:limit]
+    queue = [
+        _kiosk_row(r, employee_id=employee_id, allowed_basic_actions=[], customer_name_visible=customer_name_visible, include_actions=False)
+        for r in _sort_portal_rows(queue_rows)
+    ][:limit]
+    blocked_waiting = [
+        _kiosk_row(r, employee_id=employee_id, allowed_basic_actions=allowed, customer_name_visible=customer_name_visible)
+        for r in _sort_portal_rows(blocked_waiting_rows)
+    ][:limit]
+    recent = [
+        _kiosk_row(r, employee_id=employee_id, allowed_basic_actions=[], customer_name_visible=customer_name_visible, include_actions=False)
+        for r in _sort_portal_rows(recent_rows)
+    ][:limit]
+    current = [
+        _kiosk_row(r, employee_id=employee_id, allowed_basic_actions=allowed, customer_name_visible=customer_name_visible)
+        for r in _sort_portal_rows(current_rows)
+    ]
+    return {
+        "current_task": current[0] if current else None,
+        "assigned_tasks": assigned,
+        "ready_for_me": ready,
+        "shop_queue": queue,
+        "blocked_waiting": blocked_waiting,
+        "recently_completed_by_me": recent,
+        "counts": {
+            "current": len(current_rows),
+            "assigned": len(assigned_rows),
+            "ready_for_me": len(ready_rows),
+            "shop_queue": len(queue_rows),
+            "blocked_waiting": len(blocked_waiting_rows),
+            "blocked": sum(1 for r in assigned_rows if r.get("current_stage_status") == "blocked"),
+            "waiting": sum(1 for r in assigned_rows if r.get("current_stage_status") == "waiting"),
+            "overdue": sum(1 for r in assigned_rows if r.get("overdue")),
+            "recently_completed_by_me": len(recent_rows),
+        },
+        "shop_queue_visibility": shop_queue_visibility,
+        "customer_name_visible": customer_name_visible,
         "search": search or None,
         "limit": limit,
     }

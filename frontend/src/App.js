@@ -18,6 +18,7 @@ import OrderDetailPage from "@/pages/OrderDetailPage";
 import WorkOrdersPage from "@/pages/WorkOrdersPage";
 import WorkOrderDetailPage from "@/pages/WorkOrderDetailPage";
 import ProductionBoardPage from "@/pages/ProductionBoardPage";
+import ProductionKioskPage from "@/pages/ProductionKioskPage";
 import IntakePage from "@/pages/IntakePage";
 import IntakeNewPage from "@/pages/IntakeNewPage";
 import IntakeDetailPage from "@/pages/IntakeDetailPage";
@@ -89,6 +90,7 @@ function AppRoutes() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/portal/employee/*" element={<EmployeePortalApp />} />
+      <Route path="/kiosk/production" element={<ProductionKioskPage />} />
       <Route path="/portal/*" element={<PortalApp />} />
       <Route path="/p/*" element={<PublicApp />} />
       <Route element={<RequireAuth><AppShell /></RequireAuth>}>

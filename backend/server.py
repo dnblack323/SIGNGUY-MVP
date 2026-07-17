@@ -224,6 +224,11 @@ api_router.include_router(production_timeline_router_module.router)
 from app.routers import production_stages as production_stages_router_module
 api_router.include_router(production_stages_router_module.router)
 
+# EC11 - Phase 11F Shop-Floor Production Kiosk Mode. Restricted kiosk-device
+# sessions delegate stage actions to Phase 11C and Time Clock actions to EC8.
+from app.routers import production_kiosk as production_kiosk_router_module
+api_router.include_router(production_kiosk_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(
