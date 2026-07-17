@@ -100,7 +100,7 @@ async def test_employee_request_review_clarification_cancel_and_security(ctx):
 
     async with await _token_client(ctx["inactive_token"]) as c:
         denied = await c.post("/api/portal/employee/time-off", json={"start_at": _iso(2, 9), "end_at": _iso(2, 17)})
-        assert denied.status_code == 400
+        assert denied.status_code == 403
 
     async with await _client_as(ctx["owner"]) as c:
         manager_list = await c.get("/api/time-off")
@@ -145,4 +145,3 @@ async def test_employee_request_review_clarification_cancel_and_security(ctx):
     assert after == before
     assert await db.activity_events.count_documents({"tenant_id": ctx["tenant_id"], "entity_type": "time_off_request"}) >= 4
     assert await db.notifications.count_documents({"tenant_id": ctx["tenant_id"], "module": "time_off"}) >= 1
-
