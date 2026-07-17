@@ -229,6 +229,11 @@ api_router.include_router(production_stages_router_module.router)
 from app.routers import production_kiosk as production_kiosk_router_module
 api_router.include_router(production_kiosk_router_module.router)
 
+# EC12 Phase 12A - shared task foundation. Staff-only task management lives
+# here; Employee Portal self-scoped task access stays in portal_employee.py.
+from app.routers import tasks as tasks_router_module
+api_router.include_router(tasks_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

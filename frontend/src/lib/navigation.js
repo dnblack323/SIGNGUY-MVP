@@ -95,7 +95,7 @@ export const NAV_AREAS = [
       { key: "equipment", label: "Equipment", to: "/team/equipment", perm: "equipment:read", testId: "flyout-equipment" },
       { key: "training", label: "Training", to: "/team/training", perm: "training:manage", testId: "flyout-training" },
       { key: "certifications", label: "Certifications", to: "/team/certifications", perm: "certification:read", testId: "flyout-certifications" },
-      { key: "tasks-kanban", label: "Tasks & Kanban", to: "/team/tasks", perm: "task:read", testId: "flyout-tasks-kanban", disabled: true },
+      { key: "tasks-kanban", label: "Tasks & Kanban", to: "/team/tasks", perm: "task:read", testId: "flyout-tasks-kanban" },
       { key: "team-schedule", label: "Team Schedule", to: "/team/schedule", perm: "schedule:read", testId: "flyout-team-schedule" },
       { key: "time-clock", label: "Time Clock", to: "/team/time-clock", perm: "timeclock:self", testId: "flyout-time-clock" },
       { key: "timesheets", label: "Timesheets", to: "/team/timesheets", perm: "timesheet:self", testId: "flyout-timesheets" },

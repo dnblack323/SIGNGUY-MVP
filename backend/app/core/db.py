@@ -570,4 +570,27 @@ async def ensure_indexes() -> None:
     await db.production_kiosk_supervisor_overrides.create_index("override_token_hash", unique=True)
     await db.production_kiosk_supervisor_overrides.create_index([("tenant_id", 1), ("kiosk_session_id", 1), ("expires_at", 1)])
 
+    # ---- EC12 Phase 12A - shared task foundation ----
+    await db.tasks.create_index("id", unique=True)
+    await db.tasks.create_index([("tenant_id", 1), ("status", 1), ("archived_at", 1), ("due_at", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("assigned_user_id", 1), ("status", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("assigned_employee_id", 1), ("status", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("customer_id", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("order_id", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("order_item_id", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("work_order_id", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("production_stage_id", 1)])
+    await db.tasks.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.task_comments.create_index("id", unique=True)
+    await db.task_comments.create_index([("tenant_id", 1), ("task_id", 1), ("created_at", 1)])
+    await db.task_reminders.create_index("id", unique=True)
+    await db.task_reminders.create_index(
+        [("tenant_id", 1), ("task_id", 1), ("reminder_kind", 1), ("policy_key", 1)],
+        unique=True,
+    )
+
     logger.info("MongoDB indexes ensured")

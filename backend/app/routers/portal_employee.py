@@ -17,8 +17,9 @@ from pydantic import BaseModel
 from ..core.db import db
 from ..core.time_utils import utc_now
 from ..deps_portal import require_employee_portal_permission
-from ..services import announcement_service, certification_service, payroll_service, production_board_service, production_stage_service, schedule_service, time_clock_service, timesheet_service, training_service
+from ..services import announcement_service, certification_service, payroll_service, production_board_service, production_stage_service, schedule_service, task_service, time_clock_service, timesheet_service, training_service
 from ..services.production_stage_service import ProductionStageError
+from ..services.task_service import TaskError
 from ..services.portal_identity import update_portal_identity
 from ..services.time_clock_service import TimeEntryError
 from ..services.timesheet_service import TimesheetError
@@ -33,6 +34,7 @@ SCHEDULE = require_employee_portal_permission("portal:employee_schedule_view")
 PAY = require_employee_portal_permission("portal:employee_pay_view")
 TRAINING = require_employee_portal_permission("portal:employee_training_view")
 CERTIFICATION = require_employee_portal_permission("portal:employee_certification_view")
+TASKS = require_employee_portal_permission("portal:employee_tasks")
 
 
 def _raise(e):
@@ -118,6 +120,7 @@ async def dashboard(identity: dict = Depends(VIEW)) -> dict:
         a for a in announcements if a.get("audience") == "all" or employee_id in (a.get("employee_ids") or [])
     ]
     latest_pay = await _latest_pay_summary(tenant_id, employee_id)
+    task_summary = await task_service.list_employee_tasks(tenant_id=tenant_id, employee_id=employee_id)
     return {
         "employee": _public_employee_view(emp),
         "active_entry": active_entry,
@@ -127,7 +130,7 @@ async def dashboard(identity: dict = Depends(VIEW)) -> dict:
                        "week_end": week_summary["week_end"]},
         "timesheet_status": week_summary["status"],
         "announcements": visible_announcements,
-        "tasks": {"available": False, "items": []},
+        "tasks": {"available": True, "items": task_summary["items"][:3], "total": task_summary["total"]},
         "pay": latest_pay,
     }
 
@@ -488,12 +491,94 @@ async def announcements(identity: dict = Depends(VIEW)) -> dict:
     return {"items": visible}
 
 
-# ---- My Tasks — clean boundary placeholder (no Task system exists yet) ----
+class PortalTaskActionIn(BaseModel):
+    reason: Optional[str] = None
+
+
+class PortalTaskCommentIn(BaseModel):
+    body: str
+
 
 @router.get("/tasks")
-async def tasks(identity: dict = Depends(VIEW)) -> dict:
-    return {"available": False, "items": [],
-            "message": "Task assignments aren't available yet — coming in a future update."}
+async def my_tasks(status: Optional[str] = None, identity: dict = Depends(TASKS)) -> dict:
+    return await task_service.list_employee_tasks(
+        tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], status=status,
+    )
+
+
+@router.get("/tasks/{task_id}")
+async def task_detail(task_id: str, identity: dict = Depends(TASKS)) -> dict:
+    try:
+        task = await task_service.get_employee_task(
+            tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], task_id=task_id,
+        )
+        comments = await task_service.list_comments(
+            tenant_id=identity["tenant_id"], task_id=task_id, employee_visible_only=True,
+        )
+        return {"task": task, "comments": comments}
+    except TaskError as e:
+        _raise(e)
+
+
+async def _task_transition(identity: dict, task_id: str, target: str, payload: PortalTaskActionIn) -> dict:
+    try:
+        return await task_service.transition_task(
+            tenant_id=identity["tenant_id"], task_id=task_id, target=target,
+            actor_user_id=f"portal:{identity['id']}", actor_email=identity.get("email", "employee-portal"),
+            actor_employee_id=identity["employee_id"], reason=payload.reason, allow_employee=True,
+        )
+    except TaskError as e:
+        _raise(e)
+
+
+@router.post("/tasks/{task_id}/start")
+async def task_start(task_id: str, payload: PortalTaskActionIn, identity: dict = Depends(TASKS)) -> dict:
+    return await _task_transition(identity, task_id, "in_progress", payload)
+
+
+@router.post("/tasks/{task_id}/resume")
+async def task_resume(task_id: str, payload: PortalTaskActionIn, identity: dict = Depends(TASKS)) -> dict:
+    return await _task_transition(identity, task_id, "in_progress", payload)
+
+
+@router.post("/tasks/{task_id}/wait")
+async def task_wait(task_id: str, payload: PortalTaskActionIn, identity: dict = Depends(TASKS)) -> dict:
+    return await _task_transition(identity, task_id, "waiting", payload)
+
+
+@router.post("/tasks/{task_id}/block")
+async def task_block(task_id: str, payload: PortalTaskActionIn, identity: dict = Depends(TASKS)) -> dict:
+    return await _task_transition(identity, task_id, "blocked", payload)
+
+
+@router.post("/tasks/{task_id}/complete")
+async def task_complete(task_id: str, payload: PortalTaskActionIn, identity: dict = Depends(TASKS)) -> dict:
+    return await _task_transition(identity, task_id, "completed", payload)
+
+
+@router.get("/tasks/{task_id}/comments")
+async def task_comments(task_id: str, identity: dict = Depends(TASKS)) -> dict:
+    try:
+        await task_service.get_employee_task(
+            tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], task_id=task_id,
+        )
+        return {"items": await task_service.list_comments(
+            tenant_id=identity["tenant_id"], task_id=task_id, employee_visible_only=True,
+        )}
+    except TaskError as e:
+        _raise(e)
+
+
+@router.post("/tasks/{task_id}/comments", status_code=201)
+async def task_add_comment(task_id: str, payload: PortalTaskCommentIn, identity: dict = Depends(TASKS)) -> dict:
+    try:
+        return await task_service.add_comment(
+            tenant_id=identity["tenant_id"], task_id=task_id,
+            actor_user_id=f"portal:{identity['id']}", actor_email=identity.get("email", "employee-portal"),
+            author_employee_id=identity["employee_id"], body=payload.body, employee_scope=True,
+        )
+    except TaskError as e:
+        _raise(e)
 
 
 # ---- Profile ----

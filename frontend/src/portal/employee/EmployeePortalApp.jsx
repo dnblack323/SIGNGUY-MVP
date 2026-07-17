@@ -33,7 +33,7 @@ function Shell({ children }) {
             <Link to="/portal/employee/pay" data-testid="employee-portal-nav-pay">My Pay</Link>
             <Link to="/portal/employee/training" data-testid="employee-portal-nav-training">My Training</Link>
             <Link to="/portal/employee/certifications" data-testid="employee-portal-nav-certifications">My Certifications</Link>
-            <span className="text-slate-400 cursor-not-allowed" title="Coming later" data-testid="employee-portal-nav-tasks-disabled">My Tasks</span>
+            <Link to="/portal/employee/tasks" data-testid="employee-portal-nav-tasks">My Tasks</Link>
             <Link to="/portal/employee/announcements" data-testid="employee-portal-nav-announcements">Announcements</Link>
             <Link to="/portal/employee/profile" data-testid="employee-portal-nav-profile">Profile</Link>
           </nav>
@@ -286,7 +286,7 @@ function Dashboard() {
           <Link className="underline" to="/portal/employee/pay">My Pay</Link>
           <Link className="underline" to="/portal/employee/training">My Training</Link>
           <Link className="underline" to="/portal/employee/certifications">My Certifications</Link>
-          <span className="text-slate-400 cursor-not-allowed" title="Coming later">My Tasks</span>
+          <Link className="underline" to="/portal/employee/tasks">My Tasks</Link>
           <Link className="underline" to="/portal/employee/announcements">Announcements</Link>
           <Link className="underline" to="/portal/employee/profile">Profile</Link>
         </CardContent>
@@ -308,6 +308,101 @@ function statusBadge(status) {
   const label = String(status || "not_started").replace(/_/g, " ");
   const variant = status === "blocked" ? "destructive" : "outline";
   return <Badge variant={variant} className="capitalize">{label}</Badge>;
+}
+
+function MyTasksPage() {
+  const [items, setItems] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [comment, setComment] = useState("");
+  const load = useCallback(async () => {
+    try {
+      const r = await employeePortalApi.get("/portal/employee/tasks");
+      setItems(r.data.items || []);
+      setSelected((cur) => cur || r.data.items?.[0] || null);
+    } catch (e) { toast.error(employeePortalExtractError(e)); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!selected?.id) { setDetail(null); return; }
+    employeePortalApi.get(`/portal/employee/tasks/${selected.id}`).then((r) => setDetail(r.data))
+      .catch((e) => toast.error(employeePortalExtractError(e)));
+  }, [selected?.id]);
+
+  async function act(action) {
+    if (!selected) return;
+    try {
+      await employeePortalApi.post(`/portal/employee/tasks/${selected.id}/${action}`, { reason: `${action} from Employee Portal` });
+      toast.success("Task updated");
+      setSelected(null);
+      await load();
+    } catch (e) { toast.error(employeePortalExtractError(e)); }
+  }
+
+  async function addComment(e) {
+    e.preventDefault();
+    if (!selected || !comment.trim()) return;
+    try {
+      await employeePortalApi.post(`/portal/employee/tasks/${selected.id}/comments`, { body: comment });
+      setComment("");
+      const r = await employeePortalApi.get(`/portal/employee/tasks/${selected.id}`);
+      setDetail(r.data);
+      toast.success("Comment added");
+    } catch (err) { toast.error(employeePortalExtractError(err)); }
+  }
+
+  const actions = detail?.task?.allowed_actions || selected?.allowed_actions || [];
+  return (
+    <div className="space-y-4" data-testid="employee-portal-tasks-page">
+      <h1 className="text-xl font-semibold flex items-center gap-2"><CheckCircle2 className="h-5 w-5" /> My Tasks</h1>
+      {!items ? <p className="text-sm text-slate-500">Loading...</p> : !items.length ? (
+        <Card><CardContent className="py-8 text-sm text-slate-500 italic">No assigned tasks.</CardContent></Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+          <div className="space-y-2">
+            {items.map((task) => (
+              <button key={task.id} onClick={() => setSelected(task)} className={`w-full rounded-lg border bg-white p-3 text-left ${selected?.id === task.id ? "ring-2 ring-slate-300" : ""}`} data-testid={`employee-task-row-${task.id}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{task.title}</div>
+                    <div className="text-xs text-slate-500 truncate">{task.description || task.task_type}</div>
+                  </div>
+                  {statusBadge(task.status)}
+                </div>
+                <div className="mt-2 text-xs text-slate-500">{fmtDate(task.due_at)}</div>
+              </button>
+            ))}
+          </div>
+          {selected && (
+            <Card data-testid="employee-task-detail">
+              <CardHeader><CardTitle className="text-base">{detail?.task?.title || selected.title}</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2 flex-wrap">{statusBadge(detail?.task?.status || selected.status)}<Badge variant="outline">{detail?.task?.priority || selected.priority}</Badge></div>
+                {(detail?.task?.description || selected.description) && <p className="text-sm text-slate-600 whitespace-pre-wrap">{detail?.task?.description || selected.description}</p>}
+                <div className="flex gap-2 flex-wrap">
+                  {actions.includes("start") && <Button size="sm" onClick={() => act("start")}><Play className="h-4 w-4 mr-1" />Start</Button>}
+                  {actions.includes("resume") && <Button size="sm" variant="outline" onClick={() => act("resume")}>Resume</Button>}
+                  {actions.includes("wait") && <Button size="sm" variant="outline" onClick={() => act("wait")}>Wait</Button>}
+                  {actions.includes("block") && <Button size="sm" variant="outline" onClick={() => act("block")}>Block</Button>}
+                  {actions.includes("complete") && <Button size="sm" onClick={() => act("complete")}>Complete</Button>}
+                </div>
+                <div className="border-t pt-3 space-y-2">
+                  <div className="text-sm font-medium">Comments</div>
+                  {!(detail?.comments || []).length ? <p className="text-sm text-slate-500 italic">No employee-visible comments.</p> : detail.comments.map((c) => (
+                    <div key={c.id} className="rounded-md bg-slate-50 p-2 text-sm">{c.body}</div>
+                  ))}
+                  <form onSubmit={addComment} className="space-y-2">
+                    <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add comment" data-testid="employee-task-comment-input" />
+                    <Button size="sm" type="submit" disabled={!comment.trim()}>Add comment</Button>
+                  </form>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ProductionTaskCard({ task, selected, onSelect, onAction, compact }) {
@@ -706,6 +801,7 @@ export default function EmployeePortalApp() {
         <Route path="training" element={<Guard><MyTrainingPage /></Guard>} />
         <Route path="training/:assignmentId" element={<Guard><MyTrainingAssignmentDetailPage /></Guard>} />
         <Route path="certifications" element={<Guard><MyCertificationsPage /></Guard>} />
+        <Route path="tasks" element={<Guard><MyTasksPage /></Guard>} />
         <Route path="announcements" element={<Guard><AnnouncementsPage /></Guard>} />
         <Route path="profile" element={<Guard><ProfilePage /></Guard>} />
       </Routes>

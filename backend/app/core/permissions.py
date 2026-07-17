@@ -112,6 +112,12 @@ class Perm(str, Enum):
     EMPLOYEE_MANAGE = "employee:manage"
     TASK_READ = "task:read"
     TASK_WRITE = "task:write"
+    TASK_CREATE = "task:create"
+    TASK_UPDATE = "task:update"
+    TASK_ASSIGN = "task:assign"
+    TASK_COMPLETE = "task:complete"
+    TASK_ARCHIVE = "task:archive"
+    TASK_MANAGE = "task:manage"
     SCHEDULE_READ = "schedule:read"
     SCHEDULE_MANAGE = "schedule:manage"
     TIMECLOCK_SELF = "timeclock:self"
@@ -210,6 +216,7 @@ class PortalPerm(str, Enum):
     PORTAL_EMPLOYEE_SCHEDULE_VIEW = "portal:employee_schedule_view"
     PORTAL_EMPLOYEE_TRAINING_VIEW = "portal:employee_training_view"
     PORTAL_EMPLOYEE_CERTIFICATION_VIEW = "portal:employee_certification_view"
+    PORTAL_EMPLOYEE_TASKS = "portal:employee_tasks"
     PORTAL_WEBSTORE_OWNER_ADMIN = "portal:webstore_owner_admin"
     PORTAL_WEBSTORE_MANAGER_OPS = "portal:webstore_manager_ops"
 
@@ -234,6 +241,9 @@ STAFF_PERMS: list[str] = [
     # OTHER employees' time remains owner/admin only (timeclock:manage etc.
     # are granted only via OWNER_ADMIN_PERMS).
     Perm.TIMECLOCK_SELF.value, Perm.TIMESHEET_SELF.value,
+    # EC12 Phase 12A - staff may read shared tenant tasks. Mutations stay
+    # owner/admin-only under the finer task:* action permissions.
+    Perm.TASK_READ.value,
     # EC8 phase 8e — every staff login may view/complete their OWN assigned
     # Training (if linked to an Employee record), mirroring the
     # TIMECLOCK_SELF/TIMESHEET_SELF self-service convention above.
