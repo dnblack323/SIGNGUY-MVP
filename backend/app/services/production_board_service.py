@@ -137,6 +137,8 @@ def _allowed_actions(row: dict, user: dict) -> list[str]:
 
 def _column_key(row: dict, group_by: str) -> str:
     status = row.get("current_stage_status") or "manual_no_workflow"
+    if row.get("legacy_work_order_queue") and group_by == "status":
+        return row.get("work_order_status") or "released"
     if group_by == "stage":
         return row.get("current_stage_key") or "manual_no_workflow"
     if group_by == "assignee":
@@ -337,7 +339,7 @@ def _safe_row(
     status = (stage or {}).get("status") or ("manual_no_workflow" if not stage else "not_started")
     workflow_complete = bool(total_count and completed_count == total_count)
     row = {
-        "id": f"{work_order['id']}:{instance.get('id') or 'manual'}",
+        "id": f"{work_order['id']}:{instance.get('id')}" if instance.get("id") else work_order["id"],
         "work_order_id": work_order["id"],
         "work_order_number": work_order.get("number"),
         "order_id": work_order.get("order_id"),
@@ -374,6 +376,7 @@ def _safe_row(
         "updated_at": _row_updated_at(stage or {}, instance, work_order, order),
         "workflow_complete": workflow_complete,
         "resolution_state": resolution_state,
+        "legacy_work_order_queue": not bool(instance.get("id")),
         "may_skip": (stage or {}).get("may_skip", True),
         "requires_reason_to_skip": (stage or {}).get("requires_reason_to_skip", False),
     }
