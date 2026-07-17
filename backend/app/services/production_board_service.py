@@ -379,6 +379,7 @@ def _safe_row(
         "legacy_work_order_queue": not bool(instance.get("id")),
         "may_skip": (stage or {}).get("may_skip", True),
         "requires_reason_to_skip": (stage or {}).get("requires_reason_to_skip", False),
+        "employee_visible": bool((stage or {}).get("employee_visible", True)),
     }
     row["allowed_actions"] = _allowed_actions(row, user)
     return row
@@ -425,6 +426,117 @@ async def get_board(
         "sort": sort,
         "views": ["active", "blocked_waiting", "unassigned", "ready", "overdue", "completed_recently"],
     }
+
+
+def _portal_stage_actions(row: dict, *, assigned_to_self: bool) -> list[str]:
+    if not assigned_to_self or not row.get("current_stage_id"):
+        return []
+    status = row.get("current_stage_status") or "not_started"
+    if status == "not_started":
+        return ["start", "add_note"]
+    if status == "in_progress":
+        return ["wait", "block", "complete", "add_note"]
+    if status == "waiting":
+        return ["resume", "block", "add_note"]
+    if status == "blocked":
+        return ["resume", "wait", "add_note"]
+    return ["add_note"]
+
+
+def _portal_row(row: dict, *, employee_id: str) -> dict:
+    assigned_to_self = row.get("assigned_employee_id") == employee_id
+    return {
+        "id": row.get("id"),
+        "stage_id": row.get("current_stage_id"),
+        "work_order_id": row.get("work_order_id"),
+        "work_order_number": row.get("work_order_number"),
+        "order_id": row.get("order_id"),
+        "order_number": row.get("order_number"),
+        "order_item_id": row.get("order_item_id"),
+        "order_item_name": row.get("order_item_name"),
+        "customer_name": row.get("customer_name"),
+        "workflow_name": row.get("workflow_name"),
+        "stage_key": row.get("current_stage_key"),
+        "stage_name": row.get("current_stage_name"),
+        "stage_sequence": row.get("current_stage_sequence"),
+        "stage_status": row.get("current_stage_status"),
+        "assigned_employee_id": row.get("assigned_employee_id"),
+        "assigned_employee_name": row.get("assigned_employee_name"),
+        "assigned_to_self": assigned_to_self,
+        "due_at": row.get("due_at"),
+        "overdue": row.get("overdue"),
+        "priority": row.get("priority"),
+        "blocker_reason": row.get("blocker_reason"),
+        "waiting_since": row.get("waiting_since"),
+        "started_at": row.get("started_at"),
+        "completed_stage_count": row.get("completed_stage_count"),
+        "total_stage_count": row.get("total_stage_count"),
+        "progress_percent": row.get("progress_percent"),
+        "proof_or_approval_gate_state": row.get("proof_or_approval_gate_state"),
+        "eligibility_warning": row.get("eligibility_warning"),
+        "allowed_actions": _portal_stage_actions(row, assigned_to_self=assigned_to_self),
+    }
+
+
+def _active_portal_row(row: dict) -> bool:
+    return bool(row.get("current_stage_id")) and bool(row.get("employee_visible", True)) and row.get("current_stage_status") not in TERMINAL_STAGE_STATUSES
+
+
+async def get_employee_production_view(
+    *,
+    tenant_id: str,
+    employee_id: str,
+    search: Optional[str] = None,
+    limit: int = 80,
+) -> dict:
+    work_orders = [serialize_doc(w) async for w in db.work_orders.find(
+        {"tenant_id": tenant_id, "current_version": {"$ne": False}}, {"_id": 0},
+    ).limit(1000)]
+    synthetic_user = {"id": f"employee:{employee_id}", "tenant_id": tenant_id, "email": "", "role": "employee_portal", "permissions": []}
+    rows = await _build_rows(tenant_id, work_orders, synthetic_user)
+    q = (search or "").strip().lower()
+
+    portal_rows: list[dict] = []
+    for row in rows:
+        if not _active_portal_row(row):
+            continue
+        if q:
+            haystack = " ".join(str(row.get(k) or "") for k in [
+                "work_order_number", "order_number", "customer_name", "order_item_name",
+                "current_stage_name", "assigned_employee_name",
+            ]).lower()
+            if q not in haystack:
+                continue
+        portal_rows.append(_portal_row(row, employee_id=employee_id))
+
+    assigned = [r for r in portal_rows if r["assigned_to_self"]]
+    assigned = _sort_portal_rows(assigned)
+    current = [r for r in assigned if r["stage_status"] in ACTIVE_STAGE_STATUSES]
+    queue = _sort_portal_rows([r for r in portal_rows if not r["assigned_to_self"]])
+    return {
+        "current_task": current[0] if current else None,
+        "assigned_tasks": assigned[:limit],
+        "shop_queue": queue[:limit],
+        "counts": {
+            "current": len(current),
+            "assigned": len(assigned),
+            "shop_queue": len(queue),
+            "blocked": sum(1 for r in assigned if r["stage_status"] == "blocked"),
+            "waiting": sum(1 for r in assigned if r["stage_status"] == "waiting"),
+            "overdue": sum(1 for r in assigned if r["overdue"]),
+        },
+        "search": search or None,
+        "limit": limit,
+    }
+
+
+def _sort_portal_rows(rows: list[dict]) -> list[dict]:
+    return sorted(rows, key=lambda r: (
+        0 if r.get("stage_status") == "in_progress" else 1,
+        PRIORITY_WEIGHT.get(r.get("priority") or "normal", 2),
+        r.get("due_at") or "9999-99-99",
+        str(r.get("work_order_number") or ""),
+    ))
 
 
 async def bulk_assign(*, tenant_id: str, stage_ids: list[str], employee_id: str, override_reason: Optional[str], user: dict) -> dict:

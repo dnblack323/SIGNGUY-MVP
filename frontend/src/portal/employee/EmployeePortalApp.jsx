@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Clock, Calendar, FileClock, GraduationCap, Megaphone, ShieldCheck, User, Wallet } from "lucide-react";
+import { AlertTriangle, Briefcase, Calendar, CheckCircle2, Clock, FileClock, GraduationCap, Hourglass, Megaphone, MessageSquare, Play, RotateCw, Search, ShieldCheck, User, Wallet } from "lucide-react";
 
 function fmtCents(cents) {
   const n = Number(cents || 0) / 100;
@@ -27,6 +27,7 @@ function Shell({ children }) {
           <Link to="/portal/employee" className="font-semibold" data-testid="employee-portal-logo">SignGuy Employee Portal</Link>
           <nav className="flex gap-3 text-sm items-center">
             <Link to="/portal/employee/time-clock" data-testid="employee-portal-nav-time-clock">Time Clock</Link>
+            <Link to="/portal/employee/production" data-testid="employee-portal-nav-production">Production</Link>
             <Link to="/portal/employee/schedule" data-testid="employee-portal-nav-schedule">My Schedule</Link>
             <Link to="/portal/employee/timesheet" data-testid="employee-portal-nav-timesheet">My Timesheet</Link>
             <Link to="/portal/employee/pay" data-testid="employee-portal-nav-pay">My Pay</Link>
@@ -119,6 +120,10 @@ function VerifyPage() {
 function fmtTime(iso) {
   if (!iso) return "--:--";
   try { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return iso; }
+}
+function fmtDate(iso) {
+  if (!iso) return "No due date";
+  try { return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" }); } catch { return iso; }
 }
 function fmtHours(mins) {
   const m = mins || 0;
@@ -275,6 +280,7 @@ function Dashboard() {
         <CardHeader><CardTitle className="text-base">Quick Links</CardTitle></CardHeader>
         <CardContent className="flex gap-3 flex-wrap text-sm">
           <Link className="underline" to="/portal/employee/time-clock">Clock In/Out</Link>
+          <Link className="underline" to="/portal/employee/production">Production</Link>
           <Link className="underline" to="/portal/employee/schedule">My Schedule</Link>
           <Link className="underline" to="/portal/employee/timesheet">My Timesheet</Link>
           <Link className="underline" to="/portal/employee/pay">My Pay</Link>
@@ -294,6 +300,189 @@ function TimeClockPage() {
     <div className="space-y-4 max-w-md" data-testid="employee-portal-time-clock-page">
       <h1 className="text-xl font-semibold flex items-center gap-2"><Clock className="h-5 w-5" /> Time Clock</h1>
       <TimeClockCard />
+    </div>
+  );
+}
+
+function statusBadge(status) {
+  const label = String(status || "not_started").replace(/_/g, " ");
+  const variant = status === "blocked" ? "destructive" : "outline";
+  return <Badge variant={variant} className="capitalize">{label}</Badge>;
+}
+
+function ProductionTaskCard({ task, selected, onSelect, onAction, compact }) {
+  if (!task) return null;
+  const blocked = task.stage_status === "blocked";
+  const waiting = task.stage_status === "waiting";
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(task)}
+      className={`w-full text-left rounded border bg-white p-4 transition ${selected ? "border-slate-900 shadow-sm" : "border-slate-200 hover:border-slate-400"}`}
+      data-testid={`employee-production-task-${task.stage_id}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-lg font-semibold truncate">{task.stage_name || "Production task"}</div>
+          <div className="text-sm text-slate-600 truncate">WO {task.work_order_number || task.work_order_id} · {task.customer_name || "Customer"} · {task.order_item_name}</div>
+        </div>
+        {statusBadge(task.stage_status)}
+      </div>
+      <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-3">
+        <span>Due {fmtDate(task.due_at)}</span>
+        <span>{task.progress_percent || 0}% complete</span>
+        <span className={task.overdue ? "text-rose-700 font-medium" : ""}>{task.overdue ? "Overdue" : task.priority || "normal"}</span>
+      </div>
+      {(blocked || waiting || task.eligibility_warning) && (
+        <div className="mt-3 flex items-center gap-2 text-sm text-amber-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span className="truncate">{task.blocker_reason || task.eligibility_warning || "Waiting"}</span>
+        </div>
+      )}
+      {!compact && task.allowed_actions?.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {task.allowed_actions.includes("start") && <Button type="button" size="lg" onClick={(e) => { e.stopPropagation(); onAction(task, "start"); }} data-testid="employee-production-start"><Play className="h-4 w-4 mr-1" />Start</Button>}
+          {task.allowed_actions.includes("resume") && <Button type="button" size="lg" onClick={(e) => { e.stopPropagation(); onAction(task, "resume"); }} data-testid="employee-production-resume"><RotateCw className="h-4 w-4 mr-1" />Resume</Button>}
+          {task.allowed_actions.includes("complete") && <Button type="button" size="lg" onClick={(e) => { e.stopPropagation(); onAction(task, "complete"); }} data-testid="employee-production-complete"><CheckCircle2 className="h-4 w-4 mr-1" />Complete</Button>}
+        </div>
+      )}
+    </button>
+  );
+}
+
+function ProductionDetail({ task, onAction }) {
+  if (!task) {
+    return (
+      <Card data-testid="employee-production-empty-detail">
+        <CardContent className="pt-6 text-sm text-slate-500">Select a task to see details.</CardContent>
+      </Card>
+    );
+  }
+  return (
+    <Card data-testid="employee-production-detail">
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between gap-3 text-xl">
+          <span>{task.stage_name}</span>
+          {statusBadge(task.stage_status)}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="grid gap-3 text-sm sm:grid-cols-2">
+          <div><div className="text-slate-500">Work Order</div><div className="font-medium">WO {task.work_order_number || task.work_order_id}</div></div>
+          <div><div className="text-slate-500">Customer</div><div className="font-medium">{task.customer_name || "Customer"}</div></div>
+          <div><div className="text-slate-500">Line Item</div><div className="font-medium">{task.order_item_name}</div></div>
+          <div><div className="text-slate-500">Due</div><div className={task.overdue ? "font-medium text-rose-700" : "font-medium"}>{fmtDate(task.due_at)}</div></div>
+          <div><div className="text-slate-500">Workflow</div><div className="font-medium">{task.workflow_name || "Workflow"}</div></div>
+          <div><div className="text-slate-500">Progress</div><div className="font-medium">{task.completed_stage_count || 0}/{task.total_stage_count || 0} stages</div></div>
+        </div>
+        {task.blocker_reason && <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{task.blocker_reason}</div>}
+        {task.allowed_actions?.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {task.allowed_actions.includes("start") && <Button size="lg" onClick={() => onAction(task, "start")}><Play className="h-5 w-5 mr-2" />Start Task</Button>}
+            {task.allowed_actions.includes("resume") && <Button size="lg" onClick={() => onAction(task, "resume")}><RotateCw className="h-5 w-5 mr-2" />Resume</Button>}
+            {task.allowed_actions.includes("complete") && <Button size="lg" onClick={() => onAction(task, "complete")}><CheckCircle2 className="h-5 w-5 mr-2" />Complete</Button>}
+            {task.allowed_actions.includes("wait") && <Button size="lg" variant="outline" onClick={() => onAction(task, "wait")}><Hourglass className="h-5 w-5 mr-2" />Waiting</Button>}
+            {task.allowed_actions.includes("block") && <Button size="lg" variant="outline" onClick={() => onAction(task, "block")}><AlertTriangle className="h-5 w-5 mr-2" />Block</Button>}
+            {task.allowed_actions.includes("add_note") && <Button size="lg" variant="outline" onClick={() => onAction(task, "notes")}><MessageSquare className="h-5 w-5 mr-2" />Add Note</Button>}
+          </div>
+        ) : (
+          <div className="text-sm text-slate-500">This task is visible in the shop queue. A manager must assign it before employee actions are available.</div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProductionPage() {
+  const [data, setData] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [search, setSearch] = useState("");
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async (q = search) => {
+    try {
+      const r = await employeePortalApi.get("/portal/employee/production", { params: q ? { search: q } : {} });
+      setData(r.data);
+      setErr(null);
+      const nextSelected = r.data.current_task || r.data.assigned_tasks?.[0] || r.data.shop_queue?.[0] || null;
+      setSelected((prev) => {
+        if (prev && [...(r.data.assigned_tasks || []), ...(r.data.shop_queue || [])].some((t) => t.stage_id === prev.stage_id)) return prev;
+        return nextSelected;
+      });
+    } catch (e) { setErr(employeePortalExtractError(e)); }
+  }, [search]);
+
+  useEffect(() => { load(""); }, [load]);
+
+  async function act(task, action) {
+    if (!task?.stage_id || busy) return;
+    let payload = {};
+    if (action === "wait" || action === "block") {
+      const reason = window.prompt(action === "wait" ? "Why is this waiting?" : "Why is this blocked?");
+      if (!reason) return;
+      payload.reason = reason;
+    }
+    if (action === "complete") {
+      const note = window.prompt("Completion note (optional)") || "";
+      payload.completion_note = note;
+    }
+    if (action === "notes") {
+      const note = window.prompt("Production note");
+      if (!note) return;
+      payload.note = note;
+    }
+    setBusy(true);
+    try {
+      await employeePortalApi.post(`/portal/employee/production/stages/${task.stage_id}/${action}`, payload);
+      toast.success("Production task updated");
+      await load(search);
+    } catch (e) { toast.error(employeePortalExtractError(e)); }
+    setBusy(false);
+  }
+
+  const assigned = data?.assigned_tasks || [];
+  const queue = data?.shop_queue || [];
+  return (
+    <div className="space-y-4" data-testid="employee-production-page">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-semibold flex items-center gap-2"><Briefcase className="h-6 w-6" /> Production</h1>
+        <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); load(search); }}>
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search shop queue" data-testid="employee-production-search" />
+          <Button type="submit" variant="outline"><Search className="h-4 w-4" /></Button>
+        </form>
+      </div>
+      {err && <div className="text-sm text-rose-700">{err}</div>}
+      <div className="grid gap-4 lg:grid-cols-[minmax(320px,1fr)_minmax(360px,1fr)]">
+        <div className="space-y-4">
+          <TimeClockCard compact />
+          {data?.current_task && (
+            <section className="space-y-2" data-testid="employee-production-current">
+              <h2 className="text-sm font-semibold uppercase text-slate-500">Current Task</h2>
+              <ProductionTaskCard task={data.current_task} selected={selected?.stage_id === data.current_task.stage_id} onSelect={setSelected} onAction={act} />
+            </section>
+          )}
+          <section className="space-y-2" data-testid="employee-production-assigned">
+            <h2 className="text-sm font-semibold uppercase text-slate-500">My Assigned Tasks</h2>
+            {!data ? <p className="text-sm text-slate-500">Loading...</p> : assigned.length === 0 ? (
+              <Card><CardContent className="pt-6 text-sm text-slate-500">No assigned production tasks.</CardContent></Card>
+            ) : assigned.map((task) => (
+              <ProductionTaskCard key={task.stage_id} task={task} selected={selected?.stage_id === task.stage_id} onSelect={setSelected} onAction={act} compact />
+            ))}
+          </section>
+        </div>
+        <div className="space-y-4">
+          <ProductionDetail task={selected} onAction={act} />
+          <section className="space-y-2" data-testid="employee-production-shop-queue">
+            <h2 className="text-sm font-semibold uppercase text-slate-500">Shop Queue</h2>
+            {!data ? <p className="text-sm text-slate-500">Loading...</p> : queue.length === 0 ? (
+              <Card><CardContent className="pt-6 text-sm text-slate-500">No visible shop queue tasks.</CardContent></Card>
+            ) : queue.slice(0, 12).map((task) => (
+              <ProductionTaskCard key={task.stage_id} task={task} selected={selected?.stage_id === task.stage_id} onSelect={setSelected} onAction={act} compact />
+            ))}
+          </section>
+        </div>
+      </div>
     </div>
   );
 }
@@ -510,6 +699,7 @@ export default function EmployeePortalApp() {
         <Route path="verify" element={<VerifyPage />} />
         <Route path="" element={<Guard><Dashboard /></Guard>} />
         <Route path="time-clock" element={<Guard><TimeClockPage /></Guard>} />
+        <Route path="production" element={<Guard><ProductionPage /></Guard>} />
         <Route path="schedule" element={<Guard><MySchedulePage /></Guard>} />
         <Route path="timesheet" element={<Guard><MyTimesheetPage /></Guard>} />
         <Route path="pay" element={<Guard><MyPayPage /></Guard>} />
