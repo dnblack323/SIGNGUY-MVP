@@ -145,7 +145,7 @@ async def ctx():
     instances = [_workflow_instance(tenant_id, order_id, item_ids[i], wo_ids[i]) for i in range(5)]
     await db.production_workflow_instances.insert_many(instances)
     assigned_stage = _stage(tenant_id, instances[0], "print", "Print", 1, assigned_employee_id=employee_id)
-    ready_stage = _stage(tenant_id, instances[1], "cut", "Cut", 1, assigned_role="Production")
+    ready_stage = _stage(tenant_id, instances[1], "cut", "Cut", 1)
     hidden_stage = _stage(tenant_id, instances[2], "hide", "Hidden", 1, assigned_employee_id=employee_id, employee_visible=False)
     waiting_stage = _stage(tenant_id, instances[3], "wait", "Wait", 1, "waiting", assigned_employee_id=employee_id, waiting_since=_now())
     done_stage = _stage(tenant_id, instances[4], "done", "Done", 1, "completed", assigned_employee_id=employee_id, completed_at=_now())
@@ -338,7 +338,7 @@ async def test_revoked_device_and_expired_employee_session_are_denied(ctx):
         assert expired.status_code == 401
 
     device_token, employee_token = await _activate_and_identify(ctx)
-    session = await db.production_kiosk_sessions.find_one({"device_token_hash": {"$exists": True}, "status": "active"}, {"_id": 0}, sort=[("activated_at", -1)])
+    session = await db.production_kiosk_sessions.find_one({"tenant_id": ctx["tenant_id"], "status": "active"}, {"_id": 0}, sort=[("activated_at", -1)])
     async with await _client_as(ctx["owner"]) as c:
         revoked = await c.post(f"/api/production-kiosk/sessions/{session['id']}/revoke", json={"reason": "Lost tablet"})
         assert revoked.status_code == 200
