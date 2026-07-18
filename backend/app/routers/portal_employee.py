@@ -12,13 +12,18 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from ..core.db import db
 from ..core.time_utils import utc_now
 from ..deps_portal import require_employee_portal_permission
-from ..services import announcement_service, certification_service, payroll_service, production_board_service, production_stage_service, schedule_service, time_clock_service, timesheet_service, training_service
+from ..services import announcement_service, calendar_service, certification_service, communication_service, payroll_service, production_board_service, production_stage_service, schedule_service, task_service, time_clock_service, time_off_service, timesheet_service, training_service
+from ..services.activity import record_activity_with_audit
+from ..services.calendar_service import CalendarError
+from ..services.communication_service import CommunicationError
 from ..services.production_stage_service import ProductionStageError
+from ..services.task_service import TaskError
+from ..services.time_off_service import TimeOffError
 from ..services.portal_identity import update_portal_identity
 from ..services.time_clock_service import TimeEntryError
 from ..services.timesheet_service import TimesheetError
@@ -33,6 +38,9 @@ SCHEDULE = require_employee_portal_permission("portal:employee_schedule_view")
 PAY = require_employee_portal_permission("portal:employee_pay_view")
 TRAINING = require_employee_portal_permission("portal:employee_training_view")
 CERTIFICATION = require_employee_portal_permission("portal:employee_certification_view")
+TASKS = require_employee_portal_permission("portal:employee_tasks")
+MESSAGES = require_employee_portal_permission("portal:employee_messages")
+PROFILE = require_employee_portal_permission("portal:employee_profile")
 
 
 def _raise(e):
@@ -118,6 +126,7 @@ async def dashboard(identity: dict = Depends(VIEW)) -> dict:
         a for a in announcements if a.get("audience") == "all" or employee_id in (a.get("employee_ids") or [])
     ]
     latest_pay = await _latest_pay_summary(tenant_id, employee_id)
+    task_summary = await task_service.list_employee_tasks(tenant_id=tenant_id, employee_id=employee_id)
     return {
         "employee": _public_employee_view(emp),
         "active_entry": active_entry,
@@ -127,7 +136,7 @@ async def dashboard(identity: dict = Depends(VIEW)) -> dict:
                        "week_end": week_summary["week_end"]},
         "timesheet_status": week_summary["status"],
         "announcements": visible_announcements,
-        "tasks": {"available": False, "items": []},
+        "tasks": {"available": True, "items": task_summary["items"][:3], "total": task_summary["total"]},
         "pay": latest_pay,
     }
 
@@ -488,37 +497,376 @@ async def announcements(identity: dict = Depends(VIEW)) -> dict:
     return {"items": visible}
 
 
-# ---- My Tasks — clean boundary placeholder (no Task system exists yet) ----
+class PortalTaskActionIn(BaseModel):
+    reason: Optional[str] = None
+
+
+class PortalTaskCommentIn(BaseModel):
+    body: str
+
+
+class PortalMessageIn(BaseModel):
+    body: str
+    idempotency_key: Optional[str] = None
+
+
+class PortalPreferenceIn(BaseModel):
+    in_app_messages: Optional[bool] = None
+    task_notifications: Optional[bool] = None
+    schedule_changes: Optional[bool] = None
+    time_off_decisions: Optional[bool] = None
+    appointment_reminders: Optional[bool] = None
+    announcements: Optional[bool] = None
+    daily_digest: Optional[bool] = None
+    email_delivery: Optional[bool] = None
+    digest_time: Optional[str] = None
+    digest_frequency: Optional[str] = None
+    quiet_hours: Optional[dict] = None
+
 
 @router.get("/tasks")
-async def tasks(identity: dict = Depends(VIEW)) -> dict:
-    return {"available": False, "items": [],
-            "message": "Task assignments aren't available yet — coming in a future update."}
+async def my_tasks(status: Optional[str] = None, view: Optional[str] = None, identity: dict = Depends(TASKS)) -> dict:
+    return await task_service.list_employee_tasks(
+        tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], status=status, view=view,
+    )
+
+
+@router.get("/tasks/{task_id}")
+async def task_detail(task_id: str, identity: dict = Depends(TASKS)) -> dict:
+    try:
+        task = await task_service.get_employee_task(
+            tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], task_id=task_id,
+        )
+        comments = await task_service.list_comments(
+            tenant_id=identity["tenant_id"], task_id=task_id, employee_visible_only=True,
+        )
+        return {"task": task, "comments": comments}
+    except TaskError as e:
+        _raise(e)
+
+
+class TimeOffCreateIn(BaseModel):
+    request_type: str = "other"
+    start_at: str
+    end_at: str
+    all_day: bool = False
+    reason: Optional[str] = None
+    private_reason: Optional[str] = None
+
+
+class TimeOffClarificationIn(BaseModel):
+    response: str
+    private_reason: Optional[str] = None
+
+
+class TimeOffCancelIn(BaseModel):
+    reason: Optional[str] = None
+
+
+@router.get("/time-off")
+async def my_time_off(status: Optional[str] = None, identity: dict = Depends(SCHEDULE)) -> dict:
+    return await time_off_service.list_requests(
+        tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], status=status, include_private=True,
+    )
+
+
+@router.post("/time-off", status_code=201)
+async def submit_time_off(payload: TimeOffCreateIn, identity: dict = Depends(SCHEDULE)) -> dict:
+    try:
+        return await time_off_service.create_request(
+            tenant_id=identity["tenant_id"], employee_id=identity["employee_id"],
+            actor_employee_id=identity["employee_id"], actor_email=identity.get("email", "employee-portal"),
+            payload=payload.model_dump(exclude_none=True),
+        )
+    except TimeOffError as e:
+        _raise(e)
+
+
+@router.get("/time-off/{request_id}")
+async def my_time_off_detail(request_id: str, identity: dict = Depends(SCHEDULE)) -> dict:
+    try:
+        return await time_off_service.employee_get_request(
+            tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], request_id=request_id,
+        )
+    except TimeOffError as e:
+        _raise(e)
+
+
+@router.post("/time-off/{request_id}/clarification")
+async def respond_time_off(request_id: str, payload: TimeOffClarificationIn, identity: dict = Depends(SCHEDULE)) -> dict:
+    try:
+        return await time_off_service.respond_to_clarification(
+            tenant_id=identity["tenant_id"], request_id=request_id, employee_id=identity["employee_id"],
+            actor_email=identity.get("email", "employee-portal"), response=payload.response,
+            private_reason=payload.private_reason,
+        )
+    except TimeOffError as e:
+        _raise(e)
+
+
+@router.post("/time-off/{request_id}/cancel")
+async def cancel_time_off(request_id: str, payload: TimeOffCancelIn, identity: dict = Depends(SCHEDULE)) -> dict:
+    try:
+        return await time_off_service.cancel_request(
+            tenant_id=identity["tenant_id"], request_id=request_id, employee_id=identity["employee_id"],
+            actor_email=identity.get("email", "employee-portal"), reason=payload.reason,
+        )
+    except TimeOffError as e:
+        _raise(e)
+
+
+@router.get("/calendar")
+async def my_calendar(start_at: str, end_at: str, identity: dict = Depends(SCHEDULE)) -> dict:
+    try:
+        return await calendar_service.employee_feed(
+            tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], start_at=start_at, end_at=end_at,
+        )
+    except CalendarError as e:
+        _raise(e)
+
+
+async def _task_transition(identity: dict, task_id: str, target: str, payload: PortalTaskActionIn) -> dict:
+    try:
+        return await task_service.transition_task(
+            tenant_id=identity["tenant_id"], task_id=task_id, target=target,
+            actor_user_id=f"portal:{identity['id']}", actor_email=identity.get("email", "employee-portal"),
+            actor_employee_id=identity["employee_id"], reason=payload.reason, allow_employee=True,
+        )
+    except TaskError as e:
+        _raise(e)
+
+
+@router.post("/tasks/{task_id}/start")
+async def task_start(task_id: str, payload: PortalTaskActionIn, identity: dict = Depends(TASKS)) -> dict:
+    return await _task_transition(identity, task_id, "in_progress", payload)
+
+
+@router.post("/tasks/{task_id}/resume")
+async def task_resume(task_id: str, payload: PortalTaskActionIn, identity: dict = Depends(TASKS)) -> dict:
+    return await _task_transition(identity, task_id, "in_progress", payload)
+
+
+@router.post("/tasks/{task_id}/wait")
+async def task_wait(task_id: str, payload: PortalTaskActionIn, identity: dict = Depends(TASKS)) -> dict:
+    return await _task_transition(identity, task_id, "waiting", payload)
+
+
+@router.post("/tasks/{task_id}/block")
+async def task_block(task_id: str, payload: PortalTaskActionIn, identity: dict = Depends(TASKS)) -> dict:
+    return await _task_transition(identity, task_id, "blocked", payload)
+
+
+@router.post("/tasks/{task_id}/complete")
+async def task_complete(task_id: str, payload: PortalTaskActionIn, identity: dict = Depends(TASKS)) -> dict:
+    return await _task_transition(identity, task_id, "completed", payload)
+
+
+@router.get("/tasks/{task_id}/comments")
+async def task_comments(task_id: str, identity: dict = Depends(TASKS)) -> dict:
+    try:
+        await task_service.get_employee_task(
+            tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], task_id=task_id,
+        )
+        return {"items": await task_service.list_comments(
+            tenant_id=identity["tenant_id"], task_id=task_id, employee_visible_only=True,
+        )}
+    except TaskError as e:
+        _raise(e)
+
+
+@router.post("/tasks/{task_id}/comments", status_code=201)
+async def task_add_comment(task_id: str, payload: PortalTaskCommentIn, identity: dict = Depends(TASKS)) -> dict:
+    try:
+        return await task_service.add_comment(
+            tenant_id=identity["tenant_id"], task_id=task_id,
+            actor_user_id=f"portal:{identity['id']}", actor_email=identity.get("email", "employee-portal"),
+            author_employee_id=identity["employee_id"], body=payload.body, employee_scope=True,
+        )
+    except TaskError as e:
+        _raise(e)
+
+
+# ---- Messages, preferences, and digest (self-scoped EC12 Phase 12E/12F) ----
+
+@router.get("/messages")
+async def my_message_threads(q: Optional[str] = None, identity: dict = Depends(MESSAGES)) -> dict:
+    try:
+        return await communication_service.list_threads(
+            tenant_id=identity["tenant_id"], identity_type="employee", identity_id=identity["employee_id"], q=q,
+        )
+    except CommunicationError as e:
+        _raise(e)
+
+
+@router.get("/messages/{thread_id}")
+async def my_message_thread(thread_id: str, identity: dict = Depends(MESSAGES)) -> dict:
+    try:
+        thread = await communication_service.get_thread(
+            tenant_id=identity["tenant_id"], thread_id=thread_id,
+            identity_type="employee", identity_id=identity["employee_id"],
+        )
+        messages = await communication_service.list_messages(
+            tenant_id=identity["tenant_id"], thread_id=thread_id,
+            identity_type="employee", identity_id=identity["employee_id"],
+        )
+        return {"thread": thread, "messages": messages["items"]}
+    except CommunicationError as e:
+        _raise(e)
+
+
+@router.post("/messages/{thread_id}/messages", status_code=201)
+async def my_send_message(thread_id: str, payload: PortalMessageIn, identity: dict = Depends(MESSAGES)) -> dict:
+    try:
+        return await communication_service.send_message(
+            tenant_id=identity["tenant_id"], thread_id=thread_id, body=payload.body,
+            actor_employee_id=identity["employee_id"], actor_email=identity.get("email", "employee-portal"),
+            idempotency_key=payload.idempotency_key,
+        )
+    except CommunicationError as e:
+        _raise(e)
+
+
+@router.post("/messages/{thread_id}/read")
+async def my_mark_message_read(thread_id: str, identity: dict = Depends(MESSAGES)) -> dict:
+    try:
+        return await communication_service.mark_thread_read(
+            tenant_id=identity["tenant_id"], thread_id=thread_id,
+            identity_type="employee", identity_id=identity["employee_id"],
+        )
+    except CommunicationError as e:
+        _raise(e)
+
+
+@router.get("/preferences")
+async def my_preferences(identity: dict = Depends(PROFILE)) -> dict:
+    return await communication_service.get_preferences(
+        tenant_id=identity["tenant_id"], identity_type="employee", identity_id=identity["employee_id"],
+    )
+
+
+@router.patch("/preferences")
+async def update_my_preferences(payload: PortalPreferenceIn, identity: dict = Depends(PROFILE)) -> dict:
+    return await communication_service.update_preferences(
+        tenant_id=identity["tenant_id"], identity_type="employee", identity_id=identity["employee_id"],
+        actor_employee_id=identity["employee_id"], actor_email=identity.get("email", "employee-portal"),
+        updates=payload.model_dump(exclude_none=True),
+    )
+
+
+@router.get("/digest/preview")
+async def my_digest_preview(digest_date: Optional[str] = None, identity: dict = Depends(MESSAGES)) -> dict:
+    return await communication_service.preview_digest(
+        tenant_id=identity["tenant_id"], recipient_type="employee",
+        recipient_id=identity["employee_id"], digest_date=digest_date,
+    )
+
+
+@router.post("/digest/generate")
+async def my_digest_generate(digest_date: Optional[str] = None, identity: dict = Depends(MESSAGES)) -> dict:
+    return await communication_service.generate_digest(
+        tenant_id=identity["tenant_id"], recipient_type="employee",
+        recipient_id=identity["employee_id"], digest_date=digest_date,
+    )
 
 
 # ---- Profile ----
 
 @router.get("/profile")
-async def profile(identity: dict = Depends(VIEW)) -> dict:
+async def profile(identity: dict = Depends(PROFILE)) -> dict:
     emp = await _get_self_employee(identity)
+    prefs = await communication_service.get_preferences(
+        tenant_id=identity["tenant_id"], identity_type="employee", identity_id=identity["employee_id"],
+    )
     return {
         "employee": _public_employee_view(emp),
         "portal_email": identity["email"],
         "portal_phone": identity.get("phone"),
         "portal_full_name": identity.get("full_name"),
+        "preferences": prefs,
     }
 
 
 class ProfileUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     phone: Optional[str] = None
     full_name: Optional[str] = None
+    preferred_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    profile_image_file_id: Optional[str] = None
+    availability: Optional[str] = None
+    timezone: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    availability_blocks: Optional[list[dict]] = None
 
 
 @router.patch("/profile")
-async def update_profile(payload: ProfileUpdateIn, identity: dict = Depends(VIEW)) -> dict:
+async def update_profile(payload: ProfileUpdateIn, identity: dict = Depends(PROFILE)) -> dict:
     updates = payload.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No updates")
-    updated = await update_portal_identity(identity_id=identity["id"], tenant_id=identity["tenant_id"], updates=updates)
-    updated.pop("password_hash", None)
-    return updated
+    forbidden = {"hourly_rate_cents", "role_label", "status", "linked_user_id", "overtime_policy", "portal_access"}
+    if forbidden.intersection(updates):
+        raise HTTPException(status_code=400, detail="Protected employment fields cannot be changed from the Employee Portal")
+    tenant_id, employee_id = identity["tenant_id"], identity["employee_id"]
+    portal_updates = {k: updates[k] for k in ("phone", "full_name") if k in updates}
+    employee_updates: dict = {}
+    if "preferred_name" in updates:
+        employee_updates["preferred_name"] = updates["preferred_name"]
+    if "contact_email" in updates:
+        employee_updates["email"] = updates["contact_email"]
+    if "phone" in updates:
+        employee_updates["phone"] = updates["phone"]
+    if "availability" in updates:
+        employee_updates["availability"] = updates["availability"]
+    if "timezone" in updates:
+        employee_updates["timezone"] = updates["timezone"]
+    if "emergency_contact_name" in updates:
+        employee_updates["emergency_contact_name"] = updates["emergency_contact_name"]
+    if "emergency_contact_phone" in updates:
+        employee_updates["emergency_contact_phone"] = updates["emergency_contact_phone"]
+    if "availability_blocks" in updates:
+        blocks = []
+        for block in updates["availability_blocks"] or []:
+            blocks.append({
+                "id": str(block.get("id") or f"avail-{len(blocks) + 1}"),
+                "kind": block.get("kind") if block.get("kind") in {"unavailable", "preferred"} else "unavailable",
+                "day_of_week": block.get("day_of_week"),
+                "date_from": block.get("date_from"),
+                "date_to": block.get("date_to"),
+                "start_time": block.get("start_time"),
+                "end_time": block.get("end_time"),
+                "note": block.get("note"),
+                "created_at": utc_now().isoformat(),
+                "created_by": f"portal:{identity['id']}",
+            })
+        employee_updates["availability_blocks"] = blocks
+    if "profile_image_file_id" in updates:
+        file_id = updates["profile_image_file_id"]
+        if file_id and str(file_id).startswith("data:"):
+            raise HTTPException(status_code=400, detail="Profile image must reference an uploaded file")
+        if file_id:
+            file_doc = await db.files.find_one({"tenant_id": tenant_id, "id": file_id}, {"_id": 0, "id": 1})
+            if not file_doc:
+                raise HTTPException(status_code=404, detail="Profile image file not found")
+        employee_updates["profile_image_file_id"] = file_id
+    now = utc_now().isoformat()
+    if employee_updates:
+        employee_updates["updated_at"] = now
+        await db.employees.update_one({"tenant_id": tenant_id, "id": employee_id}, {"$set": employee_updates})
+        await record_activity_with_audit(
+            tenant_id=tenant_id, actor_user_id=f"portal:{identity['id']}", actor_email=identity.get("email", "employee-portal"),
+            module="team", action="employee.profile_updated", entity_type="employee", entity_id=employee_id,
+            summary="Employee Portal profile updated",
+            metadata={"fields": sorted(k for k in employee_updates.keys() if k != "updated_at")},
+        )
+    updated_identity = None
+    if portal_updates:
+        updated_identity = await update_portal_identity(identity_id=identity["id"], tenant_id=tenant_id, updates=portal_updates)
+        updated_identity.pop("password_hash", None)
+    emp = await _get_self_employee(identity)
+    return {
+        "employee": _public_employee_view(emp),
+        "portal": updated_identity or {"id": identity["id"], "email": identity["email"], "phone": identity.get("phone"), "full_name": identity.get("full_name")},
+    }

@@ -532,6 +532,12 @@ async def ensure_indexes() -> None:
     await db.template_definitions.create_index("id", unique=True)
     await db.template_definitions.create_index([("tenant_id", 1), ("template_type", 1), ("active", 1)])
     await db.template_definitions.create_index([("tenant_id", 1), ("name", 1), ("template_type", 1)])
+    await db.template_definitions.create_index([("owner_scope", 1), ("template_type", 1), ("active", 1), ("source_status", 1)])
+    await db.template_definitions.create_index([("tenant_id", 1), ("source_template_id", 1), ("source_template_version", 1)])
+    await db.template_definitions.create_index([("tenant_id", 1), ("channels", 1), ("template_type", 1)])
+    await db.template_definitions.create_index([("pack_id", 1), ("starter_template", 1), ("premium_reserved", 1)])
+    await db.template_packs.create_index("id", unique=True)
+    await db.template_packs.create_index([("pack_type", 1), ("active", 1), ("starter_pack", 1), ("premium_reserved", 1)])
 
     # ---- EC11 phase 11A - Production Workflow Definitions ----
     await db.production_workflows.create_index("id", unique=True)
@@ -569,5 +575,132 @@ async def ensure_indexes() -> None:
     await db.production_kiosk_supervisor_overrides.create_index("id", unique=True)
     await db.production_kiosk_supervisor_overrides.create_index("override_token_hash", unique=True)
     await db.production_kiosk_supervisor_overrides.create_index([("tenant_id", 1), ("kiosk_session_id", 1), ("expires_at", 1)])
+
+    # ---- EC12 Phase 12A - shared task foundation ----
+    await db.tasks.create_index("id", unique=True)
+    await db.tasks.create_index([("tenant_id", 1), ("status", 1), ("archived_at", 1), ("due_at", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("priority", 1), ("status", 1), ("due_at", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("assigned_user_id", 1), ("status", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("assigned_employee_id", 1), ("status", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("created_by_user_id", 1), ("status", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("task_type", 1), ("status", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("customer_id", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("quote_id", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("order_id", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("order_item_id", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("work_order_id", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("invoice_id", 1)])
+    await db.tasks.create_index([("tenant_id", 1), ("production_stage_id", 1)])
+    await db.tasks.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.task_comments.create_index("id", unique=True)
+    await db.task_comments.create_index([("tenant_id", 1), ("task_id", 1), ("created_at", 1)])
+    await db.task_reminders.create_index("id", unique=True)
+    await db.task_reminders.create_index(
+        [("tenant_id", 1), ("task_id", 1), ("reminder_kind", 1), ("policy_key", 1)],
+        unique=True,
+    )
+
+    # ---- EC12 Phase 12C - employee time-off and absence workflow ----
+    await db.time_off_requests.create_index("id", unique=True)
+    await db.time_off_requests.create_index([("tenant_id", 1), ("employee_id", 1), ("status", 1), ("start_at", 1)])
+    await db.time_off_requests.create_index([("tenant_id", 1), ("status", 1), ("start_at", 1)])
+
+    # ---- EC12 Phase 12D - stored appointments for shared calendar feed ----
+    await db.calendar_events.create_index("id", unique=True)
+    await db.calendar_events.create_index([("tenant_id", 1), ("start_at", 1), ("end_at", 1), ("status", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("employee_id", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("customer_id", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("work_order_id", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("source_type", 1), ("source_id", 1)])
+
+    # ---- EC12 Phases 12E/12F - shared communications, notes, preferences, digest ----
+    await db.message_threads.create_index("id", unique=True)
+    await db.message_threads.create_index([("tenant_id", 1), ("thread_type", 1), ("last_message_at", -1)])
+    await db.message_threads.create_index([("tenant_id", 1), ("participant_user_ids", 1), ("archived_at", 1)])
+    await db.message_threads.create_index([("tenant_id", 1), ("participant_employee_ids", 1), ("visibility", 1), ("archived_at", 1)])
+    await db.message_threads.create_index([("tenant_id", 1), ("task_id", 1)])
+    await db.message_threads.create_index([("tenant_id", 1), ("order_id", 1)])
+    await db.message_threads.create_index([("tenant_id", 1), ("work_order_id", 1)])
+    await db.message_threads.create_index([("tenant_id", 1), ("production_stage_id", 1)])
+    await db.message_threads.create_index([("tenant_id", 1), ("calendar_event_id", 1)])
+    await db.thread_messages.create_index("id", unique=True)
+    await db.thread_messages.create_index([("tenant_id", 1), ("thread_id", 1), ("created_at", 1)])
+    await db.thread_messages.create_index(
+        [("tenant_id", 1), ("thread_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.message_read_states.create_index("id", unique=True)
+    await db.message_read_states.create_index(
+        [("tenant_id", 1), ("thread_id", 1), ("identity_type", 1), ("identity_id", 1)],
+        unique=True,
+    )
+    await db.internal_notes.create_index("id", unique=True)
+    await db.internal_notes.create_index([("tenant_id", 1), ("visibility", 1), ("created_at", -1)])
+    await db.internal_notes.create_index([("tenant_id", 1), ("task_id", 1), ("created_at", -1)])
+    await db.internal_notes.create_index([("tenant_id", 1), ("order_id", 1), ("created_at", -1)])
+    await db.internal_notes.create_index([("tenant_id", 1), ("work_order_id", 1), ("created_at", -1)])
+    await db.internal_notes.create_index([("tenant_id", 1), ("employee_id", 1), ("created_at", -1)])
+    await db.communication_preferences.create_index("id", unique=True)
+    await db.communication_preferences.create_index(
+        [("tenant_id", 1), ("identity_type", 1), ("identity_id", 1)],
+        unique=True,
+    )
+    await db.daily_digests.create_index("id", unique=True)
+    await db.daily_digests.create_index(
+        [("tenant_id", 1), ("recipient_type", 1), ("recipient_id", 1), ("digest_date", 1)],
+        unique=True,
+    )
+
+    # ---- EC12 Phase 12G - community, founders, feedback, voting, support ----
+    await db.community_spaces.create_index("id", unique=True)
+    await db.community_spaces.create_index([("scope_type", 1), ("tenant_id", 1), ("active", 1), ("archived_at", 1)])
+    await db.community_posts.create_index("id", unique=True)
+    await db.community_posts.create_index([("space_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.community_posts.create_index([("scope_type", 1), ("tenant_id", 1), ("post_type", 1), ("updated_at", -1)])
+    await db.community_posts.create_index(
+        [("author_user_id", 1), ("space_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.community_comments.create_index("id", unique=True)
+    await db.community_comments.create_index([("post_id", 1), ("parent_comment_id", 1), ("created_at", 1)])
+    await db.community_votes.create_index("id", unique=True)
+    await db.community_votes.create_index(
+        [("record_type", 1), ("record_id", 1), ("identity_type", 1), ("identity_id", 1)],
+        unique=True,
+    )
+    await db.feature_requests.create_index("id", unique=True)
+    await db.feature_requests.create_index([("status", 1), ("vote_count", -1), ("created_at", -1)])
+    await db.feature_requests.create_index(
+        [("tenant_id", 1), ("submitter_user_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.bug_reports.create_index("id", unique=True)
+    await db.bug_reports.create_index([("status", 1), ("created_at", -1)])
+    await db.bug_reports.create_index([("tenant_id", 1), ("submitter_user_id", 1), ("created_at", -1)])
+    await db.bug_reports.create_index(
+        [("tenant_id", 1), ("submitter_user_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.founder_access.create_index("id", unique=True)
+    await db.founder_access.create_index([("user_id", 1), ("tenant_id", 1), ("revoked_at", 1)])
+    await db.support_requests.create_index("id", unique=True)
+    await db.support_requests.create_index([("tenant_id", 1), ("destination_type", 1), ("status", 1), ("created_at", -1)])
+    await db.support_requests.create_index([("destination_type", 1), ("status", 1), ("created_at", -1)])
+    await db.support_requests.create_index(
+        [("tenant_id", 1), ("requester_user_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.support_request_notes.create_index("id", unique=True)
+    await db.support_request_notes.create_index([("tenant_id", 1), ("support_request_id", 1), ("created_at", 1)])
+    await db.community_moderation_reports.create_index([("post_id", 1), ("status", 1), ("created_at", -1)])
 
     logger.info("MongoDB indexes ensured")

@@ -60,11 +60,15 @@ import EquipmentDetailPage from "@/pages/EquipmentDetailPage";
 import TrainingPage from "@/pages/TrainingPage";
 import CertificationsPage from "@/pages/CertificationsPage";
 import AnnouncementsPage from "@/pages/AnnouncementsPage";
+import TasksPage from "@/pages/TasksPage";
+import CommunicationsPage from "@/pages/CommunicationsPage";
 import TimeClockPage from "@/pages/TimeClockPage";
 import TimesheetsPage from "@/pages/TimesheetsPage";
 import TeamSchedulePage from "@/pages/TeamSchedulePage";
+import ShopSchedulePage from "@/pages/ShopSchedulePage";
 import PayrollPage from "@/pages/PayrollPage";
 import EmployeePortalAccessPage from "@/pages/EmployeePortalAccessPage";
+import CommunityPage from "@/pages/CommunityPage";
 import EmployeePortalApp from "@/portal/employee/EmployeePortalApp";
 import { Toaster } from "sonner";
 
@@ -135,12 +139,19 @@ function AppRoutes() {
         <Route path="/team/equipment/:id" element={<EquipmentDetailPage />} />
         <Route path="/team/training" element={<TrainingPage />} />
         <Route path="/team/certifications" element={<CertificationsPage />} />
+        <Route path="/team/tasks" element={<TasksPage />} />
+        <Route path="/team/messages" element={<CommunicationsPage />} />
         <Route path="/team/announcements" element={<AnnouncementsPage />} />
         <Route path="/team/schedule" element={<TeamSchedulePage />} />
+        <Route path="/shop-schedule" element={<ShopSchedulePage />} />
         <Route path="/team/employee-portal" element={<EmployeePortalAccessPage />} />
         <Route path="/team/time-clock" element={<TimeClockPage />} />
         <Route path="/team/timesheets" element={<TimesheetsPage />} />
         <Route path="/team/payroll" element={<PayrollPage />} />
+        <Route path="/help/community" element={<CommunityPage />} />
+        <Route path="/help/bugs" element={<CommunityPage />} />
+        <Route path="/help/feature-requests" element={<CommunityPage />} />
+        <Route path="/help/contact" element={<CommunityPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/company" element={<CompanySettingsPage />} />
         <Route path="/settings/integrations" element={<IntegrationsPage />} />

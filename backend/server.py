@@ -229,6 +229,25 @@ api_router.include_router(production_stages_router_module.router)
 from app.routers import production_kiosk as production_kiosk_router_module
 api_router.include_router(production_kiosk_router_module.router)
 
+# EC12 Phase 12A - shared task foundation. Staff-only task management lives
+# here; Employee Portal self-scoped task access stays in portal_employee.py.
+from app.routers import tasks as tasks_router_module
+api_router.include_router(tasks_router_module.router)
+
+# EC12 Phases 12C/12D - employee time-off workflow and shared calendar.
+from app.routers import time_off as time_off_router_module
+from app.routers import calendar as calendar_router_module
+api_router.include_router(time_off_router_module.router)
+api_router.include_router(calendar_router_module.router)
+
+# EC12 Phases 12E/12F - shared communications and Employee Portal account experience.
+from app.routers import communications as communications_router_module
+api_router.include_router(communications_router_module.router)
+
+# EC12 Phase 12G - community, founders, feedback, voting, and support routing.
+from app.routers import community as community_router_module
+api_router.include_router(community_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

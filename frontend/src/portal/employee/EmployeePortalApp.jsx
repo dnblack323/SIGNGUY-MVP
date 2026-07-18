@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { AlertTriangle, Briefcase, Calendar, CheckCircle2, Clock, FileClock, GraduationCap, Hourglass, Megaphone, MessageSquare, Play, RotateCw, Search, ShieldCheck, User, Wallet } from "lucide-react";
 
@@ -29,11 +31,13 @@ function Shell({ children }) {
             <Link to="/portal/employee/time-clock" data-testid="employee-portal-nav-time-clock">Time Clock</Link>
             <Link to="/portal/employee/production" data-testid="employee-portal-nav-production">Production</Link>
             <Link to="/portal/employee/schedule" data-testid="employee-portal-nav-schedule">My Schedule</Link>
+            <Link to="/portal/employee/time-off" data-testid="employee-portal-nav-time-off">My Time Off</Link>
             <Link to="/portal/employee/timesheet" data-testid="employee-portal-nav-timesheet">My Timesheet</Link>
             <Link to="/portal/employee/pay" data-testid="employee-portal-nav-pay">My Pay</Link>
             <Link to="/portal/employee/training" data-testid="employee-portal-nav-training">My Training</Link>
             <Link to="/portal/employee/certifications" data-testid="employee-portal-nav-certifications">My Certifications</Link>
-            <span className="text-slate-400 cursor-not-allowed" title="Coming later" data-testid="employee-portal-nav-tasks-disabled">My Tasks</span>
+            <Link to="/portal/employee/tasks" data-testid="employee-portal-nav-tasks">My Tasks</Link>
+            <Link to="/portal/employee/messages" data-testid="employee-portal-nav-messages">Messages</Link>
             <Link to="/portal/employee/announcements" data-testid="employee-portal-nav-announcements">Announcements</Link>
             <Link to="/portal/employee/profile" data-testid="employee-portal-nav-profile">Profile</Link>
           </nav>
@@ -282,11 +286,13 @@ function Dashboard() {
           <Link className="underline" to="/portal/employee/time-clock">Clock In/Out</Link>
           <Link className="underline" to="/portal/employee/production">Production</Link>
           <Link className="underline" to="/portal/employee/schedule">My Schedule</Link>
+          <Link className="underline" to="/portal/employee/time-off">My Time Off</Link>
           <Link className="underline" to="/portal/employee/timesheet">My Timesheet</Link>
           <Link className="underline" to="/portal/employee/pay">My Pay</Link>
           <Link className="underline" to="/portal/employee/training">My Training</Link>
           <Link className="underline" to="/portal/employee/certifications">My Certifications</Link>
-          <span className="text-slate-400 cursor-not-allowed" title="Coming later">My Tasks</span>
+          <Link className="underline" to="/portal/employee/tasks">My Tasks</Link>
+          <Link className="underline" to="/portal/employee/messages">Messages</Link>
           <Link className="underline" to="/portal/employee/announcements">Announcements</Link>
           <Link className="underline" to="/portal/employee/profile">Profile</Link>
         </CardContent>
@@ -308,6 +314,120 @@ function statusBadge(status) {
   const label = String(status || "not_started").replace(/_/g, " ");
   const variant = status === "blocked" ? "destructive" : "outline";
   return <Badge variant={variant} className="capitalize">{label}</Badge>;
+}
+
+function MyTasksPage() {
+  const [items, setItems] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [comment, setComment] = useState("");
+  const [view, setView] = useState("all_active");
+  const load = useCallback(async () => {
+    try {
+      const params = view === "all_active" ? {} : { view };
+      const r = await employeePortalApi.get("/portal/employee/tasks", { params });
+      setItems(r.data.items || []);
+      setSelected((cur) => (cur && (r.data.items || []).some((t) => t.id === cur.id)) ? cur : r.data.items?.[0] || null);
+    } catch (e) { toast.error(employeePortalExtractError(e)); }
+  }, [view]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!selected?.id) { setDetail(null); return; }
+    employeePortalApi.get(`/portal/employee/tasks/${selected.id}`).then((r) => setDetail(r.data))
+      .catch((e) => toast.error(employeePortalExtractError(e)));
+  }, [selected?.id]);
+
+  async function act(action) {
+    if (!selected) return;
+    try {
+      await employeePortalApi.post(`/portal/employee/tasks/${selected.id}/${action}`, { reason: `${action} from Employee Portal` });
+      toast.success("Task updated");
+      await load();
+    } catch (e) { toast.error(employeePortalExtractError(e)); }
+  }
+
+  async function addComment(e) {
+    e.preventDefault();
+    if (!selected || !comment.trim()) return;
+    try {
+      await employeePortalApi.post(`/portal/employee/tasks/${selected.id}/comments`, { body: comment });
+      setComment("");
+      const r = await employeePortalApi.get(`/portal/employee/tasks/${selected.id}`);
+      setDetail(r.data);
+      toast.success("Comment added");
+    } catch (err) { toast.error(employeePortalExtractError(err)); }
+  }
+
+  const actions = detail?.task?.allowed_actions || selected?.allowed_actions || [];
+  return (
+    <div className="space-y-4" data-testid="employee-portal-tasks-page">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl font-semibold flex items-center gap-2"><CheckCircle2 className="h-5 w-5" /> My Tasks</h1>
+        <Select value={view} onValueChange={setView}>
+          <SelectTrigger className="w-full sm:w-56" data-testid="employee-task-view-select"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all_active">Current</SelectItem>
+            <SelectItem value="due_today">Due Today</SelectItem>
+            <SelectItem value="overdue">Overdue</SelectItem>
+            <SelectItem value="waiting">Waiting</SelectItem>
+            <SelectItem value="blocked">Blocked</SelectItem>
+            <SelectItem value="completed_recently">Completed Recently</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {!items ? <p className="text-sm text-slate-500">Loading...</p> : !items.length ? (
+        <Card><CardContent className="py-8 text-sm text-slate-500 italic">No assigned tasks.</CardContent></Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+          <div className="space-y-2">
+            {items.map((task) => (
+              <button key={task.id} onClick={() => setSelected(task)} className={`w-full rounded-lg border bg-white p-3 text-left ${selected?.id === task.id ? "ring-2 ring-slate-300" : ""}`} data-testid={`employee-task-row-${task.id}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{task.title}</div>
+                    <div className="text-xs text-slate-500 truncate">{task.description || task.task_type}</div>
+                  </div>
+                  {statusBadge(task.status)}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                  <span>{fmtDate(task.due_at)}</span>
+                  {task.linked_record_label && <span>{task.linked_record_label}</span>}
+                  {task.overdue && <Badge variant="destructive">overdue</Badge>}
+                </div>
+              </button>
+            ))}
+          </div>
+          {selected && (
+            <Card data-testid="employee-task-detail">
+              <CardHeader><CardTitle className="text-base">{detail?.task?.title || selected.title}</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2 flex-wrap">{statusBadge(detail?.task?.status || selected.status)}<Badge variant="outline">{detail?.task?.priority || selected.priority}</Badge></div>
+                {(detail?.task?.description || selected.description) && <p className="text-sm text-slate-600 whitespace-pre-wrap">{detail?.task?.description || selected.description}</p>}
+                {(detail?.task?.linked_record_label || selected.linked_record_label) && <div className="text-sm text-slate-500">Linked: {detail?.task?.linked_record_label || selected.linked_record_label}</div>}
+                <div className="flex gap-2 flex-wrap">
+                  {actions.includes("start") && <Button size="sm" onClick={() => act("start")}><Play className="h-4 w-4 mr-1" />Start</Button>}
+                  {actions.includes("resume") && <Button size="sm" variant="outline" onClick={() => act("resume")}>Resume</Button>}
+                  {actions.includes("wait") && <Button size="sm" variant="outline" onClick={() => act("wait")}>Wait</Button>}
+                  {actions.includes("block") && <Button size="sm" variant="outline" onClick={() => act("block")}>Block</Button>}
+                  {actions.includes("complete") && <Button size="sm" onClick={() => act("complete")}>Complete</Button>}
+                </div>
+                <div className="border-t pt-3 space-y-2">
+                  <div className="text-sm font-medium">Comments</div>
+                  {!(detail?.comments || []).length ? <p className="text-sm text-slate-500 italic">No employee-visible comments.</p> : detail.comments.map((c) => (
+                    <div key={c.id} className="rounded-md bg-slate-50 p-2 text-sm">{c.body}</div>
+                  ))}
+                  <form onSubmit={addComment} className="space-y-2">
+                    <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add comment" data-testid="employee-task-comment-input" />
+                    <Button size="sm" type="submit" disabled={!comment.trim()}>Add comment</Button>
+                  </form>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ProductionTaskCard({ task, selected, onSelect, onAction, compact }) {
@@ -489,10 +609,17 @@ function ProductionPage() {
 
 function MySchedulePage() {
   const [data, setData] = useState(null);
+  const [calendarData, setCalendarData] = useState(null);
   const [err, setErr] = useState(null);
   useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const end = new Date();
+    end.setDate(end.getDate() + 7);
     employeePortalApi.get("/portal/employee/schedule/week").then((r) => setData(r.data))
       .catch((e) => setErr(employeePortalExtractError(e)));
+    employeePortalApi.get("/portal/employee/calendar", {
+      params: { start_at: `${today}T00:00:00.000Z`, end_at: `${end.toISOString().slice(0, 10)}T00:00:00.000Z` },
+    }).then((r) => setCalendarData(r.data)).catch(() => {});
   }, []);
   return (
     <div className="space-y-4" data-testid="employee-portal-schedule-page">
@@ -509,6 +636,134 @@ function MySchedulePage() {
                 <div className="text-xs text-slate-500">{s.title || ""} {s.location ? `· ${s.location}` : ""}</div>
               </div>
               <Badge variant={s.status === "cancelled" ? "destructive" : "outline"}>{s.status}</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+      <Card data-testid="employee-portal-calendar-card">
+        <CardHeader><CardTitle className="text-base">Calendar overlays</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {!calendarData ? <p className="text-sm text-slate-500">Loading calendar...</p> : calendarData.items.length === 0 ? (
+            <p className="text-sm text-slate-500 italic">No appointments, absences, or due dates in this range.</p>
+          ) : calendarData.items.map((item) => (
+            <div key={item.id} className="rounded border bg-white p-3 text-sm" data-testid={`employee-portal-calendar-item-${item.source_type}-${item.source_id}`}>
+              <div className="font-medium">{item.display_title || item.title}</div>
+              <div className="text-xs text-slate-500">{String(item.event_type || item.source_type).replace(/_/g, " ")} - {fmtDate(item.start_at)} {fmtTime(item.start_at)}</div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function MyTimeOffPage() {
+  const [items, setItems] = useState(null);
+  const [status, setStatus] = useState("all");
+  const [form, setForm] = useState({ request_type: "vacation", date: new Date().toISOString().slice(0, 10), start: "09:00", end: "17:00", reason: "", private_reason: "" });
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const params = status === "all" ? {} : { status };
+      const r = await employeePortalApi.get("/portal/employee/time-off", { params });
+      setItems(r.data.items || []);
+      setErr(null);
+    } catch (e) { setErr(employeePortalExtractError(e)); }
+  }, [status]);
+  useEffect(() => { load(); }, [load]);
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await employeePortalApi.post("/portal/employee/time-off", {
+        request_type: form.request_type,
+        start_at: new Date(`${form.date}T${form.start}:00`).toISOString(),
+        end_at: new Date(`${form.date}T${form.end}:00`).toISOString(),
+        reason: form.reason || undefined,
+        private_reason: form.private_reason || undefined,
+      });
+      toast.success("Time-off request submitted");
+      setForm((cur) => ({ ...cur, reason: "", private_reason: "" }));
+      await load();
+    } catch (e2) { toast.error(employeePortalExtractError(e2)); }
+    setBusy(false);
+  }
+
+  async function cancel(item) {
+    try {
+      await employeePortalApi.post(`/portal/employee/time-off/${item.id}/cancel`, { reason: "Canceled from Employee Portal" });
+      toast.success("Request canceled");
+      await load();
+    } catch (e) { toast.error(employeePortalExtractError(e)); }
+  }
+
+  async function clarify(item) {
+    const response = window.prompt("Clarification response");
+    if (!response) return;
+    try {
+      await employeePortalApi.post(`/portal/employee/time-off/${item.id}/clarification`, { response });
+      toast.success("Clarification sent");
+      await load();
+    } catch (e) { toast.error(employeePortalExtractError(e)); }
+  }
+
+  return (
+    <div className="space-y-4" data-testid="employee-portal-time-off-page">
+      <h1 className="text-xl font-semibold flex items-center gap-2"><Calendar className="h-5 w-5" /> My Time Off</h1>
+      {err && <div className="text-sm text-rose-700">{err}</div>}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Request time off</CardTitle></CardHeader>
+        <CardContent>
+          <form className="space-y-3" onSubmit={submit}>
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="grid gap-1.5">
+                <Label>Type</Label>
+                <Select value={form.request_type} onValueChange={(v) => setForm((cur) => ({ ...cur, request_type: v }))}>
+                  <SelectTrigger data-testid="employee-time-off-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {["vacation", "sick", "personal", "bereavement", "jury_duty", "unpaid", "other"].map((v) => <SelectItem key={v} value={v}>{v.replace(/_/g, " ")}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5"><Label>Date</Label><Input type="date" value={form.date} onChange={(e) => setForm((cur) => ({ ...cur, date: e.target.value }))} /></div>
+              <div className="grid gap-1.5"><Label>Start</Label><Input type="time" value={form.start} onChange={(e) => setForm((cur) => ({ ...cur, start: e.target.value }))} /></div>
+              <div className="grid gap-1.5"><Label>End</Label><Input type="time" value={form.end} onChange={(e) => setForm((cur) => ({ ...cur, end: e.target.value }))} /></div>
+            </div>
+            <div className="grid gap-1.5"><Label>Reason</Label><Input value={form.reason} onChange={(e) => setForm((cur) => ({ ...cur, reason: e.target.value }))} data-testid="employee-time-off-reason" /></div>
+            <div className="grid gap-1.5"><Label>Private note</Label><Input value={form.private_reason} onChange={(e) => setForm((cur) => ({ ...cur, private_reason: e.target.value }))} data-testid="employee-time-off-private-reason" /></div>
+            <Button type="submit" disabled={busy} data-testid="employee-time-off-submit">Submit request</Button>
+          </form>
+        </CardContent>
+      </Card>
+      <div className="flex items-center gap-2">
+        <Label className="text-xs">Filter</Label>
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger className="w-48" data-testid="employee-time-off-status-filter"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All requests</SelectItem>
+            {["pending", "clarification_requested", "approved", "denied", "canceled"].map((v) => <SelectItem key={v} value={v}>{v.replace(/_/g, " ")}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      {!items ? <p className="text-sm text-slate-500">Loading...</p> : items.length === 0 ? (
+        <p className="text-sm text-slate-500 italic" data-testid="employee-time-off-empty">No time-off requests.</p>
+      ) : (
+        <div className="rounded border bg-white divide-y" data-testid="employee-time-off-list">
+          {items.map((item) => (
+            <div key={item.id} className="p-3 text-sm flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between" data-testid={`employee-time-off-${item.id}`}>
+              <div>
+                <div className="font-medium">{fmtDate(item.start_at)} {fmtTime(item.start_at)}-{fmtTime(item.end_at)}</div>
+                <div className="text-xs text-slate-500">{item.request_type?.replace(/_/g, " ")}{item.reason ? ` - ${item.reason}` : ""}</div>
+                {item.manager_note && <div className="text-xs text-amber-700">Manager note: {item.manager_note}</div>}
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant={item.status === "approved" ? "default" : item.status === "denied" ? "destructive" : "outline"}>{item.status.replace(/_/g, " ")}</Badge>
+                {item.status === "clarification_requested" && <Button size="sm" variant="outline" onClick={() => clarify(item)}>Respond</Button>}
+                {["pending", "clarification_requested", "approved"].includes(item.status) && <Button size="sm" variant="outline" onClick={() => cancel(item)}>Cancel</Button>}
+              </div>
             </div>
           ))}
         </div>
@@ -570,17 +825,123 @@ function AnnouncementsPage() {
   );
 }
 
+function MessagesPage() {
+  const [threads, setThreads] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [reply, setReply] = useState("");
+  const [digest, setDigest] = useState(null);
+  const [err, setErr] = useState(null);
+  const load = useCallback(async () => {
+    try {
+      const r = await employeePortalApi.get("/portal/employee/messages");
+      setThreads(r.data.items || []);
+      setSelected((cur) => cur || r.data.items?.[0] || null);
+      const d = await employeePortalApi.get("/portal/employee/digest/preview");
+      setDigest(d.data);
+    } catch (e) { setErr(employeePortalExtractError(e)); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!selected?.id) return;
+    employeePortalApi.get(`/portal/employee/messages/${selected.id}`)
+      .then((r) => setMessages(r.data.messages || []))
+      .catch((e) => setErr(employeePortalExtractError(e)));
+  }, [selected?.id]);
+  async function send(e) {
+    e.preventDefault();
+    if (!selected || !reply.trim()) return;
+    try {
+      await employeePortalApi.post(`/portal/employee/messages/${selected.id}/messages`, { body: reply });
+      setReply("");
+      const r = await employeePortalApi.get(`/portal/employee/messages/${selected.id}`);
+      setMessages(r.data.messages || []);
+      await load();
+    } catch (e2) { toast.error(employeePortalExtractError(e2)); }
+  }
+  return (
+    <div className="space-y-4" data-testid="employee-portal-messages-page">
+      <h1 className="text-xl font-semibold flex items-center gap-2"><MessageSquare className="h-5 w-5" /> Messages</h1>
+      {err && <div className="text-sm text-rose-700">{err}</div>}
+      {!threads ? <p className="text-sm text-slate-500">Loading...</p> : (
+        <div className="grid gap-4 md:grid-cols-[240px_1fr]">
+          <div className="space-y-3">
+            <div className="rounded border bg-white divide-y" data-testid="employee-message-thread-list">
+              {threads.length === 0 ? <div className="p-3 text-sm text-slate-500">No employee-visible threads.</div> : threads.map((t) => (
+                <button key={t.id} onClick={() => setSelected(t)} className={`w-full text-left p-3 text-sm ${selected?.id === t.id ? "bg-slate-100" : ""}`}>
+                  <div className="font-medium">{t.title}</div>
+                  <div className="text-xs text-slate-500">{t.thread_type}{t.unread_count > 0 ? ` - ${t.unread_count} unread` : ""}</div>
+                </button>
+              ))}
+            </div>
+            {digest && (
+              <Card data-testid="employee-digest-card">
+                <CardHeader><CardTitle className="text-base">Today</CardTitle></CardHeader>
+                <CardContent className="text-xs space-y-1">
+                  <div>Tasks due: {digest.sections?.tasks?.due_today || 0}</div>
+                  <div>Unread messages: {digest.sections?.messages?.unread || 0}</div>
+                  <div>Appointments: {digest.sections?.appointments?.upcoming || 0}</div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+          <Card data-testid="employee-message-detail">
+            <CardHeader><CardTitle className="text-base">{selected?.title || "Select a thread"}</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {!selected ? <p className="text-sm text-slate-500">No thread selected.</p> : (
+                <>
+                  <div className="space-y-2 max-h-80 overflow-auto">
+                    {messages.length === 0 ? <p className="text-sm text-slate-500 italic">No messages yet.</p> : messages.map((m) => (
+                      <div key={m.id} className="rounded border p-2 text-sm">
+                        <div className="text-xs text-slate-500">{m.sender_employee_id ? "You" : "Staff"} - {fmtDate(m.created_at)}</div>
+                        <div className="whitespace-pre-wrap">{m.body}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <form onSubmit={send} className="flex gap-2">
+                    <Input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply" data-testid="employee-message-reply" />
+                    <Button type="submit" data-testid="employee-message-send">Send</Button>
+                  </form>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProfilePage() {
   const [data, setData] = useState(null);
   const [phone, setPhone] = useState("");
+  const [form, setForm] = useState({ preferred_name: "", contact_email: "", profile_image_file_id: "", availability: "", timezone: "" });
+  const [prefs, setPrefs] = useState(null);
   const [err, setErr] = useState(null);
   const load = useCallback(async () => {
-    try { const r = await employeePortalApi.get("/portal/employee/profile"); setData(r.data); setPhone(r.data.portal_phone || ""); }
+    try {
+      const r = await employeePortalApi.get("/portal/employee/profile");
+      setData(r.data);
+      setPhone(r.data.portal_phone || r.data.employee?.phone || "");
+      setPrefs(r.data.preferences);
+      setForm({
+        preferred_name: r.data.employee?.preferred_name || "",
+        contact_email: r.data.employee?.email || "",
+        profile_image_file_id: r.data.employee?.profile_image_file_id || "",
+        availability: r.data.employee?.availability || "",
+        timezone: r.data.employee?.timezone || "",
+      });
+    }
     catch (e) { setErr(employeePortalExtractError(e)); }
   }, []);
   useEffect(() => { load(); }, [load]);
   async function save() {
-    try { await employeePortalApi.patch("/portal/employee/profile", { phone }); toast.success("Saved"); load(); }
+    try { await employeePortalApi.patch("/portal/employee/profile", { phone, ...form }); toast.success("Saved"); load(); }
+    catch (e) { toast.error(employeePortalExtractError(e)); }
+  }
+  async function savePref(next) {
+    setPrefs(next);
+    try { const r = await employeePortalApi.patch("/portal/employee/preferences", next); setPrefs(r.data); }
     catch (e) { toast.error(employeePortalExtractError(e)); }
   }
   return (
@@ -597,7 +958,29 @@ function ProfilePage() {
               <Label>Preferred contact phone</Label>
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} data-testid="employee-portal-profile-phone" />
             </div>
-            <Button onClick={save} data-testid="employee-portal-profile-save">Save</Button>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5"><Label>Preferred name</Label><Input value={form.preferred_name} onChange={(e) => setForm((f) => ({ ...f, preferred_name: e.target.value }))} /></div>
+              <div className="grid gap-1.5"><Label>Contact email</Label><Input value={form.contact_email} onChange={(e) => setForm((f) => ({ ...f, contact_email: e.target.value }))} /></div>
+              <div className="grid gap-1.5"><Label>Timezone</Label><Input value={form.timezone} onChange={(e) => setForm((f) => ({ ...f, timezone: e.target.value }))} /></div>
+              <div className="grid gap-1.5"><Label>Profile image file ID</Label><Input value={form.profile_image_file_id} onChange={(e) => setForm((f) => ({ ...f, profile_image_file_id: e.target.value }))} /></div>
+              <div className="grid gap-1.5 sm:col-span-2"><Label>Availability notes</Label><Input value={form.availability} onChange={(e) => setForm((f) => ({ ...f, availability: e.target.value }))} /></div>
+            </div>
+            <Button onClick={save} data-testid="employee-portal-profile-save">Save profile</Button>
+          </CardContent>
+        </Card>
+      )}
+      {prefs && (
+        <Card data-testid="employee-portal-preferences-card">
+          <CardHeader><CardTitle className="text-base">Notification Preferences</CardTitle></CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2 text-sm">
+            {["in_app_messages", "task_notifications", "schedule_changes", "time_off_decisions", "appointment_reminders", "announcements", "daily_digest", "email_delivery"].map((key) => (
+              <label key={key} className="flex items-center gap-2">
+                <Checkbox checked={!!prefs[key]} onCheckedChange={(v) => savePref({ ...prefs, [key]: !!v })} />
+                {key.replaceAll("_", " ")}
+              </label>
+            ))}
+            <div className="grid gap-1.5"><Label>Digest time</Label><Input value={prefs.digest_time || ""} onChange={(e) => setPrefs((p) => ({ ...p, digest_time: e.target.value }))} onBlur={() => savePref(prefs)} /></div>
+            <div className="grid gap-1.5"><Label>Quiet hours start</Label><Input value={prefs.quiet_hours?.start_time || ""} onChange={(e) => setPrefs((p) => ({ ...p, quiet_hours: { ...p.quiet_hours, start_time: e.target.value } }))} onBlur={() => savePref(prefs)} /></div>
           </CardContent>
         </Card>
       )}
@@ -701,11 +1084,14 @@ export default function EmployeePortalApp() {
         <Route path="time-clock" element={<Guard><TimeClockPage /></Guard>} />
         <Route path="production" element={<Guard><ProductionPage /></Guard>} />
         <Route path="schedule" element={<Guard><MySchedulePage /></Guard>} />
+        <Route path="time-off" element={<Guard><MyTimeOffPage /></Guard>} />
         <Route path="timesheet" element={<Guard><MyTimesheetPage /></Guard>} />
         <Route path="pay" element={<Guard><MyPayPage /></Guard>} />
         <Route path="training" element={<Guard><MyTrainingPage /></Guard>} />
         <Route path="training/:assignmentId" element={<Guard><MyTrainingAssignmentDetailPage /></Guard>} />
         <Route path="certifications" element={<Guard><MyCertificationsPage /></Guard>} />
+        <Route path="tasks" element={<Guard><MyTasksPage /></Guard>} />
+        <Route path="messages" element={<Guard><MessagesPage /></Guard>} />
         <Route path="announcements" element={<Guard><AnnouncementsPage /></Guard>} />
         <Route path="profile" element={<Guard><ProfilePage /></Guard>} />
       </Routes>
