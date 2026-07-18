@@ -1,6 +1,6 @@
 # EC13 Phase 13A Commercial Billing Catalog Contracts
 
-**Status:** Implemented locally; GitHub CI pending.
+**Status:** Phase 13A complete; GitHub CI passed in run `29637493631`.
 **Scope:** Phase 13A only.
 
 ## Boundary
