@@ -1,7 +1,7 @@
 """EC12 Phase 12E - shared communication, notes, preferences, and digest service."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 from pymongo.errors import DuplicateKeyError
@@ -52,6 +52,15 @@ STAFF_DIGEST_STATUSES = {"not_started", "in_progress", "waiting", "blocked"}
 
 def _now() -> str:
     return utc_now().isoformat()
+
+
+def _digest_day(value: str) -> date:
+    text = str(value or "").strip()
+    if not text:
+        return utc_now().date()
+    if "T" in text:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    return date.fromisoformat(text[:10])
 
 
 def _actor_user(user: dict) -> tuple[str, str]:
@@ -490,8 +499,9 @@ async def _announcement_items(tenant_id: str, *, employee_id: Optional[str], lim
 
 
 async def build_digest_sections(*, tenant_id: str, recipient_type: str, recipient_id: str, digest_date: str) -> dict:
-    start = digest_date
-    end_dt = utc_now() + timedelta(days=1)
+    start_day = _digest_day(digest_date)
+    start = start_day.isoformat()
+    end = (start_day + timedelta(days=1)).isoformat()
     sections: dict[str, Any] = {}
     task_filter: dict[str, Any] = {"tenant_id": tenant_id, "status": {"$in": list(STAFF_DIGEST_STATUSES)}, "archived_at": None}
     if recipient_type == "employee":
@@ -503,9 +513,9 @@ async def build_digest_sections(*, tenant_id: str, recipient_type: str, recipien
     blocked = await db.tasks.count_documents({**task_filter, "status": "blocked"})
     sections["tasks"] = {"due_today": due_today, "overdue": overdue, "blocked": blocked}
     if recipient_type == "employee":
-        cal_filter = {"tenant_id": tenant_id, "employee_id": recipient_id, "status": {"$nin": ["cancelled", "archived"]}, "start_at": {"$gte": start, "$lt": end_dt.date().isoformat()}}
+        cal_filter = {"tenant_id": tenant_id, "employee_id": recipient_id, "status": {"$nin": ["canceled", "cancelled", "archived"]}, "start_at": {"$gte": start, "$lt": end}}
     else:
-        cal_filter = {"tenant_id": tenant_id, "status": {"$nin": ["cancelled", "archived"]}, "start_at": {"$gte": start, "$lt": end_dt.date().isoformat()}}
+        cal_filter = {"tenant_id": tenant_id, "status": {"$nin": ["canceled", "cancelled", "archived"]}, "start_at": {"$gte": start, "$lt": end}}
     sections["appointments"] = {"upcoming": await db.calendar_events.count_documents(cal_filter)}
     identity_type, identity_id = recipient_type, recipient_id
     thread_filter = {"tenant_id": tenant_id, "archived_at": None}

@@ -145,8 +145,23 @@ async def test_threads_messages_read_state_notes_preferences_digest_and_portal_f
         digest_2 = await c.post("/api/communications/digest/generate")
         assert digest_1.status_code == 200
         assert digest_2.json()["id"] == digest_1.json()["id"]
+        assert digest_1.json()["sections"]["appointments"]["upcoming"] == 1
         assert "payroll" not in digest_1.text.lower()
         assert "pricing" not in digest_1.text.lower()
+        await db.calendar_events.insert_one({
+            "id": f"cal-canceled-{ctx['tenant_id']}", "tenant_id": ctx["tenant_id"],
+            "title": "Canceled install", "status": "canceled", "employee_id": ctx["employee"]["id"],
+            "start_at": _date(), "end_at": _date(1), "created_at": _now(), "updated_at": _now(),
+        })
+        await db.calendar_events.insert_one({
+            "id": f"cal-future-{ctx['tenant_id']}", "tenant_id": ctx["tenant_id"],
+            "title": "Future install", "status": "scheduled", "employee_id": ctx["employee"]["id"],
+            "start_at": _date(3), "end_at": _date(4), "created_at": _now(), "updated_at": _now(),
+        })
+        today_preview = await c.get("/api/communications/digest/preview", params={"digest_date": _date()})
+        future_preview = await c.get("/api/communications/digest/preview", params={"digest_date": _date(3)})
+        assert today_preview.json()["sections"]["appointments"]["upcoming"] == 1
+        assert future_preview.json()["sections"]["appointments"]["upcoming"] == 1
 
     async with await _portal_client(ctx["token"]) as pc:
         employee_threads = await pc.get("/api/portal/employee/messages")

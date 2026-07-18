@@ -179,6 +179,10 @@ async def test_feature_requests_bug_reports_votes_and_platform_status_controls(c
         assert status_denied.status_code == 403
 
     async with await _client_as(ctx["platform_admin"]) as platform:
+        self_duplicate = await platform.post(f"/api/community/feature-requests/{feature_a.json()['id']}/duplicate", json={"duplicate_of_request_id": feature_a.json()["id"]})
+        missing_source = await platform.post("/api/community/feature-requests/missing-feature/duplicate", json={"duplicate_of_request_id": feature_a.json()["id"]})
+        assert self_duplicate.status_code == 400
+        assert missing_source.status_code == 404
         status = await platform.patch(f"/api/community/feature-requests/{feature_a.json()['id']}/status", json={"status": "planned", "staff_response": "Queued for review"})
         assert status.status_code == 200, status.text
         assert status.json()["status"] == "planned"
@@ -190,6 +194,10 @@ async def test_feature_requests_bug_reports_votes_and_platform_status_controls(c
         assert bug_status.status_code == 200
         assert bug_status.json()["status"] == "confirmed"
         second_bug = await platform.post("/api/community/bug-reports", json={"title": "Same board reset", "description": "Duplicate bug"})
+        bug_self_duplicate = await platform.post(f"/api/community/bug-reports/{bug.json()['id']}/duplicate", json={"duplicate_of_bug_id": bug.json()["id"]})
+        bug_missing_source = await platform.post("/api/community/bug-reports/missing-bug/duplicate", json={"duplicate_of_bug_id": bug.json()["id"]})
+        assert bug_self_duplicate.status_code == 400
+        assert bug_missing_source.status_code == 404
         bug_duplicate = await platform.post(f"/api/community/bug-reports/{second_bug.json()['id']}/duplicate", json={"duplicate_of_bug_id": bug.json()["id"]})
         assert bug_duplicate.status_code == 200
         assert bug_duplicate.json()["status"] == "duplicate"
@@ -197,6 +205,18 @@ async def test_feature_requests_bug_reports_votes_and_platform_status_controls(c
 
 @pytest.mark.asyncio
 async def test_support_routing_visibility_internal_notes_and_notifications(ctx):
+    async with await _client_as(ctx["staff"]) as staff:
+        feature = await staff.post("/api/community/feature-requests", json={"title": "Support-linked feature", "description": "Link this safely."})
+        bug = await staff.post("/api/community/bug-reports", json={"title": "Support-linked bug", "description": "Link this safely."})
+        assert feature.status_code == 201
+        assert bug.status_code == 201
+
+    async with await _client_as(ctx["other_owner"]) as other:
+        other_feature = await other.post("/api/community/feature-requests", json={"title": "Other feature", "description": "Other tenant."})
+        other_bug = await other.post("/api/community/bug-reports", json={"title": "Other bug", "description": "Other tenant."})
+        assert other_feature.status_code == 201
+        assert other_bug.status_code == 201
+
     async with await _client_as(ctx["staff"]) as staff:
         tenant_route = await staff.get("/api/community/support/route-preview", params={"request_type": "shop_configuration_question"})
         platform_route = await staff.get("/api/community/support/route-preview", params={"request_type": "product_bug"})
@@ -209,7 +229,19 @@ async def test_support_routing_visibility_internal_notes_and_notifications(ctx):
         assert wrong_destination.status_code == 400
         tenant_ticket = await staff.post("/api/community/support", json={
             "request_type": "shop_configuration_question", "subject": "Need setup help",
-            "description": "How should we configure teams?", "linked_customer_id": ctx["customer_id"], "idempotency_key": "support-tenant",
+            "description": "How should we configure teams?", "linked_customer_id": ctx["customer_id"],
+            "linked_feature_request_id": feature.json()["id"], "linked_bug_report_id": bug.json()["id"],
+            "idempotency_key": "support-tenant",
+        })
+        cross_feature_link = await staff.post("/api/community/support", json={
+            "request_type": "product_bug", "subject": "Bad feature link",
+            "description": "Cross-tenant feature must not link.",
+            "linked_feature_request_id": other_feature.json()["id"],
+        })
+        cross_bug_link = await staff.post("/api/community/support", json={
+            "request_type": "product_bug", "subject": "Bad bug link",
+            "description": "Cross-tenant bug must not link.",
+            "linked_bug_report_id": other_bug.json()["id"],
         })
         tenant_ticket_dup = await staff.post("/api/community/support", json={
             "request_type": "shop_configuration_question", "subject": "Changed",
@@ -220,6 +252,8 @@ async def test_support_routing_visibility_internal_notes_and_notifications(ctx):
             "description": "Uploads fail for larger files.", "idempotency_key": "support-platform",
         })
         assert tenant_ticket.status_code == 201, tenant_ticket.text
+        assert cross_feature_link.status_code == 404
+        assert cross_bug_link.status_code == 404
         assert tenant_ticket_dup.json()["id"] == tenant_ticket.json()["id"]
         assert platform_ticket.status_code == 201, platform_ticket.text
         assert tenant_ticket.json()["destination_type"] == "tenant_admin"
@@ -236,6 +270,8 @@ async def test_support_routing_visibility_internal_notes_and_notifications(ctx):
         assert note.status_code == 201, note.text
         with_notes = await owner.get(f"/api/community/support/{tenant_ticket.json()['id']}", params={"include_internal_notes": True})
         assert len(with_notes.json()["internal_notes"]) == 1
+        bad_assignment = await owner.patch(f"/api/community/support/{tenant_ticket.json()['id']}", json={"assigned_user_id": ctx["other_owner"]["id"]})
+        assert bad_assignment.status_code == 404
         tenant_resolved = await owner.patch(f"/api/community/support/{tenant_ticket.json()['id']}", json={"status": "resolved"})
         assert tenant_resolved.status_code == 200
         assert tenant_resolved.json()["closed_at"]
@@ -247,6 +283,8 @@ async def test_support_routing_visibility_internal_notes_and_notifications(ctx):
         assert platform_note.status_code == 201
         platform_view = await platform.get(f"/api/community/support/{platform_ticket.json()['id']}", params={"include_internal_notes": True})
         assert len(platform_view.json()["internal_notes"]) == 1
+        bad_platform_assignment = await platform.patch(f"/api/community/support/{platform_ticket.json()['id']}", json={"assigned_user_id": ctx["staff"]["id"]})
+        assert bad_platform_assignment.status_code == 403
         platform_update = await platform.patch(f"/api/community/support/{platform_ticket.json()['id']}", json={"status": "acknowledged", "priority": "high"})
         assert platform_update.status_code == 200
         assert platform_update.json()["priority"] == "high"

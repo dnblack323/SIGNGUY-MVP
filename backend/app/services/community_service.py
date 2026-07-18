@@ -138,6 +138,42 @@ async def _validate_link(tenant_id: str, record_type: Optional[str], record_id: 
         raise CommunityError("linked_record_not_found", "Linked record does not belong to this tenant", 404)
 
 
+async def _validate_support_links(user: dict, payload: dict) -> None:
+    await _validate_link(user["tenant_id"], "customer" if payload.get("linked_customer_id") else None, payload.get("linked_customer_id"))
+    await _validate_link(user["tenant_id"], "order" if payload.get("linked_order_id") else None, payload.get("linked_order_id"))
+    await _validate_link(user["tenant_id"], "task" if payload.get("linked_task_id") else None, payload.get("linked_task_id"))
+    if payload.get("linked_bug_report_id"):
+        bug = await db.bug_reports.find_one(
+            {"tenant_id": user["tenant_id"], "id": payload["linked_bug_report_id"]},
+            {"_id": 0, "id": 1},
+        )
+        if not bug:
+            raise CommunityError("linked_record_not_found", "Bug report does not belong to this tenant", 404)
+    if payload.get("linked_feature_request_id"):
+        feature = await db.feature_requests.find_one(
+            {"tenant_id": user["tenant_id"], "id": payload["linked_feature_request_id"]},
+            {"_id": 0, "id": 1},
+        )
+        if not feature:
+            raise CommunityError("linked_record_not_found", "Feature request does not belong to this tenant", 404)
+
+
+async def _validate_support_assignment(ticket: dict, assigned_user_id: Optional[str]) -> None:
+    if not assigned_user_id:
+        return
+    if ticket["destination_type"] == "tenant_admin":
+        assignee = await db.users.find_one(
+            {"tenant_id": ticket["tenant_id"], "id": assigned_user_id, "is_active": True},
+            {"_id": 0},
+        )
+        if not assignee:
+            raise CommunityError("assigned_user_not_found", "Assigned user must belong to this tenant", 404)
+        return
+    assignee = await db.users.find_one({"id": assigned_user_id, "is_active": True}, {"_id": 0})
+    if not assignee or not _is_platform_admin(assignee):
+        raise CommunityError("platform_assignee_required", "Platform support can only be assigned to a platform admin", 403)
+
+
 def _space_filter_for_user(user: dict) -> dict:
     clauses: list[dict] = [
         {"scope_type": "platform", "archived_at": None, "active": True},
@@ -513,6 +549,8 @@ async def mark_feature_duplicate(user: dict, request_id: str, duplicate_of_reque
     target = await db.feature_requests.find_one({"id": duplicate_of_request_id}, {"_id": 0})
     if not source or not target:
         raise CommunityError("feature_request_not_found", "Feature request not found", 404)
+    if source["id"] == target["id"]:
+        raise CommunityError("invalid_duplicate_target", "Feature request cannot be marked duplicate of itself", 400)
     source_voters = [v["identity_id"] async for v in db.community_votes.find({"record_type": "feature_request", "record_id": request_id, "active": True}, {"_id": 0, "identity_id": 1})]
     for uid in source_voters:
         existing = await db.community_votes.find_one(
@@ -609,6 +647,13 @@ async def update_bug_status(user: dict, bug_id: str, updates: dict) -> dict:
     clean = {k: v for k, v in updates.items() if k in {"status", "staff_response", "linked_support_request_id"}}
     if "status" in clean and clean["status"] not in BUG_STATUSES:
         raise CommunityError("invalid_status", "Unsupported bug report status", 400)
+    if clean.get("linked_support_request_id"):
+        linked = await db.support_requests.find_one(
+            {"tenant_id": bug["tenant_id"], "id": clean["linked_support_request_id"]},
+            {"_id": 0, "id": 1},
+        )
+        if not linked:
+            raise CommunityError("linked_record_not_found", "Support request does not belong to this bug report tenant", 404)
     clean["updated_at"] = _now()
     await db.bug_reports.update_one({"id": bug_id}, {"$set": clean})
     try:
@@ -623,8 +668,12 @@ async def mark_bug_duplicate(user: dict, bug_id: str, duplicate_of_bug_id: str) 
     user = await _actor(user)
     if not _is_platform_admin(user):
         raise CommunityError("platform_admin_required", "Platform admin access is required", 403)
-    if not await db.bug_reports.find_one({"id": duplicate_of_bug_id}, {"_id": 0, "id": 1}):
+    source = await db.bug_reports.find_one({"id": bug_id}, {"_id": 0, "id": 1})
+    target = await db.bug_reports.find_one({"id": duplicate_of_bug_id}, {"_id": 0, "id": 1})
+    if not source or not target:
         raise CommunityError("bug_report_not_found", "Bug report not found", 404)
+    if source["id"] == target["id"]:
+        raise CommunityError("invalid_duplicate_target", "Bug report cannot be marked duplicate of itself", 400)
     await db.bug_reports.update_one({"id": bug_id}, {"$set": {"status": "duplicate", "duplicate_of_bug_id": duplicate_of_bug_id, "updated_at": _now()}})
     await _audit(user, "community.bug_duplicate", "bug_report", bug_id, "Bug report marked duplicate", {"duplicate_of_bug_id": duplicate_of_bug_id})
     return serialize_doc(await db.bug_reports.find_one({"id": bug_id}, {"_id": 0}))
@@ -689,9 +738,7 @@ async def create_support_request(user: dict, payload: dict) -> dict:
         existing = await db.support_requests.find_one({"tenant_id": user["tenant_id"], "requester_user_id": user["id"], "idempotency_key": payload["idempotency_key"]}, {"_id": 0})
         if existing:
             return serialize_doc(existing)
-    await _validate_link(user["tenant_id"], "customer" if payload.get("linked_customer_id") else None, payload.get("linked_customer_id"))
-    await _validate_link(user["tenant_id"], "order" if payload.get("linked_order_id") else None, payload.get("linked_order_id"))
-    await _validate_link(user["tenant_id"], "task" if payload.get("linked_task_id") else None, payload.get("linked_task_id"))
+    await _validate_support_links(user, payload)
     doc = SupportRequest(
         tenant_id=user["tenant_id"],
         request_type=payload["request_type"],
@@ -768,6 +815,7 @@ async def update_support_request(user: dict, ticket_id: str, updates: dict) -> d
     clean = {k: v for k, v in updates.items() if k in {"status", "priority", "assigned_user_id"}}
     if "status" in clean and clean["status"] not in SUPPORT_STATUSES:
         raise CommunityError("invalid_status", "Unsupported support status", 400)
+    await _validate_support_assignment(ticket, clean.get("assigned_user_id"))
     if clean.get("status") in {"resolved", "closed"}:
         clean["closed_at"] = _now()
     clean["updated_at"] = _now()
