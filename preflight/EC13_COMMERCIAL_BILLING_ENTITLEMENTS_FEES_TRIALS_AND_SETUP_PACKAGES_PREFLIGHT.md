@@ -5,6 +5,19 @@
 **Branch:** `CODEX-ec13-branch`
 **Date:** 2026-07-18
 
+## Post-Preflight Acceptance Addendum
+
+The owner accepted this preflight as COMPLETE on 2026-07-18. The following preflight questions are resolved for implementation planning:
+
+- Founder availability is first 25 signed shops; Founder status is tenant/shop-scoped, not user-scoped.
+- Existing explicit EC12 Founder access is preserved until the EC13 Founder migration contract is implemented and verified.
+- Smart Pricing is not included as a paid add-on in EC13.
+- SMS/MMS final pricing is not defined or seeded in EC13; only future usage-billing hooks/categories may be modeled.
+- Only owner-approved active prices may be published or sent to Stripe. Unapproved products/prices remain unavailable, never zero-priced or placeholder products.
+- Platform-fee refunds use immutable original fee snapshots plus separate proportional reversal/adjustment records.
+
+Detailed Phase 13A plan: `/app/preflight/EC13_PHASE13A_COMMERCIAL_BILLING_CATALOG_AND_CORE_CONTRACTS_PLAN.md`.
+
 ## 1. EC13 Purpose
 
 EC13 owns SignGuy's commercial billing system: tenant billing accounts, subscription plans, prices, Founder commercial state, trials, paid extended trials, setup-package purchases, Stripe subscription/checkout/billing portal integration, SignGuy platform-fee policy, and plan/add-on-derived entitlements.

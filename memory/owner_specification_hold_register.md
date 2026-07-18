@@ -32,6 +32,41 @@ The commercial authority for EC13 (and its EC19/EC21 dependents) is confirmed to
 - Standalone pricing (Webstores, Wrap Lab as standalone products — **see open contradiction C1 below**)
 - Entitlements (feature access gated by plan/add-on/standalone status)
 
+## EC13 post-preflight owner decisions (2026-07-18) - LOCKED before implementation
+
+The EC13 preflight is accepted as COMPLETE. These owner decisions refine the implementation authority for EC13 and must be used before any EC13 implementation phase begins:
+
+1. **Founder availability and scope**
+   - Founder availability is the first 25 signed shops, not 50 users.
+   - Founder status is assigned per tenant/shop, not per individual user.
+   - Existing explicit EC12 Founder access must be preserved until the EC13 migration contract is implemented and verified.
+
+2. **Smart Pricing**
+   - Do not include Smart Pricing as a paid add-on in EC13.
+   - EC13 may only ensure the commercial billing architecture can support future add-ons.
+   - Smart Pricing pricing and entitlement rules remain deferred to the owning checkpoint.
+
+3. **SMS/MMS**
+   - Do not define or seed final SMS/MMS pricing in EC13.
+   - EC13 may support future usage-billing hooks and categories.
+   - External SMS sending, provider integration, final usage pricing, and credit rules remain deferred.
+
+4. **Webstores and Wrap Lab pricing availability**
+   - EC13 must support monthly, annual, add-on, and standalone price models.
+   - Only owner-approved active prices may be published or sent to Stripe.
+   - Unapproved products/prices must remain unavailable, not zero-priced or placeholder products.
+   - Do not invent or seed unapproved standalone monthly or annual prices.
+
+5. **Platform-fee refunds**
+   - Store the original platform fee as an immutable transaction snapshot.
+   - A full refund creates a proportional full platform-fee reversal.
+   - A partial refund creates a proportional partial platform-fee reversal.
+   - Stripe or provider fees are recorded separately and are not silently rewritten.
+   - Manual exceptions require platform-admin permission, a reason, an audit event, and a separate adjustment record.
+   - Never modify or delete the original fee transaction.
+
+Phase 13A planning authority: `/app/preflight/EC13_PHASE13A_COMMERCIAL_BILLING_CATALOG_AND_CORE_CONTRACTS_PLAN.md`.
+
 ## Resolved contradictions (owner decisions received 2026-02) — RESOLVED, NOT open holds anymore
 
 ### C1 — RESOLVED: Standalone Webstores/Wrap Lab pricing
@@ -77,5 +112,7 @@ Rules (owner-locked): Stripe payment-failure webhook events (`invoice.payment_fa
 - Founder eligibility count and pricing ($119→$189/mo, 25 shops, $1,890/yr), GA Core/Webstores-add-on/Wrap-add-on/Complete pricing, credit-pack amounts, setup-fee tiers, and trial terms in EC13 all **match** the existing `REVISED_COMMERCIAL_SOURCE_OF_TRUTH_2026-07.md` exactly. (The *older* master-plan Decision 10/11 numbers — 50 shops, flat $149/mo Founder — were already superseded by that 2026-07 revision before this intake; EC13 simply reconfirms the 2026-07 revision.)
 - EC19's setup-fee tier names/amounts match EC13 exactly.
 - EC09's and EC19's pricing-quiz descriptions (one practical scenario question deriving labor rate/minimums/sell rate) are consistent with each other.
+
+**2026-07-18 EC13 refinement:** only owner-approved active prices may be published or sent to Stripe. Unapproved standalone products/prices must remain unavailable; they must not be represented as zero-priced products or placeholder Stripe products. EC13 preflight is accepted COMPLETE; no EC13 implementation phase has started.
 
 **Register last updated:** 2026-02 — Contradictions C1, C2, and C3 resolved by explicit owner decision (see sections above). No hold (H1–H8) has been lifted by this resolution. No checkpoint has started.

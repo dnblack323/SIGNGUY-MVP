@@ -43,4 +43,6 @@
 4. Older consolidated plans (old master plan, scope register, readiness matrix, source map).
 5. Legacy donor repositories as behavior references only.
 
+**EC13 update (2026-07-18):** EC13 preflight is accepted COMPLETE, the Phase 13A commercial billing catalog/core-contracts plan is complete at `/app/preflight/EC13_PHASE13A_COMMERCIAL_BILLING_CATALOG_AND_CORE_CONTRACTS_PLAN.md`, and EC13 implementation remains NOT STARTED.
+
 **Table last updated:** 2026-07-18 — EC9 and EC10 are COMPLETE / CLOSED. EC11 core is COMPLETE / CLOSED with Phases 11A, 11B, 11C, 11D, 11E, 11F, and 11I COMPLETE; phases 11G/11H are reserved and not authorized. EC12 is COMPLETE / CLOSED with Phases 12A-12I COMPLETE. EC13 preflight is COMPLETE; EC13 implementation is NOT STARTED. EC19 remains NOT STARTED.
