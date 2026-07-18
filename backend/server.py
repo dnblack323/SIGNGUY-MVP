@@ -248,6 +248,10 @@ api_router.include_router(communications_router_module.router)
 from app.routers import community as community_router_module
 api_router.include_router(community_router_module.router)
 
+# EC13 Phase 13A - commercial billing catalog and core contracts only.
+from app.routers import commercial_catalog as commercial_catalog_router_module
+api_router.include_router(commercial_catalog_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

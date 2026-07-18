@@ -703,4 +703,53 @@ async def ensure_indexes() -> None:
     await db.support_request_notes.create_index([("tenant_id", 1), ("support_request_id", 1), ("created_at", 1)])
     await db.community_moderation_reports.create_index([("post_id", 1), ("status", 1), ("created_at", -1)])
 
+    # ---- EC13 Phase 13A - commercial billing catalog and core contracts ----
+    await db.commercial_catalog_versions.create_index("id", unique=True)
+    await db.commercial_catalog_versions.create_index("version", unique=True)
+    await db.commercial_catalog_versions.create_index([("status", 1), ("effective_at", 1)])
+
+    await db.commercial_products.create_index("id", unique=True)
+    await db.commercial_products.create_index([("catalog_version_id", 1), ("product_key", 1)], unique=True)
+    await db.commercial_products.create_index([("status", 1), ("product_type", 1)])
+    await db.commercial_products.create_index([("owner_checkpoint", 1), ("status", 1)])
+
+    await db.commercial_prices.create_index("id", unique=True)
+    await db.commercial_prices.create_index([("catalog_version_id", 1), ("price_key", 1)], unique=True)
+    await db.commercial_prices.create_index([("product_id", 1), ("billing_interval", 1), ("is_active", 1)])
+    await db.commercial_prices.create_index(
+        "stripe_price_id",
+        unique=True,
+        partialFilterExpression={"stripe_price_id": {"$type": "string"}},
+    )
+    await db.commercial_prices.create_index([("is_public", 1), ("is_active", 1)])
+
+    await db.commercial_entitlement_rules.create_index("id", unique=True)
+    await db.commercial_entitlement_rules.create_index([("catalog_version_id", 1), ("product_id", 1)])
+    await db.commercial_entitlement_rules.create_index([("feature_key", 1), ("enabled", 1)])
+    await db.commercial_entitlement_rules.create_index(
+        [("catalog_version_id", 1), ("product_id", 1), ("feature_key", 1), ("entitlement_scope", 1)],
+        unique=True,
+    )
+
+    await db.founder_tenant_contracts.create_index("id", unique=True)
+    await db.founder_tenant_contracts.create_index(
+        [("tenant_id", 1)],
+        unique=True,
+        partialFilterExpression={"founder_status": {"$in": ["pending", "active", "grace"]}},
+    )
+    await db.founder_tenant_contracts.create_index(
+        "founder_slot_number",
+        unique=True,
+        partialFilterExpression={"founder_slot_number": {"$type": "number"}},
+    )
+    await db.founder_tenant_contracts.create_index([("tenant_id", 1), ("created_at", -1)])
+
+    await db.platform_fee_schedules.create_index("id", unique=True)
+    await db.platform_fee_schedules.create_index([("catalog_version_id", 1), ("fee_key", 1)], unique=True)
+    await db.platform_fee_schedules.create_index([("account_status", 1), ("transaction_type", 1), ("is_active", 1)])
+
+    await db.platform_fee_transactions.create_index("id", unique=True)
+    await db.platform_fee_transactions.create_index([("tenant_id", 1), ("source_transaction_type", 1), ("source_transaction_id", 1)])
+    await db.platform_fee_transactions.create_index([("reversal_of_fee_transaction_id", 1)])
+
     logger.info("MongoDB indexes ensured")
