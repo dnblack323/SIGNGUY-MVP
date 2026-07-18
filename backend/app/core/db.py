@@ -532,6 +532,12 @@ async def ensure_indexes() -> None:
     await db.template_definitions.create_index("id", unique=True)
     await db.template_definitions.create_index([("tenant_id", 1), ("template_type", 1), ("active", 1)])
     await db.template_definitions.create_index([("tenant_id", 1), ("name", 1), ("template_type", 1)])
+    await db.template_definitions.create_index([("owner_scope", 1), ("template_type", 1), ("active", 1), ("source_status", 1)])
+    await db.template_definitions.create_index([("tenant_id", 1), ("source_template_id", 1), ("source_template_version", 1)])
+    await db.template_definitions.create_index([("tenant_id", 1), ("channels", 1), ("template_type", 1)])
+    await db.template_definitions.create_index([("pack_id", 1), ("starter_template", 1), ("premium_reserved", 1)])
+    await db.template_packs.create_index("id", unique=True)
+    await db.template_packs.create_index([("pack_type", 1), ("active", 1), ("starter_pack", 1), ("premium_reserved", 1)])
 
     # ---- EC11 phase 11A - Production Workflow Definitions ----
     await db.production_workflows.create_index("id", unique=True)
