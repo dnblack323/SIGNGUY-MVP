@@ -9,7 +9,7 @@
 | # | Hold | Scope | Condition to lift | Status |
 |---|---|---|---|---|
 | H1 | **No checkpoint starts automatically after this documentation update.** | All of EC9–EC22 | Explicit owner "go" message naming the checkpoint to start. | ACTIVE |
-| H2 | **EC14 Webstores requires separate owner authorization.** | EC14 | Owner explicitly authorizes EC14 start (separate from generic "start EC9" authorization). | ACTIVE |
+| H2 | **EC14 Webstores requires separate owner authorization.** | EC14 | Owner explicitly authorizes EC14 start (separate from generic "start EC9" authorization). | LIFTED FOR EC14 ONLY - 2026-07-19 owner prompt authorized EC14 on `CODEX-EC14-BRANCH`; does not lift H3-H8 |
 | H3 | **EC15 Wrap Lab requires separate owner authorization.** | EC15 | Owner explicitly authorizes EC15 start. | ACTIVE |
 | H4 | **EC16–EC18 AI work requires separate authorization.** | EC16 (Shared AI Gateway), EC17 (Studio AI Tools), EC18 (Paid Business Assistant/Voice) | Owner explicitly authorizes AI-checkpoint work to begin. | ACTIVE |
 | H5 | **EC17 is blocked until the owner completes the AI Tools Keep / Combine / Change / Rename / Defer / Remove review.** | EC17 specifically | Owner completes the full tool-by-tool review worksheet (28+ legacy AI tools) and assigns a final status + Final Name + Family to every tool. | ACTIVE — BLOCKING (stronger than H4; EC17 cannot start even if H4 is otherwise lifted, until this worksheet is complete) |
@@ -115,4 +115,15 @@ Rules (owner-locked): Stripe payment-failure webhook events (`invoice.payment_fa
 
 **2026-07-18 EC13 refinement:** only owner-approved active prices may be published or sent to Stripe. Unapproved standalone products/prices must remain unavailable; they must not be represented as zero-priced products or placeholder Stripe products. EC13 preflight is accepted COMPLETE; no EC13 implementation phase has started.
 
-**Register last updated:** 2026-02 — Contradictions C1, C2, and C3 resolved by explicit owner decision (see sections above). No hold (H1–H8) has been lifted by this resolution. No checkpoint has started.
+## EC14 owner authorization (2026-07-19)
+
+The owner explicitly authorized EC14 Webstores to start on `CODEX-EC14-BRANCH` after EC13 was closed and merged. This lifts H1/H2 for EC14 only.
+
+Still held/deferred:
+
+- EC15 Wrap Lab under H3/H6.
+- EC16-EC18 AI/provider work under H4/H5/H7/H8.
+- EC19 onboarding/help and later checkpoints until separately authorized.
+- Webstores standalone annual pricing remains not approved and unavailable.
+
+**Register last updated:** 2026-07-19 — Contradictions C1, C2, and C3 remain resolved by explicit owner decision. H1/H2 are lifted for EC14 Webstores only by current owner authorization. H3-H8 remain active.
