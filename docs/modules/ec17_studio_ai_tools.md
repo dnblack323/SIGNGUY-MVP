@@ -1,12 +1,12 @@
 # EC17 Studio AI Tools Runtime Contracts
 
-**Status:** IMPLEMENTED - CI PENDING
+**Status:** COMPLETE - CLOSED 2026-07-19
 **Checkpoint:** EC17 Studio AI Tools, Prompt Library, Generated Assets, and AI Activity
 **Primary route:** `/api/ai-studio`
 
 ## Boundaries
 
-EC17 implements tenant-facing Studio AI tool catalog, Prompt Library, Generated Assets, editable draft/history storage, AI Activity, contextual launch links, and proposal boundaries for pricing/import workflows.
+EC17 implements tenant-facing Studio AI tool catalog, Prompt Library, Generated Assets, editable draft/history storage, AI Activity, contextual launch links, and proposal boundaries for pricing/import workflows. Implementation commit `b0086fa32581402e7cbb2987ba59f935aa0bec3d` passed GitHub CI run `29704696468`.
 
 All executable Studio runs route through EC16 action requests, context packets, prompt versions, usage ledger, provider-cost ledger, credit ledger, governance, idempotency, permissions, and tenant isolation. EC17 does not call external providers.
 

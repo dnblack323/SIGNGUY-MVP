@@ -177,4 +177,4 @@ Future Meta integration only and inactive in EC17:
 
 H7 remains active for EC17. EC17 must not make live external provider calls, publish final numeric credit pricing, activate production AI providers/models, implement BYOK/MCP/realtime voice, commit secrets, or start EC18/EC19/later checkpoint scope.
 
-**Register last updated:** 2026-07-19 - EC17 owner authorization recorded. H4/H5/H8 are closed for EC17 only. H7 remains active. EC18, Meta integrations, EC19, and later checkpoints remain held/deferred.
+**Register last updated:** 2026-07-19 - EC17 owner authorization recorded and EC17 implementation closed after CI `29704696468` passed. H4/H5/H8 are closed for EC17 only. H7 remains active. EC18, Meta integrations, EC19, and later checkpoints remain held/deferred.

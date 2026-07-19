@@ -1,10 +1,10 @@
 # EC17 Implementation Completion Report
 
-**Status:** IMPLEMENTED - CI PENDING
+**Status:** COMPLETE - CLOSED
 **Branch:** `CODEX-ec17-branch`
 **Documentation commit:** `d80d696d4bcddaf52c04b3ba72c1e2fba46fb9b4`
-**Implementation commit:** pending
-**GitHub CI:** pending
+**Implementation commit:** `b0086fa32581402e7cbb2987ba59f935aa0bec3d`
+**GitHub CI:** `29704696468` - success
 
 ## Scope Implemented
 
@@ -68,10 +68,12 @@ Completed locally:
 - backend server import - `SERVER_IMPORT_OK`
 - `git diff --check` - passed with line-ending warnings only
 
-Pending:
+GitHub CI:
 
-- implementation commit and push
-- GitHub CI run and result
+- Run `29704696468` - success
+- `frontend-tests` - success
+- `backend-tests` - success
+- `frontend-build` - success
 
 ## Deferred Scope
 
