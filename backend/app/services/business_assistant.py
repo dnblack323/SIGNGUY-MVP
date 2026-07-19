@@ -858,6 +858,7 @@ async def create_realtime_session(user: dict[str, Any], fields: dict[str, Any]) 
         ).model_dump()
         await db.assistant_voice_sessions.insert_one(prepare_for_mongo(voice_doc))
         return {"configured": False, "status": "unavailable", "message": "OpenAI Voice is not configured", "voice_session": serialize_doc(voice_doc)}
+    await _require_voice_credit_authorized(user)
     await _voice_rate_limit(user)
     safety_id = _safety_identifier(user)
     payload = {
@@ -873,18 +874,7 @@ async def create_realtime_session(user: dict[str, Any], fields: dict[str, Any]) 
     }
     payload["session"] = {k: v for k, v in payload["session"].items() if v is not None}
     try:
-        async with httpx.AsyncClient(timeout=settings.openai_realtime_timeout_seconds) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/realtime/client_secrets",
-                headers={
-                    "Authorization": f"Bearer {settings.openai_api_key}",
-                    "Content-Type": "application/json",
-                    "OpenAI-Safety-Identifier": safety_id,
-                },
-                json=payload,
-            )
-            response.raise_for_status()
-            secret = response.json()
+        secret = await _request_openai_realtime_client_secret(settings=settings, safety_id=safety_id, payload=payload)
     except httpx.HTTPError as exc:
         voice_doc = AssistantVoiceSession(
             tenant_id=user["tenant_id"],
@@ -921,6 +911,21 @@ async def create_realtime_session(user: dict[str, Any], fields: dict[str, Any]) 
     }
 
 
+async def _request_openai_realtime_client_secret(*, settings: Any, safety_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async with httpx.AsyncClient(timeout=settings.openai_realtime_timeout_seconds) as client:
+        response = await client.post(
+            "https://api.openai.com/v1/realtime/client_secrets",
+            headers={
+                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Content-Type": "application/json",
+                "OpenAI-Safety-Identifier": safety_id,
+            },
+            json=payload,
+        )
+        response.raise_for_status()
+        return response.json()
+
+
 def _safety_identifier(user: dict[str, Any]) -> str:
     raw = f"{user['tenant_id']}:{user['id']}".encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
@@ -932,6 +937,18 @@ async def _voice_rate_limit(user: dict[str, Any]) -> None:
     count = await db.assistant_voice_sessions.count_documents({"tenant_id": user["tenant_id"], "user_id": user["id"], "created_at": {"$gte": window_start}})
     if count >= settings.openai_realtime_rate_limit_sessions:
         raise BusinessAssistantError("voice_rate_limit", "Too many voice sessions. Try again shortly.", 429)
+
+
+async def _require_voice_credit_authorized(user: dict[str, Any]) -> None:
+    capability = await db.ai_capabilities.find_one({"capability_key": "assistant.voice_reply", "status": "active"}, {"_id": 0})
+    if not capability:
+        raise BusinessAssistantError("assistant_capability_not_bootstrapped", "Platform AI admin must bootstrap EC18 assistant capabilities before voice activation", 409)
+    try:
+        account = await ai_gateway.get_credit_account(user["tenant_id"])
+    except ai_gateway.AIGatewayError as exc:
+        raise BusinessAssistantError(exc.code, exc.detail, exc.status_code)
+    if account.get("status") != "active" or int(account.get("available_credits") or 0) <= 0:
+        raise BusinessAssistantError("insufficient_ai_credits", "Insufficient AI credits", 402)
 
 
 async def record_voice_usage(user: dict[str, Any], voice_session_id: str, fields: dict[str, Any]) -> dict[str, Any]:

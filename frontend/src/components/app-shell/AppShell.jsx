@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { NAV_AREAS, filterFlyoutByPermissions } from "@/lib/navigation";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import AssistantLauncher from "@/components/assistant/AssistantLauncher";
 
 function FlyoutPanel({ area, permissions, user, onNavigate }) {
   const entries = filterFlyoutByPermissions(area.flyout, permissions, user);
@@ -183,6 +184,7 @@ export default function AppShell() {
           <main className="px-4 md:px-6 py-6 max-w-[1400px]" data-testid="app-shell-content" data-active-path={loc.pathname}>
             <Outlet />
           </main>
+          <AssistantLauncher />
         </div>
       </div>
     </div>

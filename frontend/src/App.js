@@ -42,6 +42,7 @@ import AICreditsPage from "@/pages/AICreditsPage";
 import PlatformAIGovernancePage from "@/pages/PlatformAIGovernancePage";
 import AIActivityPage from "@/pages/AIActivityPage";
 import AIStudioPage from "@/pages/AIStudioPage";
+import BusinessAssistantPage from "@/pages/BusinessAssistantPage";
 import GeneratedAssetsPage from "@/pages/GeneratedAssetsPage";
 import PromptLibraryPage from "@/pages/PromptLibraryPage";
 import DataSecurityPage from "@/pages/DataSecurityPage";
@@ -168,6 +169,7 @@ function AppRoutes() {
         <Route path="/wrap-lab" element={<WrapLabPage />} />
         <Route path="/wrap-lab/:id" element={<WrapLabDetailPage />} />
         <Route path="/studio" element={<AIStudioPage />} />
+        <Route path="/studio/assistant" element={<BusinessAssistantPage />} />
         <Route path="/studio/design-image" element={<AIStudioPage />} />
         <Route path="/studio/marketing-brand" element={<AIStudioPage />} />
         <Route path="/studio/writing-documents" element={<AIStudioPage />} />
