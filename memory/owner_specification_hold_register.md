@@ -8,10 +8,10 @@
 
 | # | Hold | Scope | Condition to lift | Status |
 |---|---|---|---|---|
-| H1 | **No checkpoint starts automatically after this documentation update.** | All of EC9–EC22 | Explicit owner "go" message naming the checkpoint to start. | ACTIVE |
+| H1 | **No checkpoint starts automatically after this documentation update.** | All of EC9–EC22 | Explicit owner "go" message naming the checkpoint to start. | ACTIVE GLOBALLY - CLOSED FOR EC18 ONLY by 2026-07-19 owner authorization on `CODEX-ec18-branch`; EC19 and later still require separate owner authorization |
 | H2 | **EC14 Webstores requires separate owner authorization.** | EC14 | Owner explicitly authorizes EC14 start (separate from generic "start EC9" authorization). | CLOSED FOR EC14 - 2026-07-19 owner prompt authorized EC14 on `CODEX-EC14-BRANCH`; EC14 completed with CI `29677455165`; does not lift H3-H8 |
 | H3 | **EC15 Wrap Lab requires separate owner authorization.** | EC15 | Owner explicitly authorizes EC15 start. | CLOSED FOR EC15 - 2026-07-19 owner prompt authorized EC15 on `CODEX-ec15-branch`; does not lift H4-H8 or later checkpoint holds |
-| H4 | **EC16-EC18 AI work requires separate authorization.** | EC16 (Shared AI Gateway), EC17 (Studio AI Tools), EC18 (Paid Business Assistant/Voice) | Owner explicitly authorizes AI-checkpoint work to begin. | CLOSED FOR EC16 AND EC17 ONLY - 2026-07-19 owner prompts authorized EC16 and later EC17 on `CODEX-ec17-branch`; EC18 remains ACTIVE under H4 |
+| H4 | **EC16-EC18 AI work requires separate authorization.** | EC16 (Shared AI Gateway), EC17 (Studio AI Tools), EC18 (Paid Business Assistant/Voice) | Owner explicitly authorizes AI-checkpoint work to begin. | CLOSED FOR EC16, EC17, AND EC18 ONLY - 2026-07-19 owner prompts authorized EC16, EC17, and EC18. EC18 authorization applies only to `CODEX-ec18-branch` and does not lift H7 or later checkpoint holds |
 | H5 | **EC17 is blocked until the owner completes the AI Tools Keep / Combine / Change / Rename / Defer / Remove review.** | EC17 specifically | Owner completes the full tool-by-tool review worksheet (28+ legacy AI tools) and assigns a final status + Final Name + Family to every tool. | CLOSED FOR EC17 - owner accepted the EC17 worksheet and supplied final tool decisions, approved capability identifiers, removed tools, EC18-only identifiers, and Meta-only identifiers on 2026-07-19 |
 | H6 | Wrap Lab **standalone** activation requires a completed preflight proving shared-core reuse without duplication. | Wrap Lab standalone sale only (not Founder-included or add-on use) | Preflight completed and owner-approved (carried forward from old master plan Decision 7; still binding under EC15). | SATISFIED FOR EC15 SHARED-CORE IMPLEMENTATION - standalone annual pricing and public standalone purchase flow remain unavailable |
 | H7 | AI top-up pricing, included AI-credit amounts, and AI provider/model assignments are approved **subject to a measured provider-cost audit** before live commercial activation. | EC13/EC16/EC17 commercial AI numbers | Provider-cost audit completed after 10–20 active paying shops (per rollout discipline); numbers may be adjusted before activation. | ACTIVE (carried forward from old master plan Decisions 12/13/18; reaffirmed by EC13/EC16/EC17) |
@@ -177,4 +177,12 @@ Future Meta integration only and inactive in EC17:
 
 H7 remains active for EC17. EC17 must not make live external provider calls, publish final numeric credit pricing, activate production AI providers/models, implement BYOK/MCP/realtime voice, commit secrets, or start EC18/EC19/later checkpoint scope.
 
-**Register last updated:** 2026-07-19 - EC17 owner authorization recorded and EC17 implementation closed after CI `29704696468` passed. H4/H5/H8 are closed for EC17 only. H7 remains active. EC18, Meta integrations, EC19, and later checkpoints remain held/deferred.
+## EC18 Authorization - Paid Business Assistant, Actions, Intelligence, and Realtime Voice
+
+The owner authorized full EC18 implementation on `CODEX-ec18-branch` after EC17 was merged to `main`. H1 and H4 are closed for EC18 only. OpenAI Realtime speech-to-speech is the selected EC18 voice architecture. H7 remains active for final commercial AI-credit prices, included AI-credit amounts, final production model locking, production API-key provisioning, other provider families, BYOK, MCP, and unrelated provider/commercial decisions.
+
+EC18 may implement backend Realtime session credentials, browser WebRTC voice UI, voice/action bridge, metering hooks, assistant conversations, structured action proposals, Business Intelligence, routines, insights, memory controls, and documentation. Production activation remains config-controlled and no permanent API key or secret may be committed.
+
+Still deferred: EC19 and later checkpoints, Meta/Facebook activation, Stripe/Checkout/subscription/billing portal/webhook changes, EC4 invoice/payment mutation, Webstore payout mutation, final AI-credit pricing, BYOK/MCP, and non-OpenAI provider decisions.
+
+**Register last updated:** 2026-07-19 - EC18 owner authorization recorded and EC18 preflight completed. H1/H4 are closed for EC18 only. H7 remains active. EC19 and later checkpoints remain held/deferred.
