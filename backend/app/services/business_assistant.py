@@ -174,7 +174,8 @@ async def bootstrap_platform_catalog(user: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _ensure_local_provider() -> dict[str, Any]:
-    existing = await db.ai_provider_configs.find_one({"provider_key": LOCAL_PROVIDER_KEY}, {"_id": 0})
+    query = {"provider_key": LOCAL_PROVIDER_KEY}
+    existing = await db.ai_provider_configs.find_one(query, {"_id": 0})
     if existing:
         return serialize_doc(existing)
     doc = AIProviderConfig(
@@ -185,12 +186,19 @@ async def _ensure_local_provider() -> dict[str, Any]:
         supported_modalities=["text", "voice", "tool_call", "classification"],
         metadata={"ec18_local_contract": True, "external_provider_calls": 0},
     ).model_dump()
-    await db.ai_provider_configs.insert_one(prepare_for_mongo(doc))
+    try:
+        await db.ai_provider_configs.insert_one(prepare_for_mongo(doc))
+    except DuplicateKeyError:
+        existing = await db.ai_provider_configs.find_one(query, {"_id": 0})
+        if existing:
+            return serialize_doc(existing)
+        raise
     return serialize_doc(doc)
 
 
 async def _ensure_local_model(provider: dict[str, Any]) -> dict[str, Any]:
-    existing = await db.ai_model_profiles.find_one({"provider_config_id": provider["id"], "model_key": LOCAL_MODEL_KEY}, {"_id": 0})
+    query = {"provider_config_id": provider["id"], "model_key": LOCAL_MODEL_KEY}
+    existing = await db.ai_model_profiles.find_one(query, {"_id": 0})
     if existing:
         return serialize_doc(existing)
     doc = AIModelProfile(
@@ -203,12 +211,19 @@ async def _ensure_local_model(provider: dict[str, Any]) -> dict[str, Any]:
         status="active",
         metadata={"ec18_local_contract": True, "external_provider_calls": 0},
     ).model_dump()
-    await db.ai_model_profiles.insert_one(prepare_for_mongo(doc))
+    try:
+        await db.ai_model_profiles.insert_one(prepare_for_mongo(doc))
+    except DuplicateKeyError:
+        existing = await db.ai_model_profiles.find_one(query, {"_id": 0})
+        if existing:
+            return serialize_doc(existing)
+        raise
     return serialize_doc(doc)
 
 
 async def _ensure_local_capability(capability_key: str, model_profile_id: str) -> dict[str, Any]:
-    existing = await db.ai_capabilities.find_one({"capability_key": capability_key}, {"_id": 0})
+    query = {"capability_key": capability_key}
+    existing = await db.ai_capabilities.find_one(query, {"_id": 0})
     if existing:
         updates: dict[str, Any] = {}
         ids = list(existing.get("allowed_model_profile_ids") or [])
@@ -234,13 +249,20 @@ async def _ensure_local_capability(capability_key: str, model_profile_id: str) -
         allowed_model_profile_ids=[model_profile_id],
         metadata={"ec18_assistant": True, "credit_display": CREDIT_DISPLAY, "no_final_numeric_credit_price": True},
     ).model_dump()
-    await db.ai_capabilities.insert_one(prepare_for_mongo(doc))
+    try:
+        await db.ai_capabilities.insert_one(prepare_for_mongo(doc))
+    except DuplicateKeyError:
+        existing = await db.ai_capabilities.find_one(query, {"_id": 0})
+        if existing:
+            return await _ensure_local_capability(capability_key, model_profile_id)
+        raise
     return serialize_doc(doc)
 
 
 async def _ensure_local_prompt(capability_key: str) -> dict[str, Any]:
     prompt_key = f"{capability_key}.ec18_local"
-    existing = await db.ai_prompt_versions.find_one({"prompt_key": prompt_key, "version": LOCAL_PROMPT_VERSION}, {"_id": 0})
+    query = {"prompt_key": prompt_key, "version": LOCAL_PROMPT_VERSION}
+    existing = await db.ai_prompt_versions.find_one(query, {"_id": 0})
     if existing:
         return serialize_doc(existing)
     doc = AIPromptVersion(
@@ -254,7 +276,13 @@ async def _ensure_local_prompt(capability_key: str) -> dict[str, Any]:
         published_by_user_id="system",
         published_at=_now_iso(),
     ).model_dump()
-    await db.ai_prompt_versions.insert_one(prepare_for_mongo(doc))
+    try:
+        await db.ai_prompt_versions.insert_one(prepare_for_mongo(doc))
+    except DuplicateKeyError:
+        existing = await db.ai_prompt_versions.find_one(query, {"_id": 0})
+        if existing:
+            return serialize_doc(existing)
+        raise
     return serialize_doc(doc)
 
 

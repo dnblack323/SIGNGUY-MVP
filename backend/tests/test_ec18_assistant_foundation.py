@@ -1,6 +1,7 @@
 """EC18A - Business Assistant foundation, entitlement, and action safety."""
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
@@ -10,6 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core.db import db
 from app.core.portal_security import create_portal_token
 from app.deps import get_current_user
+from app.services import business_assistant
 from app.services import ai_gateway
 from app.services.entitlements import _upsert_entitlement_for_tests
 from server import app
@@ -100,6 +102,17 @@ async def test_catalog_bootstrap_uses_assistant_capabilities_and_keeps_deferred_
     assert set(body["capability_keys"]).issubset(set(boot_body["capability_keys"]))
     assert "order.service_prefill" not in boot_body["capability_keys"]
     assert boot_body["external_provider_calls"] == 0
+
+
+@pytest.mark.asyncio
+async def test_catalog_bootstrap_is_concurrency_safe(ctx):
+    results = await asyncio.gather(
+        *[business_assistant.bootstrap_platform_catalog(ctx["platform_admin"]) for _ in range(4)]
+    )
+
+    assert {result["provider_key"] for result in results} == {"ec18_assistant_local"}
+    assert all("assistant.chat" in result["capability_keys"] for result in results)
+    assert await db.ai_provider_configs.count_documents({"provider_key": "ec18_assistant_local"}) == 1
 
 
 @pytest.mark.asyncio
