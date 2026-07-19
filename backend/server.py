@@ -252,6 +252,11 @@ api_router.include_router(community_router_module.router)
 from app.routers import commercial_catalog as commercial_catalog_router_module
 api_router.include_router(commercial_catalog_router_module.router)
 
+from app.routers import billing as billing_router_module
+from app.routers import webhooks_stripe_billing as webhooks_stripe_billing_router_module
+api_router.include_router(billing_router_module.router)
+api_router.include_router(webhooks_stripe_billing_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(
