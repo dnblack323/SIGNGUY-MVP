@@ -10,8 +10,8 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { NAV_AREAS, filterFlyoutByPermissions } from "@/lib/navigation";
 import NotificationBell from "@/components/notifications/NotificationBell";
 
-function FlyoutPanel({ area, permissions, onNavigate }) {
-  const entries = filterFlyoutByPermissions(area.flyout, permissions);
+function FlyoutPanel({ area, permissions, user, onNavigate }) {
+  const entries = filterFlyoutByPermissions(area.flyout, permissions, user);
   if (!entries.length) return null;
   return (
     <div
@@ -105,7 +105,7 @@ function SidebarInner({ onNavigate }) {
                   <span>{area.label}</span>
                 </button>
                 {openArea === area.key && (
-                  <FlyoutPanel area={area} permissions={permissions} onNavigate={onNavigate} />
+                  <FlyoutPanel area={area} permissions={permissions} user={user} onNavigate={onNavigate} />
                 )}
               </div>
               {area.divider && (

@@ -38,6 +38,8 @@ import CompanySettingsPage from "@/pages/CompanySettingsPage";
 import IntegrationsPage from "@/pages/IntegrationsPage";
 import FeatureAccessPage from "@/pages/FeatureAccessPage";
 import BillingPage from "@/pages/BillingPage";
+import AICreditsPage from "@/pages/AICreditsPage";
+import PlatformAIGovernancePage from "@/pages/PlatformAIGovernancePage";
 import DataSecurityPage from "@/pages/DataSecurityPage";
 import ProductionWorkflowsPage from "@/pages/ProductionWorkflowsPage";
 import NotFoundPage from "@/pages/NotFoundPage";
@@ -165,6 +167,8 @@ function AppRoutes() {
         <Route path="/settings/company" element={<CompanySettingsPage />} />
         <Route path="/settings/integrations" element={<IntegrationsPage />} />
         <Route path="/settings/subscriptions" element={<BillingPage />} />
+        <Route path="/settings/ai-credits" element={<AICreditsPage />} />
+        <Route path="/settings/ai-governance" element={<PlatformAIGovernancePage />} />
         <Route path="/settings/features" element={<FeatureAccessPage />} />
         <Route path="/settings/production-workflows" element={<ProductionWorkflowsPage />} />
         <Route path="/settings/data-security" element={<DataSecurityPage />} />

@@ -139,8 +139,9 @@ export const NAV_AREAS = [
       { key: "production-workflows", label: "Production Workflows", to: "/settings/production-workflows", perm: "production_workflow:read", testId: "flyout-production-workflows" },
       { key: "portals", label: "Portals", to: "/settings/portals", perm: "settings:read", testId: "flyout-portals", disabled: true },
       { key: "subscriptions", label: "Subscriptions", to: "/settings/subscriptions", perm: "subscription:read", testId: "flyout-subscriptions" },
+      { key: "ai-credits", label: "AI Credits", to: "/settings/ai-credits", perm: "ai_credit:read", testId: "flyout-ai-credits" },
       { key: "feature-access", label: "Feature Access", to: "/settings/features", perm: "settings:read", testId: "flyout-feature-access" },
-      { key: "platform-governance", label: "Platform Governance", to: "/settings/platform", perm: null, testId: "flyout-platform-governance", disabled: true, platformOnly: true },
+      { key: "ai-governance", label: "AI Governance", to: "/settings/ai-governance", perm: null, testId: "flyout-ai-governance", platformOnly: true },
       { key: "data-security", label: "Data & Security", to: "/settings/data-security", perm: "audit:read", testId: "flyout-data-security" },
     ],
   },
@@ -163,8 +164,12 @@ export const NAV_AREAS = [
   },
 ];
 
-export function filterFlyoutByPermissions(flyout, permissions) {
+export function filterFlyoutByPermissions(flyout, permissions, user = null) {
   if (!Array.isArray(flyout)) return [];
   const set = new Set(permissions || []);
-  return flyout.filter((entry) => !entry.perm || set.has(entry.perm));
+  const platformUser = !!(user?.platform_admin || ["admin", "owner"].includes(user?.platform_role));
+  return flyout.filter((entry) => {
+    if (entry.platformOnly && !platformUser) return false;
+    return !entry.perm || set.has(entry.perm);
+  });
 }

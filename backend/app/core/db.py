@@ -936,4 +936,90 @@ async def ensure_indexes() -> None:
     await db.wrap_activity_events.create_index([("tenant_id", 1), ("project_id", 1), ("created_at", -1)])
     await db.wrap_activity_events.create_index([("tenant_id", 1), ("action", 1), ("created_at", -1)])
 
+    # ---- EC16 - Shared AI gateway, metering, credits, cost, and governance ----
+    await db.ai_provider_configs.create_index("id", unique=True)
+    await db.ai_provider_configs.create_index("provider_key", unique=True)
+    await db.ai_provider_configs.create_index([("status", 1), ("updated_at", -1)])
+
+    await db.ai_model_profiles.create_index("id", unique=True)
+    await db.ai_model_profiles.create_index([("provider_config_id", 1), ("model_key", 1)], unique=True)
+    await db.ai_model_profiles.create_index([("task_category", 1), ("intensity", 1), ("status", 1)])
+    await db.ai_model_profiles.create_index([("status", 1), ("updated_at", -1)])
+
+    await db.ai_capabilities.create_index("id", unique=True)
+    await db.ai_capabilities.create_index("capability_key", unique=True)
+    await db.ai_capabilities.create_index([("status", 1), ("updated_at", -1)])
+    await db.ai_capabilities.create_index([("entitlement_feature_key", 1), ("status", 1)])
+
+    await db.ai_prompt_versions.create_index("id", unique=True)
+    await db.ai_prompt_versions.create_index([("prompt_key", 1), ("version", 1)], unique=True)
+    await db.ai_prompt_versions.create_index([("capability_key", 1), ("status", 1)])
+    await db.ai_prompt_versions.create_index([("status", 1), ("published_at", -1)])
+
+    await db.ai_context_packets.create_index("id", unique=True)
+    await db.ai_context_packets.create_index([("tenant_id", 1), ("user_id", 1), ("created_at", -1)])
+    await db.ai_context_packets.create_index([("tenant_id", 1), ("source_entity_type", 1), ("source_entity_id", 1)])
+    await db.ai_context_packets.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
+
+    await db.ai_action_requests.create_index("id", unique=True)
+    await db.ai_action_requests.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.ai_action_requests.create_index([("tenant_id", 1), ("user_id", 1), ("created_at", -1)])
+    await db.ai_action_requests.create_index([("tenant_id", 1), ("capability_key", 1), ("status", 1), ("created_at", -1)])
+    await db.ai_action_requests.create_index([("tenant_id", 1), ("session_id", 1), ("created_at", -1)])
+    await db.ai_action_requests.create_index([("provider_key", 1), ("model_key", 1), ("status", 1)])
+
+    await db.ai_usage_ledger_entries.create_index("id", unique=True)
+    await db.ai_usage_ledger_entries.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.ai_usage_ledger_entries.create_index([("tenant_id", 1), ("action_request_id", 1)])
+    await db.ai_usage_ledger_entries.create_index([("tenant_id", 1), ("capability_key", 1), ("created_at", -1)])
+    await db.ai_usage_ledger_entries.create_index([("tenant_id", 1), ("user_id", 1), ("created_at", -1)])
+    await db.ai_usage_ledger_entries.create_index([("provider_key", 1), ("model_key", 1), ("created_at", -1)])
+
+    await db.ai_provider_cost_ledger_entries.create_index("id", unique=True)
+    await db.ai_provider_cost_ledger_entries.create_index(
+        [("provider_key", 1), ("provider_event_id", 1)],
+        unique=True,
+        partialFilterExpression={"provider_event_id": {"$type": "string"}},
+    )
+    await db.ai_provider_cost_ledger_entries.create_index([("tenant_id", 1), ("action_request_id", 1)])
+    await db.ai_provider_cost_ledger_entries.create_index([("tenant_id", 1), ("created_at", -1)])
+    await db.ai_provider_cost_ledger_entries.create_index([("provider_key", 1), ("model_key", 1), ("reconciliation_status", 1)])
+
+    await db.ai_credit_accounts.create_index("id", unique=True)
+    await db.ai_credit_accounts.create_index("tenant_id", unique=True)
+    await db.ai_credit_accounts.create_index([("status", 1), ("updated_at", -1)])
+    await db.ai_credit_accounts.create_index([("billing_cycle_starts_at", 1), ("billing_cycle_ends_at", 1)])
+
+    await db.ai_credit_ledger_entries.create_index("id", unique=True)
+    await db.ai_credit_ledger_entries.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.ai_credit_ledger_entries.create_index([("tenant_id", 1), ("credit_account_id", 1), ("created_at", -1)])
+    await db.ai_credit_ledger_entries.create_index([("tenant_id", 1), ("action_request_id", 1)])
+    await db.ai_credit_ledger_entries.create_index([("tenant_id", 1), ("entry_type", 1), ("created_at", -1)])
+
+    await db.ai_governance_policies.create_index("id", unique=True)
+    await db.ai_governance_policies.create_index([("tenant_id", 1), ("status", 1), ("effective_at", -1)])
+    await db.ai_governance_policies.create_index([("scope_type", 1), ("scope_key", 1), ("status", 1)])
+    await db.ai_governance_policies.create_index([("capability_key", 1), ("status", 1)])
+
+    await db.ai_budget_alerts.create_index("id", unique=True)
+    await db.ai_budget_alerts.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
+    await db.ai_budget_alerts.create_index([("tenant_id", 1), ("alert_type", 1), ("status", 1)])
+    await db.ai_budget_alerts.create_index([("tenant_id", 1), ("capability_key", 1), ("status", 1)])
+
+    await db.ai_provider_health_events.create_index("id", unique=True)
+    await db.ai_provider_health_events.create_index([("provider_key", 1), ("model_key", 1), ("created_at", -1)])
+    await db.ai_provider_health_events.create_index([("status", 1), ("created_at", -1)])
+
     logger.info("MongoDB indexes ensured")
