@@ -24,6 +24,8 @@
 - Required runtime MongoDB indexes.
 - Targeted backend tests for EC13 runtime behavior.
 - EC13 runtime documentation.
+- Tenant owner/admin frontend billing page at `/settings/subscriptions`.
+- Frontend billing API client and navigation/route wiring.
 
 ## Explicit Non-Scope Preserved
 
@@ -45,6 +47,8 @@ Passed:
 - `python -m compileall backend\app backend\tests\test_ec13_phase13a_commercial_catalog.py backend\tests\test_ec13_commercial_billing_rest.py`
 - `python -c "import server; print('server import ok')"` from `backend/`
 - `git diff --check`
+- `yarn.cmd test --watchAll=false` from `frontend/`
+- `yarn.cmd build` from `frontend/` with `CI=true`, `GENERATE_SOURCEMAP=false`, and `REACT_APP_BACKEND_URL=https://placeholder.invalid`
 
 Blocked locally:
 
@@ -62,4 +66,3 @@ Reason:
 Pending after implementation push.
 
 EC13 must not be marked COMPLETE until the pushed branch-head CI run passes.
-

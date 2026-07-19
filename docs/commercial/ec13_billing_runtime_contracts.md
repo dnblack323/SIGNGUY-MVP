@@ -28,6 +28,23 @@ EC13 remains separate from:
 - `CommercialEntitlementRule`: Phase 13A catalog rule consumed by the runtime entitlement projector.
 - `PlatformFeeTransactionContract`: immutable platform-fee snapshot record created from EC4 payment facts without mutating EC4 records.
 
+## Tenant Owner Surface
+
+`/settings/subscriptions` is the EC13 tenant owner/admin surface. It consumes backend state and catalog APIs; it does not define commercial price constants in the frontend.
+
+The page supports:
+
+- Billing account creation for owner/admin users.
+- Billing state display for account, subscription, dunning, trial, and setup purchases.
+- Published owner-approved price selection from the EC13 catalog.
+- Subscription checkout session creation.
+- Billing Portal session creation.
+- Free trial start and extended-trial checkout creation.
+- Setup-package checkout creation.
+- Cancellation scheduling.
+
+The page does not implement public pricing, signup, EC16 credit-ledger views, EC19 onboarding checklists, Webstore commerce, Wrap Lab workflows, or EC20 platform-admin analytics.
+
 ## Lifecycle Contracts
 
 - Billing accounts: `pending`, `trialing`, `active`, `past_due`, `restricted`, `suspended`, `canceled`, `closed`.
@@ -132,4 +149,4 @@ Targeted tests cover:
 - Dunning transitions, cancellation, downgrade scheduling, manual grace, suspension, and entitlement disablement.
 - Platform-fee assessment from EC4 payment facts without EC4 payment mutation or Webstore payout mutation.
 - Stripe Billing event idempotency and separation from EC4 invoices/payments.
-
+- Frontend route wiring through local Jest and production build.
