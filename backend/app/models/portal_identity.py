@@ -16,8 +16,16 @@ from pydantic import Field
 from .base import BaseDoc
 
 PortalIdentityStatus = Literal["active", "disabled"]
-PortalType = Literal["customer", "employee"]
-PortalPresetBundle = Literal["owner_full", "billing_only", "approver_only", "viewer_only", "custom"]
+PortalType = Literal["customer", "employee", "webstore_owner", "webstore_manager"]
+PortalPresetBundle = Literal[
+    "owner_full",
+    "billing_only",
+    "approver_only",
+    "viewer_only",
+    "webstore_owner_admin",
+    "webstore_manager_ops",
+    "custom",
+]
 
 # Portal permission strings (portal:* scope). Backend-enforced.
 PORTAL_PERMS = [
@@ -66,6 +74,14 @@ EMPLOYEE_PORTAL_PERMS = [
     "portal:employee_profile",
 ]
 
+WEBSTORE_OWNER_PORTAL_PERMS = [
+    "portal:webstore_owner_admin",
+]
+
+WEBSTORE_MANAGER_PORTAL_PERMS = [
+    "portal:webstore_manager_ops",
+]
+
 PRESET_BUNDLES: dict[str, list[str]] = {
     "owner_full": PORTAL_PERMS[:],
     "billing_only": [
@@ -84,6 +100,8 @@ PRESET_BUNDLES: dict[str, list[str]] = {
         "portal:view_quotes", "portal:view_orders", "portal:view_invoices",
         "portal:view_documents", "portal:view_messages", "portal:manage_profile",
     ],
+    "webstore_owner_admin": WEBSTORE_OWNER_PORTAL_PERMS[:],
+    "webstore_manager_ops": WEBSTORE_MANAGER_PORTAL_PERMS[:],
     "custom": [],  # explicit list required
 }
 
@@ -93,6 +111,8 @@ class PortalIdentity(BaseDoc):
     portal_type: PortalType = "customer"
     customer_id: Optional[str] = None  # required when portal_type == "customer"
     employee_id: Optional[str] = None  # required when portal_type == "employee"
+    webstore_owner_id: Optional[str] = None  # required for Webstore owner/manager portal scope
+    webstore_id: Optional[str] = None        # optional single-Webstore manager scope
     email: str  # lowercased at write
     password_hash: Optional[str] = None  # None → magic-link-only
     full_name: Optional[str] = None

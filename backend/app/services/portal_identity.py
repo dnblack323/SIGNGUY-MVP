@@ -15,7 +15,14 @@ from ..core.db import db
 from ..core.security import hash_password, verify_password
 from ..core.portal_security import create_portal_token
 from ..core.time_utils import serialize_doc, utc_now
-from ..models.portal_identity import PortalIdentity, PRESET_BUNDLES, PORTAL_PERMS, EMPLOYEE_PORTAL_PERMS
+from ..models.portal_identity import (
+    EMPLOYEE_PORTAL_PERMS,
+    PORTAL_PERMS,
+    PRESET_BUNDLES,
+    WEBSTORE_MANAGER_PORTAL_PERMS,
+    WEBSTORE_OWNER_PORTAL_PERMS,
+    PortalIdentity,
+)
 
 MAX_FAILED = 5
 LOCK_MINUTES = 15
@@ -27,6 +34,8 @@ async def create_portal_identity(
     customer_id: Optional[str] = None,
     portal_type: str = "customer",
     employee_id: Optional[str] = None,
+    webstore_owner_id: Optional[str] = None,
+    webstore_id: Optional[str] = None,
     email: str,
     full_name: Optional[str] = None,
     phone: Optional[str] = None,
@@ -47,6 +56,16 @@ async def create_portal_identity(
         # there is no per-identity preset like the customer role_label bundles.
         perms = list(EMPLOYEE_PORTAL_PERMS)
         permissions_preset = "custom"
+    elif portal_type == "webstore_owner":
+        if not webstore_owner_id:
+            raise ValueError("webstore_owner_id_required")
+        perms = list(WEBSTORE_OWNER_PORTAL_PERMS)
+        permissions_preset = "webstore_owner_admin"
+    elif portal_type == "webstore_manager":
+        if not webstore_owner_id:
+            raise ValueError("webstore_owner_id_required")
+        perms = list(WEBSTORE_MANAGER_PORTAL_PERMS)
+        permissions_preset = "webstore_manager_ops"
     else:
         perms = list(PRESET_BUNDLES.get(permissions_preset, []))
         if permissions_preset == "custom":
@@ -58,6 +77,8 @@ async def create_portal_identity(
         portal_type=portal_type,  # type: ignore[arg-type]
         customer_id=customer_id,
         employee_id=employee_id,
+        webstore_owner_id=webstore_owner_id,
+        webstore_id=webstore_id,
         email=email,
         full_name=full_name,
         phone=phone,

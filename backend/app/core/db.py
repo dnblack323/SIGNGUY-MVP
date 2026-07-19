@@ -188,6 +188,8 @@ async def ensure_indexes() -> None:
     await db.portal_identities.create_index("id", unique=True)
     await db.portal_identities.create_index([("tenant_id", 1), ("email", 1)], unique=True)
     await db.portal_identities.create_index([("tenant_id", 1), ("customer_id", 1)])
+    await db.portal_identities.create_index([("tenant_id", 1), ("webstore_owner_id", 1)])
+    await db.portal_identities.create_index([("tenant_id", 1), ("webstore_id", 1)])
     await db.portal_identities.create_index([("tenant_id", 1), ("status", 1)])
 
     await db.magic_link_tokens.create_index("id", unique=True)
@@ -789,6 +791,69 @@ async def ensure_indexes() -> None:
 
     await db.checkout_session_records.create_index("id", unique=True)
     await db.checkout_session_records.create_index([("tenant_id", 1), ("idempotency_key", 1)], unique=True)
+
+    # ---- EC14 - Webstores ----
+    await db.webstore_owners.create_index("id", unique=True)
+    await db.webstore_owners.create_index([("tenant_id", 1), ("email", 1)], unique=True)
+    await db.webstore_owners.create_index([("tenant_id", 1), ("status", 1)])
+    await db.webstore_owners.create_index([("tenant_id", 1), ("portal_identity_id", 1)])
+
+    await db.webstores.create_index("id", unique=True)
+    await db.webstores.create_index([("tenant_id", 1), ("slug", 1)], unique=True)
+    await db.webstores.create_index([("tenant_id", 1), ("owner_id", 1)])
+    await db.webstores.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.webstores.create_index([("tenant_id", 1), ("launched_at", -1)])
+
+    await db.webstore_product_templates.create_index("id", unique=True)
+    await db.webstore_product_templates.create_index([("tenant_id", 1), ("active", 1), ("product_category", 1)])
+    await db.webstore_product_templates.create_index([("tenant_id", 1), ("template_name", 1)])
+
+    await db.webstore_products.create_index("id", unique=True)
+    await db.webstore_products.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
+    await db.webstore_products.create_index([("tenant_id", 1), ("webstore_id", 1), ("public", 1)])
+
+    await db.webstore_questionnaire_submissions.create_index("id", unique=True)
+    await db.webstore_questionnaire_submissions.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
+
+    await db.webstore_artwork_files.create_index("id", unique=True)
+    await db.webstore_artwork_files.create_index([("tenant_id", 1), ("webstore_id", 1), ("artwork_status", 1)])
+
+    await db.webstore_mockups.create_index("id", unique=True)
+    await db.webstore_mockups.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
+    await db.webstore_mockups.create_index([("tenant_id", 1), ("product_id", 1)])
+
+    await db.webstore_launch_packets.create_index("id", unique=True)
+    await db.webstore_launch_packets.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
+
+    await db.webstore_buyer_orders.create_index("id", unique=True)
+    await db.webstore_buyer_orders.create_index([("tenant_id", 1), ("webstore_id", 1), ("created_at", -1)])
+    await db.webstore_buyer_orders.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
+    await db.webstore_buyer_orders.create_index(
+        [("tenant_id", 1), ("webstore_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+
+    await db.webstore_ledger_entries.create_index("id", unique=True)
+    await db.webstore_ledger_entries.create_index([("tenant_id", 1), ("webstore_id", 1), ("created_at", -1)])
+    await db.webstore_ledger_entries.create_index([("tenant_id", 1), ("buyer_order_id", 1), ("entry_type", 1)])
+    await db.webstore_ledger_entries.create_index([("tenant_id", 1), ("source_type", 1), ("source_id", 1)])
+    await db.webstore_ledger_entries.create_index([("tenant_id", 1), ("reversal_of_ledger_entry_id", 1)])
+
+    await db.webstore_activity_events.create_index("id", unique=True)
+    await db.webstore_activity_events.create_index([("tenant_id", 1), ("webstore_id", 1), ("created_at", -1)])
+    await db.webstore_activity_events.create_index([("tenant_id", 1), ("action", 1), ("created_at", -1)])
+
+    await db.webstore_ai_usage_events.create_index("id", unique=True)
+    await db.webstore_ai_usage_events.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
+
+    await db.webstore_stripe_connect_records.create_index("id", unique=True)
+    await db.webstore_stripe_connect_records.create_index([("tenant_id", 1), ("webstore_id", 1), ("record_type", 1)])
+    await db.webstore_stripe_connect_records.create_index(
+        [("tenant_id", 1), ("webstore_id", 1), ("record_type", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
     await db.checkout_session_records.create_index(
         "stripe_checkout_session_id",
         unique=True,

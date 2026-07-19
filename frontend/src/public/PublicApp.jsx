@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import DecisionRoomCustomerView from "@/components/decisionRoom/DecisionRoomCustomerView";
+import PublicWebstorePage from "@/pages/PublicWebstorePage";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -237,6 +238,7 @@ export default function PublicApp() {
       <Route path="proofs/:pid" element={<ProofAction />} />
       <Route path="quote-request" element={<QuoteRequest />} />
       <Route path="decision-rooms/:rid" element={<PublicDecisionRoom />} />
+      <Route path="webstores/:slug" element={<PublicWebstorePage />} />
     </Routes>
   );
 }
