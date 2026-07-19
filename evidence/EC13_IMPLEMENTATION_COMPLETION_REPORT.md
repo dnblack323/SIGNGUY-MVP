@@ -1,0 +1,74 @@
+# EC13 Implementation Evidence
+
+**Status:** COMPLETE.
+**Branch:** `CODEX-ec13-branch`
+**Date:** 2026-07-19
+**Phase 13A documentation commit:** `355547babe4290bfa2274e29ba018bedda66e509`
+**Phase 13A implementation commit:** `d5c545fe256d66fd9d7f798e834efa895160f00e`
+**Backend runtime implementation commit:** `192597e2b0598a89f2a849c143fa08de6763208c`
+**Billing page implementation commit:** `1660de36e385f64e3274961043ea7104f65e977f`
+**GitHub CI runs:** `29667002577`, `29667209535` - passed
+
+## Implemented Scope
+
+- Commercial billing catalog and core contracts from Phase 13A.
+- Tenant billing account runtime.
+- Tenant subscription runtime.
+- Free trial and paid extended-trial billing records.
+- Setup package checkout, paid state, and platform-admin waiver records.
+- Checkout session idempotency records.
+- Billing Portal session audit records.
+- Stripe Billing boundary and separate Stripe Billing webhook route.
+- EC13-derived EC2 entitlement projection.
+- Day-based dunning state and platform-admin manual grace/suspension actions.
+- Platform-fee assessment from EC4 payment facts into immutable EC13 fee snapshots.
+- Required runtime MongoDB indexes.
+- Targeted backend tests for EC13 runtime behavior.
+- EC13 runtime documentation.
+- Tenant owner/admin frontend billing page at `/settings/subscriptions`.
+- Frontend billing API client and navigation/route wiring.
+
+## Explicit Non-Scope Preserved
+
+- No EC14 Webstore commerce, Stripe Connect, buyer order, or payout implementation.
+- No EC15 Wrap Lab implementation.
+- No EC16 AI usage, provider-cost, or credit ledger implementation.
+- No EC19 guided onboarding/checklist/help implementation.
+- No EC20 broad platform admin cockpit or analytics implementation.
+- No EC21 marketing website, public pricing page, signup UI, or Founder offer page implementation.
+- No mutation of EC4 customer invoice/payment semantics.
+- No replacement or silent mutation of EC12 explicit Founder access.
+- No external SMS/MMS sending or pricing.
+- No Smart Pricing paid add-on SKU.
+
+## Local Validation
+
+Passed:
+
+- `python -m compileall backend\app backend\tests\test_ec13_phase13a_commercial_catalog.py backend\tests\test_ec13_commercial_billing_rest.py`
+- `python -c "import server; print('server import ok')"` from `backend/`
+- `git diff --check`
+- `yarn.cmd test --watchAll=false` from `frontend/`
+- `yarn.cmd build` from `frontend/` with `CI=true`, `GENERATE_SOURCEMAP=false`, and `REACT_APP_BACKEND_URL=https://placeholder.invalid`
+
+Blocked locally:
+
+- `python -m pytest backend\tests\test_ec13_phase13a_commercial_catalog.py backend\tests\test_ec13_commercial_billing_rest.py -q --basetemp=.pytest_tmp_ec13_rest`
+
+Reason:
+
+- Local `localhost:27017` MongoDB is not running.
+- No local `mongod` executable was found.
+- No local Docker executable was found.
+- GitHub Actions provisions MongoDB through `.github/workflows/ci.yml`.
+
+## CI
+
+Passed:
+
+- Runtime implementation run: `29667002577`
+- Billing page implementation run: `29667209535`
+
+Both runs completed successfully with backend tests, frontend tests, and frontend build passing.
+
+EC13 was marked COMPLETE only after these branch-head GitHub CI runs passed.

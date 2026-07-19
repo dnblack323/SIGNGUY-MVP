@@ -138,7 +138,7 @@ export const NAV_AREAS = [
       { key: "pricing-defaults", label: "Pricing Defaults", to: "/pricing-foundation", perm: "pricing:read", testId: "flyout-pricing-defaults" },
       { key: "production-workflows", label: "Production Workflows", to: "/settings/production-workflows", perm: "production_workflow:read", testId: "flyout-production-workflows" },
       { key: "portals", label: "Portals", to: "/settings/portals", perm: "settings:read", testId: "flyout-portals", disabled: true },
-      { key: "subscriptions-credits", label: "Subscriptions & AI Credits", to: "/settings/subscriptions", perm: "subscription:read", testId: "flyout-subscriptions-credits", disabled: true },
+      { key: "subscriptions", label: "Subscriptions", to: "/settings/subscriptions", perm: "subscription:read", testId: "flyout-subscriptions" },
       { key: "feature-access", label: "Feature Access", to: "/settings/features", perm: "settings:read", testId: "flyout-feature-access" },
       { key: "platform-governance", label: "Platform Governance", to: "/settings/platform", perm: null, testId: "flyout-platform-governance", disabled: true, platformOnly: true },
       { key: "data-security", label: "Data & Security", to: "/settings/data-security", perm: "audit:read", testId: "flyout-data-security" },

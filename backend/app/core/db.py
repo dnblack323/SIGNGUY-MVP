@@ -703,4 +703,114 @@ async def ensure_indexes() -> None:
     await db.support_request_notes.create_index([("tenant_id", 1), ("support_request_id", 1), ("created_at", 1)])
     await db.community_moderation_reports.create_index([("post_id", 1), ("status", 1), ("created_at", -1)])
 
+    # ---- EC13 Phase 13A - commercial billing catalog and core contracts ----
+    await db.commercial_catalog_versions.create_index("id", unique=True)
+    await db.commercial_catalog_versions.create_index("version", unique=True)
+    await db.commercial_catalog_versions.create_index([("status", 1), ("effective_at", 1)])
+
+    await db.commercial_products.create_index("id", unique=True)
+    await db.commercial_products.create_index([("catalog_version_id", 1), ("product_key", 1)], unique=True)
+    await db.commercial_products.create_index([("status", 1), ("product_type", 1)])
+    await db.commercial_products.create_index([("owner_checkpoint", 1), ("status", 1)])
+
+    await db.commercial_prices.create_index("id", unique=True)
+    await db.commercial_prices.create_index([("catalog_version_id", 1), ("price_key", 1)], unique=True)
+    await db.commercial_prices.create_index([("product_id", 1), ("billing_interval", 1), ("is_active", 1)])
+    await db.commercial_prices.create_index(
+        "stripe_price_id",
+        unique=True,
+        partialFilterExpression={"stripe_price_id": {"$type": "string"}},
+    )
+    await db.commercial_prices.create_index([("is_public", 1), ("is_active", 1)])
+
+    await db.commercial_entitlement_rules.create_index("id", unique=True)
+    await db.commercial_entitlement_rules.create_index([("catalog_version_id", 1), ("product_id", 1)])
+    await db.commercial_entitlement_rules.create_index([("feature_key", 1), ("enabled", 1)])
+    await db.commercial_entitlement_rules.create_index(
+        [("catalog_version_id", 1), ("product_id", 1), ("feature_key", 1), ("entitlement_scope", 1)],
+        unique=True,
+    )
+
+    await db.founder_tenant_contracts.create_index("id", unique=True)
+    await db.founder_tenant_contracts.create_index(
+        [("tenant_id", 1)],
+        unique=True,
+        partialFilterExpression={"founder_status": {"$in": ["pending", "active", "grace"]}},
+    )
+    await db.founder_tenant_contracts.create_index(
+        "founder_slot_number",
+        unique=True,
+        partialFilterExpression={"founder_slot_number": {"$type": "number"}},
+    )
+    await db.founder_tenant_contracts.create_index([("tenant_id", 1), ("created_at", -1)])
+
+    await db.platform_fee_schedules.create_index("id", unique=True)
+    await db.platform_fee_schedules.create_index([("catalog_version_id", 1), ("fee_key", 1)], unique=True)
+    await db.platform_fee_schedules.create_index([("account_status", 1), ("transaction_type", 1), ("is_active", 1)])
+
+    await db.platform_fee_transactions.create_index("id", unique=True)
+    await db.platform_fee_transactions.create_index([("tenant_id", 1), ("source_transaction_type", 1), ("source_transaction_id", 1)])
+    await db.platform_fee_transactions.create_index(
+        [("tenant_id", 1), ("source_transaction_type", 1), ("source_transaction_id", 1), ("reversal_of_fee_transaction_id", 1)],
+        unique=True,
+        partialFilterExpression={"reversal_of_fee_transaction_id": None},
+    )
+    await db.platform_fee_transactions.create_index([("reversal_of_fee_transaction_id", 1)])
+
+    # ---- EC13 remaining phases - tenant billing, trials, setup, checkout, dunning ----
+    await db.tenant_billing_accounts.create_index("id", unique=True)
+    await db.tenant_billing_accounts.create_index("tenant_id", unique=True)
+    await db.tenant_billing_accounts.create_index(
+        "stripe_customer_id",
+        unique=True,
+        partialFilterExpression={"stripe_customer_id": {"$type": "string"}},
+    )
+    await db.tenant_billing_accounts.create_index([("status", 1), ("updated_at", -1)])
+
+    await db.tenant_subscriptions.create_index("id", unique=True)
+    await db.tenant_subscriptions.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.tenant_subscriptions.create_index(
+        [("tenant_id", 1)],
+        unique=True,
+        partialFilterExpression={"status": {"$in": ["trialing", "active", "past_due", "cancellation_scheduled", "incomplete", "unpaid"]}},
+    )
+    await db.tenant_subscriptions.create_index(
+        "stripe_subscription_id",
+        unique=True,
+        partialFilterExpression={"stripe_subscription_id": {"$type": "string"}},
+    )
+    await db.tenant_subscriptions.create_index([("tenant_id", 1), ("dunning_state", 1), ("first_payment_failed_at", 1)])
+    await db.tenant_subscriptions.create_index([("tenant_id", 1), ("current_period_end", 1)])
+
+    await db.trial_records.create_index("id", unique=True)
+    await db.trial_records.create_index([("tenant_id", 1), ("trial_kind", 1)], unique=True)
+    await db.trial_records.create_index([("tenant_id", 1), ("status", 1), ("ends_at", 1)])
+    await db.trial_records.create_index([("checkout_session_id", 1)])
+
+    await db.checkout_session_records.create_index("id", unique=True)
+    await db.checkout_session_records.create_index([("tenant_id", 1), ("idempotency_key", 1)], unique=True)
+    await db.checkout_session_records.create_index(
+        "stripe_checkout_session_id",
+        unique=True,
+        partialFilterExpression={"stripe_checkout_session_id": {"$type": "string"}},
+    )
+    await db.checkout_session_records.create_index([("tenant_id", 1), ("session_type", 1), ("status", 1), ("created_at", -1)])
+
+    await db.billing_portal_session_records.create_index("id", unique=True)
+    await db.billing_portal_session_records.create_index([("tenant_id", 1), ("created_at", -1)])
+    await db.billing_portal_session_records.create_index(
+        "stripe_billing_portal_session_id",
+        unique=True,
+        partialFilterExpression={"stripe_billing_portal_session_id": {"$type": "string"}},
+    )
+
+    await db.setup_package_purchases.create_index("id", unique=True)
+    await db.setup_package_purchases.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
+    await db.setup_package_purchases.create_index([("tenant_id", 1), ("package_key", 1), ("status", 1)])
+    await db.setup_package_purchases.create_index(
+        "checkout_session_id",
+        unique=True,
+        partialFilterExpression={"checkout_session_id": {"$type": "string"}},
+    )
+
     logger.info("MongoDB indexes ensured")
