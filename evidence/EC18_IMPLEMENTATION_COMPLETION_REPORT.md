@@ -1,13 +1,14 @@
 # EC18 Implementation Completion Report
 
-**Status:** IMPLEMENTED - AWAITING FINAL CI
+**Status:** COMPLETE - CLOSED
 **Branch:** `CODEX-ec18-branch`
 **Documentation commit:** `c6b1333b50a6ed0081679566ad43e92f590a06b3`
 **EC18A foundation commit:** `f9094825d1f942d22c360b43df4cfd86d46c0faf`
 **EC18B voice/UI commit:** `e4de77e9673967d358224c9610c3ba19d1f2ee79`
 **EC18C intelligence commit:** `01d5a14bc59be8ca92d23d1c92cafda3caa697b5`
+**CI hardening commit:** `b2cbd59695a07cd4c81ee1acf3c0f959c720e7b1`
 **Closure commit:** final branch-head closure commit recorded in the final Codex response
-**GitHub CI:** pending at closure-document creation
+**GitHub CI:** implementation branch-head run `29707725853` passed; final documentation-only branch-head run recorded in the final Codex response
 
 ## Scope Implemented
 
@@ -57,7 +58,10 @@ Completed locally:
 - `python -m compileall backend` - passed using bundled workspace Python
 - backend server import - `SERVER_IMPORT_OK`
 - `pytest tests/test_ec18_assistant_foundation.py tests/test_ec18_assistant_voice.py tests/test_ec18_assistant_intelligence.py -q -n 0 --basetemp ..\.pytest_tmp_ec18` - 9 passed
+- `pytest tests/test_ec18_assistant_foundation.py tests/test_ec18_assistant_voice.py tests/test_ec18_assistant_intelligence.py -q --basetemp ..\.pytest_tmp_ec18_fix` - 10 passed
 - `pytest tests/test_ec16_ai_gateway_contracts.py tests/test_ec16_ai_gateway_metering.py tests/test_ec16_ai_gateway_governance.py tests/test_ec17_ai_studio_catalog.py tests/test_ec17_generated_assets.py tests/test_ec17_prompt_library_activity.py -q -n 0 --basetemp ..\.pytest_tmp_ec18_regression` - 12 passed
+- `pytest tests/test_ec17_ai_studio_catalog.py tests/test_ec18_assistant_foundation.py -q --basetemp ..\.pytest_tmp_ec17_ec18_fix` - 8 passed
+- `pytest tests/ -q --maxfail=1 --basetemp ..\.pytest_tmp_ec18_full_fix2` - 673 passed, 3 skipped
 - `npm.cmd test -- --runInBand --watchAll=false src/__tests__/BusinessAssistantPage.test.jsx` - 1 passed
 - `npm.cmd run build` - compiled successfully
 - `git diff --check` - passed with line-ending warnings only
@@ -70,7 +74,13 @@ Warnings observed:
 
 ## GitHub CI
 
-Pending at closure-document creation. EC18 should be marked COMPLETE - CLOSED only after the final branch-head GitHub CI run passes.
+Implementation branch-head GitHub Actions run `29707725853` passed on commit `b2cbd59695a07cd4c81ee1acf3c0f959c720e7b1`.
+
+- `backend-tests` - passed
+- `frontend-tests` - passed
+- `frontend-build` - passed
+
+This report is the final documentation-only closure update. The final branch-head documentation CI run is recorded in the final Codex response.
 
 ## Deferred Scope
 
