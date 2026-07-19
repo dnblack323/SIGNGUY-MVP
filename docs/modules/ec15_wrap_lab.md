@@ -1,8 +1,10 @@
 # EC15 Wrap Lab Runtime Contracts
 
-**Status:** IMPLEMENTED - CI PENDING
+**Status:** COMPLETE - CLOSED
 **Checkpoint:** EC15 Wrap Lab
 **Primary route:** `/api/wrap-lab`
+**Implementation commit:** `d67414907c48f83186d6f48cf2ccbda79f39f659`
+**GitHub CI:** `29678805230` passed
 
 ## Boundaries
 
