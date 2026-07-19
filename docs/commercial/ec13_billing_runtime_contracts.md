@@ -1,6 +1,6 @@
 # EC13 Commercial Billing Runtime Contracts
 
-**Status:** Implemented pending GitHub CI.
+**Status:** EC13 complete; GitHub CI passed in runs `29667002577` and `29667209535`.
 **Scope:** EC13 commercial billing runtime after Phase 13A.
 **Date:** 2026-07-19
 

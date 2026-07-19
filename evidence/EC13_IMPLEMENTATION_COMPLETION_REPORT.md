@@ -1,12 +1,13 @@
 # EC13 Implementation Evidence
 
-**Status:** IMPLEMENTED - PENDING GITHUB CI.
+**Status:** COMPLETE.
 **Branch:** `CODEX-ec13-branch`
 **Date:** 2026-07-19
 **Phase 13A documentation commit:** `355547babe4290bfa2274e29ba018bedda66e509`
 **Phase 13A implementation commit:** `d5c545fe256d66fd9d7f798e834efa895160f00e`
-**Implementation commit:** pending
-**GitHub CI run:** pending
+**Backend runtime implementation commit:** `192597e2b0598a89f2a849c143fa08de6763208c`
+**Billing page implementation commit:** `1660de36e385f64e3274961043ea7104f65e977f`
+**GitHub CI runs:** `29667002577`, `29667209535` - passed
 
 ## Implemented Scope
 
@@ -63,6 +64,11 @@ Reason:
 
 ## CI
 
-Pending after implementation push.
+Passed:
 
-EC13 must not be marked COMPLETE until the pushed branch-head CI run passes.
+- Runtime implementation run: `29667002577`
+- Billing page implementation run: `29667209535`
+
+Both runs completed successfully with backend tests, frontend tests, and frontend build passing.
+
+EC13 was marked COMPLETE only after these branch-head GitHub CI runs passed.
