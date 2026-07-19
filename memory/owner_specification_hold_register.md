@@ -11,7 +11,7 @@
 | H1 | **No checkpoint starts automatically after this documentation update.** | All of EC9–EC22 | Explicit owner "go" message naming the checkpoint to start. | ACTIVE |
 | H2 | **EC14 Webstores requires separate owner authorization.** | EC14 | Owner explicitly authorizes EC14 start (separate from generic "start EC9" authorization). | CLOSED FOR EC14 - 2026-07-19 owner prompt authorized EC14 on `CODEX-EC14-BRANCH`; EC14 completed with CI `29677455165`; does not lift H3-H8 |
 | H3 | **EC15 Wrap Lab requires separate owner authorization.** | EC15 | Owner explicitly authorizes EC15 start. | CLOSED FOR EC15 - 2026-07-19 owner prompt authorized EC15 on `CODEX-ec15-branch`; does not lift H4-H8 or later checkpoint holds |
-| H4 | **EC16–EC18 AI work requires separate authorization.** | EC16 (Shared AI Gateway), EC17 (Studio AI Tools), EC18 (Paid Business Assistant/Voice) | Owner explicitly authorizes AI-checkpoint work to begin. | ACTIVE |
+| H4 | **EC16-EC18 AI work requires separate authorization.** | EC16 (Shared AI Gateway), EC17 (Studio AI Tools), EC18 (Paid Business Assistant/Voice) | Owner explicitly authorizes AI-checkpoint work to begin. | CLOSED FOR EC16 ONLY - 2026-07-19 owner prompt authorized the next incomplete checkpoint after EC15 on `CODEX-ec16-branch`; EC17 and EC18 remain ACTIVE under H4 |
 | H5 | **EC17 is blocked until the owner completes the AI Tools Keep / Combine / Change / Rename / Defer / Remove review.** | EC17 specifically | Owner completes the full tool-by-tool review worksheet (28+ legacy AI tools) and assigns a final status + Final Name + Family to every tool. | ACTIVE — BLOCKING (stronger than H4; EC17 cannot start even if H4 is otherwise lifted, until this worksheet is complete) |
 | H6 | Wrap Lab **standalone** activation requires a completed preflight proving shared-core reuse without duplication. | Wrap Lab standalone sale only (not Founder-included or add-on use) | Preflight completed and owner-approved (carried forward from old master plan Decision 7; still binding under EC15). | SATISFIED FOR EC15 SHARED-CORE IMPLEMENTATION - standalone annual pricing and public standalone purchase flow remain unavailable |
 | H7 | AI top-up pricing, included AI-credit amounts, and AI provider/model assignments are approved **subject to a measured provider-cost audit** before live commercial activation. | EC13/EC16/EC17 commercial AI numbers | Provider-cost audit completed after 10–20 active paying shops (per rollout discipline); numbers may be adjusted before activation. | ACTIVE (carried forward from old master plan Decisions 12/13/18; reaffirmed by EC13/EC16/EC17) |
@@ -122,7 +122,7 @@ The owner explicitly authorized EC14 Webstores to start on `CODEX-EC14-BRANCH` a
 Still held/deferred:
 
 - EC15 public standalone sale/annual standalone pricing beyond the shared-core runtime plan.
-- EC16-EC18 AI/provider work under H4/H5/H7/H8.
+- EC16 live commercial/provider activation under H7; EC17-EC18 AI/provider work under H4/H5/H7/H8.
 - EC19 onboarding/help and later checkpoints until separately authorized.
 - Webstores standalone annual pricing remains not approved and unavailable.
 
@@ -130,4 +130,15 @@ Still held/deferred:
 
 The owner explicitly authorized continuation into EC15 Wrap Lab after EC14 was closed and merged. EC15 preflight is complete in `/app/preflight/EC15_WRAP_LAB_PREFLIGHT_AND_IMPLEMENTATION_PLAN.md`; it documents shared-core reuse, no duplicate systems, no live AI/provider execution, no live Stripe/Checkout/subscription work, no EC19 work, and no approved standalone annual Wrap Lab price.
 
-**Register last updated:** 2026-07-19 - Contradictions C1, C2, and C3 remain resolved by explicit owner decision. H1/H2 are closed for EC14 Webstores only. H1/H3 are closed for EC15 only; H6 is satisfied for EC15 shared-core implementation only. H4/H5/H7/H8 remain active.
+## EC16 owner authorization (2026-07-19)
+
+The owner explicitly authorized continuing with the next incomplete checkpoint after EC15 on `CODEX-ec16-branch`. Repository authority identifies that checkpoint as EC16 Shared AI Gateway, Usage, Cost, Credits, and Governance. H4 is closed for EC16 only. H7 remains active: AI top-up pricing, included credit amounts, provider/model assignments, and live commercial/provider activation remain subject to the measured provider-cost audit.
+
+Still held/deferred:
+
+- EC17 Studio AI Tools until separate H4 authorization and H5/H8 tool worksheet completion.
+- EC18 Paid Business Assistant/Voice until separate H4 authorization.
+- EC16 live commercial/provider activation under H7.
+- EC19 onboarding/help and later checkpoints until separately authorized.
+
+**Register last updated:** 2026-07-19 - Contradictions C1, C2, and C3 remain resolved by explicit owner decision. H1/H2 are closed for EC14 Webstores only. H1/H3 are closed for EC15 only; H6 is satisfied for EC15 shared-core implementation only. H4 is closed for EC16 only after EC16 implementation and CI closure, and remains active for EC17/EC18. H5/H7/H8 remain active.

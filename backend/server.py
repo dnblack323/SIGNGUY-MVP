@@ -269,6 +269,11 @@ api_router.include_router(public_webstores_router_module.router)
 from app.routers import wrap_lab as wrap_lab_router_module
 api_router.include_router(wrap_lab_router_module.router)
 
+# EC16 - Shared AI gateway, usage, cost, credits, and governance foundation.
+# Provider execution is local/deterministic only in EC16; no external AI calls.
+from app.routers import ai_gateway as ai_gateway_router_module
+api_router.include_router(ai_gateway_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(
