@@ -1,9 +1,11 @@
 # EC14 Webstores Implementation Report
 
-**Status:** IMPLEMENTED - awaiting GitHub CI before checkpoint closure
+**Status:** COMPLETE - CLOSED
 **Date:** 2026-07-19
 **Branch:** `CODEX-EC14-BRANCH`
 **Documentation preflight commit:** `1acb3a711505a563e94e8f4b9812760787815560`
+**Implementation commit:** `75c7c699b58262ed2fa550a1fd0a11e77e0f677b`
+**Implementation CI run:** `29677455165` - passed
 
 ## Implemented
 
@@ -37,6 +39,6 @@
 - Frontend production build: `npm.cmd run build` passed.
 - Targeted pytest command was attempted with bundled Python and repo-local `--basetemp`; collection reached Mongo setup but local MongoDB was not running on `localhost:27017`, so tests could not execute locally in this shell.
 
-## Pending Closure Gate
+## Closure Gate
 
-EC14 must not be marked COMPLETE - CLOSED until the implementation commit is pushed and GitHub CI passes.
+GitHub CI run `29677455165` passed for implementation commit `75c7c699b58262ed2fa550a1fd0a11e77e0f677b`. EC14 is marked COMPLETE - CLOSED.

@@ -1,8 +1,10 @@
 # EC14 Webstores Runtime Contracts
 
-**Status:** IMPLEMENTED - awaiting final CI confirmation
+**Status:** COMPLETE - CLOSED
 **Checkpoint:** EC14 Webstores
 **Primary routes:** `/api/webstores`, `/api/portal/webstores`, `/api/public/webstores`
+**Implementation commit:** `75c7c699b58262ed2fa550a1fd0a11e77e0f677b`
+**GitHub CI:** `29677455165` passed
 
 ## Boundaries
 

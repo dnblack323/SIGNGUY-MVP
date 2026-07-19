@@ -9,7 +9,7 @@
 | # | Hold | Scope | Condition to lift | Status |
 |---|---|---|---|---|
 | H1 | **No checkpoint starts automatically after this documentation update.** | All of EC9–EC22 | Explicit owner "go" message naming the checkpoint to start. | ACTIVE |
-| H2 | **EC14 Webstores requires separate owner authorization.** | EC14 | Owner explicitly authorizes EC14 start (separate from generic "start EC9" authorization). | LIFTED FOR EC14 ONLY - 2026-07-19 owner prompt authorized EC14 on `CODEX-EC14-BRANCH`; does not lift H3-H8 |
+| H2 | **EC14 Webstores requires separate owner authorization.** | EC14 | Owner explicitly authorizes EC14 start (separate from generic "start EC9" authorization). | CLOSED FOR EC14 - 2026-07-19 owner prompt authorized EC14 on `CODEX-EC14-BRANCH`; EC14 completed with CI `29677455165`; does not lift H3-H8 |
 | H3 | **EC15 Wrap Lab requires separate owner authorization.** | EC15 | Owner explicitly authorizes EC15 start. | ACTIVE |
 | H4 | **EC16–EC18 AI work requires separate authorization.** | EC16 (Shared AI Gateway), EC17 (Studio AI Tools), EC18 (Paid Business Assistant/Voice) | Owner explicitly authorizes AI-checkpoint work to begin. | ACTIVE |
 | H5 | **EC17 is blocked until the owner completes the AI Tools Keep / Combine / Change / Rename / Defer / Remove review.** | EC17 specifically | Owner completes the full tool-by-tool review worksheet (28+ legacy AI tools) and assigns a final status + Final Name + Family to every tool. | ACTIVE — BLOCKING (stronger than H4; EC17 cannot start even if H4 is otherwise lifted, until this worksheet is complete) |
@@ -117,7 +117,7 @@ Rules (owner-locked): Stripe payment-failure webhook events (`invoice.payment_fa
 
 ## EC14 owner authorization (2026-07-19)
 
-The owner explicitly authorized EC14 Webstores to start on `CODEX-EC14-BRANCH` after EC13 was closed and merged. This lifts H1/H2 for EC14 only.
+The owner explicitly authorized EC14 Webstores to start on `CODEX-EC14-BRANCH` after EC13 was closed and merged. EC14 completed on 2026-07-19 at implementation commit `75c7c699b58262ed2fa550a1fd0a11e77e0f677b` with GitHub CI run `29677455165` passing. H1/H2 are closed for EC14 only.
 
 Still held/deferred:
 
@@ -126,4 +126,4 @@ Still held/deferred:
 - EC19 onboarding/help and later checkpoints until separately authorized.
 - Webstores standalone annual pricing remains not approved and unavailable.
 
-**Register last updated:** 2026-07-19 — Contradictions C1, C2, and C3 remain resolved by explicit owner decision. H1/H2 are lifted for EC14 Webstores only by current owner authorization. H3-H8 remain active.
+**Register last updated:** 2026-07-19 — Contradictions C1, C2, and C3 remain resolved by explicit owner decision. H1/H2 are closed for EC14 Webstores only. H3-H8 remain active.
