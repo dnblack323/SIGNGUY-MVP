@@ -878,4 +878,62 @@ async def ensure_indexes() -> None:
         partialFilterExpression={"checkout_session_id": {"$type": "string"}},
     )
 
+    # ---- EC15 - Wrap Lab shared core ----
+    await db.wrap_vehicles.create_index("id", unique=True)
+    await db.wrap_vehicles.create_index([("tenant_id", 1), ("customer_id", 1)])
+    await db.wrap_vehicles.create_index(
+        [("tenant_id", 1), ("vin", 1)],
+        unique=True,
+        partialFilterExpression={"vin": {"$type": "string"}},
+    )
+    await db.wrap_vehicles.create_index(
+        [("tenant_id", 1), ("license_plate", 1)],
+        partialFilterExpression={"license_plate": {"$type": "string"}},
+    )
+    await db.wrap_vehicles.create_index([("tenant_id", 1), ("updated_at", -1)])
+
+    await db.wrap_projects.create_index("id", unique=True)
+    await db.wrap_projects.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.wrap_projects.create_index([("tenant_id", 1), ("customer_id", 1), ("updated_at", -1)])
+    await db.wrap_projects.create_index([("tenant_id", 1), ("vehicle_id", 1)])
+    await db.wrap_projects.create_index([("tenant_id", 1), ("order_id", 1)], partialFilterExpression={"order_id": {"$type": "string"}})
+    await db.wrap_projects.create_index([("tenant_id", 1), ("quote_id", 1)], partialFilterExpression={"quote_id": {"$type": "string"}})
+    await db.wrap_projects.create_index([("tenant_id", 1), ("work_order_id", 1)], partialFilterExpression={"work_order_id": {"$type": "string"}})
+
+    await db.wrap_coverage_plans.create_index("id", unique=True)
+    await db.wrap_coverage_plans.create_index([("tenant_id", 1), ("project_id", 1)])
+    await db.wrap_coverage_plans.create_index([("tenant_id", 1), ("project_id", 1), ("status", 1)])
+
+    await db.wrap_inspections.create_index("id", unique=True)
+    await db.wrap_inspections.create_index([("tenant_id", 1), ("project_id", 1), ("inspection_type", 1)])
+    await db.wrap_inspections.create_index([("tenant_id", 1), ("project_id", 1), ("status", 1)])
+
+    await db.wrap_design_scenes.create_index("id", unique=True)
+    await db.wrap_design_scenes.create_index([("tenant_id", 1), ("project_id", 1), ("status", 1)])
+    await db.wrap_design_scenes.create_index([("tenant_id", 1), ("project_id", 1), ("revision", 1)], unique=True)
+
+    await db.wrap_panel_plans.create_index("id", unique=True)
+    await db.wrap_panel_plans.create_index([("tenant_id", 1), ("project_id", 1), ("status", 1)])
+    await db.wrap_panel_plans.create_index([("tenant_id", 1), ("project_id", 1), ("revision", 1)], unique=True)
+
+    await db.wrap_packets.create_index("id", unique=True)
+    await db.wrap_packets.create_index([("tenant_id", 1), ("project_id", 1), ("packet_type", 1), ("revision", 1)], unique=True)
+    await db.wrap_packets.create_index([("tenant_id", 1), ("project_id", 1), ("status", 1)])
+
+    await db.wrap_schedules.create_index("id", unique=True)
+    await db.wrap_schedules.create_index([("tenant_id", 1), ("project_id", 1), ("schedule_type", 1)])
+    await db.wrap_schedules.create_index([("tenant_id", 1), ("start_at", 1)])
+    await db.wrap_schedules.create_index(
+        [("tenant_id", 1), ("calendar_event_id", 1)],
+        partialFilterExpression={"calendar_event_id": {"$type": "string"}},
+    )
+
+    await db.wrap_warranties.create_index("id", unique=True)
+    await db.wrap_warranties.create_index([("tenant_id", 1), ("project_id", 1), ("status", 1)])
+    await db.wrap_warranties.create_index([("tenant_id", 1), ("expires_at", 1)])
+
+    await db.wrap_activity_events.create_index("id", unique=True)
+    await db.wrap_activity_events.create_index([("tenant_id", 1), ("project_id", 1), ("created_at", -1)])
+    await db.wrap_activity_events.create_index([("tenant_id", 1), ("action", 1), ("created_at", -1)])
+
     logger.info("MongoDB indexes ensured")
