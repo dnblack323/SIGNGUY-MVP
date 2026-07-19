@@ -11,11 +11,11 @@
 | H1 | **No checkpoint starts automatically after this documentation update.** | All of EC9–EC22 | Explicit owner "go" message naming the checkpoint to start. | ACTIVE |
 | H2 | **EC14 Webstores requires separate owner authorization.** | EC14 | Owner explicitly authorizes EC14 start (separate from generic "start EC9" authorization). | CLOSED FOR EC14 - 2026-07-19 owner prompt authorized EC14 on `CODEX-EC14-BRANCH`; EC14 completed with CI `29677455165`; does not lift H3-H8 |
 | H3 | **EC15 Wrap Lab requires separate owner authorization.** | EC15 | Owner explicitly authorizes EC15 start. | CLOSED FOR EC15 - 2026-07-19 owner prompt authorized EC15 on `CODEX-ec15-branch`; does not lift H4-H8 or later checkpoint holds |
-| H4 | **EC16-EC18 AI work requires separate authorization.** | EC16 (Shared AI Gateway), EC17 (Studio AI Tools), EC18 (Paid Business Assistant/Voice) | Owner explicitly authorizes AI-checkpoint work to begin. | CLOSED FOR EC16 ONLY - 2026-07-19 owner prompt authorized the next incomplete checkpoint after EC15 on `CODEX-ec16-branch`; EC17 and EC18 remain ACTIVE under H4 |
-| H5 | **EC17 is blocked until the owner completes the AI Tools Keep / Combine / Change / Rename / Defer / Remove review.** | EC17 specifically | Owner completes the full tool-by-tool review worksheet (28+ legacy AI tools) and assigns a final status + Final Name + Family to every tool. | ACTIVE — BLOCKING (stronger than H4; EC17 cannot start even if H4 is otherwise lifted, until this worksheet is complete) |
+| H4 | **EC16-EC18 AI work requires separate authorization.** | EC16 (Shared AI Gateway), EC17 (Studio AI Tools), EC18 (Paid Business Assistant/Voice) | Owner explicitly authorizes AI-checkpoint work to begin. | CLOSED FOR EC16 AND EC17 ONLY - 2026-07-19 owner prompts authorized EC16 and later EC17 on `CODEX-ec17-branch`; EC18 remains ACTIVE under H4 |
+| H5 | **EC17 is blocked until the owner completes the AI Tools Keep / Combine / Change / Rename / Defer / Remove review.** | EC17 specifically | Owner completes the full tool-by-tool review worksheet (28+ legacy AI tools) and assigns a final status + Final Name + Family to every tool. | CLOSED FOR EC17 - owner accepted the EC17 worksheet and supplied final tool decisions, approved capability identifiers, removed tools, EC18-only identifiers, and Meta-only identifiers on 2026-07-19 |
 | H6 | Wrap Lab **standalone** activation requires a completed preflight proving shared-core reuse without duplication. | Wrap Lab standalone sale only (not Founder-included or add-on use) | Preflight completed and owner-approved (carried forward from old master plan Decision 7; still binding under EC15). | SATISFIED FOR EC15 SHARED-CORE IMPLEMENTATION - standalone annual pricing and public standalone purchase flow remain unavailable |
 | H7 | AI top-up pricing, included AI-credit amounts, and AI provider/model assignments are approved **subject to a measured provider-cost audit** before live commercial activation. | EC13/EC16/EC17 commercial AI numbers | Provider-cost audit completed after 10–20 active paying shops (per rollout discipline); numbers may be adjusted before activation. | ACTIVE (carried forward from old master plan Decisions 12/13/18; reaffirmed by EC13/EC16/EC17) |
-| H8 | Studio AI tool inventory must receive an owner **Keep / Change / Remove** review before EC17 implementation — no legacy tool list is automatically final. | EC17 | Same worksheet as H5 (this is the Master Index's phrasing of the same hold; tracked together with H5). | ACTIVE — same as H5 |
+| H8 | Studio AI tool inventory must receive an owner **Keep / Change / Remove** review before EC17 implementation — no legacy tool list is automatically final. | EC17 | Same worksheet as H5 (this is the Master Index's phrasing of the same hold; tracked together with H5). | CLOSED FOR EC17 - same owner decision set as H5; removed, EC18-only, and Meta-only tools must not become active EC17 tenant tools |
 
 ## Commercial authority — confirmed scope (registered, not yet activated)
 
@@ -141,4 +141,40 @@ Still held/deferred:
 - EC16 live commercial/provider activation under H7.
 - EC19 onboarding/help and later checkpoints until separately authorized.
 
-**Register last updated:** 2026-07-19 - Contradictions C1, C2, and C3 remain resolved by explicit owner decision. H1/H2 are closed for EC14 Webstores only. H1/H3 are closed for EC15 only; H6 is satisfied for EC15 shared-core implementation only. H4 is closed for EC16 only after EC16 implementation and CI closure, and remains active for EC17/EC18. H5/H7/H8 remain active.
+## EC17 owner authorization and tool decision closure (2026-07-19)
+
+The owner authorized EC17 implementation on `CODEX-ec17-branch` after accepting the EC17 owner-decision worksheet. H4 is closed for EC17 only. H5/H8 are closed for EC17 only.
+
+Required EC17 active tool families:
+
+- Design & Image Studio
+- Marketing & Brand Studio
+- Business Writing & Documents
+- Pricing & Profitability
+
+Approved active EC17 capability identifiers are recorded in `/app/preflight/EC17_STUDIO_AI_TOOLS_PROMPT_LIBRARY_GENERATED_ASSETS_AND_ACTIVITY_PREFLIGHT.md`.
+
+Removed by owner and inactive in EC17:
+
+- `order.service_prefill`
+- `studio.text.bulk_followup`
+
+Assigned to EC18 and inactive in EC17:
+
+- `assistant.email_draft`
+- `assistant.chat`
+- `assistant.action_parse`
+- `assistant.voice_transcription`
+- `assistant.voice_reply`
+- `assistant.intent_classify`
+- `assistant.navigation_classify`
+- `assistant.memory_compress`
+
+Future Meta integration only and inactive in EC17:
+
+- `integration.facebook.message_classify`
+- `integration.facebook.order_extract`
+
+H7 remains active for EC17. EC17 must not make live external provider calls, publish final numeric credit pricing, activate production AI providers/models, implement BYOK/MCP/realtime voice, commit secrets, or start EC18/EC19/later checkpoint scope.
+
+**Register last updated:** 2026-07-19 - EC17 owner authorization recorded and EC17 implementation closed after CI `29704696468` passed. H4/H5/H8 are closed for EC17 only. H7 remains active. EC18, Meta integrations, EC19, and later checkpoints remain held/deferred.

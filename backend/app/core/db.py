@@ -1022,4 +1022,50 @@ async def ensure_indexes() -> None:
     await db.ai_provider_health_events.create_index([("provider_key", 1), ("model_key", 1), ("created_at", -1)])
     await db.ai_provider_health_events.create_index([("status", 1), ("created_at", -1)])
 
+    # ---- EC17 - Studio AI tools, prompt library, generated assets, and activity ----
+    await db.ai_studio_prompt_entries.create_index("id", unique=True)
+    await db.ai_studio_prompt_entries.create_index([("tenant_id", 1), ("tool_key", 1), ("mode_key", 1), ("status", 1)])
+    await db.ai_studio_prompt_entries.create_index([("tenant_id", 1), ("name", 1), ("version", 1)])
+    await db.ai_studio_prompt_entries.create_index([("owner_scope", 1), ("tool_key", 1), ("mode_key", 1), ("status", 1)])
+    await db.ai_studio_prompt_entries.create_index([("capability_key", 1), ("status", 1)])
+
+    await db.ai_generated_assets.create_index("id", unique=True)
+    await db.ai_generated_assets.create_index([("tenant_id", 1), ("creator_user_id", 1), ("created_at", -1)])
+    await db.ai_generated_assets.create_index([("tenant_id", 1), ("tool_key", 1), ("mode_key", 1), ("status", 1), ("created_at", -1)])
+    await db.ai_generated_assets.create_index([("tenant_id", 1), ("action_request_id", 1)])
+    await db.ai_generated_assets.create_index([("tenant_id", 1), ("ec16_prompt_version_id", 1)])
+    await db.ai_generated_assets.create_index([("tenant_id", 1), ("context_packet_id", 1)])
+    await db.ai_generated_assets.create_index([("tenant_id", 1), ("source_asset_ids", 1)])
+    await db.ai_generated_assets.create_index([("tenant_id", 1), ("revision_of_asset_id", 1)])
+    await db.ai_generated_assets.create_index([("tenant_id", 1), ("parent_record_type", 1), ("parent_record_id", 1), ("created_at", -1)])
+    await db.ai_generated_assets.create_index(
+        [("tenant_id", 1), ("provenance.idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"provenance.idempotency_key": {"$type": "string"}},
+    )
+
+    await db.ai_studio_editable_drafts.create_index("id", unique=True)
+    await db.ai_studio_editable_drafts.create_index([("tenant_id", 1), ("creator_user_id", 1), ("created_at", -1)])
+    await db.ai_studio_editable_drafts.create_index([("tenant_id", 1), ("tool_key", 1), ("mode_key", 1), ("created_at", -1)])
+    await db.ai_studio_editable_drafts.create_index([("tenant_id", 1), ("parent_record_type", 1), ("parent_record_id", 1), ("created_at", -1)])
+    await db.ai_studio_editable_drafts.create_index([("tenant_id", 1), ("action_request_id", 1)])
+    await db.ai_studio_editable_drafts.create_index(
+        [("tenant_id", 1), ("provenance.idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"provenance.idempotency_key": {"$type": "string"}},
+    )
+
+    await db.ai_studio_brand_contexts.create_index("id", unique=True)
+    await db.ai_studio_brand_contexts.create_index([("tenant_id", 1), ("owner_type", 1), ("owner_id", 1), ("status", 1)])
+    await db.ai_studio_brand_contexts.create_index([("tenant_id", 1), ("source_asset_id", 1)])
+
+    await db.ai_studio_pricing_import_analyses.create_index("id", unique=True)
+    await db.ai_studio_pricing_import_analyses.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
+    await db.ai_studio_pricing_import_analyses.create_index([("tenant_id", 1), ("source_file_id", 1)])
+    await db.ai_studio_pricing_import_analyses.create_index([("tenant_id", 1), ("source_file_type", 1), ("created_at", -1)])
+
+    await db.ai_studio_pricing_setup_proposals.create_index("id", unique=True)
+    await db.ai_studio_pricing_setup_proposals.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
+    await db.ai_studio_pricing_setup_proposals.create_index([("tenant_id", 1), ("created_by_user_id", 1), ("created_at", -1)])
+
     logger.info("MongoDB indexes ensured")

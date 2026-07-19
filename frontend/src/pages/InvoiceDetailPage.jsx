@@ -19,6 +19,7 @@ import { useAuth } from "@/auth/AuthContext";
 import ComposeEmailDialog from "@/components/email/ComposeEmailDialog";
 import InvoicePairedStatus from "@/components/invoices/InvoicePairedStatus";
 import { RecordManualPaymentDialog, VoidPaymentButton, InitiateStripePaymentButton, RefundButton } from "@/components/invoices/PaymentDialogs";
+import AIContextualActions from "@/components/ai/AIContextualActions";
 
 // Never render a Stripe intent id verbatim in the DOM. Show only last 4.
 function _maskPi(pi) {
@@ -90,6 +91,10 @@ export default function InvoiceDetailPage() {
           </span>}
           actions={(
             <div className="flex items-center gap-2 flex-wrap">
+              <AIContextualActions contextType="invoice" contextId={id} actions={[
+                { label: "Payment Email", tool: "email_draft_assistant", mode: "payment_reminder" },
+                { label: "Create Document", tool: "document_writer", mode: "customer_order_document" },
+              ]} />
               {canIssue && (
                 <Button variant="outline" size="sm" onClick={() => setDocStatus.mutate({ document_status: "issued" })} data-testid="invoice-issue-button">
                   <Send className="size-4 mr-1" />Issue

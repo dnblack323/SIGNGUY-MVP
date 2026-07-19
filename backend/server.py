@@ -274,6 +274,11 @@ api_router.include_router(wrap_lab_router_module.router)
 from app.routers import ai_gateway as ai_gateway_router_module
 api_router.include_router(ai_gateway_router_module.router)
 
+# EC17 - Studio AI tools, Prompt Library, Generated Assets, and AI Activity.
+# Tool execution is local/mock only and routes through EC16 gateway contracts.
+from app.routers import ai_studio as ai_studio_router_module
+api_router.include_router(ai_studio_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(
