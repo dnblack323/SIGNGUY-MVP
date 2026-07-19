@@ -22,6 +22,7 @@ import { ArrowLeft, ArrowRightCircle, Save, Mail, Plus, Pencil, Trash2, AlertTri
 import { useAuth } from "@/auth/AuthContext";
 import ComposeEmailDialog from "@/components/email/ComposeEmailDialog";
 import LineItemDialog from "@/components/commerce/LineItemDialog";
+import AIContextualActions from "@/components/ai/AIContextualActions";
 
 // ------------- helpers -------------
 
@@ -358,7 +359,12 @@ export default function QuoteDetailPage() {
             {q.expired && <span className="ml-2 text-amber-600 font-medium" data-testid="quote-expired-badge">Expired</span>}
           </span>}
           actions={(
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <AIContextualActions contextType="quote" contextId={id} actions={[
+                { label: "AI Quote Email", tool: "email_draft_assistant", mode: "quote_follow_up" },
+                { label: "AI Proposal", tool: "proposal_builder", mode: "proposal" },
+                { label: "Pricing Advisor", tool: "pricing_profitability", mode: "pricing_advisor" },
+              ]} />
               {hasPerm("email:send") && customer?.email && (
                 <ComposeEmailDialog
                   defaultTemplate="quote_sent"

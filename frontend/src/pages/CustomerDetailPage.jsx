@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import StatusPill from "@/components/common/StatusPill";
 import TaskHandoffButton from "@/components/tasks/TaskHandoffButton";
+import AIContextualActions from "@/components/ai/AIContextualActions";
 import { centsToDollarsString, relativeTime } from "@/lib/format";
 import { ArrowLeft, Save } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
@@ -73,6 +74,10 @@ export default function CustomerDetailPage() {
           subtitle={c.company || c.email || "Customer"}
           actions={(
             <div className="flex flex-wrap gap-2">
+              <AIContextualActions contextType="customer" contextId={id} actions={[
+                { label: "Draft Email", tool: "email_draft_assistant", mode: "custom_email" },
+                { label: "Create Document", tool: "document_writer", mode: "customer_order_document" },
+              ]} />
               <TaskHandoffButton sourceType="customer" sourceId={id} defaults={{ title: `Follow up with ${c.name}`, task_type: "customer_followup" }} />
               {canWrite && Object.keys(form).length > 0 && (
                 <Button onClick={() => save.mutate(form)} disabled={save.isPending} data-testid="customer-save-button">

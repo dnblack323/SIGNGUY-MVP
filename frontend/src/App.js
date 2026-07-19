@@ -40,6 +40,10 @@ import FeatureAccessPage from "@/pages/FeatureAccessPage";
 import BillingPage from "@/pages/BillingPage";
 import AICreditsPage from "@/pages/AICreditsPage";
 import PlatformAIGovernancePage from "@/pages/PlatformAIGovernancePage";
+import AIActivityPage from "@/pages/AIActivityPage";
+import AIStudioPage from "@/pages/AIStudioPage";
+import GeneratedAssetsPage from "@/pages/GeneratedAssetsPage";
+import PromptLibraryPage from "@/pages/PromptLibraryPage";
 import DataSecurityPage from "@/pages/DataSecurityPage";
 import ProductionWorkflowsPage from "@/pages/ProductionWorkflowsPage";
 import NotFoundPage from "@/pages/NotFoundPage";
@@ -163,6 +167,14 @@ function AppRoutes() {
         <Route path="/webstores/:id" element={<WebstoreDetailPage />} />
         <Route path="/wrap-lab" element={<WrapLabPage />} />
         <Route path="/wrap-lab/:id" element={<WrapLabDetailPage />} />
+        <Route path="/studio" element={<AIStudioPage />} />
+        <Route path="/studio/design-image" element={<AIStudioPage />} />
+        <Route path="/studio/marketing-brand" element={<AIStudioPage />} />
+        <Route path="/studio/writing-documents" element={<AIStudioPage />} />
+        <Route path="/studio/pricing-profitability" element={<AIStudioPage />} />
+        <Route path="/studio/prompts" element={<PromptLibraryPage />} />
+        <Route path="/studio/assets" element={<GeneratedAssetsPage />} />
+        <Route path="/studio/activity" element={<AIActivityPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/company" element={<CompanySettingsPage />} />
         <Route path="/settings/integrations" element={<IntegrationsPage />} />

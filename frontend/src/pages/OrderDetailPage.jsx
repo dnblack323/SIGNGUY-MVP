@@ -19,6 +19,7 @@ import LineItemDialog from "@/components/commerce/LineItemDialog";
 import GenerateWorkOrderDialog, { RegenerateDialog } from "@/components/work-orders/GenerateWorkOrderDialog";
 import ProofsPanel from "@/components/proofs/ProofsPanel";
 import TaskHandoffButton from "@/components/tasks/TaskHandoffButton";
+import AIContextualActions from "@/components/ai/AIContextualActions";
 
 function ItemsPanel({ orderId, items, totals, pricingSummary, canWrite, orderStatus }) {
   const qc = useQueryClient();
@@ -248,6 +249,10 @@ export default function OrderDetailPage() {
           }
           actions={canWrite && (
             <div className="flex items-center gap-2 flex-wrap">
+              <AIContextualActions contextType="order" contextId={id} actions={[
+                { label: "Status Email", tool: "email_draft_assistant", mode: "job_update" },
+                { label: "Marketing Post", tool: "social_post_builder", mode: "completed_work_showcase" },
+              ]} />
               <TaskHandoffButton sourceType="order" sourceId={id} defaults={{ title: `Follow up on O-${order.number}`, task_type: "order_followup" }} />
               {activeWO ? (
                 <>

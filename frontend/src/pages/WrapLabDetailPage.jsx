@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock, FileText, Layers, Lock, PackageCheck, ShieldCheck } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
+import AIContextualActions from "@/components/ai/AIContextualActions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -115,7 +116,15 @@ export default function WrapLabDetailPage() {
       <PageHeader
         title={project.project_name}
         subtitle={`${project.project_type.replace(/_/g, " ")} · ${project.status.replace(/_/g, " ")}`}
-        actions={<Button asChild variant="outline" size="sm"><Link to="/wrap-lab">Back</Link></Button>}
+        actions={(
+          <div className="flex items-center gap-2 flex-wrap">
+            <AIContextualActions contextType="wrap_project" contextId={id} actions={[
+              { label: "Wrap Concept", tool: "vehicle_graphics_studio", mode: "vehicle_wrap_concept" },
+              { label: "Cost Guidance", tool: "pricing_profitability", mode: "wrap_cost_guidance" },
+            ]} />
+            <Button asChild variant="outline" size="sm"><Link to="/wrap-lab">Back</Link></Button>
+          </div>
+        )}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_.9fr] gap-4">

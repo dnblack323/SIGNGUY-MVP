@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ExternalLink, PackagePlus, Send, ShieldCheck } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
+import AIContextualActions from "@/components/ai/AIContextualActions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,7 +79,15 @@ export default function WebstoreDetailPage() {
       <PageHeader
         title={store.name}
         subtitle={`/${store.slug} · ${String(store.status).replace(/_/g, " ")}`}
-        actions={<Button asChild variant="outline" size="sm"><Link to={store.public_url || `/p/webstores/${store.slug}`}><ExternalLink className="size-4 mr-2" />Public</Link></Button>}
+        actions={(
+          <div className="flex items-center gap-2 flex-wrap">
+            <AIContextualActions contextType="webstore" contextId={id} actions={[
+              { label: "Product Content", tool: "product_content_builder", mode: "webstore_product_content" },
+              { label: "Product Mockup", tool: "mockup_generator", mode: "product_mockup" },
+            ]} />
+            <Button asChild variant="outline" size="sm"><Link to={store.public_url || `/p/webstores/${store.slug}`}><ExternalLink className="size-4 mr-2" />Public</Link></Button>
+          </div>
+        )}
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
