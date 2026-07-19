@@ -4,6 +4,7 @@ import { PortalAuthProvider, usePortalAuth } from "./PortalAuthContext";
 import portalApi, { portalExtractError } from "./portalApi";
 import PortalInvoicePayPage from "./PortalInvoicePayPage";
 import PortalDecisionRoomPage from "./PortalDecisionRoomPage";
+import WebstoreOwnerPortalPage from "@/pages/WebstoreOwnerPortalPage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +27,7 @@ function Shell({ children }) {
             <Link to="/portal/documents" data-testid="portal-nav-documents">Documents</Link>
             <Link to="/portal/messages" data-testid="portal-nav-messages">Messages</Link>
             <Link to="/portal/profile" data-testid="portal-nav-profile">Profile</Link>
+            {identity?.portal_type?.startsWith("webstore") && <Link to="/portal/webstores" data-testid="portal-nav-webstores">Webstores</Link>}
           </nav>
           <div className="flex items-center gap-2 text-xs">
             {identity && <span className="text-slate-600">{identity.full_name || identity.email}</span>}
@@ -120,7 +122,7 @@ function Dashboard() {
   return (
     <div className="space-y-4" data-testid="portal-dashboard">
       <h1 className="text-2xl font-semibold">Welcome, {identity?.full_name || identity?.email}</h1>
-      <p className="text-slate-600 text-sm">Use the nav above to view quotes, orders, invoices, proofs and documents.</p>
+      <p className="text-slate-600 text-sm">Use the nav above to view quotes, orders, invoices, proofs, documents, and Webstores.</p>
     </div>
   );
 }
@@ -184,6 +186,8 @@ export default function PortalApp() {
         <Route path="decision-rooms/:id" element={<Guard><PortalDecisionRoomPage /></Guard>} />
         <Route path="documents" element={<Guard><ListPage path="/portal/documents" title="Documents" testId="portal-documents" cols={{title:(d)=>d.title, sub:(d)=>d.category, right:(d)=>`v${d.version}`}} /></Guard>} />
         <Route path="messages" element={<Guard><ListPage path="/portal/messages" title="Messages" testId="portal-messages" cols={{title:(m)=>m.subject, sub:(m)=>m.status, right:(m)=>m.created_at?.slice(0,10)}} /></Guard>} />
+        <Route path="webstores" element={<Guard><ListPage path="/portal/webstores" title="Webstores" testId="portal-webstores" cols={{title:(s)=>s.name, sub:(s)=>s.status, right:(s)=><a href={`/portal/webstores/${s.id}`} className="underline" data-testid={`portal-webstore-view-link-${s.id}`}>Open</a>}} /></Guard>} />
+        <Route path="webstores/:webstoreId" element={<Guard><WebstoreOwnerPortalPage /></Guard>} />
         <Route path="profile" element={<Guard><Profile /></Guard>} />
       </Routes>
     </PortalAuthProvider>

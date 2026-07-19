@@ -257,6 +257,14 @@ from app.routers import webhooks_stripe_billing as webhooks_stripe_billing_route
 api_router.include_router(billing_router_module.router)
 api_router.include_router(webhooks_stripe_billing_router_module.router)
 
+# EC14 - Webstores shared core, owner portal, and public storefront.
+from app.routers import public_webstores as public_webstores_router_module
+from app.routers import webstore_owner_portal as webstore_owner_portal_router_module
+from app.routers import webstores as webstores_router_module
+api_router.include_router(webstores_router_module.router)
+api_router.include_router(webstore_owner_portal_router_module.router)
+api_router.include_router(public_webstores_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

@@ -70,6 +70,8 @@ import ShopSchedulePage from "@/pages/ShopSchedulePage";
 import PayrollPage from "@/pages/PayrollPage";
 import EmployeePortalAccessPage from "@/pages/EmployeePortalAccessPage";
 import CommunityPage from "@/pages/CommunityPage";
+import WebstoreDetailPage from "@/pages/WebstoreDetailPage";
+import WebstoresPage from "@/pages/WebstoresPage";
 import EmployeePortalApp from "@/portal/employee/EmployeePortalApp";
 import { Toaster } from "sonner";
 
@@ -153,6 +155,8 @@ function AppRoutes() {
         <Route path="/help/bugs" element={<CommunityPage />} />
         <Route path="/help/feature-requests" element={<CommunityPage />} />
         <Route path="/help/contact" element={<CommunityPage />} />
+        <Route path="/webstores" element={<WebstoresPage />} />
+        <Route path="/webstores/:id" element={<WebstoreDetailPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/company" element={<CompanySettingsPage />} />
         <Route path="/settings/integrations" element={<IntegrationsPage />} />

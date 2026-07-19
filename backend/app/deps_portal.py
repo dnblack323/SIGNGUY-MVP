@@ -50,11 +50,26 @@ async def get_current_portal_identity(
     elif token_portal_type == "employee":
         if not eid or identity.get("employee_id") != eid:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bad portal payload")
+    elif token_portal_type in {"webstore_owner", "webstore_manager"}:
+        if not identity.get("webstore_owner_id"):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bad portal payload")
     return serialize_doc(identity)  # type: ignore[return-value]
 
 
 def require_portal_permission(*required: str) -> Callable:
     async def _dep(identity: dict = Depends(get_current_portal_identity)) -> dict:
+        perms = set(identity.get("permissions") or [])
+        missing = [p for p in required if p not in perms]
+        if missing:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Missing portal permission: {missing[0]}")
+        return identity
+    return _dep
+
+
+def require_webstore_portal_permission(*required: str) -> Callable:
+    async def _dep(identity: dict = Depends(get_current_portal_identity)) -> dict:
+        if identity.get("portal_type") not in {"webstore_owner", "webstore_manager"}:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Webstore portal access required")
         perms = set(identity.get("permissions") or [])
         missing = [p for p in required if p not in perms]
         if missing:
