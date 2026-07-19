@@ -72,6 +72,8 @@ import EmployeePortalAccessPage from "@/pages/EmployeePortalAccessPage";
 import CommunityPage from "@/pages/CommunityPage";
 import WebstoreDetailPage from "@/pages/WebstoreDetailPage";
 import WebstoresPage from "@/pages/WebstoresPage";
+import WrapLabDetailPage from "@/pages/WrapLabDetailPage";
+import WrapLabPage from "@/pages/WrapLabPage";
 import EmployeePortalApp from "@/portal/employee/EmployeePortalApp";
 import { Toaster } from "sonner";
 
@@ -157,6 +159,8 @@ function AppRoutes() {
         <Route path="/help/contact" element={<CommunityPage />} />
         <Route path="/webstores" element={<WebstoresPage />} />
         <Route path="/webstores/:id" element={<WebstoreDetailPage />} />
+        <Route path="/wrap-lab" element={<WrapLabPage />} />
+        <Route path="/wrap-lab/:id" element={<WrapLabDetailPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/company" element={<CompanySettingsPage />} />
         <Route path="/settings/integrations" element={<IntegrationsPage />} />

@@ -64,7 +64,7 @@ export const NAV_AREAS = [
       { key: "supply-center", label: "Supply Center", to: "/supply-center", perm: "purchasing:read", testId: "flyout-supply-center" },
       { key: "purchase-orders", label: "Purchase Orders", to: "/purchase-orders", perm: "purchasing:read", testId: "flyout-purchase-orders" },
       { key: "webstores", label: "Webstores", to: "/webstores", perm: "webstore:read", testId: "flyout-webstores" },
-      { key: "wrap-lab", label: "Wrap Lab", to: "/wrap-lab", perm: "wrap_lab:read", testId: "flyout-wrap-lab", disabled: true },
+      { key: "wrap-lab", label: "Wrap Lab", to: "/wrap-lab", perm: "wrap_lab:read", testId: "flyout-wrap-lab" },
     ],
   },
   {

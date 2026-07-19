@@ -265,6 +265,10 @@ api_router.include_router(webstores_router_module.router)
 api_router.include_router(webstore_owner_portal_router_module.router)
 api_router.include_router(public_webstores_router_module.router)
 
+# EC15 - Wrap Lab shared core. Staff-only; no AI/provider, Stripe, or EC19 work.
+from app.routers import wrap_lab as wrap_lab_router_module
+api_router.include_router(wrap_lab_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(
