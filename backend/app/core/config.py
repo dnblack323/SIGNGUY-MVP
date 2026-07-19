@@ -64,6 +64,24 @@ class Settings:
         # AI provider (Emergent LLM key). Only required when AI generation is enabled.
         self.ai_enabled: bool = os.environ.get("AI_ENABLED", "false").lower() == "true"
 
+        # EC18 - OpenAI Realtime voice for the paid Business Assistant.
+        # The permanent API key is backend-only. Browser clients receive only
+        # short-lived Realtime credentials minted by the backend when enabled.
+        self.openai_api_key: str | None = os.environ.get("OPENAI_API_KEY") or None
+        self.openai_realtime_enabled: bool = (
+            os.environ.get("OPENAI_REALTIME_ENABLED", "false").lower() == "true"
+        )
+        self.openai_realtime_model: str = os.environ.get("OPENAI_REALTIME_MODEL", "gpt-realtime-2.1")
+        self.openai_realtime_voice: str = os.environ.get("OPENAI_REALTIME_VOICE", "alloy")
+        self.openai_realtime_timeout_seconds: float = float(os.environ.get("OPENAI_REALTIME_TIMEOUT_SECONDS", "10"))
+        self.openai_realtime_turn_detection: str = os.environ.get("OPENAI_REALTIME_TURN_DETECTION", "server_vad")
+        self.openai_realtime_push_to_talk_default: bool = (
+            os.environ.get("OPENAI_REALTIME_PUSH_TO_TALK_DEFAULT", "true").lower() == "true"
+        )
+        self.openai_realtime_rate_limit_sessions: int = int(os.environ.get("OPENAI_REALTIME_RATE_LIMIT_SESSIONS", "10"))
+        self.openai_realtime_rate_limit_window_seconds: int = int(os.environ.get("OPENAI_REALTIME_RATE_LIMIT_WINDOW_SECONDS", "60"))
+        self.assistant_transcript_retention: str = os.environ.get("ASSISTANT_TRANSCRIPT_RETENTION", "conversation_policy")
+
         # SMS/MMS. Only required when SMS is enabled.
         self.sms_enabled: bool = os.environ.get("SMS_ENABLED", "false").lower() == "true"
         self.sms_provider_key: str | None = os.environ.get("SMS_PROVIDER_KEY") or None

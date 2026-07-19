@@ -1068,4 +1068,67 @@ async def ensure_indexes() -> None:
     await db.ai_studio_pricing_setup_proposals.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
     await db.ai_studio_pricing_setup_proposals.create_index([("tenant_id", 1), ("created_by_user_id", 1), ("created_at", -1)])
 
+    # ---- EC18 - Paid Business Assistant, structured actions, BI, and voice ----
+    await db.assistant_conversations.create_index("id", unique=True)
+    await db.assistant_conversations.create_index([("tenant_id", 1), ("user_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.assistant_conversations.create_index([("tenant_id", 1), ("mode", 1), ("last_message_at", -1)])
+    await db.assistant_conversations.create_index([("tenant_id", 1), ("active_context.source_entity_type", 1), ("active_context.source_entity_id", 1)])
+
+    await db.assistant_messages.create_index("id", unique=True)
+    await db.assistant_messages.create_index([("tenant_id", 1), ("conversation_id", 1), ("created_at", 1)])
+    await db.assistant_messages.create_index([("tenant_id", 1), ("action_request_id", 1)])
+    await db.assistant_messages.create_index([("tenant_id", 1), ("voice_session_id", 1)])
+
+    await db.assistant_context_snapshots.create_index("id", unique=True)
+    await db.assistant_context_snapshots.create_index([("tenant_id", 1), ("conversation_id", 1), ("created_at", -1)])
+    await db.assistant_context_snapshots.create_index([("tenant_id", 1), ("source_entity_type", 1), ("source_entity_id", 1), ("created_at", -1)])
+    await db.assistant_context_snapshots.create_index([("tenant_id", 1), ("status", 1), ("expires_at", 1)])
+
+    await db.assistant_source_citations.create_index("id", unique=True)
+    await db.assistant_source_citations.create_index([("tenant_id", 1), ("conversation_id", 1), ("created_at", -1)])
+    await db.assistant_source_citations.create_index([("tenant_id", 1), ("message_id", 1)])
+    await db.assistant_source_citations.create_index([("tenant_id", 1), ("source_type", 1), ("source_id", 1)])
+
+    await db.assistant_action_proposals.create_index("id", unique=True)
+    await db.assistant_action_proposals.create_index([("tenant_id", 1), ("conversation_id", 1), ("status", 1), ("created_at", -1)])
+    await db.assistant_action_proposals.create_index([("tenant_id", 1), ("status", 1), ("expires_at", 1)])
+    await db.assistant_action_proposals.create_index([("tenant_id", 1), ("action_type", 1), ("created_at", -1)])
+    await db.assistant_action_proposals.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+
+    await db.assistant_action_executions.create_index("id", unique=True)
+    await db.assistant_action_executions.create_index([("tenant_id", 1), ("proposal_id", 1), ("status", 1)])
+    await db.assistant_action_executions.create_index([("tenant_id", 1), ("conversation_id", 1), ("created_at", -1)])
+    await db.assistant_action_executions.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+
+    await db.assistant_memory_entries.create_index("id", unique=True)
+    await db.assistant_memory_entries.create_index([("tenant_id", 1), ("user_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.assistant_memory_entries.create_index([("tenant_id", 1), ("user_id", 1), ("memory_key", 1), ("status", 1)])
+    await db.assistant_memory_entries.create_index([("tenant_id", 1), ("source_type", 1), ("source_id", 1)])
+
+    await db.assistant_routines.create_index("id", unique=True)
+    await db.assistant_routines.create_index([("tenant_id", 1), ("user_id", 1), ("status", 1), ("next_run_at", 1)])
+    await db.assistant_routines.create_index([("tenant_id", 1), ("mode", 1), ("status", 1)])
+
+    await db.assistant_insights.create_index("id", unique=True)
+    await db.assistant_insights.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
+    await db.assistant_insights.create_index([("tenant_id", 1), ("dedupe_key", 1), ("status", 1)])
+    await db.assistant_insights.create_index([("tenant_id", 1), ("insight_key", 1), ("created_at", -1)])
+
+    await db.assistant_voice_sessions.create_index("id", unique=True)
+    await db.assistant_voice_sessions.create_index([("tenant_id", 1), ("user_id", 1), ("status", 1), ("created_at", -1)])
+    await db.assistant_voice_sessions.create_index([("tenant_id", 1), ("conversation_id", 1), ("created_at", -1)])
+    await db.assistant_voice_sessions.create_index(
+        [("provider_key", 1), ("provider_session_id", 1)],
+        unique=True,
+        partialFilterExpression={"provider_session_id": {"$type": "string"}},
+    )
+
     logger.info("MongoDB indexes ensured")
