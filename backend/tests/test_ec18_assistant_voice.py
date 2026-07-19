@@ -71,7 +71,7 @@ async def test_configured_realtime_session_uses_backend_key_ephemeral_secret_and
             "OpenAI-Safety-Identifier": safety_id,
         }
         captured["json"] = payload
-        return {"id": "realtime-session-test", "value": "eph-test-secret", "expires_at": 9999999999}
+        return {"id": f"realtime-session-test-{voice_ctx['tenant_id']}", "value": "eph-test-secret", "expires_at": 9999999999}
 
     monkeypatch.setattr(assistant_svc, "_request_openai_realtime_client_secret", fake_request)
 
@@ -91,6 +91,6 @@ async def test_configured_realtime_session_uses_backend_key_ephemeral_secret_and
     assert captured["json"]["session"]["type"] == "realtime"
     assert captured["json"]["session"]["model"] == "gpt-realtime-2.1"
 
-    stored = await db.assistant_voice_sessions.find_one({"tenant_id": voice_ctx["tenant_id"], "provider_session_id": "realtime-session-test"}, {"_id": 0})
+    stored = await db.assistant_voice_sessions.find_one({"tenant_id": voice_ctx["tenant_id"], "provider_session_id": f"realtime-session-test-{voice_ctx['tenant_id']}"}, {"_id": 0})
     assert stored["raw_audio_stored"] is False
     assert stored["status"] == "created"

@@ -13,10 +13,12 @@ import { extractError } from "@/lib/api";
 import {
   cancelAssistantProposal,
   confirmAssistantProposal,
+  createStudioDelegation,
   createVoiceSession,
   executeAssistantProposal,
   getAssistantCatalog,
   getVoiceConfig,
+  listAssistantQuickActions,
   sendAssistantMessage,
 } from "@/lib/businessAssistant";
 
@@ -117,6 +119,8 @@ export default function AssistantPanel({ compact = false }) {
   const [messages, setMessages] = useState([]);
   const [sources, setSources] = useState([]);
   const [proposals, setProposals] = useState([]);
+  const [quickActions, setQuickActions] = useState([]);
+  const [delegation, setDelegation] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [voiceState, setVoiceState] = useState("idle");
@@ -142,6 +146,16 @@ export default function AssistantPanel({ compact = false }) {
     }).catch((err) => setError(extractError(err, "Unable to load Business Assistant")));
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    listAssistantQuickActions({ mode }).then((items) => {
+      if (active) setQuickActions(items);
+    }).catch(() => {
+      if (active) setQuickActions([]);
+    });
+    return () => { active = false; };
+  }, [mode]);
 
   const submit = async () => {
     if (!message.trim()) return;
@@ -239,6 +253,29 @@ export default function AssistantPanel({ compact = false }) {
     setVoiceState("interrupted");
   };
 
+  const useQuickAction = async (action) => {
+    setDelegation(null);
+    if (action.action_type === "studio_delegation") {
+      setLoading(true);
+      setError("");
+      try {
+        setDelegation(await createStudioDelegation({
+          tool_key: "social_post_builder",
+          mode_key: "completed_work_showcase",
+          mode,
+          context,
+        }));
+      } catch (err) {
+        setError(extractError(err, "Unable to open Studio delegation"));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+    setMode(action.mode || mode);
+    setMessage(action.prompt);
+  };
+
   const contextLabel = context.source_entity_type ? `${context.source_entity_type.replace("_", " ")} ${context.source_entity_id}` : "No record context";
   const modes = catalog?.modes || [];
 
@@ -264,6 +301,24 @@ export default function AssistantPanel({ compact = false }) {
         <Card>
           <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Bot className="size-5" />Conversation</CardTitle></CardHeader>
           <CardContent className="space-y-4">
+            {quickActions.length > 0 && (
+              <div className="flex flex-wrap gap-2" data-testid="assistant-quick-actions">
+                {quickActions.slice(0, 8).map((action) => (
+                  <Button key={action.label} size="sm" variant="outline" onClick={() => useQuickAction(action)}>
+                    {action.label}
+                  </Button>
+                ))}
+              </div>
+            )}
+            {delegation && (
+              <Alert data-testid="assistant-studio-delegation">
+                <SparklesIcon />
+                <AlertTitle>Studio draft ready to open</AlertTitle>
+                <AlertDescription>
+                  <Link to={delegation.route} className="underline">{delegation.message}</Link>
+                </AlertDescription>
+              </Alert>
+            )}
             <div className="min-h-[260px] space-y-3 rounded border bg-muted/20 p-3" data-testid="assistant-history">
               {messages.length === 0 ? (
                 <div className="text-sm text-muted-foreground">Ask about invoices, production blockers, workers today, quote follow-ups, or reports.</div>
@@ -312,4 +367,8 @@ export default function AssistantPanel({ compact = false }) {
       </aside>
     </div>
   );
+}
+
+function SparklesIcon() {
+  return <Bot className="size-4" />;
 }

@@ -17,6 +17,8 @@ jest.mock("@/lib/businessAssistant", () => ({
   getVoiceConfig: jest.fn(),
   sendAssistantMessage: jest.fn(),
   createVoiceSession: jest.fn(),
+  listAssistantQuickActions: jest.fn(),
+  createStudioDelegation: jest.fn(),
   confirmAssistantProposal: jest.fn(),
   cancelAssistantProposal: jest.fn(),
   executeAssistantProposal: jest.fn(),
@@ -26,6 +28,7 @@ import {
   createVoiceSession,
   getAssistantCatalog,
   getVoiceConfig,
+  listAssistantQuickActions,
   sendAssistantMessage,
 } from "@/lib/businessAssistant";
 import BusinessAssistantPage from "@/pages/BusinessAssistantPage";
@@ -62,6 +65,9 @@ beforeEach(() => {
     status: "unavailable",
     message: "OpenAI Voice is not configured",
   });
+  listAssistantQuickActions.mockResolvedValue([
+    { label: "Latest invoice", prompt: "What is the latest invoice?", mode: "finance", required_permissions: ["invoice:read"] },
+  ]);
 });
 
 test("renders Business Assistant workspace with modes, text chat, sources, and voice state", async () => {
@@ -71,6 +77,8 @@ test("renders Business Assistant workspace with modes, text chat, sources, and v
   expect(await screen.findByTestId("business-assistant-page")).toBeInTheDocument();
   await waitFor(() => expect(getAssistantCatalog).toHaveBeenCalled());
   expect(screen.getByTestId("assistant-context")).toHaveValue("invoice inv-1");
+  await waitFor(() => expect(listAssistantQuickActions).toHaveBeenCalled());
+  expect(screen.getByTestId("assistant-quick-actions")).toHaveTextContent("Latest invoice");
   expect(screen.getAllByText("AI credits apply").length).toBeGreaterThan(0);
   expect(screen.getByTestId("assistant-voice-unconfigured")).toHaveTextContent("OpenAI Voice is not configured");
 

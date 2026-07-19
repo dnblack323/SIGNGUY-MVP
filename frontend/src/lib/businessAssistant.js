@@ -54,3 +54,13 @@ export async function createVoiceSession(payload) {
   const { data } = await api.post("/assistant/voice/sessions", payload);
   return data;
 }
+
+export async function listAssistantQuickActions(params = {}) {
+  const { data } = await api.get("/assistant/quick-actions", { params });
+  return data.items || [];
+}
+
+export async function createStudioDelegation(payload) {
+  const { data } = await api.post("/assistant/delegations/studio", payload);
+  return data;
+}

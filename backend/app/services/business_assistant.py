@@ -474,6 +474,21 @@ async def _answer_business_question(user: dict[str, Any], *, conversation_id: st
         total = sum(int(inv.get("total_cents") or 0) for inv in invoices)
         citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="invoice", source_id="invoice_week", source_label="Issued invoices this week", route="/finance", date_range={"start": week_start, "end": _now_iso()}, calculation={"basis": "issued_invoices_created_last_7_days", "count": len(invoices), "amount_cents": total}, missing_data=["payments received", "cost of goods", "labor cost"]))
         return f"Invoice-basis revenue for issued invoices created in the last 7 days is ${total / 100:.2f} across {len(invoices)} invoice(s). This is an estimate because payment and cost categories are not included.", citations, ["payments received", "cost of goods", "labor cost"]
+    if "quote follow" in text or (("follow up" in text or "follow-up" in text or "followup" in text) and "quote" in text):
+        _require_perm(user, Perm.QUOTE_READ.value)
+        quotes = [d async for d in db.quotes.find({"tenant_id": tenant_id, "status": {"$nin": ["accepted", "declined", "converted"]}}, {"_id": 0}).sort("updated_at", -1).limit(25)]
+        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="quote", source_id="quote_followup_list", source_label="Quote follow-up list", route="/quotes", calculation={"basis": "open_non_converted_quotes", "count": len(quotes)}, missing_data=["last customer contact"] if quotes else []))
+        return f"I found {len(quotes)} open quote(s) that may need follow-up. Create a bulk email-draft proposal if you want a reviewable draft list; no emails are sent automatically.", citations, ["last customer contact"] if quotes else []
+    if "margin" in text or "profit" in text or "losing money" in text or "apparel" in text:
+        if _has_perm(user, Perm.FINANCE_READ.value):
+            _require_perm(user, Perm.FINANCE_READ.value)
+        elif _has_perm(user, Perm.PRICING_READ.value):
+            _require_perm(user, Perm.PRICING_READ.value)
+        else:
+            _require_perm(user, Perm.FINANCE_READ.value)
+        count = await db.pricing_snapshots.count_documents({"tenant_id": tenant_id})
+        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="pricing_snapshot", source_id="pricing_snapshot_list", source_label="Pricing snapshots", route="/pricing-foundation", calculation={"basis": "pricing_snapshot_count", "count": count}, missing_data=["actual labor time", "actual material usage", "overhead allocation", "refunds/discounts"]))
+        return "Profit and margin require complete cost inputs. I can treat this as an estimate only because actual labor, material usage, overhead allocation, and refunds/discounts may be missing.", citations, ["actual labor time", "actual material usage", "overhead allocation", "refunds/discounts"]
     if "late job" in text or "production blocker" in text or "production report" in text:
         _require_perm(user, Perm.WORK_ORDER_READ.value)
         work_orders = [d async for d in db.work_orders.find({"tenant_id": tenant_id}, {"_id": 0}).sort("updated_at", -1).limit(25)]
@@ -727,6 +742,26 @@ async def _execute_safe_canonical_action(user: dict[str, Any], proposal: dict[st
         return {"status": "succeeded", "canonical_service": "ai_studio_editable_drafts", "draft_id": draft["id"], "exported": False, "assistant_summary": "Document draft created. Nothing was exported, printed, or emailed."}
     if action_type == "navigation":
         return {"status": "succeeded", "canonical_service": "navigation_suggestion", "route": payload.get("route") or proposal.get("preview", {}).get("route") or "/", "mutated": False, "assistant_summary": "Navigation suggestion prepared. No records were changed."}
+    if action_type == "bulk_email_draft":
+        drafts = []
+        for idx, ref in enumerate(proposal.get("target_refs") or []):
+            draft = AIStudioEditableDraft(
+                tenant_id=user["tenant_id"],
+                creator_user_id=user["id"],
+                tool_key="business_assistant",
+                mode_key="bulk_email_draft",
+                family_key="business_assistant",
+                capability_key="assistant.email_draft",
+                usage_band="heavy",
+                draft_type="email",
+                title=f"{payload.get('subject') or proposal.get('title') or 'Assistant bulk email draft'} #{idx + 1}",
+                content_text=payload.get("body") or "",
+                content_json={"subject": payload.get("subject") or "", "target_ref": ref, "assistant_proposal_id": proposal["id"]},
+                warnings=["Draft only. No email was sent."],
+            ).model_dump()
+            await db.ai_studio_editable_drafts.insert_one(prepare_for_mongo(draft))
+            drafts.append({"target_ref": ref, "draft_id": draft["id"], "status": "draft_created", "sent": False})
+        return {"status": "succeeded", "canonical_service": "ai_studio_editable_drafts", "results": drafts, "sent": False, "assistant_summary": f"{len(drafts)} email draft(s) created. No emails were sent."}
     return {"status": "unsupported", "canonical_service": None, "mutated": False, "assistant_summary": "Unsupported action. No records were changed."}
 
 
@@ -780,6 +815,60 @@ async def create_routine(user: dict[str, Any], fields: dict[str, Any]) -> dict[s
     await db.assistant_routines.insert_one(prepare_for_mongo(doc))
     await _audit(user, "assistant.routine_created", "assistant_routine", doc["id"], "Assistant routine created")
     return serialize_doc(doc)
+
+
+async def list_routines(user: dict[str, Any]) -> dict[str, Any]:
+    await _require_assistant_access(user)
+    cursor = db.assistant_routines.find({"tenant_id": user["tenant_id"], "user_id": user["id"], "status": {"$ne": "archived"}}, {"_id": 0}).sort("next_run_at", 1)
+    items = [serialize_doc(d) async for d in cursor]
+    return {"items": items, "total": len(items)}
+
+
+def _quick_action(label: str, prompt: str, *, mode: str, required_permissions: list[str], action_type: Optional[str] = None) -> dict[str, Any]:
+    return {"label": label, "prompt": prompt, "mode": mode, "required_permissions": required_permissions, "action_type": action_type}
+
+
+async def list_quick_actions(user: dict[str, Any], *, mode: Optional[str] = None) -> dict[str, Any]:
+    await _require_assistant_access(user)
+    selected = _mode_key(mode)
+    actions = [
+        _quick_action("Latest invoice", "What is the latest invoice?", mode="finance", required_permissions=[Perm.INVOICE_READ.value]),
+        _quick_action("Overdue invoices", "Show overdue invoices.", mode="finance", required_permissions=[Perm.INVOICE_READ.value]),
+        _quick_action("Money this week", "How much money this week?", mode="finance", required_permissions=[Perm.FINANCE_READ.value]),
+        _quick_action("Quote follow-ups", "Which quotes need follow-up?", mode="operations", required_permissions=[Perm.QUOTE_READ.value]),
+        _quick_action("Production blockers", "What production blockers need attention?", mode="production", required_permissions=[Perm.WORK_ORDER_READ.value]),
+        _quick_action("Workers today", "Who is working today?", mode="workforce", required_permissions=[Perm.SCHEDULE_READ.value]),
+        _quick_action("Draft customer email", "Draft an email to this customer.", mode="operations", required_permissions=[Perm.EMAIL_SEND.value], action_type="email_draft"),
+        _quick_action("Completed wrap post", "Open the Studio social-post tool for a completed wrap.", mode="operations", required_permissions=[Perm.AI_TOOL_USE.value, Perm.WRAP_LAB_READ.value], action_type="studio_delegation"),
+    ]
+    visible = [
+        action for action in actions
+        if (selected == "owner" or action["mode"] == selected or action["mode"] == "finance" and selected == "owner")
+        and all(_has_perm(user, perm) for perm in action["required_permissions"])
+    ]
+    return {"items": visible, "total": len(visible), "mode": selected}
+
+
+async def create_studio_delegation(user: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]:
+    await _require_assistant_access(user)
+    _require_perm(user, Perm.AI_TOOL_USE.value)
+    context = await _validate_context(user, fields.get("context") or {}, conversation_id=fields.get("conversation_id"), mode=_mode_key(fields.get("mode")))
+    tool_key = str(fields.get("tool_key") or "social_post_builder")
+    mode_key = str(fields.get("mode_key") or "completed_work_showcase")
+    query = f"tool={tool_key}&mode={mode_key}"
+    if context:
+        query += f"&context_type={context['source_entity_type']}&context_id={context['source_entity_id']}"
+    route = f"/studio?{query}"
+    await _audit(user, "assistant.studio_delegation_created", "assistant_delegation", tool_key, "Assistant delegated to existing AI Studio tool")
+    return {
+        "delegation_type": "ai_studio",
+        "route": route,
+        "tool_key": tool_key,
+        "mode_key": mode_key,
+        "context_snapshot": context,
+        "created_record": False,
+        "message": "Open the existing AI Studio tool with this validated context. No Studio result was created automatically.",
+    }
 
 
 async def list_insights(user: dict[str, Any], *, generate: bool = False) -> dict[str, Any]:

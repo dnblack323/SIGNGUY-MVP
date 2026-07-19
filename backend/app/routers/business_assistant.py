@@ -66,6 +66,14 @@ class RoutineIn(BaseModel):
     next_run_at: Optional[str] = None
 
 
+class StudioDelegationIn(BaseModel):
+    tool_key: str = "social_post_builder"
+    mode_key: str = "completed_work_showcase"
+    mode: str = "operations"
+    conversation_id: Optional[str] = None
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
 class VoiceSessionIn(BaseModel):
     conversation_id: Optional[str] = None
     mode: str = "owner"
@@ -198,6 +206,30 @@ async def delete_memory(memory_id: str, user: dict = Depends(get_current_user)) 
 async def create_routine(payload: RoutineIn, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.create_routine(user, payload.model_dump(exclude_none=True))
+    except BusinessAssistantError as exc:
+        _raise(exc)
+
+
+@router.get("/routines")
+async def list_routines(user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.list_routines(user)
+    except BusinessAssistantError as exc:
+        _raise(exc)
+
+
+@router.get("/quick-actions")
+async def quick_actions(mode: Optional[str] = Query(None), user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.list_quick_actions(user, mode=mode)
+    except BusinessAssistantError as exc:
+        _raise(exc)
+
+
+@router.post("/delegations/studio", status_code=201)
+async def create_studio_delegation(payload: StudioDelegationIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.create_studio_delegation(user, payload.model_dump(exclude_none=True))
     except BusinessAssistantError as exc:
         _raise(exc)
 
