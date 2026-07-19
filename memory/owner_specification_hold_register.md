@@ -185,4 +185,4 @@ EC18 may implement backend Realtime session credentials, browser WebRTC voice UI
 
 Still deferred: EC19 and later checkpoints, Meta/Facebook activation, Stripe/Checkout/subscription/billing portal/webhook changes, EC4 invoice/payment mutation, Webstore payout mutation, final AI-credit pricing, BYOK/MCP, and non-OpenAI provider decisions.
 
-**Register last updated:** 2026-07-19 - EC18 owner authorization recorded and EC18 preflight completed. H1/H4 are closed for EC18 only. H7 remains active. EC19 and later checkpoints remain held/deferred.
+**Register last updated:** 2026-07-19 - EC18 owner authorization recorded and EC18 implementation completed pending final branch-head CI. H1/H4 are closed for EC18 only. H7 remains active. EC19 and later checkpoints remain held/deferred.

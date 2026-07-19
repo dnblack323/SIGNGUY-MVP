@@ -253,7 +253,7 @@ export default function AssistantPanel({ compact = false }) {
     setVoiceState("interrupted");
   };
 
-  const useQuickAction = async (action) => {
+  const handleQuickAction = async (action) => {
     setDelegation(null);
     if (action.action_type === "studio_delegation") {
       setLoading(true);
@@ -304,7 +304,7 @@ export default function AssistantPanel({ compact = false }) {
             {quickActions.length > 0 && (
               <div className="flex flex-wrap gap-2" data-testid="assistant-quick-actions">
                 {quickActions.slice(0, 8).map((action) => (
-                  <Button key={action.label} size="sm" variant="outline" onClick={() => useQuickAction(action)}>
+                  <Button key={action.label} size="sm" variant="outline" onClick={() => handleQuickAction(action)}>
                     {action.label}
                   </Button>
                 ))}
