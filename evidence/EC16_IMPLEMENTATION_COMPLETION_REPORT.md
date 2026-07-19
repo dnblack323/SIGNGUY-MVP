@@ -1,11 +1,11 @@
 # EC16 Implementation Completion Report
 
-**Status:** IMPLEMENTED - LOCAL VALIDATION PASSED - GITHUB CI PENDING
+**Status:** COMPLETE - CLOSED
 **Date:** 2026-07-19
 **Branch:** `CODEX-ec16-branch`
 **Planning commit:** `dd17be3`
-**Implementation commit:** pending
-**GitHub CI:** pending
+**Implementation commit:** `8d1bb8c5bfd34f1e9d8e7e7e284742d2eab00623`
+**GitHub CI:** `29681866774` - passed
 
 ## Scope Delivered
 

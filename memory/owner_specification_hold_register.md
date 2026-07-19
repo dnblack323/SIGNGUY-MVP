@@ -141,4 +141,4 @@ Still held/deferred:
 - EC16 live commercial/provider activation under H7.
 - EC19 onboarding/help and later checkpoints until separately authorized.
 
-**Register last updated:** 2026-07-19 - Contradictions C1, C2, and C3 remain resolved by explicit owner decision. H1/H2 are closed for EC14 Webstores only. H1/H3 are closed for EC15 only; H6 is satisfied for EC15 shared-core implementation only. H4 is closed for EC16 only and remains active for EC17/EC18. H5/H7/H8 remain active.
+**Register last updated:** 2026-07-19 - Contradictions C1, C2, and C3 remain resolved by explicit owner decision. H1/H2 are closed for EC14 Webstores only. H1/H3 are closed for EC15 only; H6 is satisfied for EC15 shared-core implementation only. H4 is closed for EC16 only after EC16 implementation and CI closure, and remains active for EC17/EC18. H5/H7/H8 remain active.

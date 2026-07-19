@@ -1,6 +1,6 @@
 # EC16 Shared AI Gateway Runtime Contracts
 
-**Status:** IMPLEMENTED - LOCAL VALIDATION PASSED - GITHUB CI PENDING
+**Status:** COMPLETE - CLOSED 2026-07-19
 **Checkpoint:** EC16 Shared AI Gateway, Usage, Cost, Credits, and Governance
 **Primary route:** `/api/ai`
 
@@ -8,7 +8,7 @@
 
 EC16 implements the shared AI infrastructure layer only. It does not implement EC17 Studio AI Tools, EC18 Business Assistant/Voice, EC19 onboarding/help, live provider execution, live provider credential use, Stripe checkout, subscription changes, EC4 payment mutation, EC13 catalog/subscription mutation, EC14 Webstore payout mutation, or EC15 Wrap Lab workflow mutation.
 
-Every gateway request in EC16 is deterministic local contract execution. The platform dashboard reports `external_provider_calls: 0`.
+Every gateway request in EC16 is deterministic local contract execution. The platform dashboard reports `external_provider_calls: 0`. Implementation commit `8d1bb8c5bfd34f1e9d8e7e7e284742d2eab00623` passed GitHub CI run `29681866774`.
 
 ## Canonical Backend Collections
 
