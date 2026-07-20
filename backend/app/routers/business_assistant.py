@@ -66,6 +66,14 @@ class RoutineIn(BaseModel):
     next_run_at: Optional[str] = None
 
 
+class RoutineUpdateIn(BaseModel):
+    name: Optional[str] = None
+    prompt: Optional[str] = None
+    mode: Optional[str] = None
+    schedule: Optional[dict[str, Any]] = None
+    next_run_at: Optional[str] = None
+
+
 class StudioDelegationIn(BaseModel):
     tool_key: str = "social_post_builder"
     mode_key: str = "completed_work_showcase"
@@ -214,6 +222,39 @@ async def create_routine(payload: RoutineIn, user: dict = Depends(get_current_us
 async def list_routines(user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.list_routines(user)
+    except BusinessAssistantError as exc:
+        _raise(exc)
+
+
+@router.patch("/routines/{routine_id}")
+async def update_routine(routine_id: str, payload: RoutineUpdateIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.update_routine(user, routine_id, payload.model_dump(exclude_unset=True))
+    except BusinessAssistantError as exc:
+        _raise(exc)
+
+
+@router.post("/routines/{routine_id}/enable")
+async def enable_routine(routine_id: str, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.set_routine_status(user, routine_id, "active")
+    except BusinessAssistantError as exc:
+        _raise(exc)
+
+
+@router.post("/routines/{routine_id}/disable")
+async def disable_routine(routine_id: str, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.set_routine_status(user, routine_id, "paused")
+    except BusinessAssistantError as exc:
+        _raise(exc)
+
+
+@router.delete("/routines/{routine_id}")
+async def delete_routine(routine_id: str, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        archived = await svc.set_routine_status(user, routine_id, "archived")
+        return {"deleted": True, "id": archived["id"], "status": archived["status"]}
     except BusinessAssistantError as exc:
         _raise(exc)
 

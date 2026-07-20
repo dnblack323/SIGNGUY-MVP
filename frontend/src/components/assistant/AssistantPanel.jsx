@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Bot, Check, ExternalLink, Mic, MicOff, Pause, Send, Square, Volume2, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -13,13 +13,26 @@ import { extractError } from "@/lib/api";
 import {
   cancelAssistantProposal,
   confirmAssistantProposal,
+  createAssistantRoutine,
   createStudioDelegation,
   createVoiceSession,
+  deleteAssistantMemory,
+  deleteAssistantRoutine,
+  disableAssistantRoutine,
+  dismissAssistantInsight,
+  enableAssistantRoutine,
   executeAssistantProposal,
   getAssistantCatalog,
   getVoiceConfig,
+  listAssistantInsights,
+  listAssistantMemory,
   listAssistantQuickActions,
+  listAssistantRoutines,
+  proposeAssistantAction,
+  recordVoiceUsage,
+  saveAssistantMemory,
   sendAssistantMessage,
+  updateAssistantRoutine,
 } from "@/lib/businessAssistant";
 
 const VOICE_STATES = {
@@ -31,6 +44,7 @@ const VOICE_STATES = {
   interrupted: "Interrupted",
   reconnecting: "Reconnecting",
   unavailable: "Unavailable",
+  microphone_denied: "Microphone denied",
   error: "Error",
 };
 
@@ -121,13 +135,20 @@ export default function AssistantPanel({ compact = false }) {
   const [proposals, setProposals] = useState([]);
   const [quickActions, setQuickActions] = useState([]);
   const [delegation, setDelegation] = useState(null);
+  const [memoryItems, setMemoryItems] = useState([]);
+  const [memoryDraft, setMemoryDraft] = useState("");
+  const [routines, setRoutines] = useState([]);
+  const [routineDraft, setRoutineDraft] = useState("");
+  const [insights, setInsights] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [voiceState, setVoiceState] = useState("idle");
   const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceSessionId, setVoiceSessionId] = useState(null);
   const [pushToTalk, setPushToTalk] = useState(true);
   const [vadEnabled, setVadEnabled] = useState(false);
-  const rtcRef = useRef({ pc: null, stream: null, dc: null });
+  const [reconnectCount, setReconnectCount] = useState(0);
+  const rtcRef = useRef({ pc: null, stream: null, dc: null, reconnecting: false, voiceSessionId: null });
 
   const context = useMemo(() => {
     const contextType = searchParams.get("context_type");
@@ -157,6 +178,21 @@ export default function AssistantPanel({ compact = false }) {
     return () => { active = false; };
   }, [mode]);
 
+  const refreshAssistantSideData = useCallback(async () => {
+    const [mem, routineList, insightList] = await Promise.all([
+      listAssistantMemory().catch(() => []),
+      listAssistantRoutines().catch(() => []),
+      listAssistantInsights({ generate: true }).catch(() => []),
+    ]);
+    setMemoryItems(mem);
+    setRoutines(routineList);
+    setInsights(insightList);
+  }, []);
+
+  useEffect(() => {
+    refreshAssistantSideData();
+  }, [refreshAssistantSideData]);
+
   const submit = async () => {
     if (!message.trim()) return;
     setLoading(true);
@@ -180,6 +216,95 @@ export default function AssistantPanel({ compact = false }) {
     }
   };
 
+  const appendVoiceTranscript = (speaker, text) => {
+    if (!text) return;
+    setVoiceTranscript((prev) => `${prev ? `${prev}\n` : ""}${speaker}: ${text}`.trim());
+  };
+
+  const setAudioTracksEnabled = (enabled) => {
+    rtcRef.current.stream?.getAudioTracks?.().forEach((track) => {
+      track.enabled = enabled;
+    });
+  };
+
+  const sendRealtimeEvent = (event) => {
+    const dc = rtcRef.current.dc;
+    if (dc?.readyState === "open") {
+      dc.send(JSON.stringify(event));
+    }
+  };
+
+  const updateRealtimeTurnDetection = (useVad) => {
+    sendRealtimeEvent({
+      type: "session.update",
+      session: {
+        turn_detection: useVad ? { type: voiceConfig?.turn_detection || "server_vad" } : null,
+      },
+    });
+  };
+
+  const proposeActionFromRealtime = async (args, callId) => {
+    const payload = {
+      action_type: args.action_type || "internal_task",
+      title: args.title || "Assistant proposed action",
+      summary: args.summary || "Review before anything changes.",
+      body: args.body,
+      route: args.route,
+      target_refs: args.target_refs || [],
+      mode,
+      conversation_id: conversationId || undefined,
+      idempotency_key: `voice-tool-${voiceSessionId || "pending"}-${callId || Date.now()}`,
+      metering_idempotency_key: `voice-tool-meter-${voiceSessionId || "pending"}-${callId || Date.now()}`,
+    };
+    const proposal = await proposeAssistantAction(payload);
+    setProposals((prev) => [proposal, ...prev.filter((item) => item.id !== proposal.id)]);
+    sendRealtimeEvent({
+      type: "conversation.item.create",
+      item: {
+        type: "function_call_output",
+        call_id: callId,
+        output: JSON.stringify({ proposal_id: proposal.id, status: proposal.status, message: "Proposal created and visible to the user. Explicit confirmation is required before execution." }),
+      },
+    });
+    sendRealtimeEvent({ type: "response.create" });
+  };
+
+  const handleRealtimeEvent = async (data) => {
+    if (data.type === "conversation.item.input_audio_transcription.completed") {
+      appendVoiceTranscript("You", data.transcript);
+      setVoiceState("thinking");
+    }
+    if (data.type === "response.audio_transcript.delta") {
+      appendVoiceTranscript("Assistant", data.delta);
+      setVoiceState("speaking");
+    }
+    if (data.type === "response.audio_transcript.done") {
+      appendVoiceTranscript("Assistant", data.transcript);
+    }
+    if (data.type === "response.audio.delta") setVoiceState("speaking");
+    if (data.type === "input_audio_buffer.speech_started") setVoiceState("listening");
+    if (data.type === "response.done") {
+      setVoiceState(pushToTalk ? "idle" : "listening");
+      const usage = data.response?.usage;
+      const activeVoiceSessionId = voiceSessionId || rtcRef.current.voiceSessionId;
+      if (activeVoiceSessionId && data.response?.id) {
+        recordVoiceUsage(activeVoiceSessionId, {
+          provider_event_id: data.response.id,
+          input_audio_seconds: Math.max(0, Math.round((usage?.input_token_details?.audio_tokens || 0) / 50)),
+          output_audio_seconds: Math.max(0, Math.round((usage?.output_token_details?.audio_tokens || 0) / 50)),
+        }).catch(() => {});
+      }
+    }
+    const functionCall = data.item?.type === "function_call" ? data.item : data.response?.output?.find?.((item) => item.type === "function_call");
+    if (functionCall?.name === "propose_assistant_action" && functionCall.arguments) {
+      try {
+        await proposeActionFromRealtime(JSON.parse(functionCall.arguments), functionCall.call_id);
+      } catch (err) {
+        setError(extractError(err, "Unable to create assistant proposal from voice"));
+      }
+    }
+  };
+
   const connectVoice = async () => {
     setError("");
     setVoiceState("connecting");
@@ -190,6 +315,8 @@ export default function AssistantPanel({ compact = false }) {
         setVoiceTranscript(result.message || "OpenAI Voice is not configured");
         return;
       }
+      const nextVoiceSessionId = result.voice_session?.id || null;
+      setVoiceSessionId(nextVoiceSessionId);
       const clientSecret = result.realtime?.value || result.realtime?.client_secret?.value || result.realtime?.client_secret;
       if (!clientSecret) {
         setVoiceState("error");
@@ -201,24 +328,49 @@ export default function AssistantPanel({ compact = false }) {
         setVoiceTranscript("Voice requires browser microphone and WebRTC support.");
         return;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (err) {
+        if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError") {
+          setVoiceState("microphone_denied");
+          setVoiceTranscript("Microphone permission was denied. Text assistant remains available.");
+          return;
+        }
+        throw err;
+      }
       const pc = new RTCPeerConnection();
       const dc = pc.createDataChannel("oai-events");
       stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
+      if (pushToTalk) {
+        stream.getAudioTracks().forEach((track) => {
+          track.enabled = false;
+        });
+      }
       pc.ontrack = (event) => {
         const audio = new Audio();
         audio.autoplay = true;
         audio.srcObject = event.streams[0];
       };
-      dc.onmessage = (event) => {
+      dc.onopen = () => {
+        updateRealtimeTurnDetection(vadEnabled);
+        setVoiceState(pushToTalk ? "idle" : "listening");
+      };
+      dc.onmessage = async (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.type?.includes("transcript")) setVoiceTranscript((prev) => `${prev}\n${data.transcript || data.delta || ""}`.trim());
-          if (data.type === "response.audio.delta") setVoiceState("speaking");
-          if (data.type === "input_audio_buffer.speech_started") setVoiceState("listening");
-          if (data.type === "response.done") setVoiceState("listening");
+          await handleRealtimeEvent(data);
         } catch {
-          setVoiceTranscript((prev) => `${prev}\n${event.data}`.trim());
+          appendVoiceTranscript("Event", event.data);
+        }
+      };
+      pc.onconnectionstatechange = () => {
+        if (["failed", "disconnected"].includes(pc.connectionState)) {
+          setVoiceState("reconnecting");
+          setReconnectCount((count) => count + 1);
+        }
+        if (pc.connectionState === "connected") {
+          setVoiceState(pushToTalk ? "idle" : "listening");
         }
       };
       const offer = await pc.createOffer();
@@ -230,8 +382,8 @@ export default function AssistantPanel({ compact = false }) {
       });
       if (!sdp.ok) throw new Error("Realtime WebRTC answer failed");
       await pc.setRemoteDescription({ type: "answer", sdp: await sdp.text() });
-      rtcRef.current = { pc, stream, dc };
-      setVoiceState("listening");
+      rtcRef.current = { pc, stream, dc, reconnecting: false, voiceSessionId: nextVoiceSessionId };
+      setVoiceState(pushToTalk ? "idle" : "listening");
     } catch (err) {
       setVoiceState("error");
       setError(err.message || "Unable to connect voice");
@@ -242,7 +394,7 @@ export default function AssistantPanel({ compact = false }) {
     rtcRef.current.dc?.close?.();
     rtcRef.current.pc?.close?.();
     rtcRef.current.stream?.getTracks?.().forEach((track) => track.stop());
-    rtcRef.current = { pc: null, stream: null, dc: null };
+    rtcRef.current = { pc: null, stream: null, dc: null, reconnecting: false, voiceSessionId: null };
     setVoiceState("idle");
   };
 
@@ -251,6 +403,52 @@ export default function AssistantPanel({ compact = false }) {
       rtcRef.current.dc?.send?.(JSON.stringify({ type: "response.cancel" }));
     } catch { /* best effort */ }
     setVoiceState("interrupted");
+  };
+
+  const startPushToTalk = () => {
+    if (!pushToTalk) return;
+    setAudioTracksEnabled(true);
+    setVoiceState("listening");
+  };
+
+  const stopPushToTalk = () => {
+    if (!pushToTalk) return;
+    setAudioTracksEnabled(false);
+    sendRealtimeEvent({ type: "input_audio_buffer.commit" });
+    sendRealtimeEvent({ type: "response.create" });
+    setVoiceState("thinking");
+  };
+
+  const saveMemory = async () => {
+    if (!memoryDraft.trim()) return;
+    try {
+      await saveAssistantMemory({ memory_key: `note-${Date.now()}`, content_text: memoryDraft });
+      setMemoryDraft("");
+      await refreshAssistantSideData();
+    } catch (err) {
+      setError(extractError(err, "Unable to save memory"));
+    }
+  };
+
+  const createRoutine = async () => {
+    if (!routineDraft.trim()) return;
+    try {
+      await createAssistantRoutine({ name: routineDraft, prompt: routineDraft, mode });
+      setRoutineDraft("");
+      await refreshAssistantSideData();
+    } catch (err) {
+      setError(extractError(err, "Unable to create routine"));
+    }
+  };
+
+  const toggleRoutine = async (routine) => {
+    try {
+      if (routine.status === "active") await disableAssistantRoutine(routine.id);
+      else await enableAssistantRoutine(routine.id);
+      await refreshAssistantSideData();
+    } catch (err) {
+      setError(extractError(err, "Unable to update routine"));
+    }
   };
 
   const handleQuickAction = async (action) => {
@@ -267,6 +465,29 @@ export default function AssistantPanel({ compact = false }) {
         }));
       } catch (err) {
         setError(extractError(err, "Unable to open Studio delegation"));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+    if (action.action_type) {
+      setLoading(true);
+      setError("");
+      try {
+        const proposal = await proposeAssistantAction({
+          action_type: action.action_type,
+          title: action.label,
+          summary: action.prompt,
+          body: message,
+          mode: action.mode || mode,
+          conversation_id: conversationId || undefined,
+          target_refs: context.source_entity_type ? [{ type: context.source_entity_type, id: context.source_entity_id }] : [],
+          idempotency_key: `quick-action-${action.action_type}-${Date.now()}`,
+          metering_idempotency_key: `quick-action-meter-${action.action_type}-${Date.now()}`,
+        });
+        setProposals((prev) => [proposal, ...prev]);
+      } catch (err) {
+        setError(extractError(err, "Unable to create assistant proposal"));
       } finally {
         setLoading(false);
       }
@@ -346,12 +567,27 @@ export default function AssistantPanel({ compact = false }) {
           <CardHeader><CardTitle className="flex items-center justify-between text-base"><span className="flex items-center gap-2"><Mic className="size-5" />Voice</span><Badge>{VOICE_STATES[voiceState]}</Badge></CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <Button variant={pushToTalk ? "default" : "outline"} onClick={() => { setPushToTalk(true); setVadEnabled(false); }}><Mic className="mr-2 size-4" />Push</Button>
-              <Button variant={vadEnabled ? "default" : "outline"} onClick={() => { setVadEnabled(true); setPushToTalk(false); }}><Volume2 className="mr-2 size-4" />VAD</Button>
+              <Button variant={pushToTalk ? "default" : "outline"} onClick={() => { setPushToTalk(true); setVadEnabled(false); setAudioTracksEnabled(false); updateRealtimeTurnDetection(false); }}><Mic className="mr-2 size-4" />Push</Button>
+              <Button variant={vadEnabled ? "default" : "outline"} onClick={() => { setVadEnabled(true); setPushToTalk(false); setAudioTracksEnabled(true); updateRealtimeTurnDetection(true); }}><Volume2 className="mr-2 size-4" />VAD</Button>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={connectVoice} disabled={voiceState === "connecting" || voiceState === "listening"} data-testid="assistant-voice-connect"><Mic className="mr-2 size-4" />Start</Button>
+              {pushToTalk && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onPointerDown={startPushToTalk}
+                  onPointerUp={stopPushToTalk}
+                  onPointerLeave={stopPushToTalk}
+                  onKeyDown={(event) => { if (event.key === " " || event.key === "Enter") startPushToTalk(); }}
+                  onKeyUp={(event) => { if (event.key === " " || event.key === "Enter") stopPushToTalk(); }}
+                  data-testid="assistant-push-to-talk"
+                >
+                  <Mic className="mr-2 size-4" />Hold
+                </Button>
+              )}
               <Button size="sm" variant="outline" onClick={interruptVoice} disabled={!["listening", "speaking", "thinking"].includes(voiceState)}><Pause className="mr-2 size-4" />Interrupt</Button>
+              {voiceState === "reconnecting" && <Button size="sm" variant="outline" onClick={connectVoice}>Retry {reconnectCount ? `(${reconnectCount})` : ""}</Button>}
               <Button size="sm" variant="outline" onClick={disconnectVoice}><Square className="mr-2 size-4" />End</Button>
             </div>
             {!voiceConfig?.configured && (
@@ -362,6 +598,62 @@ export default function AssistantPanel({ compact = false }) {
               </Alert>
             )}
             <Textarea readOnly rows={6} value={voiceTranscript} placeholder="Voice transcript" data-testid="assistant-voice-transcript" />
+            <Button size="sm" variant="link" onClick={() => setVoiceState("idle")} data-testid="assistant-text-fallback">Use text instead</Button>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="assistant-memory">
+          <CardHeader><CardTitle className="text-base">Memory</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex gap-2">
+              <Input value={memoryDraft} onChange={(event) => setMemoryDraft(event.target.value)} placeholder="Retain a preference" data-testid="assistant-memory-input" />
+              <Button size="sm" onClick={saveMemory}>Save</Button>
+            </div>
+            <div className="space-y-2">
+              {memoryItems.length === 0 ? <div className="text-sm text-muted-foreground">No retained memory.</div> : memoryItems.map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-2 rounded border p-2 text-sm">
+                  <span>{item.content_text}</span>
+                  <Button size="sm" variant="ghost" onClick={async () => { await deleteAssistantMemory(item.id); await refreshAssistantSideData(); }}><X className="size-4" /></Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="assistant-routines">
+          <CardHeader><CardTitle className="text-base">Routines</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex gap-2">
+              <Input value={routineDraft} onChange={(event) => setRoutineDraft(event.target.value)} placeholder="Routine prompt" data-testid="assistant-routine-input" />
+              <Button size="sm" onClick={createRoutine}>Add</Button>
+            </div>
+            {routines.length === 0 ? <div className="text-sm text-muted-foreground">No routines.</div> : routines.map((routine) => (
+              <div key={routine.id} className="space-y-2 rounded border p-2 text-sm">
+                <Input
+                  value={routine.name}
+                  onChange={(event) => setRoutines((prev) => prev.map((item) => item.id === routine.id ? { ...item, name: event.target.value } : item))}
+                  onBlur={async (event) => { await updateAssistantRoutine(routine.id, { name: event.target.value }); await refreshAssistantSideData(); }}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline">{routine.status}</Badge>
+                  <Button size="sm" variant="outline" onClick={() => toggleRoutine(routine)}>{routine.status === "active" ? "Disable" : "Enable"}</Button>
+                  <Button size="sm" variant="ghost" onClick={async () => { await deleteAssistantRoutine(routine.id); await refreshAssistantSideData(); }}>Delete</Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="assistant-insights">
+          <CardHeader><CardTitle className="text-base">Insights</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {insights.length === 0 ? <div className="text-sm text-muted-foreground">No current insights.</div> : insights.map((insight) => (
+              <div key={insight.id} className="rounded border p-2 text-sm">
+                <div className="font-medium">{insight.title}</div>
+                <div className="text-muted-foreground">{insight.summary}</div>
+                <Button size="sm" variant="ghost" onClick={async () => { await dismissAssistantInsight(insight.id); await refreshAssistantSideData(); }}>Dismiss</Button>
+              </div>
+            ))}
           </CardContent>
         </Card>
       </aside>

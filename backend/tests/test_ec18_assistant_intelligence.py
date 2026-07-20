@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
@@ -85,6 +86,16 @@ async def test_routines_quick_actions_insights_and_studio_delegation_are_non_mut
         assert routine.json()["generated_proposal_only"] is True
         routines = await client.get("/api/assistant/routines")
         assert routines.json()["total"] == 1
+        routine_id = routine.json()["id"]
+        updated = await client.patch(f"/api/assistant/routines/{routine_id}", json={"name": "Morning finance check"})
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["name"] == "Morning finance check"
+        disabled = await client.post(f"/api/assistant/routines/{routine_id}/disable")
+        assert disabled.status_code == 200, disabled.text
+        assert disabled.json()["status"] == "paused"
+        enabled = await client.post(f"/api/assistant/routines/{routine_id}/enable")
+        assert enabled.status_code == 200, enabled.text
+        assert enabled.json()["status"] == "active"
 
         quick = await client.get("/api/assistant/quick-actions", params={"mode": "owner"})
         assert quick.status_code == 200
@@ -102,6 +113,10 @@ async def test_routines_quick_actions_insights_and_studio_delegation_are_non_mut
         assert delegation.status_code == 201, delegation.text
         assert delegation.json()["route"].startswith("/studio?tool=social_post_builder")
         assert delegation.json()["created_record"] is False
+
+        deleted = await client.delete(f"/api/assistant/routines/{routine_id}")
+        assert deleted.status_code == 200
+        assert deleted.json()["deleted"] is True
 
     assert await db.ai_generated_assets.count_documents({"tenant_id": ctx["tenant_id"]}) == before_assets
 
@@ -135,3 +150,61 @@ async def test_quote_followup_bi_and_bulk_email_draft_do_not_send(ctx):
     assert executed.json()["canonical_result"]["sent"] is False
     assert executed.json()["canonical_result"]["results"][0]["status"] == "draft_created"
     assert await db.email_logs.count_documents({"tenant_id": ctx["tenant_id"]}) == 0
+
+
+@pytest.mark.asyncio
+async def test_shop_specific_questions_are_source_cited_and_do_not_invent_numbers(ctx):
+    today = datetime.now(timezone.utc).date().isoformat()
+    await db.tasks.insert_one({
+        "id": f"task-{ctx['suffix']}",
+        "tenant_id": ctx["tenant_id"],
+        "title": "Install prep",
+        "status": "not_started",
+        "priority": "normal",
+        "task_type": "production",
+        "due_at": f"{today}T15:00:00+00:00",
+        "archived_at": None,
+        "created_by_user_id": ctx["owner"]["id"],
+        "customer_id": ctx["customer_id"],
+    })
+    await db.tasks.insert_one({
+        "id": f"late-task-{ctx['suffix']}",
+        "tenant_id": ctx["tenant_id"],
+        "title": "Late proof",
+        "status": "blocked",
+        "priority": "high",
+        "task_type": "production",
+        "due_at": "2026-01-01T15:00:00+00:00",
+        "archived_at": None,
+        "created_by_user_id": ctx["owner"]["id"],
+    })
+    await db.wrap_schedules.insert_one({
+        "id": f"wrap-schedule-{ctx['suffix']}",
+        "tenant_id": ctx["tenant_id"],
+        "project_id": ctx["wrap_id"],
+        "schedule_type": "vehicle_dropoff",
+        "status": "scheduled",
+        "start_at": "2026-07-20T09:00:00+00:00",
+        "updated_at": "2026-07-19T12:00:00+00:00",
+    })
+
+    async with await _client_as(ctx["owner"]) as client:
+        prompts = [
+            ("What am I doing today?", "task"),
+            ("What time is the vehicle arriving?", "wrap_schedule"),
+            ("Which jobs are behind schedule?", "task"),
+            ("What is blocking production?", "work_order"),
+            ("Where might we be losing money?", "pricing_snapshot"),
+            ("How could apparel margin improve?", "pricing_snapshot"),
+        ]
+        for prompt, expected_source in prompts:
+            response = await client.post("/api/assistant/messages", json={"message": prompt, "idempotency_key": f"{ctx['suffix']}-{prompt}"})
+            assert response.status_code == 201, response.text
+            body = response.json()
+            assert body["sources"], prompt
+            assert body["sources"][0]["source_type"] == expected_source
+            assert body["sources"][0].get("calculation") is not None
+
+    margin = body
+    assert "Included revenue" in margin["answer"]
+    assert "Missing/excluded cost categories" in margin["answer"]

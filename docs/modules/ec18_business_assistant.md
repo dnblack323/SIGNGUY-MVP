@@ -37,6 +37,10 @@ Routes:
 - `DELETE /api/assistant/memory/{memory_id}`
 - `GET /api/assistant/routines`
 - `POST /api/assistant/routines`
+- `PATCH /api/assistant/routines/{routine_id}`
+- `POST /api/assistant/routines/{routine_id}/enable`
+- `POST /api/assistant/routines/{routine_id}/disable`
+- `DELETE /api/assistant/routines/{routine_id}`
 - `GET /api/assistant/quick-actions`
 - `POST /api/assistant/delegations/studio`
 - `GET /api/assistant/insights`
@@ -89,11 +93,14 @@ Execution rules:
 - Email actions create editable drafts only and never send automatically.
 - Document actions create editable drafts only and never export, print, or email automatically.
 - Bulk email actions create per-target editable drafts and report per-target results; they never send.
+- Internal task and internal note actions execute only through canonical local services after explicit confirmation.
+- Report actions create editable drafts only.
+- Studio delegation actions prepare an EC17 Studio route only; they do not generate an asset automatically.
 - Unsupported actions return an audited unsupported proposal and do not mutate records.
 
 ## Evidence and BI
 
-Assistant answers are deterministic local BI summaries backed by tenant data. They include source citations for supported questions such as latest invoice, overdue invoices, money this week, quote follow-ups, production blockers, workers today, and incomplete margin/profit questions.
+Assistant answers are deterministic local BI summaries backed by tenant data. They include source citations for supported questions such as today's tasks, workers today, vehicle arrival schedules, late or behind-schedule work, latest invoice, overdue invoices, money this week, quote follow-ups, production blockers, and incomplete margin/profit questions.
 
 Profit and margin answers explicitly disclose missing cost categories and mark incomplete results as estimates. The assistant does not invent revenue, cost, margin, profit, schedule, staffing, inventory, or production data.
 
@@ -105,6 +112,7 @@ OpenAI Realtime voice follows the backend-issued short-lived credential model:
 - The browser receives only the short-lived Realtime credential response.
 - Backend credential creation sends a privacy-preserving `OpenAI-Safety-Identifier`.
 - The browser uses WebRTC for speech-to-speech Realtime sessions.
+- Browser tool calls create backend action proposals and still require explicit confirmation before execution.
 - If no OpenAI key is configured or `OPENAI_REALTIME_ENABLED=false`, voice returns `OpenAI Voice is not configured` and no fake session is created.
 - Raw voice audio is not stored by default.
 - Voice usage is metered only from explicit provider usage events; EC18 does not invent usage or cost.
@@ -150,10 +158,12 @@ UI capabilities:
 - source/citation display;
 - quick actions;
 - action proposal cards;
-- voice states: idle, connecting, listening, thinking, speaking, interrupted, reconnecting, unavailable, error;
+- voice states: idle, connecting, listening, thinking, speaking, interrupted, reconnecting, unavailable, microphone denied, error;
 - push-to-talk default with optional VAD toggle;
 - interrupt and end controls;
 - transcript area;
+- text fallback control;
+- memory, routines, and insights controls;
 - unavailable/configuration warning;
 - Studio delegation links.
 
@@ -170,4 +180,4 @@ Targeted tests:
 - `backend/tests/test_ec18_assistant_intelligence.py`
 - `frontend/src/__tests__/BusinessAssistantPage.test.jsx`
 
-Regression coverage includes entitlement and permission enforcement, portal rejection, tenant isolation, source-linked BI, no invoice/payment mutation, proposal confirmation/execution lifecycle, draft-only email behavior, OpenAI key non-exposure, mocked Realtime credential issuance, memory controls, routines, insights, quick actions, Studio delegation, safe bulk drafts, and voice unavailable behavior.
+Regression coverage includes entitlement and permission enforcement, portal rejection, tenant isolation, source-linked BI, no invoice/payment mutation, proposal confirmation/execution lifecycle, safe canonical task/note execution, draft-only email/report behavior, OpenAI key non-exposure, mocked Realtime credential issuance, voice push-to-talk/transcript/usage metering, memory controls, routine lifecycle, insights, quick actions, Studio delegation, safe bulk drafts, and voice unavailable behavior.
