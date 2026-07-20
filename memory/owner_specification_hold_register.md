@@ -8,7 +8,7 @@
 
 | # | Hold | Scope | Condition to lift | Status |
 |---|---|---|---|---|
-| H1 | **No checkpoint starts automatically after this documentation update.** | All of EC9–EC22 | Explicit owner "go" message naming the checkpoint to start. | ACTIVE GLOBALLY - CLOSED FOR EC18 ONLY by 2026-07-19 owner authorization on `CODEX-ec18-branch`; EC19 and later still require separate owner authorization |
+| H1 | **No checkpoint starts automatically after this documentation update.** | All of EC9–EC22 plus UX1 | Explicit owner "go" message naming the checkpoint to start. | ACTIVE GLOBALLY - CLOSED FOR EC19 FOUNDATION ONLY by 2026-07-20 owner authorization on `CODEX-ec19-branch`; Advanced Onboarding is authorized but pending UX1; UX1, EC20, EC21, and EC22 still require locked-order handling and separate branch authorization |
 | H2 | **EC14 Webstores requires separate owner authorization.** | EC14 | Owner explicitly authorizes EC14 start (separate from generic "start EC9" authorization). | CLOSED FOR EC14 - 2026-07-19 owner prompt authorized EC14 on `CODEX-EC14-BRANCH`; EC14 completed with CI `29677455165`; does not lift H3-H8 |
 | H3 | **EC15 Wrap Lab requires separate owner authorization.** | EC15 | Owner explicitly authorizes EC15 start. | CLOSED FOR EC15 - 2026-07-19 owner prompt authorized EC15 on `CODEX-ec15-branch`; does not lift H4-H8 or later checkpoint holds |
 | H4 | **EC16-EC18 AI work requires separate authorization.** | EC16 (Shared AI Gateway), EC17 (Studio AI Tools), EC18 (Paid Business Assistant/Voice) | Owner explicitly authorizes AI-checkpoint work to begin. | CLOSED FOR EC16, EC17, AND EC18 ONLY - 2026-07-19 owner prompts authorized EC16, EC17, and EC18. EC18 authorization applies only to `CODEX-ec18-branch` and does not lift H7 or later checkpoint holds |
@@ -185,4 +185,36 @@ EC18 may implement backend Realtime session credentials, browser WebRTC voice UI
 
 Still deferred: EC19 and later checkpoints, Meta/Facebook activation, Stripe/Checkout/subscription/billing portal/webhook changes, EC4 invoice/payment mutation, Webstore payout mutation, final AI-credit pricing, BYOK/MCP, and non-OpenAI provider decisions.
 
-**Register last updated:** 2026-07-19 - EC18 owner authorization recorded and EC18 implementation closed after implementation GitHub CI `29707725853` passed. H1/H4 are closed for EC18 only. H7 remains active. EC19 and later checkpoints remain held/deferred.
+## EC19 Foundation and Owner Sequence Correction - 2026-07-20
+
+The owner authorized EC19 foundation implementation on `CODEX-ec19-branch`. The foundation is complete and CI-verified at implementation commit `5379faf16378e1127c1fbd7806551c1c7576a5e1` with GitHub CI `29777119442` passing. Completed foundation scope includes versioned onboarding programs, tenant onboarding instances, onboarding task lifecycle, progress tracking, step responses, import records, template exercises, Help Center articles, contextual help definitions, help feedback, support escalation, setup-package handoff boundary, tenant isolation, permissions, existing frontend onboarding and Help Center, tests, and CI.
+
+The owner later authorized Advanced Onboarding but required it to wait until UX1 because navigation, ribbons, dashboard layout, visual theme, walkthrough anchors, responsive layout, and screenshots will change.
+
+Authorized but pending after UX1:
+
+- Quick Setup versus Advanced Guided Setup separation and Advanced Guided Setup.
+- Reusable interactive walkthrough engine.
+- Dynamic Questionnaire/Form Builder.
+- Secure customer-facing form responses, sections/progress, conditional questions, file uploads, signatures where appropriate, form versioning, and response snapshots.
+- Webstore-type questionnaire templates and Webstore creation walkthrough.
+- Expanded custom training-quiz authoring plus questionnaire and training-quiz creation walkthroughs.
+- Reports walkthrough, saved custom-report audit, Supply Center walkthrough, Customer Decision Room walkthrough, Document Library walkthrough, AI Studio and saving-results walkthrough, Business Assistant walkthrough, Wrap Lab walkthrough, and other major feature guides.
+- What's New and Feature Spotlight education.
+- Final screenshots and visual walkthrough documentation.
+
+Required locked build order:
+
+1. Correct and merge the completed EC19 foundation.
+2. Create `CODEX-ux1-branch` from updated `main`.
+3. Complete and merge UX1.
+4. Create `CODEX-ec19-advanced-onboarding` from updated `main`.
+5. Implement the complete Advanced Onboarding continuation.
+6. Fully audit and close EC19.
+7. Begin EC20 only after final EC19 closure.
+8. Begin EC21 only after EC20 and after the authenticated application's visual design is stable.
+9. EC22 remains later.
+
+UX1 is a required separately authorized checkpoint named: Dashboard Personalization, Microsoft-Style Ribbons, Sidebar Refinement, and Visual Theme System. UX1 contains UX1A Visual System and Color, UX1B Microsoft-Style Ribbon and Sidebar, and UX1C Dashboard Customizer.
+
+**Register last updated:** 2026-07-20 - EC19 foundation is complete and CI-verified; Advanced Onboarding is authorized but pending UX1; UX1, EC20, EC21, and EC22 are not started. H7 remains active.

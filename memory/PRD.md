@@ -232,7 +232,7 @@ EC9 closure is **not blocked** by this register — every entry is warned, edita
 - EC9 Phase 9H — Review, testing, and closure — **COMPLETE (2026-07). EC9 fully CLOSED.**
 - EC10 Order Intake, Visual Markup, Customer Decision Room, Templates.
 - EC11 Production Timeline, Workflow Configuration, Stage Tracking, Kiosk.
-- EC12 is COMPLETE / CLOSED (Phases 12A-12I complete); EC13 and EC19 remain not started.
+- EC12 is COMPLETE / CLOSED (Phases 12A-12I complete). EC13 is COMPLETE / CLOSED. EC19 foundation is COMPLETE and CI-verified; Advanced Onboarding is authorized but pending UX1.
 - EC13 Commercial Billing, Entitlements, Fees, Trials, Setup Packages (contradictions C1/C2 RESOLVED 2026-02 by owner decision — see hold register).
 
 ### P2 — Add-ons and AI (held on H2/H3/H4/H5/H8 — see `/app/memory/owner_specification_hold_register.md`)
@@ -241,7 +241,7 @@ EC9 closure is **not blocked** by this register — every entry is warned, edita
 - **EC16 Shared AI Gateway, Usage, Cost, Credits, Governance** — requires separate authorization (H4).
 - **EC17 Studio AI Tools, Prompt Library, Generated Assets, AI Activity** — requires separate authorization (H4) AND is blocked until the owner completes the AI Tools Keep/Combine/Change/Rename/Defer/Remove review (H5/H8). Pricing-model question (C3) is RESOLVED — no separate AI subscription tiers (see hold register); this does not lift H5/H8.
 - **EC18 Paid Business Assistant, Actions, Intelligence, Realtime Voice** — requires separate authorization (H4).
-- **EC19 Onboarding, Help Center, Contextual Help, App Documentation.**
+- **EC19 Onboarding, Help Center, Contextual Help, App Documentation** - foundation complete; Advanced Onboarding pending UX1.
 - **EC20 Platform Admin, Analytics, Dunning, Support.**
 - **EC21 Marketing Website, Public Pricing, Founder Offer, Signup.**
 

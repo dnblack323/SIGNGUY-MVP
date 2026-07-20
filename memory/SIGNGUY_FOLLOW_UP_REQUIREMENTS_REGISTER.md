@@ -21,7 +21,7 @@ This register tracks owner requirements discussed while preparing EC17 that are 
 | Tenant company logo, colors, header, footer, contact information, and branding | Partially in EC17 | Verify canonical tenant-branding integration. |
 | AI-created document can be saved as a reusable template | EC17 implementation requirement | Verify after EC17. |
 | Reusing a saved template without AI generation does not consume AI credits | Verified for EC19 onboarding template exercise | EC19 template exercise reuses canonical template validation/rendering and targeted tests verify no `ai_usage_events` are created. |
-| Onboarding step where the user customizes or creates a sample template using placeholders | Closed in EC19 | EC19 adds the onboarding placeholder/template exercise and targeted backend/frontend tests. |
+| Onboarding step where the user customizes or creates a sample template using placeholders | Closed in EC19 foundation | EC19 adds the onboarding placeholder/template exercise and targeted backend/frontend tests. Advanced guided walkthroughs remain pending UX1. |
 | Contextual Document Creator shortcuts from Customer, Quote, Order, Invoice, Webstore, and Wrap Lab | Partially in EC17 | Verify after EC17 and complete module-specific gaps later. |
 | Context is preselected from the open record but remains visible/changeable | EC17 implementation requirement | Verify after EC17. |
 | AI email button inside the normal email composer | EC17 implementation requirement where architecture permits | Verify after EC17. |
@@ -42,16 +42,36 @@ This register tracks owner requirements discussed while preparing EC17 that are 
 
 | Requirement | Current instruction status | Future action |
 |---|---|---|
-| One shared core questionnaire plus type-specific sections for each Webstore type | Record-only in EC17 | EC14 Webstore readiness follow-up. |
-| Questionnaire sections include owner info, purpose/type, branding, products, pricing/share, fundraising/donations, sponsors, dates, fulfillment, Stripe onboarding, approvals, and artwork | Record-only in EC17 | EC14 follow-up. |
-| Display one questionnaire section at a time, not one long page | Record-only in EC17 | EC14 follow-up. |
-| Progress indicator, Back, Save and Continue, Resume Later, and section validation | Record-only in EC17 | EC14 follow-up. |
-| Conditional questions; for example, sponsor questions only when sponsors are enabled | Record-only in EC17 | EC14 follow-up. |
+| One shared core questionnaire plus type-specific sections for each Webstore type | Authorized Advanced Onboarding scope pending UX1 | Implement in EC19 Advanced Onboarding after UX1, coordinated with EC14 Webstores. |
+| Questionnaire sections include owner info, purpose/type, branding, products, pricing/share, fundraising/donations, sponsors, dates, fulfillment, Stripe onboarding, approvals, and artwork | Authorized Advanced Onboarding scope pending UX1 | Implement in EC19 Advanced Onboarding after UX1, coordinated with EC14 Webstores. |
+| Display one questionnaire section at a time, not one long page | Authorized Advanced Onboarding scope pending UX1 | Implement in EC19 Advanced Onboarding after UX1. |
+| Progress indicator, Back, Save and Continue, Resume Later, and section validation | Authorized Advanced Onboarding scope pending UX1 | Implement in EC19 Advanced Onboarding after UX1. |
+| Conditional questions; for example, sponsor questions only when sponsors are enabled | Authorized Advanced Onboarding scope pending UX1 | Implement in EC19 Advanced Onboarding after UX1. |
 | Questions vary appropriately for B2B, Fundraiser, Event, Promotional, Employee, and General stores | Record-only in EC17 | EC14 follow-up. |
-| Every questionnaire answer maps to a defined setup field or labeled informational answer | Record-only in EC17 | EC14 follow-up. |
-| Preserve original questionnaire answers | Record-only in EC17 | EC14 follow-up. |
+| Every questionnaire answer maps to a defined setup field or labeled informational answer | Authorized Advanced Onboarding scope pending UX1 | Implement in EC19 Advanced Onboarding after UX1. |
+| Preserve original questionnaire answers | Authorized Advanced Onboarding scope pending UX1 | Implement response snapshots in EC19 Advanced Onboarding after UX1. |
 | AI summarizes answers for sign-shop staff without replacing originals | Record-only in EC17 | EC14 plus EC17 integration follow-up. |
-| Store owner can upload images, logos, and artwork during questionnaire/setup | Record-only in EC17 | EC14 follow-up. |
+| Store owner can upload images, logos, and artwork during questionnaire/setup | Authorized Advanced Onboarding scope pending UX1 | Implement secure customer-facing uploads in EC19 Advanced Onboarding after UX1, coordinated with EC14 Webstores and EC2 files. |
+
+## EC19 Advanced Onboarding Pending UX1
+
+The owner sequence correction dated July 20, 2026 authorizes Advanced Onboarding but requires UX1 to complete first. These items are not canceled and are not deferred indefinitely; they are intentionally sequenced after UX1 to avoid rebuilding the same UI, walkthrough anchors, responsive layout, and screenshots twice.
+
+| Requirement | Current instruction status | Future action |
+|---|---|---|
+| Quick Setup versus Advanced Guided Setup separation | Authorized pending UX1 | Implement in `CODEX-ec19-advanced-onboarding` after UX1 is merged. |
+| Advanced Guided Setup | Authorized pending UX1 | Implement after UX1. |
+| Reusable interactive walkthrough engine | Authorized pending UX1 | Implement after UX1 so anchors match the redesigned ribbons/sidebar/dashboard. |
+| Dynamic Questionnaire/Form Builder | Authorized pending UX1 | Implement after UX1 with secure customer-facing response support. |
+| Secure customer-facing form responses, form sections/progress, conditional questions, file uploads, signatures, form versioning, and response snapshots | Authorized pending UX1 | Implement after UX1; preserve original responses and audit snapshots. |
+| Webstore-type questionnaire templates and Webstore creation walkthrough | Authorized pending UX1 | Implement after UX1, coordinated with EC14 Webstores. |
+| Expanded custom training-quiz authoring and quiz/questionnaire creation walkthroughs | Authorized pending UX1 | Implement after UX1. |
+| Reports walkthrough and saved custom-report audit | Authorized pending UX1 | Implement after UX1. |
+| Supply Center, Customer Decision Room, Document Library, AI Studio, Business Assistant, Wrap Lab, and other major feature guides | Authorized pending UX1 | Implement after UX1 with final walkthrough anchors. |
+| What's New and Feature Spotlight education | Authorized pending UX1 | Implement after UX1. |
+| Final screenshots and visual walkthrough documentation | Authorized pending UX1 | Capture after UX1 visual system and layout are stable. |
+
+Required sequence: merge EC19 foundation, complete UX1 on `CODEX-ux1-branch`, then implement Advanced Onboarding on `CODEX-ec19-advanced-onboarding`. EC20 begins only after final EC19 closure. EC21 begins only after EC20 and stable authenticated app visuals. EC22 remains later.
 
 ## Webstore Templates, Catalogs, Mockups, and Approval
 
@@ -95,5 +115,5 @@ This register tracks owner requirements discussed while preparing EC17 that are 
 2. Establish a reliable full-stack preview environment.
 3. Perform an EC14 Webstore readiness audit because a real customer is waiting for a store.
 4. Complete missing questionnaire, template/catalog, product mockup approval, and shopper coupon work.
-5. Complete the Document Library/DocuLink placeholder and onboarding gaps.
+5. Complete UX1, then EC19 Advanced Onboarding, including walkthroughs, questionnaire/form builder, and final screenshots.
 6. Complete EC13 promotion codes and the Stripe provisioning manifest before live commercial activation.

@@ -1,16 +1,61 @@
 # EC19 Implementation Completion Report
 
-**Status:** COMPLETE - CLOSED
+**Status:** EC19 FOUNDATION COMPLETE - ADVANCED ONBOARDING PENDING UX1
 **Branch:** `CODEX-ec19-branch`  
 **Preflight commit:** `b175dc9`  
 **Implementation commit:** `5379faf16378e1127c1fbd7806551c1c7576a5e1`
-**GitHub CI:** `29777119442` passed for implementation commit `5379faf16378e1127c1fbd7806551c1c7576a5e1`
+**GitHub CI:** `29777119442` passed for implementation commit `5379faf16378e1127c1fbd7806551c1c7576a5e1`; closure-doc CI `29777380357` passed for branch head `51754c08418909baf9ee7e5627ebca4852b193af`
+
+## Owner Sequence Correction - 2026-07-20
+
+The original EC19 foundation implementation remains complete, tested, and CI-verified. The owner later authorized an Advanced Onboarding continuation, but directed that it must wait until the separately authorized UX1 redesign is complete because navigation, ribbons, dashboard layout, visual theme, walkthrough anchors, responsive layout, and screenshots will change.
+
+Correct EC19 status: **EC19 FOUNDATION COMPLETE - ADVANCED ONBOARDING PENDING UX1**.
+
+This correction does not remove, undo, or weaken any EC19 foundation code or tests. It changes only the checkpoint tracking state: EC19 foundation may be merged, but full EC19 closure waits for UX1 and the Advanced Onboarding continuation.
 
 ## Delivered Scope
 
 - EC19A onboarding engine and core setup.
 - EC19B setup assistants, historical import intake, placeholder/template exercise, and setup-package handoff.
 - EC19C Help Center, contextual help, role/module guides, feedback, support escalation, and failed-subscription guidance.
+
+## Pending Advanced Onboarding Scope
+
+Authorized but intentionally pending until after UX1:
+
+- Quick Setup versus Advanced Guided Setup separation.
+- Advanced Guided Setup.
+- Reusable interactive walkthrough engine.
+- Dynamic Questionnaire/Form Builder.
+- Secure customer-facing form responses.
+- Form sections, progress, conditional questions, file uploads, signatures where appropriate, form versioning, and response snapshots.
+- Webstore-type questionnaire templates and Webstore creation walkthrough.
+- Expanded custom training-quiz authoring, questionnaire creation walkthrough, and training-quiz creation walkthrough.
+- Reports walkthrough and saved custom-report audit.
+- Supply Center, Customer Decision Room, Document Library, AI Studio, Business Assistant, Wrap Lab, and other major feature guides.
+- What's New and Feature Spotlight education.
+- Final screenshots and visual walkthrough documentation.
+
+## Required UX1 Checkpoint
+
+UX1 - Dashboard Personalization, Microsoft-Style Ribbons, Sidebar Refinement, and Visual Theme System is a required separately authorized checkpoint before Advanced Onboarding implementation.
+
+- UX1A - Visual System and Color: centralized design tokens, readable application colors, meaningful status/section colors, improved cards/tables/forms/states, accessible contrast, optional themes, and no washed-out or unreadable text.
+- UX1B - Microsoft-Style Ribbon and Sidebar: reusable page-specific ribbon framework, compact icon-above-label actions, grouped actions, approximately 12 primary actions maximum, no duplicate main navigation, no cropped labels, permission/entitlement filtering, disabled explanations, collapsible desktop sidebar with persisted preference, and preserved mobile navigation.
+- UX1C - Dashboard Customizer: widget registry, widget visibility, reordering, supported sizes, user layouts, role defaults, reset behavior, permission/entitlement filtering, hidden-widget data-loading avoidance, and onboarding integration points.
+
+## Locked Build Order
+
+1. Correct and merge the completed EC19 foundation.
+2. Create `CODEX-ux1-branch` from updated `main`.
+3. Complete and merge UX1.
+4. Create `CODEX-ec19-advanced-onboarding` from updated `main`.
+5. Implement the complete Advanced Onboarding continuation.
+6. Fully audit and close EC19.
+7. Begin EC20 only after final EC19 closure.
+8. Begin EC21 only after EC20 and after the authenticated application's visual design is stable.
+9. EC22 remains later.
 
 ## Key Files
 
@@ -45,4 +90,4 @@
 - `yarn.cmd --cwd frontend test --watchAll=false` - passed, 35 tests.
 - `yarn.cmd --cwd frontend build` - passed.
 
-Final `git diff --check` passed. EC19 was marked complete only after GitHub CI run `29777119442` passed on the implementation commit.
+Final `git diff --check` passed. EC19 foundation was marked complete only after GitHub CI run `29777119442` passed on the implementation commit. Full EC19 closure is now pending UX1 and the Advanced Onboarding continuation.
