@@ -114,7 +114,7 @@ export const NAV_AREAS = [
     divider: true,
     flyout: [
       { key: "studio-overview", label: "Studio Overview", to: "/studio", perm: "ai_tool:use", testId: "flyout-studio-overview" },
-      { key: "ai-assistant", label: "AI Assistant", to: "/studio/assistant", perm: "ai_assistant:use", testId: "flyout-ai-assistant", disabled: true },
+      { key: "ai-assistant", label: "Business Assistant", to: "/studio/assistant", perm: "ai_assistant:use", testId: "flyout-ai-assistant" },
       { key: "design-image-studio", label: "Design & Image", to: "/studio/design-image", perm: "ai_tool:use", testId: "flyout-design-image-studio" },
       { key: "marketing-brand-studio", label: "Marketing & Brand", to: "/studio/marketing-brand", perm: "ai_tool:use", testId: "flyout-marketing-brand-studio" },
       { key: "writing-documents-studio", label: "Writing & Documents", to: "/studio/writing-documents", perm: "ai_tool:use", testId: "flyout-writing-documents-studio" },

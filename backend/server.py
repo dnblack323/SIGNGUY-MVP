@@ -279,6 +279,12 @@ api_router.include_router(ai_gateway_router_module.router)
 from app.routers import ai_studio as ai_studio_router_module
 api_router.include_router(ai_studio_router_module.router)
 
+# EC18 - Paid Business Assistant, structured actions, BI, and OpenAI Realtime voice.
+# Mutations require preview/edit/confirm/canonical execution; no Stripe/EC4/Webstore
+# mutation and no permanent OpenAI key exposure.
+from app.routers import business_assistant as business_assistant_router_module
+api_router.include_router(business_assistant_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(
