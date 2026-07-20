@@ -1,10 +1,10 @@
 # EC19 Implementation Completion Report
 
-**Status:** IMPLEMENTED - AWAITING GITHUB CI  
+**Status:** COMPLETE - CLOSED
 **Branch:** `CODEX-ec19-branch`  
 **Preflight commit:** `b175dc9`  
-**Implementation commit:** pending  
-**GitHub CI:** pending
+**Implementation commit:** `5379faf16378e1127c1fbd7806551c1c7576a5e1`
+**GitHub CI:** `29777119442` passed for implementation commit `5379faf16378e1127c1fbd7806551c1c7576a5e1`
 
 ## Delivered Scope
 
@@ -45,4 +45,4 @@
 - `yarn.cmd --cwd frontend test --watchAll=false` - passed, 35 tests.
 - `yarn.cmd --cwd frontend build` - passed.
 
-Final `git diff --check` is run before the implementation commit. EC19 is not marked complete until GitHub CI passes.
+Final `git diff --check` passed. EC19 was marked complete only after GitHub CI run `29777119442` passed on the implementation commit.
