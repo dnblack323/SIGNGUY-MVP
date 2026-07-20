@@ -1,6 +1,6 @@
 # SignGuy Follow-Up Requirements Register
 
-Last updated: July 19, 2026
+Last updated: July 20, 2026
 
 This register tracks owner requirements discussed while preparing EC17 that are not authorized as complete EC17 implementation. Some were included in the EC17 prompt as record-only gaps; they must not be treated as implemented until verified in code, tested, and assigned to a completed checkpoint.
 
@@ -17,11 +17,11 @@ This register tracks owner requirements discussed while preparing EC17 that are 
 |---|---|---|
 | Central placeholder system for Customer, Order, Quote, Invoice, Webstore, shop, and date fields | Partially in EC17 | Verify the canonical template engine; complete in the Document Library/DocuLink checkpoint if missing. |
 | Easy **Insert Placeholder** picker | Partially in EC17 | Verify UI and add if missing. |
-| Automatic placeholder replacement with missing-value warnings and preview | Partially in EC17 | Verify backend and frontend behavior. |
+| Automatic placeholder replacement with missing-value warnings and preview | Closed for EC19 onboarding/template exercise | EC19 adds `/api/onboarding/placeholders/preview`, frontend preview, missing-value warnings, and targeted tests. Broader document-specific placeholder expansion stays with the Document Library/DocuLink checkpoint. |
 | Tenant company logo, colors, header, footer, contact information, and branding | Partially in EC17 | Verify canonical tenant-branding integration. |
 | AI-created document can be saved as a reusable template | EC17 implementation requirement | Verify after EC17. |
-| Reusing a saved template without AI generation does not consume AI credits | EC17 implementation requirement | Verify after EC17. |
-| Onboarding step where the user customizes or creates a sample template using placeholders | Record-only in EC17 | Assign to the onboarding checkpoint. |
+| Reusing a saved template without AI generation does not consume AI credits | Verified for EC19 onboarding template exercise | EC19 template exercise reuses canonical template validation/rendering and targeted tests verify no `ai_usage_events` are created. |
+| Onboarding step where the user customizes or creates a sample template using placeholders | Closed in EC19 | EC19 adds the onboarding placeholder/template exercise and targeted backend/frontend tests. |
 | Contextual Document Creator shortcuts from Customer, Quote, Order, Invoice, Webstore, and Wrap Lab | Partially in EC17 | Verify after EC17 and complete module-specific gaps later. |
 | Context is preselected from the open record but remains visible/changeable | EC17 implementation requirement | Verify after EC17. |
 | AI email button inside the normal email composer | EC17 implementation requirement where architecture permits | Verify after EC17. |
@@ -97,4 +97,3 @@ This register tracks owner requirements discussed while preparing EC17 that are 
 4. Complete missing questionnaire, template/catalog, product mockup approval, and shopper coupon work.
 5. Complete the Document Library/DocuLink placeholder and onboarding gaps.
 6. Complete EC13 promotion codes and the Stripe provisioning manifest before live commercial activation.
-

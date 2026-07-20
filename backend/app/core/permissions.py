@@ -31,7 +31,7 @@ class Perm(str, Enum):
     pricing, inventory, vendor, purchasing, employee, task, schedule,
     timeclock, timesheet, payroll, equipment, training, certification,
     report, webstore, wrap_lab, ai, settings, integration, subscription,
-    community, ai_credit, intake, markup, production_workflow.
+    community, ai_credit, intake, markup, production_workflow, onboarding, help.
     """
     # Customers / Leads
     CUSTOMER_READ = "customer:read"
@@ -198,6 +198,12 @@ class Perm(str, Enum):
     # manage is owner/admin-only in the current role model.
     PRODUCTION_WORKFLOW_READ = "production_workflow:read"
     PRODUCTION_WORKFLOW_MANAGE = "production_workflow:manage"
+    # EC19 - tenant onboarding and Help Center. Staff may read onboarding/help;
+    # setup mutations and help management remain owner/admin-only.
+    ONBOARDING_READ = "onboarding:read"
+    ONBOARDING_WRITE = "onboarding:write"
+    HELP_READ = "help:read"
+    HELP_MANAGE = "help:manage"
 
 
 class PlatformPerm(str, Enum):
@@ -280,6 +286,7 @@ STAFF_PERMS: list[str] = [
     Perm.DECISION_ROOM_READ.value, Perm.DECISION_ROOM_WRITE.value,
     Perm.TEMPLATE_READ.value, Perm.TEMPLATE_WRITE.value,
     Perm.PRODUCTION_WORKFLOW_READ.value,
+    Perm.ONBOARDING_READ.value, Perm.HELP_READ.value,
 ]
 
 ROLE_PERMISSIONS: dict[str, list[str]] = {
