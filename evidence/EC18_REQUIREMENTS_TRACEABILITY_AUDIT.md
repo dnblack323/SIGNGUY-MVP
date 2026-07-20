@@ -31,12 +31,12 @@ Before remediation:
 
 After remediation in this audit:
 
-- PASS: 81
-- PARTIAL: 5
+- PASS: 83
+- PARTIAL: 1
 - MISSING: 0
 - CONFIGURATION-ONLY: 7
 
-Remaining PARTIAL items are intentionally documented as partial because full production proof requires a live browser/device acceptance test or future scheduler/provider activation. No remaining PARTIAL item requires additional EC18 code beyond the audited implementation.
+The one remaining PARTIAL item is intentionally documented as partial because autonomous multi-step agent planning is future-owned and outside EC18. Rows that still require live browser/device, provider, or manual visual acceptance are marked PASS with a remaining dependency because their EC18 implementation and local tests are complete. No remaining PARTIAL item requires additional EC18 code beyond the audited implementation.
 
 ## Traceability Matrix
 

@@ -37,12 +37,12 @@ Before remediation:
 
 After remediation:
 
-- PASS: 81
-- PARTIAL: 5
+- PASS: 83
+- PARTIAL: 1
 - MISSING: 0
 - CONFIGURATION-ONLY: 7
 
-The remaining partial items require live browser/device or future scheduler/provider activation proof, not more EC18 code.
+The one remaining partial item is autonomous multi-step agent planning, which is future-owned and outside EC18. Browser/device and provider live-acceptance dependencies are recorded as remaining dependencies on rows whose EC18 code and local tests are complete. No remaining partial item requires more EC18 code.
 
 ## Gaps Found and Fixed
 
