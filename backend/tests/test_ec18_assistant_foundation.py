@@ -197,6 +197,49 @@ async def test_action_proposal_requires_confirm_and_creates_draft_only(ctx):
 
 
 @pytest.mark.asyncio
+async def test_confirmed_safe_canonical_task_and_note_execution(ctx):
+    async with await _client_as(ctx["owner"]) as client:
+        task_proposal = await client.post(
+            "/api/assistant/actions/proposals",
+            json={
+                "action_type": "internal_task",
+                "title": "Call customer",
+                "summary": "Follow up internally",
+                "target_refs": [{"type": "customer", "id": ctx["customer_id"], "source_updated_at": "2026-07-19T10:00:00+00:00"}],
+                "idempotency_key": f"task-proposal-{ctx['suffix']}",
+                "metering_idempotency_key": f"task-meter-{ctx['suffix']}",
+            },
+        )
+        assert task_proposal.status_code == 201, task_proposal.text
+        await client.post(f"/api/assistant/actions/proposals/{task_proposal.json()['id']}/confirm")
+        task_executed = await client.post(f"/api/assistant/actions/proposals/{task_proposal.json()['id']}/execute", headers={"Idempotency-Key": f"task-exec-{ctx['suffix']}"})
+        assert task_executed.status_code == 200, task_executed.text
+
+        note_proposal = await client.post(
+            "/api/assistant/actions/proposals",
+            json={
+                "action_type": "internal_note",
+                "title": "Customer note",
+                "body": "Prefers concise updates.",
+                "target_refs": [{"type": "customer", "id": ctx["customer_id"], "source_updated_at": "2026-07-19T10:00:00+00:00"}],
+                "idempotency_key": f"note-proposal-{ctx['suffix']}",
+                "metering_idempotency_key": f"note-meter-{ctx['suffix']}",
+            },
+        )
+        assert note_proposal.status_code == 201, note_proposal.text
+        await client.post(f"/api/assistant/actions/proposals/{note_proposal.json()['id']}/confirm")
+        note_executed = await client.post(f"/api/assistant/actions/proposals/{note_proposal.json()['id']}/execute", headers={"Idempotency-Key": f"note-exec-{ctx['suffix']}"})
+        assert note_executed.status_code == 200, note_executed.text
+
+    assert task_executed.json()["canonical_service"] == "tasks"
+    assert task_executed.json()["canonical_result"]["mutated"] is True
+    assert await db.tasks.count_documents({"tenant_id": ctx["tenant_id"], "customer_id": ctx["customer_id"], "created_by_user_id": ctx["owner"]["id"]}) == 1
+    assert note_executed.json()["canonical_service"] == "internal_notes"
+    assert await db.internal_notes.count_documents({"tenant_id": ctx["tenant_id"], "customer_id": ctx["customer_id"], "author_user_id": ctx["owner"]["id"]}) == 1
+    assert await db.email_logs.count_documents({"tenant_id": ctx["tenant_id"]}) == 0
+
+
+@pytest.mark.asyncio
 async def test_voice_unconfigured_returns_safe_unavailable_without_fake_session(ctx):
     async with await _client_as(ctx["owner"]) as client:
         config = await client.get("/api/assistant/voice/config")

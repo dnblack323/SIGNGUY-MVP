@@ -90,7 +90,25 @@ async def test_configured_realtime_session_uses_backend_key_ephemeral_secret_and
     assert captured["headers"]["OpenAI-Safety-Identifier"]
     assert captured["json"]["session"]["type"] == "realtime"
     assert captured["json"]["session"]["model"] == "gpt-realtime-2.1"
+    assert captured["json"]["session"]["tools"][0]["name"] == "propose_assistant_action"
 
     stored = await db.assistant_voice_sessions.find_one({"tenant_id": voice_ctx["tenant_id"], "provider_session_id": f"realtime-session-test-{voice_ctx['tenant_id']}"}, {"_id": 0})
     assert stored["raw_audio_stored"] is False
     assert stored["status"] == "created"
+
+    async with await _client_as(voice_ctx["owner"]) as client:
+        usage = await client.post(
+            f"/api/assistant/voice/sessions/{stored['id']}/usage",
+            json={"provider_event_id": f"provider-event-{voice_ctx['tenant_id']}", "input_audio_seconds": 3, "output_audio_seconds": 4},
+        )
+        assert usage.status_code == 201, usage.text
+        duplicate = await client.post(
+            f"/api/assistant/voice/sessions/{stored['id']}/usage",
+            json={"provider_event_id": f"provider-event-{voice_ctx['tenant_id']}", "input_audio_seconds": 3, "output_audio_seconds": 4},
+        )
+        assert duplicate.status_code == 201, duplicate.text
+
+    updated = await db.assistant_voice_sessions.find_one({"tenant_id": voice_ctx["tenant_id"], "id": stored["id"]}, {"_id": 0})
+    assert updated["input_audio_seconds"] == 3
+    assert updated["output_audio_seconds"] == 4
+    assert len(updated["usage_event_ids"]) == 1

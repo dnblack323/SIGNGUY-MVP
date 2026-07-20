@@ -30,7 +30,7 @@ from ..models.business_assistant import (
     AssistantSourceCitation,
     AssistantVoiceSession,
 )
-from . import ai_gateway
+from . import ai_gateway, communication_service, task_service
 from .activity import record_activity_with_audit
 from .entitlements import has_entitlement
 
@@ -84,6 +84,10 @@ ACTION_PERMISSIONS: dict[str, list[str]] = {
     "document_draft": [Perm.DOCUMENT_WRITE.value],
     "navigation": [],
     "bulk_email_draft": [Perm.EMAIL_SEND.value],
+    "internal_task": [Perm.TASK_CREATE.value],
+    "internal_note": [Perm.NOTE_CREATE.value],
+    "report_draft": [Perm.REPORT_WRITE.value],
+    "studio_delegation": [Perm.AI_TOOL_USE.value],
 }
 
 
@@ -502,6 +506,26 @@ async def _answer_business_question(user: dict[str, Any], *, conversation_id: st
         total = sum(int(inv.get("total_cents") or 0) for inv in invoices)
         citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="invoice", source_id="invoice_week", source_label="Issued invoices this week", route="/finance", date_range={"start": week_start, "end": _now_iso()}, calculation={"basis": "issued_invoices_created_last_7_days", "count": len(invoices), "amount_cents": total}, missing_data=["payments received", "cost of goods", "labor cost"]))
         return f"Invoice-basis revenue for issued invoices created in the last 7 days is ${total / 100:.2f} across {len(invoices)} invoice(s). This is an estimate because payment and cost categories are not included.", citations, ["payments received", "cost of goods", "labor cost"]
+    if "what am i doing today" in text or "my day" in text or "today" in text and ("doing" in text or "agenda" in text):
+        _require_perm(user, Perm.TASK_READ.value)
+        today = utc_now().date().isoformat()
+        tasks = [d async for d in db.tasks.find({"tenant_id": tenant_id, "archived_at": None, "due_at": {"$regex": f"^{today}"}, "status": {"$nin": ["completed", "canceled"]}}, {"_id": 0}).sort("due_at", 1).limit(50)]
+        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="task", source_id="today", source_label="Tasks due today", route="/team/tasks", date_range={"date": today}, calculation={"basis": "open_tasks_due_today", "count": len(tasks)}, missing_data=["calendar events not included unless linked to tasks"] if tasks else []))
+        return f"You have {len(tasks)} open task(s) due today. This is based on task due dates and does not invent calendar work that is not in tenant records.", citations, ["calendar events not included unless linked to tasks"] if tasks else []
+    if "vehicle arriving" in text or "vehicle arrival" in text or "car arriving" in text:
+        _require_perm(user, Perm.WRAP_LAB_READ.value)
+        schedules = [d async for d in db.wrap_schedules.find({"tenant_id": tenant_id, "schedule_type": {"$in": ["vehicle_dropoff", "install_scheduled"]}, "status": {"$ne": "canceled"}}, {"_id": 0}).sort("start_at", 1).limit(10)]
+        start = schedules[0].get("start_at") if schedules else None
+        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="wrap_schedule", source_id=schedules[0]["id"] if schedules else "wrap_schedule_list", source_label="Vehicle schedule", route="/wrap-lab", source_updated_at=str(schedules[0].get("updated_at") or schedules[0].get("created_at")) if schedules else None, calculation={"basis": "next_vehicle_dropoff_or_install_schedule", "count": len(schedules)}, missing_data=[] if schedules else ["vehicle schedule"]))
+        if not schedules:
+            return "I could not find a scheduled vehicle arrival in Wrap Lab records.", citations, ["vehicle schedule"]
+        return f"The next vehicle-related schedule starts at {start}. Confirm the Wrap Lab schedule before committing to the customer.", citations, []
+    if "behind schedule" in text or "jobs are behind" in text:
+        _require_perm(user, Perm.TASK_READ.value)
+        today = utc_now().date().isoformat()
+        tasks = [d async for d in db.tasks.find({"tenant_id": tenant_id, "archived_at": None, "due_at": {"$lt": today}, "status": {"$nin": ["completed", "canceled"]}}, {"_id": 0}).sort("due_at", 1).limit(50)]
+        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="task", source_id="overdue_task_list", source_label="Overdue task list", route="/team/tasks", date_range={"before": today}, calculation={"basis": "open_tasks_due_before_today", "count": len(tasks)}, missing_data=["work-order stage due dates"] if tasks else []))
+        return f"I found {len(tasks)} open task(s) due before today. This is the safest behind-schedule signal available from current tenant records.", citations, ["work-order stage due dates"] if tasks else []
     if "quote follow" in text or (("follow up" in text or "follow-up" in text or "followup" in text) and "quote" in text):
         _require_perm(user, Perm.QUOTE_READ.value)
         quotes = [d async for d in db.quotes.find({"tenant_id": tenant_id, "status": {"$nin": ["accepted", "declined", "converted"]}}, {"_id": 0}).sort("updated_at", -1).limit(25)]
@@ -515,9 +539,12 @@ async def _answer_business_question(user: dict[str, Any], *, conversation_id: st
         else:
             _require_perm(user, Perm.FINANCE_READ.value)
         count = await db.pricing_snapshots.count_documents({"tenant_id": tenant_id})
-        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="pricing_snapshot", source_id="pricing_snapshot_list", source_label="Pricing snapshots", route="/pricing-foundation", calculation={"basis": "pricing_snapshot_count", "count": count}, missing_data=["actual labor time", "actual material usage", "overhead allocation", "refunds/discounts"]))
-        return "Profit and margin require complete cost inputs. I can treat this as an estimate only because actual labor, material usage, overhead allocation, and refunds/discounts may be missing.", citations, ["actual labor time", "actual material usage", "overhead allocation", "refunds/discounts"]
-    if "late job" in text or "production blocker" in text or "production report" in text:
+        invoices = [d async for d in db.invoices.find({"tenant_id": tenant_id, "document_status": "issued"}, {"_id": 0}).limit(200)]
+        revenue = sum(int(inv.get("total_cents") or 0) for inv in invoices)
+        missing_costs = ["actual labor time", "actual material usage", "overhead allocation", "refunds/discounts"]
+        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="pricing_snapshot", source_id="pricing_snapshot_list", source_label="Pricing snapshots and issued invoices", route="/pricing-foundation", calculation={"basis": "issued_invoice_revenue_and_pricing_snapshot_count", "invoice_count": len(invoices), "pricing_snapshot_count": count, "included_revenue_cents": revenue, "included_direct_cost_cents": None, "confirmed": False}, missing_data=missing_costs))
+        return f"Margin is estimated, not confirmed. Included revenue: ${revenue / 100:.2f} from issued invoices. Included direct costs: none confirmed from actual-cost records in this adapter. Missing/excluded cost categories: actual labor time, actual material usage, overhead allocation, and refunds/discounts. Apparel margin can improve only after comparing quoted assumptions against actual labor/material usage; I will not invent those numbers.", citations, missing_costs
+    if "late job" in text or "production blocker" in text or "blocking production" in text or "what is blocking" in text or "production report" in text:
         _require_perm(user, Perm.WORK_ORDER_READ.value)
         work_orders = [d async for d in db.work_orders.find({"tenant_id": tenant_id}, {"_id": 0}).sort("updated_at", -1).limit(25)]
         citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="work_order", source_id="work_order_list", source_label="Work order list", route="/work-orders", calculation={"basis": "recent_work_orders", "count": len(work_orders)}, missing_data=["stage due dates"] if work_orders else []))
@@ -614,6 +641,36 @@ def _default_preview(action_type: str, fields: dict[str, Any]) -> dict[str, Any]
     if action_type == "bulk_email_draft":
         targets = fields.get("target_refs") or []
         return {"count": len(targets), "affected_refs": targets, "summary": "Bulk draft proposal only. No email will be sent automatically."}
+    if action_type == "internal_task":
+        return {
+            "title": fields.get("title") or "Assistant-created task",
+            "description": fields.get("description") or fields.get("instructions") or "",
+            "priority": fields.get("priority") or "normal",
+            "due_at": fields.get("due_at"),
+            "affected_refs": fields.get("target_refs") or [],
+            "summary": "Creates one internal task after explicit confirmation.",
+        }
+    if action_type == "internal_note":
+        return {
+            "title": fields.get("title") or "Assistant note",
+            "body": fields.get("body") or fields.get("instructions") or "",
+            "visibility": fields.get("visibility") or "internal",
+            "affected_refs": fields.get("target_refs") or [],
+            "summary": "Creates one internal note after explicit confirmation.",
+        }
+    if action_type == "report_draft":
+        return {
+            "title": fields.get("title") or "Assistant report draft",
+            "body": fields.get("body") or fields.get("instructions") or "",
+            "summary": "Creates an editable report draft only.",
+        }
+    if action_type == "studio_delegation":
+        return {
+            "tool_key": fields.get("tool_key") or "social_post_builder",
+            "mode_key": fields.get("mode_key") or "completed_work_showcase",
+            "affected_refs": fields.get("target_refs") or [],
+            "summary": "Prepares an existing EC17 Studio tool link with validated context.",
+        }
     return {"summary": "Unsupported action. No data will be changed."}
 
 
@@ -622,7 +679,54 @@ def _proposal_warnings(action_type: str, target_refs: list[dict[str, Any]]) -> l
         return ["Draft only. Nothing is sent until a human sends it through the canonical email workflow."]
     if action_type == "bulk_email_draft":
         return [f"Bulk proposal affects {len(target_refs)} target(s). Review every recipient before confirming.", "No email will be sent automatically."]
+    if action_type == "internal_task":
+        return ["Creates an internal task only after confirmation. No customer communication, pricing, invoice, payment, or production status changes occur."]
+    if action_type == "internal_note":
+        return ["Creates an internal note only after confirmation. It is not shown to customers."]
+    if action_type == "report_draft":
+        return ["Creates an editable report draft only. Nothing is exported, printed, emailed, or published."]
+    if action_type == "studio_delegation":
+        return ["Opens the existing EC17 Studio tool with validated context. No Studio asset is generated automatically."]
     return []
+
+
+def _first_target_ref(proposal: dict[str, Any]) -> dict[str, Any]:
+    refs = proposal.get("target_refs") or []
+    return refs[0] if refs else {}
+
+
+def _task_link_payload(ref: dict[str, Any]) -> dict[str, Any]:
+    ref_type = ref.get("type")
+    ref_id = ref.get("id")
+    mapping = {
+        "customer": "customer_id",
+        "quote": "quote_id",
+        "order": "order_id",
+        "order_item": "order_item_id",
+        "work_order": "work_order_id",
+        "invoice": "invoice_id",
+        "production_stage": "production_stage_id",
+    }
+    field = mapping.get(ref_type)
+    if not field or not ref_id:
+        return {}
+    return {"source_type": ref_type, "source_id": ref_id, field: ref_id}
+
+
+def _note_link_payload(ref: dict[str, Any]) -> dict[str, Any]:
+    ref_type = ref.get("type")
+    ref_id = ref.get("id")
+    mapping = {
+        "customer": "customer_id",
+        "order": "order_id",
+        "order_item": "order_item_id",
+        "work_order": "work_order_id",
+        "production_stage": "production_stage_id",
+        "task": "task_id",
+        "employee": "employee_id",
+    }
+    field = mapping.get(ref_type)
+    return {field: ref_id} if field and ref_id else {}
 
 
 async def edit_proposal(user: dict[str, Any], proposal_id: str, fields: dict[str, Any]) -> dict[str, Any]:
@@ -790,6 +894,95 @@ async def _execute_safe_canonical_action(user: dict[str, Any], proposal: dict[st
             await db.ai_studio_editable_drafts.insert_one(prepare_for_mongo(draft))
             drafts.append({"target_ref": ref, "draft_id": draft["id"], "status": "draft_created", "sent": False})
         return {"status": "succeeded", "canonical_service": "ai_studio_editable_drafts", "results": drafts, "sent": False, "assistant_summary": f"{len(drafts)} email draft(s) created. No emails were sent."}
+    if action_type == "internal_task":
+        _require_perm(user, Perm.TASK_CREATE.value)
+        task_payload = {
+            "title": payload.get("title") or proposal.get("title") or "Assistant-created task",
+            "description": payload.get("description") or payload.get("body") or proposal.get("summary"),
+            "priority": payload.get("priority") or "normal",
+            "task_type": payload.get("task_type") or "assistant_followup",
+            "due_at": payload.get("due_at"),
+            "visibility": "staff",
+            "internal_only": True,
+            "employee_visible": False,
+            "idempotency_key": f"assistant-task:{proposal['id']}",
+            **_task_link_payload(_first_target_ref(proposal)),
+        }
+        try:
+            task = await task_service.create_task(
+                tenant_id=user["tenant_id"],
+                actor_user_id=user["id"],
+                actor_email=user.get("email") or "assistant",
+                payload={k: v for k, v in task_payload.items() if v is not None},
+            )
+        except task_service.TaskError as exc:
+            raise BusinessAssistantError(exc.code, exc.detail, exc.status_code) from exc
+        return {
+            "status": "succeeded",
+            "canonical_service": "tasks",
+            "task_id": task["id"],
+            "route": "/team/tasks",
+            "mutated": True,
+            "assistant_summary": "Internal task created after confirmation.",
+        }
+    if action_type == "internal_note":
+        _require_perm(user, Perm.NOTE_CREATE.value)
+        note_payload = {
+            "title": payload.get("title") or proposal.get("title") or "Assistant note",
+            "body": payload.get("body") or payload.get("content_text") or proposal.get("summary"),
+            "visibility": "internal",
+            "pinned": False,
+            **_note_link_payload(_first_target_ref(proposal)),
+        }
+        try:
+            note = await communication_service.create_note(
+                tenant_id=user["tenant_id"],
+                actor_user_id=user["id"],
+                actor_email=user.get("email") or "assistant",
+                payload={k: v for k, v in note_payload.items() if v is not None},
+            )
+        except communication_service.CommunicationError as exc:
+            raise BusinessAssistantError(exc.code, exc.detail, exc.status_code) from exc
+        return {
+            "status": "succeeded",
+            "canonical_service": "internal_notes",
+            "note_id": note["id"],
+            "route": "/team/notes",
+            "mutated": True,
+            "assistant_summary": "Internal note created after confirmation.",
+        }
+    if action_type == "report_draft":
+        draft = AIStudioEditableDraft(
+            tenant_id=user["tenant_id"],
+            creator_user_id=user["id"],
+            tool_key="business_assistant",
+            mode_key="report_draft",
+            family_key="business_assistant",
+            capability_key="assistant.chat",
+            usage_band="heavy",
+            draft_type="document",
+            title=payload.get("title") or proposal.get("title") or "Assistant report draft",
+            content_text=payload.get("body") or payload.get("content_text") or "",
+            content_json={"assistant_proposal_id": proposal["id"], "report_type": payload.get("report_type") or "internal"},
+            warnings=["Editable report draft only. Nothing was exported, printed, emailed, or published."],
+        ).model_dump()
+        await db.ai_studio_editable_drafts.insert_one(prepare_for_mongo(draft))
+        return {"status": "succeeded", "canonical_service": "ai_studio_editable_drafts", "draft_id": draft["id"], "exported": False, "assistant_summary": "Report draft created. Nothing was exported, printed, emailed, or published."}
+    if action_type == "studio_delegation":
+        tool_key = payload.get("tool_key") or proposal.get("preview", {}).get("tool_key") or "social_post_builder"
+        mode_key = payload.get("mode_key") or proposal.get("preview", {}).get("mode_key") or "completed_work_showcase"
+        ref = _first_target_ref(proposal)
+        query = f"tool={tool_key}&mode={mode_key}"
+        if ref.get("type") and ref.get("id"):
+            query += f"&context_type={ref['type']}&context_id={ref['id']}"
+        return {
+            "status": "succeeded",
+            "canonical_service": "ai_studio_delegation",
+            "route": f"/studio?{query}",
+            "created_record": False,
+            "mutated": False,
+            "assistant_summary": "Existing AI Studio tool delegation prepared. No Studio asset was generated automatically.",
+        }
     return {"status": "unsupported", "canonical_service": None, "mutated": False, "assistant_summary": "Unsupported action. No records were changed."}
 
 
@@ -850,6 +1043,49 @@ async def list_routines(user: dict[str, Any]) -> dict[str, Any]:
     cursor = db.assistant_routines.find({"tenant_id": user["tenant_id"], "user_id": user["id"], "status": {"$ne": "archived"}}, {"_id": 0}).sort("next_run_at", 1)
     items = [serialize_doc(d) async for d in cursor]
     return {"items": items, "total": len(items)}
+
+
+async def _routine(user: dict[str, Any], routine_id: str) -> dict[str, Any]:
+    doc = await db.assistant_routines.find_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "id": routine_id}, {"_id": 0})
+    if not doc:
+        raise BusinessAssistantError("routine_not_found", "Assistant routine not found", 404)
+    return serialize_doc(doc)
+
+
+async def update_routine(user: dict[str, Any], routine_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+    await _require_assistant_access(user)
+    routine = await _routine(user, routine_id)
+    if routine.get("status") == "archived":
+        raise BusinessAssistantError("routine_archived", "Archived routines cannot be updated", 409)
+    updates: dict[str, Any] = {}
+    if "name" in fields and fields.get("name"):
+        updates["name"] = str(fields["name"])[:160]
+    if "prompt" in fields:
+        updates["prompt"] = str(fields.get("prompt") or "")
+    if "mode" in fields:
+        updates["mode"] = _mode_key(fields.get("mode"))
+    if "schedule" in fields:
+        updates["schedule"] = fields.get("schedule") or {}
+    if "next_run_at" in fields:
+        updates["next_run_at"] = fields.get("next_run_at")
+    if not updates:
+        raise BusinessAssistantError("routine_no_updates", "No routine updates provided", 400)
+    updates["updated_at"] = _now_iso()
+    await db.assistant_routines.update_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "id": routine_id}, {"$set": prepare_for_mongo(updates)})
+    await _audit(user, "assistant.routine_updated", "assistant_routine", routine_id, "Assistant routine updated")
+    return await _routine(user, routine_id)
+
+
+async def set_routine_status(user: dict[str, Any], routine_id: str, status: str) -> dict[str, Any]:
+    await _require_assistant_access(user)
+    if status not in {"active", "paused", "archived"}:
+        raise BusinessAssistantError("invalid_routine_status", "Unsupported routine status", 400)
+    await _routine(user, routine_id)
+    updates = {"status": status, "updated_at": _now_iso()}
+    await db.assistant_routines.update_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "id": routine_id}, {"$set": updates})
+    action = "assistant.routine_deleted" if status == "archived" else f"assistant.routine_{status}"
+    await _audit(user, action, "assistant_routine", routine_id, f"Assistant routine {status}")
+    return await _routine(user, routine_id)
 
 
 def _quick_action(label: str, prompt: str, *, mode: str, required_permissions: list[str], action_type: Optional[str] = None) -> dict[str, Any]:
@@ -987,6 +1223,32 @@ async def create_realtime_session(user: dict[str, Any], fields: dict[str, Any]) 
             },
             "turn_detection": {"type": settings.openai_realtime_turn_detection} if settings.openai_realtime_turn_detection else None,
             "instructions": "You are SignGuy AI Business Assistant. Use tool calls only to request backend proposals; never claim external actions succeeded without backend confirmation.",
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "propose_assistant_action",
+                    "description": "Create a visible SignGuy Business Assistant action proposal. The user must preview and explicitly confirm before any canonical service execution.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "action_type": {"type": "string", "enum": sorted(ACTION_PERMISSIONS.keys())},
+                            "title": {"type": "string"},
+                            "summary": {"type": "string"},
+                            "body": {"type": "string"},
+                            "route": {"type": "string"},
+                            "target_refs": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {"type": {"type": "string"}, "id": {"type": "string"}, "source_updated_at": {"type": "string"}},
+                                    "required": ["type", "id"],
+                                },
+                            },
+                        },
+                        "required": ["action_type", "title"],
+                    },
+                }
+            ],
         }
     }
     payload["session"] = {k: v for k, v in payload["session"].items() if v is not None}
