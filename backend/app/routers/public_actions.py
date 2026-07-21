@@ -39,12 +39,54 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/public", tags=["public_actions"])
 
 
+def _pick(doc: dict, fields: set[str]) -> dict:
+    serialized = serialize_doc(doc)
+    return {k: serialized.get(k) for k in fields if k in serialized}
+
+
+_PUBLIC_QUOTE_FIELDS = {
+    "id", "number", "title", "job_name", "description", "status", "document_status", "financial_status",
+    "subtotal_cents", "discount_cents", "tax_cents", "total_cents", "balance_due_cents", "currency",
+    "created_at", "updated_at", "sent_at", "expires_at", "current_revision", "revision_number",
+}
+_PUBLIC_QUOTE_LINE_FIELDS = {
+    "id", "quote_id", "revision_number", "position", "category", "product_type", "description", "quantity",
+    "unit", "width", "height", "unit_price_cents", "line_subtotal_cents", "line_total_cents", "taxable",
+}
+_PUBLIC_INVOICE_FIELDS = {
+    "id", "number", "title", "document_status", "financial_status", "subtotal_cents", "discount_cents",
+    "tax_cents", "total_cents", "amount_paid_cents", "amount_refunded_cents", "balance_due_cents",
+    "currency", "issued_at", "due_date", "paid_at", "created_at", "updated_at",
+}
+_PUBLIC_PROOF_FIELDS = {
+    "id", "number", "title", "status", "current_version", "current_file_id", "sent_at", "approved_at",
+    "changes_requested_at", "created_at", "updated_at",
+}
+_PUBLIC_SIGNATURE_FIELDS = {
+    "id", "title", "status", "document_id", "parent_type", "parent_id", "required_signers",
+    "sent_at", "expires_at", "completed_at", "created_at", "updated_at",
+}
+
+
+def _public_signature_request(req: dict, token: dict) -> dict:
+    public_req = _pick(req, _PUBLIC_SIGNATURE_FIELDS)
+    audience = (token.get("audience_email") or "").lower()
+    signers = list(public_req.get("required_signers") or [])
+    if audience:
+        signers = [s for s in signers if str(s.get("email") or "").lower() == audience]
+    public_req["required_signers"] = [
+        {k: signer.get(k) for k in {"name", "email", "role", "signed", "signed_at"} if k in signer}
+        for signer in signers
+    ]
+    return public_req
+
+
 @router.get("/token/introspect")
 async def introspect(request: Request, t: str = Query(...)) -> dict:
     token = await resolve_public_token(request, raw_token=t)
     token.pop("token_hash", None)
     return {"action": token["action"], "parent_type": token["parent_type"],
-            "parent_id": token["parent_id"], "parent_version": token.get("parent_version"),
+            "parent_version": token.get("parent_version"),
             "expires_at": token.get("expires_at"), "single_use": token.get("single_use", True)}
 
 
@@ -59,12 +101,12 @@ async def public_view_quote(qid: str, request: Request, t: str = Query(...)) -> 
     q = await db.quotes.find_one({"id": qid, "tenant_id": token["tenant_id"]}, {"_id": 0, "notes_internal": 0})
     if not q:
         raise HTTPException(status_code=404, detail="Quote not found")
-    lines = [serialize_doc(li) async for li in db.quote_line_items.find(
+    lines = [_pick(li, _PUBLIC_QUOTE_LINE_FIELDS) async for li in db.quote_line_items.find(
         {"tenant_id": token["tenant_id"], "quote_id": qid,
          "revision_number": q.get("current_revision", q.get("revision_number", 1))},
         {"_id": 0, "cost_cents": 0, "margin_percent": 0},
     ).sort("position", 1)]
-    return {"quote": serialize_doc(q), "line_items": lines}
+    return {"quote": _pick(q, _PUBLIC_QUOTE_FIELDS), "line_items": lines}
 
 
 @router.get("/invoices/{iid}")
@@ -76,7 +118,7 @@ async def public_view_invoice(iid: str, request: Request, t: str = Query(...)) -
     inv = await db.invoices.find_one({"id": iid, "tenant_id": token["tenant_id"]}, {"_id": 0, "notes_internal": 0})
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    return {"invoice": serialize_doc(inv)}
+    return {"invoice": _pick(inv, _PUBLIC_INVOICE_FIELDS)}
 
 
 # ---- EC10 Phase 10E-1 — Decision Room view (multi-use OK; published-version-only) ----
@@ -370,7 +412,7 @@ async def public_view_proof(pid: str, request: Request, t: str = Query(...)) -> 
     proof = await db.proofs.find_one({"id": pid, "tenant_id": token["tenant_id"]}, {"_id": 0})
     if not proof:
         raise HTTPException(status_code=404, detail="Proof not found")
-    return {"proof": serialize_doc(proof)}
+    return {"proof": _pick(proof, _PUBLIC_PROOF_FIELDS)}
 
 
 @router.post("/proofs/{pid}/action", status_code=201)
@@ -427,7 +469,7 @@ async def public_view_sig_request(rid: str, request: Request, t: str = Query(...
     req = await db.signature_requests.find_one({"id": rid, "tenant_id": token["tenant_id"]}, {"_id": 0})
     if not req:
         raise HTTPException(status_code=404, detail="Signature request not found")
-    return {"request": serialize_doc(req)}
+    return {"request": _public_signature_request(req, token)}
 
 
 @router.post("/signatures/{rid}/sign", status_code=201)

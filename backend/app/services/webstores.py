@@ -131,19 +131,27 @@ async def _audit(
 
 
 def _public_product(product: dict) -> dict:
-    return {
-        k: v
-        for k, v in product.items()
-        if k
-        not in {
-            "_id",
-            "tenant_id",
-            "production_cost_cents",
-            "store_owner_share_cents",
-            "platform_fee_basis_points",
-            "production_notes",
-        }
+    allowed = {
+        "id",
+        "webstore_id",
+        "name",
+        "description",
+        "category",
+        "product_type",
+        "sku",
+        "selling_price_cents",
+        "currency",
+        "variants",
+        "personalization_enabled",
+        "image_file_ids",
+        "mockup_ids",
+        "public",
+        "featured",
+        "status",
+        "created_at",
+        "updated_at",
     }
+    return {k: serialize_doc(product).get(k) for k in allowed if k in product}
 
 
 def _public_store(store: dict) -> dict:
@@ -160,6 +168,61 @@ def _public_store(store: dict) -> dict:
         "checkout_enabled",
     }
     return {k: v for k, v in store.items() if k in allowed}
+
+
+def _public_launch_packet(packet: Optional[dict]) -> Optional[dict]:
+    if not packet:
+        return None
+    allowed = {
+        "id",
+        "webstore_id",
+        "status",
+        "snapshot",
+        "promotion_copy",
+        "qr_code_url",
+        "share_url",
+        "sent_at",
+        "owner_decision_at",
+        "change_request_reason",
+        "created_at",
+        "updated_at",
+    }
+    return {k: serialize_doc(packet).get(k) for k in allowed if k in packet}
+
+
+def _public_buyer_order(order: Optional[dict]) -> dict:
+    if not order:
+        return {}
+    allowed = {
+        "id",
+        "buyer_name",
+        "buyer_email",
+        "buyer_phone",
+        "line_items",
+        "product_subtotal_cents",
+        "donation_cents",
+        "shipping_cents",
+        "tax_cents",
+        "total_cents",
+        "currency",
+        "status",
+        "payment_status",
+        "fulfillment_status",
+        "checkout_url",
+        "created_at",
+        "updated_at",
+    }
+    return {k: serialize_doc(order).get(k) for k in allowed if k in order}
+
+
+def _buyer_visible_ledger(rows: list[dict]) -> list[dict]:
+    visible_types = {"buyer_payment", "product_subtotal", "donation", "shipping", "sales_tax", "refund"}
+    allowed = {"id", "entry_type", "amount_cents", "currency", "basis_amount_cents", "status", "created_at"}
+    return [
+        {k: serialize_doc(row).get(k) for k in allowed if k in row}
+        for row in rows
+        if row.get("entry_type") in visible_types
+    ]
 
 
 async def _get_store(tenant_id: str, webstore_id: str) -> dict:
@@ -746,7 +809,7 @@ async def create_buyer_order(slug: str, fields: dict[str, Any]) -> dict:
             {"_id": 0},
         )
         if existing:
-            return {"buyer_order": serialize_doc(existing), "ledger": await _ledger_for_order(tenant_id, existing["id"])}
+            return {"buyer_order": _public_buyer_order(existing), "ledger": _buyer_visible_ledger(await _ledger_for_order(tenant_id, existing["id"]))}
     product_map = {p["id"]: p for p in storefront["products"]}
     line_items: list[dict[str, Any]] = []
     subtotal = 0
@@ -809,7 +872,7 @@ async def create_buyer_order(slug: str, fields: dict[str, Any]) -> dict:
             {"tenant_id": tenant_id, "webstore_id": store["id"], "idempotency_key": fields.get("idempotency_key")},
             {"_id": 0},
         )
-        return {"buyer_order": serialize_doc(existing), "ledger": await _ledger_for_order(tenant_id, existing["id"])}
+        return {"buyer_order": _public_buyer_order(existing), "ledger": _buyer_visible_ledger(await _ledger_for_order(tenant_id, existing["id"]))}
     checkout = await create_local_checkout_record(
         tenant_id=tenant_id,
         webstore_id=store["id"],
@@ -846,7 +909,7 @@ async def create_buyer_order(slug: str, fields: dict[str, Any]) -> dict:
         metadata={"total_cents": total},
     )
     saved = await db.webstore_buyer_orders.find_one({"tenant_id": tenant_id, "id": order["id"]}, {"_id": 0})
-    return {"buyer_order": serialize_doc(saved), "ledger": await _ledger_for_order(tenant_id, order["id"])}
+    return {"buyer_order": _public_buyer_order(saved), "ledger": _buyer_visible_ledger(await _ledger_for_order(tenant_id, order["id"]))}
 
 
 async def _create_ledger_rows(
@@ -1047,11 +1110,12 @@ async def _owner_portal_store(identity: dict, webstore_id: str) -> dict:
 async def owner_portal_list(identity: dict) -> dict:
     if identity.get("portal_type") not in {"webstore_owner", "webstore_manager"} or not identity.get("webstore_owner_id"):
         raise WebstoreError("webstore_portal_required", "Webstore portal access required", 403)
-    return await stores_repo.list(
+    stores = await stores_repo.list(
         tenant_id=identity["tenant_id"],
         filters={"owner_id": identity["webstore_owner_id"]},
         sort=[("updated_at", -1)],
     )
+    return {"items": [_public_store(store) for store in stores["items"]], "total": stores["total"]}
 
 
 async def owner_portal_detail(identity: dict, webstore_id: str) -> dict:
@@ -1063,4 +1127,4 @@ async def owner_portal_detail(identity: dict, webstore_id: str) -> dict:
     packet = None
     if store.get("launch_packet_id"):
         packet = await packets_repo.get(tenant_id=identity["tenant_id"], entity_id=store["launch_packet_id"])
-    return {"webstore": _public_store(store), "products": products, "launch_packet": packet}
+    return {"webstore": _public_store(store), "products": products, "launch_packet": _public_launch_packet(packet)}

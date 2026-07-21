@@ -26,13 +26,59 @@ def _scope(identity: dict) -> dict:
     return {"tenant_id": identity["tenant_id"], "customer_id": identity["customer_id"]}
 
 
+def _pick(doc: dict, fields: set[str]) -> dict:
+    return {k: serialize_doc(doc).get(k) for k in fields if k in doc}
+
+
+_QUOTE_FIELDS = {
+    "id", "number", "title", "job_name", "description", "status", "document_status", "financial_status",
+    "subtotal_cents", "discount_cents", "tax_cents", "total_cents", "balance_due_cents", "currency",
+    "created_at", "updated_at", "sent_at", "expires_at", "approved_at", "declined_at", "current_revision",
+    "revision_number",
+}
+_QUOTE_LINE_FIELDS = {
+    "id", "quote_id", "revision_number", "position", "category", "product_type", "description", "quantity",
+    "unit", "width", "height", "unit_price_cents", "line_subtotal_cents", "line_total_cents", "taxable",
+}
+_ORDER_FIELDS = {
+    "id", "number", "title", "job_name", "description", "status", "production_status", "financial_status",
+    "subtotal_cents", "discount_cents", "tax_cents", "total_cents", "balance_cents", "currency",
+    "created_at", "updated_at", "due_date", "confirmed_at", "completed_at",
+}
+_ORDER_ITEM_FIELDS = {
+    "id", "order_id", "position", "category", "product_type", "description", "quantity", "unit",
+    "width", "height", "unit_price_cents", "line_subtotal_cents", "line_total_cents", "production_status",
+}
+_INVOICE_FIELDS = {
+    "id", "number", "title", "document_status", "financial_status", "subtotal_cents", "discount_cents",
+    "tax_cents", "total_cents", "amount_paid_cents", "amount_refunded_cents", "balance_due_cents",
+    "currency", "issued_at", "due_date", "paid_at", "created_at", "updated_at",
+}
+_PAYMENT_FIELDS = {
+    "id", "invoice_id", "amount_cents", "currency", "method", "source", "status", "paid_on",
+    "received_at", "confirmed_at", "reference", "created_at",
+}
+_DOCUMENT_FIELDS = {
+    "id", "title", "category", "source_type", "source_id", "current_file_id", "version", "visibility",
+    "created_at", "updated_at",
+}
+_PROOF_FIELDS = {
+    "id", "number", "title", "status", "current_version", "current_file_id", "sent_at", "approved_at",
+    "changes_requested_at", "created_at", "updated_at",
+}
+_MESSAGE_FIELDS = {
+    "id", "from_email", "to_email", "subject", "body", "related_type", "related_id", "status",
+    "created_at", "sent_at",
+}
+
+
 @router.get("/quotes")
 async def portal_quotes(
     limit: int = Query(50, le=200),
     identity: dict = Depends(require_portal_permission("portal:view_quotes")),
 ) -> dict:
     cur = db.quotes.find({**_scope(identity)}, {"_id": 0}).sort("created_at", -1).limit(limit)
-    return {"items": [serialize_doc(d) async for d in cur]}
+    return {"items": [_pick(d, _QUOTE_FIELDS) async for d in cur]}
 
 
 @router.get("/quotes/{qid}")
@@ -40,11 +86,11 @@ async def portal_quote_detail(qid: str, identity: dict = Depends(require_portal_
     q = await db.quotes.find_one({"id": qid, **_scope(identity)}, {"_id": 0})
     if not q:
         raise HTTPException(status_code=404, detail="Quote not found")
-    lines = [serialize_doc(li) async for li in db.quote_line_items.find(
+    lines = [_pick(li, _QUOTE_LINE_FIELDS) async for li in db.quote_line_items.find(
         {"tenant_id": identity["tenant_id"], "quote_id": qid, "revision_number": q.get("current_revision", q.get("revision_number", 1))},
         {"_id": 0},
     ).sort("position", 1)]
-    return {"quote": serialize_doc(q), "line_items": lines}
+    return {"quote": _pick(q, _QUOTE_FIELDS), "line_items": lines}
 
 
 class QuoteApprovalIn(BaseModel):
@@ -78,7 +124,7 @@ async def portal_orders(
     identity: dict = Depends(require_portal_permission("portal:view_orders")),
 ) -> dict:
     cur = db.orders.find({**_scope(identity)}, {"_id": 0}).sort("created_at", -1).limit(limit)
-    return {"items": [serialize_doc(d) async for d in cur]}
+    return {"items": [_pick(d, _ORDER_FIELDS) async for d in cur]}
 
 
 @router.get("/orders/{oid}")
@@ -86,10 +132,10 @@ async def portal_order_detail(oid: str, identity: dict = Depends(require_portal_
     o = await db.orders.find_one({"id": oid, **_scope(identity)}, {"_id": 0})
     if not o:
         raise HTTPException(status_code=404, detail="Order not found")
-    items = [serialize_doc(it) async for it in db.order_items.find(
+    items = [_pick(it, _ORDER_ITEM_FIELDS) async for it in db.order_items.find(
         {"tenant_id": identity["tenant_id"], "order_id": oid}, {"_id": 0}
     ).sort("position", 1)]
-    return {"order": serialize_doc(o), "items": items}
+    return {"order": _pick(o, _ORDER_FIELDS), "items": items}
 
 
 @router.get("/invoices")
@@ -98,7 +144,7 @@ async def portal_invoices(
     identity: dict = Depends(require_portal_permission("portal:view_invoices")),
 ) -> dict:
     cur = db.invoices.find({**_scope(identity), "document_status": {"$ne": "draft"}}, {"_id": 0}).sort("created_at", -1).limit(limit)
-    return {"items": [serialize_doc(d) async for d in cur]}
+    return {"items": [_pick(d, _INVOICE_FIELDS) async for d in cur]}
 
 
 @router.get("/invoices/{iid}")
@@ -106,11 +152,11 @@ async def portal_invoice_detail(iid: str, identity: dict = Depends(require_porta
     inv = await db.invoices.find_one({"id": iid, **_scope(identity)}, {"_id": 0})
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    payments = [serialize_doc(p) async for p in db.payments.find(
+    payments = [_pick(p, _PAYMENT_FIELDS) async for p in db.payments.find(
         {"tenant_id": identity["tenant_id"], "invoice_id": iid, "status": {"$in": ["confirmed", "refunded"]}},
         {"_id": 0, "idempotency_key": 0, "stripe_client_secret": 0},
     ).sort("received_at", -1)]
-    return {"invoice": serialize_doc(inv), "payments": payments}
+    return {"invoice": _pick(inv, _INVOICE_FIELDS), "payments": payments}
 
 
 class PortalInvoiceIntentIn(BaseModel):
@@ -146,7 +192,7 @@ async def portal_initiate_stripe(
         if msg == "stripe_disabled": raise HTTPException(status_code=400, detail="Stripe not configured")
         if msg.startswith("stripe_error:"): raise HTTPException(status_code=400, detail=msg[len("stripe_error:"):])
         raise HTTPException(status_code=400, detail=msg)
-    return result
+    return {k: result.get(k) for k in {"payment_id", "client_secret", "publishable_key", "status", "already_exists"} if k in result}
 
 
 @router.post("/payments/{payment_id}/dev-simulate-confirm")
@@ -183,7 +229,7 @@ async def portal_documents(
     # Show only documents explicitly marked customer_visible AND matching this customer
     q = {**_scope(identity), "visibility": "customer_visible", "archived": False}
     cur = db.documents.find(q, {"_id": 0}).sort("created_at", -1).limit(200)
-    return {"items": [serialize_doc(d) async for d in cur]}
+    return {"items": [_pick(d, _DOCUMENT_FIELDS) async for d in cur]}
 
 
 @router.get("/proofs")
@@ -192,7 +238,7 @@ async def portal_proofs(
 ) -> dict:
     q = {"tenant_id": identity["tenant_id"], "customer_id": identity["customer_id"]}
     cur = db.proofs.find(q, {"_id": 0}).sort("created_at", -1).limit(200)
-    return {"items": [serialize_doc(d) async for d in cur]}
+    return {"items": [_pick(d, _PROOF_FIELDS) async for d in cur]}
 
 
 class ProofApprovalIn(BaseModel):
@@ -239,8 +285,8 @@ async def portal_proof_approval(pid: str, payload: ProofApprovalIn, request: Req
 async def portal_messages(identity: dict = Depends(require_portal_permission("portal:view_messages"))) -> dict:
     # Only email_logs that were sent TO the customer and are marked customer-visible
     q = {"tenant_id": identity["tenant_id"], "customer_id": identity["customer_id"]}
-    cur = db.email_logs.find(q, {"_id": 0, "sendgrid_message_id": 0, "smtp_response": 0}).sort("created_at", -1).limit(100)
-    return {"items": [serialize_doc(d) async for d in cur]}
+    cur = db.email_logs.find(q, {"_id": 0}).sort("created_at", -1).limit(100)
+    return {"items": [_pick(d, _MESSAGE_FIELDS) async for d in cur]}
 
 
 class PortalMessageIn(BaseModel):
@@ -336,5 +382,5 @@ async def portal_update_profile(payload: PortalProfileIn,
     await db.portal_identities.update_one(
         {"id": identity["id"], "tenant_id": identity["tenant_id"]}, {"$set": upd},
     )
-    doc = await db.portal_identities.find_one({"id": identity["id"]}, {"_id": 0, "password_hash": 0})
-    return serialize_doc(doc or {})
+    doc = await db.portal_identities.find_one({"id": identity["id"], "tenant_id": identity["tenant_id"]}, {"_id": 0, "password_hash": 0})
+    return _pick(doc or {}, {"id", "email", "full_name", "phone", "role_label", "permissions", "updated_at"})

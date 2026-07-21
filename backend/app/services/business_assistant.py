@@ -238,7 +238,7 @@ async def _ensure_local_capability(capability_key: str, model_profile_id: str) -
             updates["status"] = "active"
         if updates:
             updates["updated_at"] = _now_iso()
-            await db.ai_capabilities.update_one({"id": existing["id"]}, {"$set": prepare_for_mongo(updates)})
+            await db.ai_capabilities.update_one({"id": existing["id"], "capability_key": capability_key}, {"$set": prepare_for_mongo(updates)})
             existing.update(updates)
         return serialize_doc(existing)
     doc = AICapability(
@@ -464,7 +464,10 @@ async def ask_assistant(user: dict[str, Any], fields: dict[str, Any]) -> dict[st
         metadata={"missing_data": missing, "credit_display": CREDIT_DISPLAY},
     )
     for citation in citations:
-        await db.assistant_source_citations.update_one({"id": citation["id"]}, {"$set": {"message_id": assistant_msg["id"]}})
+        await db.assistant_source_citations.update_one(
+            {"tenant_id": user["tenant_id"], "conversation_id": convo["id"], "id": citation["id"]},
+            {"$set": {"message_id": assistant_msg["id"]}},
+        )
     await _audit(user, "assistant.message_answered", "assistant_conversation", convo["id"], "Assistant answered with source-linked context")
     return {
         "conversation": await _conversation(user, convo["id"]),
@@ -827,11 +830,17 @@ async def _check_stale_targets(user: dict[str, Any], proposal: dict[str, Any]) -
         coll = getattr(db, target["collection"])
         doc = await coll.find_one({"tenant_id": user["tenant_id"], "id": ref_id}, {"_id": 0, "updated_at": 1})
         if not doc:
-            await db.assistant_action_proposals.update_one({"id": proposal["id"]}, {"$set": {"status": "stale", "stale_reason": "target_missing", "updated_at": _now_iso()}})
+            await db.assistant_action_proposals.update_one(
+                {"tenant_id": user["tenant_id"], "id": proposal["id"]},
+                {"$set": {"status": "stale", "stale_reason": "target_missing", "updated_at": _now_iso()}},
+            )
             raise BusinessAssistantError("proposal_stale", "Action target changed or disappeared; reconfirmation is required", 409)
         previous = ref.get("source_updated_at")
         if previous and str(doc.get("updated_at")) != str(previous):
-            await db.assistant_action_proposals.update_one({"id": proposal["id"]}, {"$set": {"status": "stale", "stale_reason": "target_updated", "updated_at": _now_iso()}})
+            await db.assistant_action_proposals.update_one(
+                {"tenant_id": user["tenant_id"], "id": proposal["id"]},
+                {"$set": {"status": "stale", "stale_reason": "target_updated", "updated_at": _now_iso()}},
+            )
             raise BusinessAssistantError("proposal_stale", "Action target changed; reconfirmation is required", 409)
 
 
@@ -1003,8 +1012,9 @@ async def upsert_memory(user: dict[str, Any], fields: dict[str, Any]) -> dict[st
         raise BusinessAssistantError("secret_memory_rejected", "Secrets and credentials cannot be saved as assistant memory", 400)
     existing = await db.assistant_memory_entries.find_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "memory_key": key, "status": "active"}, {"_id": 0})
     if existing:
-        await db.assistant_memory_entries.update_one({"id": existing["id"]}, {"$set": {"content_text": content, "updated_at": _now_iso()}})
-        return serialize_doc(await db.assistant_memory_entries.find_one({"id": existing["id"]}, {"_id": 0}))
+        scoped = {"tenant_id": user["tenant_id"], "user_id": user["id"], "id": existing["id"]}
+        await db.assistant_memory_entries.update_one(scoped, {"$set": {"content_text": content, "updated_at": _now_iso()}})
+        return serialize_doc(await db.assistant_memory_entries.find_one(scoped, {"_id": 0}))
     doc = AssistantMemoryEntry(tenant_id=user["tenant_id"], user_id=user["id"], memory_key=key, content_text=content).model_dump()
     await db.assistant_memory_entries.insert_one(prepare_for_mongo(doc))
     await _audit(user, "assistant.memory_saved", "assistant_memory_entry", doc["id"], "Assistant memory saved")
@@ -1016,7 +1026,10 @@ async def delete_memory(user: dict[str, Any], memory_id: str) -> dict[str, Any]:
     doc = await db.assistant_memory_entries.find_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "id": memory_id}, {"_id": 0})
     if not doc:
         raise BusinessAssistantError("memory_not_found", "Assistant memory not found", 404)
-    await db.assistant_memory_entries.update_one({"id": memory_id}, {"$set": {"status": "deleted", "deleted_at": _now_iso(), "updated_at": _now_iso()}})
+    await db.assistant_memory_entries.update_one(
+        {"tenant_id": user["tenant_id"], "user_id": user["id"], "id": memory_id},
+        {"$set": {"status": "deleted", "deleted_at": _now_iso(), "updated_at": _now_iso()}},
+    )
     await _audit(user, "assistant.memory_deleted", "assistant_memory_entry", memory_id, "Assistant memory deleted")
     return {"deleted": True, "id": memory_id}
 
@@ -1173,8 +1186,9 @@ async def dismiss_insight(user: dict[str, Any], insight_id: str) -> dict[str, An
     doc = await db.assistant_insights.find_one({"tenant_id": user["tenant_id"], "id": insight_id}, {"_id": 0})
     if not doc:
         raise BusinessAssistantError("insight_not_found", "Assistant insight not found", 404)
-    await db.assistant_insights.update_one({"id": insight_id}, {"$set": {"status": "dismissed", "dismissed_by_user_id": user["id"], "dismissed_at": _now_iso(), "updated_at": _now_iso()}})
-    return serialize_doc(await db.assistant_insights.find_one({"id": insight_id}, {"_id": 0}))
+    scoped = {"tenant_id": user["tenant_id"], "id": insight_id}
+    await db.assistant_insights.update_one(scoped, {"$set": {"status": "dismissed", "dismissed_by_user_id": user["id"], "dismissed_at": _now_iso(), "updated_at": _now_iso()}})
+    return serialize_doc(await db.assistant_insights.find_one(scoped, {"_id": 0}))
 
 
 def voice_config() -> dict[str, Any]:
@@ -1351,5 +1365,6 @@ async def record_voice_usage(user: dict[str, Any], voice_session_id: str, fields
         "usage_event_ids": list(set((voice.get("usage_event_ids") or []) + [action["id"]])),
         "updated_at": _now_iso(),
     }
-    await db.assistant_voice_sessions.update_one({"id": voice_session_id}, {"$set": updates})
-    return {"voice_session": serialize_doc(await db.assistant_voice_sessions.find_one({"id": voice_session_id}, {"_id": 0})), "action_request": action}
+    scoped = {"tenant_id": user["tenant_id"], "user_id": user["id"], "id": voice_session_id}
+    await db.assistant_voice_sessions.update_one(scoped, {"$set": updates})
+    return {"voice_session": serialize_doc(await db.assistant_voice_sessions.find_one(scoped, {"_id": 0})), "action_request": action}

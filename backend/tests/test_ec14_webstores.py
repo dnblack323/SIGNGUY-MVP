@@ -199,7 +199,15 @@ async def test_launch_checkout_ledger_reversal_and_order_bridge(ctx):
         assert buyer_order["product_subtotal_cents"] == 5000
         assert buyer_order["total_cents"] == 6650
         ledger = payload["ledger"]
-        ledger_types = {row["entry_type"]: row for row in ledger}
+        assert {row["entry_type"] for row in ledger}.isdisjoint(
+            {"platform_usage_fee", "store_owner_share", "production_cost_estimate", "shop_gross_estimate"}
+        )
+        internal_ledger = [
+            doc async for doc in db.webstore_ledger_entries.find(
+                {"tenant_id": ctx["tenant_id"], "buyer_order_id": buyer_order["id"]}, {"_id": 0}
+            )
+        ]
+        ledger_types = {row["entry_type"]: row for row in internal_ledger}
         assert ledger_types["platform_usage_fee"]["amount_cents"] == 100
         assert ledger_types["store_owner_share"]["amount_cents"] == 600
         assert ledger_types["production_cost_estimate"]["amount_cents"] == 1400

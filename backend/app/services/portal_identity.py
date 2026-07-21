@@ -116,7 +116,7 @@ async def update_portal_identity(
     )
     if res.matched_count == 0:
         raise ValueError("portal_identity_not_found")
-    doc = await db.portal_identities.find_one({"id": identity_id}, {"_id": 0})
+    doc = await db.portal_identities.find_one({"id": identity_id, "tenant_id": tenant_id}, {"_id": 0})
     return serialize_doc(doc or {})
 
 
@@ -143,7 +143,7 @@ async def authenticate_password(*, tenant_id: str, email: str, password: str) ->
         return None
     if not verify_password(password, doc["password_hash"]):
         await db.portal_identities.update_one(
-            {"id": doc["id"]},
+            {"id": doc["id"], "tenant_id": tenant_id},
             {"$inc": {"failed_login_count": 1},
              "$set": {"locked_until": (utc_now() + timedelta(minutes=LOCK_MINUTES)).isoformat()
                       if (doc.get("failed_login_count", 0) + 1) >= MAX_FAILED else None}},
@@ -151,7 +151,7 @@ async def authenticate_password(*, tenant_id: str, email: str, password: str) ->
         return None
     # Success — reset counters and record login
     await db.portal_identities.update_one(
-        {"id": doc["id"]},
+        {"id": doc["id"], "tenant_id": tenant_id},
         {"$set": {"failed_login_count": 0, "locked_until": None,
                   "last_login_at": utc_now().isoformat()}},
     )

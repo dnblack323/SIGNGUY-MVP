@@ -42,6 +42,25 @@ def _rate_limit(request: Request, key: str) -> None:
     _RATE_BUCKETS[bucket_key] = bucket
 
 
+def _public_identity(identity: dict) -> dict:
+    allowed = {
+        "id",
+        "portal_type",
+        "customer_id",
+        "employee_id",
+        "webstore_owner_id",
+        "webstore_id",
+        "email",
+        "full_name",
+        "phone",
+        "role_label",
+        "permissions_preset",
+        "permissions",
+        "last_login_at",
+    }
+    return {k: identity.get(k) for k in allowed if k in identity}
+
+
 async def _resolve_tenant_id(tenant_slug: Optional[str]) -> Optional[str]:
     if tenant_slug:
         t = await db.tenants.find_one({"slug": tenant_slug}, {"_id": 0, "id": 1})
@@ -93,7 +112,7 @@ async def login(payload: LoginIn, request: Request) -> dict:
             action="employee_portal_activated", entity_type="portal_identity", entity_id=identity["id"],
             summary="Employee Portal identity activated (first login)",
         )
-    return {"token": token, "identity": identity}
+    return {"token": token, "identity": _public_identity(identity)}
 
 
 @router.post("/magic-link")
@@ -133,7 +152,7 @@ async def verify_magic_link(payload: MagicLinkVerifyIn, request: Request) -> dic
     was_first_login = identity.get("portal_type") == "employee" and not identity.get("last_login_at")
     from ..core.time_utils import utc_now
     await db.portal_identities.update_one(
-        {"id": identity["id"]}, {"$set": {"last_login_at": utc_now().isoformat()}},
+        {"id": identity["id"], "tenant_id": identity["tenant_id"]}, {"$set": {"last_login_at": utc_now().isoformat()}},
     )
     token = issue_portal_jwt(identity)
     action = "employee_portal_login" if identity.get("portal_type") == "employee" else "portal.magic_link_login"
@@ -148,10 +167,10 @@ async def verify_magic_link(payload: MagicLinkVerifyIn, request: Request) -> dic
             action="employee_portal_activated", entity_type="portal_identity", entity_id=identity["id"],
             summary="Employee Portal identity activated (first login)",
         )
-    return {"token": token, "identity": identity}
+    return {"token": token, "identity": _public_identity(identity)}
 
 
 @router.get("/me")
 async def me(identity: dict = Depends(get_current_portal_identity)) -> dict:
     identity.pop("password_hash", None)
-    return {"identity": identity, "permissions": identity.get("permissions") or []}
+    return {"identity": _public_identity(identity), "permissions": identity.get("permissions") or []}
