@@ -7,6 +7,7 @@ from typing import Any, Optional
 from pymongo.errors import DuplicateKeyError
 
 from ..core.db import db
+from ..core.permissions import has_platform_admin_access
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.community import (
     BugReport,
@@ -46,12 +47,7 @@ def _now() -> str:
 
 
 def _is_platform_admin(user: dict) -> bool:
-    return bool(
-        user.get("platform_admin")
-        or user.get("founder_access_admin")
-        or user.get("platform_role") in {"admin", "owner"}
-        or "platform:admin" in set(user.get("permissions") or [])
-    )
+    return has_platform_admin_access(user, include_founder_admin=True)
 
 
 def _is_tenant_admin(user: dict) -> bool:
@@ -767,7 +763,17 @@ async def create_support_request(user: dict, payload: dict) -> dict:
 
 
 async def _notify_platform_admins(title: str, body: str, entity_type: str, entity_id: str) -> None:
-    async for admin in db.users.find({"platform_admin": True, "is_active": True}, {"_id": 0, "tenant_id": 1, "id": 1}):
+    async for admin in db.users.find(
+        {
+            "is_active": True,
+            "$or": [
+                {"platform_admin": True},
+                {"platform_role": {"$in": ["admin", "owner", "PLATFORM_ADMIN", "PLATFORM_CREATOR"]}},
+                {"permissions": {"$in": ["platform:admin", "platform:creator"]}},
+            ],
+        },
+        {"_id": 0, "tenant_id": 1, "id": 1},
+    ):
         await notifications.notify(tenant_id=admin["tenant_id"], recipient_user_id=admin["id"], module="community", kind="platform.notice", title=title, body=body, entity_type=entity_type, entity_id=entity_id, link="/help/community")
 
 

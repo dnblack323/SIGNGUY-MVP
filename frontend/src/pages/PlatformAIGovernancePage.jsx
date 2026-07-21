@@ -10,13 +10,20 @@ import { extractError } from "@/lib/api";
 import { getPlatformAIDashboard, listAICreditLedger, listAIModels, listAIProviders, listGovernancePolicies } from "@/lib/aiGateway";
 import { CircleAlert, RotateCcw, ShieldCheck } from "lucide-react";
 
-function isPlatformAIAdmin(user) {
-  return !!(user?.platform_admin || ["admin", "owner"].includes(user?.platform_role));
+function isPlatformAIAdmin(user, permissions = []) {
+  const perms = new Set(permissions || []);
+  return !!(
+    user?.platform_admin
+    || ["admin", "owner", "PLATFORM_ADMIN", "PLATFORM_CREATOR"].includes(user?.platform_role)
+    || perms.has("platform:admin")
+    || perms.has("platform:creator")
+    || perms.has("platform:ai_credit_admin")
+  );
 }
 
 export default function PlatformAIGovernancePage() {
-  const { user } = useAuth();
-  const allowed = isPlatformAIAdmin(user);
+  const { user, permissions } = useAuth();
+  const allowed = isPlatformAIAdmin(user, permissions);
   const [dashboard, setDashboard] = useState(null);
   const [providers, setProviders] = useState([]);
   const [models, setModels] = useState([]);

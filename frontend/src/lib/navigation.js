@@ -167,7 +167,12 @@ export const NAV_AREAS = [
 export function filterFlyoutByPermissions(flyout, permissions, user = null) {
   if (!Array.isArray(flyout)) return [];
   const set = new Set(permissions || []);
-  const platformUser = !!(user?.platform_admin || ["admin", "owner"].includes(user?.platform_role));
+  const platformUser = !!(
+    user?.platform_admin
+    || ["admin", "owner", "PLATFORM_ADMIN", "PLATFORM_CREATOR"].includes(user?.platform_role)
+    || set.has("platform:admin")
+    || set.has("platform:creator")
+  );
   return flyout.filter((entry) => {
     if (entry.platformOnly && !platformUser) return false;
     return !entry.perm || set.has(entry.perm);

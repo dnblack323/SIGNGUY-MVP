@@ -208,6 +208,7 @@ class Perm(str, Enum):
 
 class PlatformPerm(str, Enum):
     """Platform-scope permissions (cross-tenant). Never satisfies a Perm check."""
+    PLATFORM_CREATOR = "platform:creator"
     PLATFORM_ADMIN = "platform:admin"
     PLATFORM_TENANT_READ = "platform:tenant_read"
     PLATFORM_TENANT_WRITE = "platform:tenant_write"
@@ -311,3 +312,48 @@ def is_platform_perm(value: str) -> bool:
 
 def is_portal_perm(value: str) -> bool:
     return value in {p.value for p in PortalPerm}
+
+
+PLATFORM_CREATOR_ROLE = "PLATFORM_CREATOR"
+PLATFORM_ADMIN_ROLE_VALUES = {"admin", "owner", "PLATFORM_ADMIN", PLATFORM_CREATOR_ROLE}
+
+
+def platform_permissions(user: dict | None) -> set[str]:
+    if not user:
+        return set()
+    return {str(p) for p in (user.get("permissions") or [])}
+
+
+def is_platform_creator_user(user: dict | None) -> bool:
+    """Return True only from stored platform role/permission fields."""
+    if not user:
+        return False
+    return bool(
+        user.get("platform_role") == PLATFORM_CREATOR_ROLE
+        or PlatformPerm.PLATFORM_CREATOR.value in platform_permissions(user)
+    )
+
+
+def has_platform_admin_access(
+    user: dict | None,
+    *,
+    extra_permissions: set[str] | None = None,
+    include_founder_admin: bool = False,
+) -> bool:
+    """Permanent platform-admin authority, including PLATFORM_CREATOR.
+
+    This intentionally avoids request-time email comparison. Tenant roles do not
+    grant platform access; only stored platform flags/roles/permissions do.
+    Existing explicit `platform_admin` access is preserved.
+    """
+    if not user:
+        return False
+    perms = platform_permissions(user)
+    return bool(
+        user.get("platform_admin")
+        or user.get("platform_role") in PLATFORM_ADMIN_ROLE_VALUES
+        or PlatformPerm.PLATFORM_ADMIN.value in perms
+        or PlatformPerm.PLATFORM_CREATOR.value in perms
+        or bool(extra_permissions and perms.intersection(extra_permissions))
+        or bool(include_founder_admin and user.get("founder_access_admin"))
+    )

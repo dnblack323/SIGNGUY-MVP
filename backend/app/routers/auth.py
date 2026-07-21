@@ -118,7 +118,10 @@ async def login(payload: LoginIn) -> TokenOut:
         doc = await db.users.find_one({"tenant_id": tenant["id"], "email": payload.email})
     if not doc or not verify_password(payload.password, doc["password_hash"]) or not doc.get("is_active", True):
         raise generic_error
-    await db.users.update_one({"id": doc["id"]}, {"$set": {"last_login_at": utc_now().isoformat()}})
+    await db.users.update_one(
+        {"id": doc["id"], "tenant_id": doc["tenant_id"]},
+        {"$set": {"last_login_at": utc_now().isoformat()}},
+    )
     token = create_access_token(subject=doc["id"], tenant_id=doc["tenant_id"])
     u = serialize_doc(doc)
     u.pop("password_hash", None)
@@ -192,7 +195,10 @@ async def google_session(payload: GoogleSessionIn) -> TokenOut:
             )
         if matches:
             doc = matches[0]
-            await db.users.update_one({"id": doc["id"]}, {"$set": {"google_id": google_id}})
+            await db.users.update_one(
+                {"id": doc["id"], "tenant_id": doc["tenant_id"]},
+                {"$set": {"google_id": google_id}},
+            )
             doc["google_id"] = google_id
 
     if doc:
@@ -201,7 +207,10 @@ async def google_session(payload: GoogleSessionIn) -> TokenOut:
         tenant = await db.tenants.find_one({"id": doc["tenant_id"]})
         if not tenant:
             raise HTTPException(status_code=401, detail="Tenant not found")
-        await db.users.update_one({"id": doc["id"]}, {"$set": {"last_login_at": utc_now().isoformat()}})
+        await db.users.update_one(
+            {"id": doc["id"], "tenant_id": doc["tenant_id"]},
+            {"$set": {"last_login_at": utc_now().isoformat()}},
+        )
         u = serialize_doc(doc)
         u.pop("password_hash", None)
         return TokenOut(
@@ -331,9 +340,12 @@ async def reset_password(payload: ResetPasswordIn) -> Response:
         exp_dt = exp
     if exp_dt < utc_now():
         raise HTTPException(status_code=400, detail="Token expired")
-    await db.users.update_one({"id": tok["user_id"]}, {"$set": {"password_hash": hash_password(payload.new_password)}})
+    await db.users.update_one(
+        {"id": tok["user_id"], "tenant_id": tok["tenant_id"]},
+        {"$set": {"password_hash": hash_password(payload.new_password)}},
+    )
     await db.password_reset_tokens.update_one({"id": tok["id"]}, {"$set": {"used_at": utc_now().isoformat()}})
-    user = await db.users.find_one({"id": tok["user_id"]})
+    user = await db.users.find_one({"id": tok["user_id"], "tenant_id": tok["tenant_id"]})
     if user:
         await record_audit(
             tenant_id=user["tenant_id"],
@@ -391,7 +403,10 @@ async def dev_login() -> TokenOut:
         await db.users.insert_one(prepare_for_mongo(u.model_dump()))
         user = await db.users.find_one({"id": u.id})
 
-    await db.users.update_one({"id": user["id"]}, {"$set": {"last_login_at": utc_now().isoformat()}})
+    await db.users.update_one(
+        {"id": user["id"], "tenant_id": user["tenant_id"]},
+        {"$set": {"last_login_at": utc_now().isoformat()}},
+    )
     token = create_access_token(subject=user["id"], tenant_id=tenant["id"])
     u_out = serialize_doc(user)
     u_out.pop("password_hash", None)

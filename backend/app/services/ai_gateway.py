@@ -12,6 +12,7 @@ from typing import Any, Optional
 from pymongo.errors import DuplicateKeyError
 
 from ..core.db import db
+from ..core.permissions import PlatformPerm, has_platform_admin_access
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.ai_gateway import (
     AIActionRequest,
@@ -53,12 +54,9 @@ def _day_start_iso() -> str:
 
 
 def _is_platform_ai_admin(user: dict) -> bool:
-    perms = set(user.get("permissions") or [])
-    return bool(
-        user.get("platform_admin")
-        or user.get("platform_role") in {"admin", "owner"}
-        or "platform:admin" in perms
-        or "platform:ai_credit_admin" in perms
+    return has_platform_admin_access(
+        user,
+        extra_permissions={PlatformPerm.PLATFORM_AI_CREDIT_ADMIN.value},
     )
 
 

@@ -263,7 +263,7 @@ async def update_order(order_id: str, payload: OrderUpdateIn, user: dict = Depen
         action="order.updated", entity_type="order", entity_id=order_id,
         summary="Order updated", diff={"changes": updates},
     )
-    doc = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    doc = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return serialize_doc(doc)
 
 
@@ -293,14 +293,14 @@ async def set_order_status(order_id: str, payload: OrderStatusIn, user: dict = D
     updates: dict[str, Any] = {"status": payload.status, "updated_at": utc_now().isoformat()}
     if payload.status == "archived":
         updates["archived_at"] = utc_now().isoformat()
-    await db.orders.update_one({"id": order_id}, {"$set": updates})
+    await db.orders.update_one({"id": order_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         action=f"order.status.{payload.status}", entity_type="order", entity_id=order_id,
         summary=f"Order O-{doc['number']} → {payload.status}",
         diff={"from": current, "to": payload.status, "reason": payload.reason},
     )
-    doc = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    doc = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return serialize_doc(doc)
 
 
@@ -454,7 +454,10 @@ async def update_item(order_id: str, item_id: str, payload: OrderItemPatchIn,
     )
     updates.update(line_totals)
     updates["updated_at"] = now
-    await db.order_items.update_one({"id": item_id}, {"$set": updates})
+    await db.order_items.update_one(
+        {"id": item_id, "order_id": order_id, "tenant_id": user["tenant_id"]},
+        {"$set": updates},
+    )
     await _recompute_order_totals(user["tenant_id"], order_id)
 
     # EC9 Phase 9G — a repriced item gets a NEW immutable snapshot record; the
@@ -470,7 +473,10 @@ async def update_item(order_id: str, item_id: str, payload: OrderItemPatchIn,
         action="order.item_updated", entity_type="order", entity_id=order_id,
         summary="Order item updated", diff={"item_id": item_id, "changes": updates},
     )
-    doc = await db.order_items.find_one({"id": item_id}, {"_id": 0})
+    doc = await db.order_items.find_one(
+        {"id": item_id, "order_id": order_id, "tenant_id": user["tenant_id"]},
+        {"_id": 0},
+    )
     return serialize_doc(doc)
 
 
@@ -517,7 +523,7 @@ async def delete_item(order_id: str, item_id: str, user: dict = Depends(require_
     line = await db.order_items.find_one({"id": item_id, "order_id": order_id, "tenant_id": user["tenant_id"]})
     if not line:
         raise HTTPException(status_code=404, detail="Order item not found")
-    await db.order_items.delete_one({"id": item_id})
+    await db.order_items.delete_one({"id": item_id, "order_id": order_id, "tenant_id": user["tenant_id"]})
     await _recompute_order_totals(user["tenant_id"], order_id)
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],

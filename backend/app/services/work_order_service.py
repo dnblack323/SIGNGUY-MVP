@@ -120,7 +120,7 @@ async def regenerate(
     await db.work_orders.insert_one(prepare_for_mongo(new_wo.model_dump()))
     # Supersede the old one.
     await db.work_orders.update_one(
-        {"id": src["id"]},
+        {"id": src["id"], "tenant_id": tenant_id},
         {"$set": {
             "production_status": "superseded", "current_version": False,
             "superseded_by": new_wo.id, "updated_at": utc_now().isoformat(),
@@ -166,7 +166,10 @@ async def transition(
     if target == "blocked":
         updates["block_reason"] = (reason or "").strip()
 
-    await db.work_orders.update_one({"id": work_order_id}, {"$set": prepare_for_mongo(updates)})
+    await db.work_orders.update_one(
+        {"id": work_order_id, "tenant_id": tenant_id},
+        {"$set": prepare_for_mongo(updates)},
+    )
 
     # Coordinate Order operational status (safe subset)
     order_status_map = {
@@ -185,7 +188,8 @@ async def transition(
         summary=f"W-{doc['number']} → {target}",
         diff={"from": current, "to": target, "reason": reason},
     )
-    return serialize_doc({k: v for k, v in (await db.work_orders.find_one({"id": work_order_id})).items() if k != "_id"})
+    updated = await db.work_orders.find_one({"id": work_order_id, "tenant_id": tenant_id})
+    return serialize_doc({k: v for k, v in updated.items() if k != "_id"})
 
 
 async def assign(
@@ -216,7 +220,7 @@ async def assign(
     if check["any_warning"] and not (override_reason and override_reason.strip()):
         raise AssignmentWarningError(check)
     await db.work_orders.update_one(
-        {"id": work_order_id},
+        {"id": work_order_id, "tenant_id": tenant_id},
         {"$set": {
             "assigned_user_ids": user_ids,
             "assigned_to": user_ids[0] if user_ids else None,
@@ -250,7 +254,7 @@ async def assign(
             summary=f"Assignment override for W-{doc['number']}: {override_reason}",
             diff={"check": check, "override_reason": override_reason},
         )
-    doc = await db.work_orders.find_one({"id": work_order_id})
+    doc = await db.work_orders.find_one({"id": work_order_id, "tenant_id": tenant_id})
     return serialize_doc({k: v for k, v in doc.items() if k != "_id"})
 
 

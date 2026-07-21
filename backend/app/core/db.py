@@ -23,6 +23,8 @@ async def ensure_indexes() -> None:
     await db.tenants.create_index("id", unique=True)
     await db.users.create_index("id", unique=True)
     await db.users.create_index([("tenant_id", 1), ("email", 1)], unique=True)
+    await db.users.create_index([("platform_role", 1), ("is_active", 1)])
+    await db.users.create_index([("platform_admin", 1), ("is_active", 1)])
     # Migration: the reset-token field was renamed `token` -> `token_hash`
     # (tokens are now stored hashed, never in plaintext). Drop the old
     # unique index if it's still present from before the rename, otherwise

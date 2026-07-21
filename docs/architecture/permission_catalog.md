@@ -20,7 +20,7 @@ Source of truth: `backend/app/core/permissions.py`.
 
 `customer, lead, quote, order, order_item, work_order, invoice, payment, document, email, audit, user, role, dashboard (DEPRECATED), pricing, settings, integration, inventory, vendor, purchasing, employee, task, schedule, time_clock, timesheet, payroll, report, analytics, webstore, wrap_lab, ai_tool, ai_assistant, ai_prompt, ai_history, subscription, ai_credit, community, support`.
 
-Platform namespace: `platform:admin, platform:tenant_read, platform:tenant_write, platform:tenant_status, platform:audit_read, platform:broadcast_write, platform:subscription_admin, platform:ai_credit_admin`.
+Platform namespace: `platform:creator, platform:admin, platform:tenant_read, platform:tenant_write, platform:tenant_status, platform:audit_read, platform:broadcast_write, platform:subscription_admin, platform:ai_credit_admin`.
 
 Portal namespace: `portal:customer_view, portal:customer_approve, portal:customer_sign, portal:customer_pay, portal:customer_message, portal:employee_view, portal:employee_time_clock, portal:employee_timesheet_view, portal:employee_payslip_view, portal:webstore_owner_admin, portal:webstore_manager_ops`.
 
@@ -29,6 +29,16 @@ Portal namespace: `portal:customer_view, portal:customer_approve, portal:custome
 - `owner`, `admin` receive every staff Perm.
 - `staff` receives the working MVP subset (see `STAFF_PERMS` in `permissions.py`).
 - Future roles land in later checkpoints per Final Scope Register Part 9.
+
+## Platform Creator Addendum
+
+- `PLATFORM_CREATOR` is a stored backend platform role for the owner-approved platform creator account.
+- Runtime platform-creator authorization is based only on stored user fields (`platform_role`, `platform_admin`, or platform permissions), never request-time email comparison.
+- The owner-approved email `thesigntistslab@gmail.com` may be used only during controlled assignment/bootstrap to locate the existing account by normalized email.
+- `PLATFORM_CREATOR` has legitimate Platform Administration authority through the shared backend platform-admin helper.
+- Tenant `owner`/`admin` roles remain tenant-scoped and cannot assign platform roles.
+- Portal and public users never satisfy staff or platform permission checks.
+- Platform role assignment must create an audit event.
 
 ## Deprecated
 
@@ -47,5 +57,5 @@ Portal namespace: `portal:customer_view, portal:customer_approve, portal:custome
 - Tenant AI alert administration uses `ai_credit:admin`.
 - Tenant AI history reads use `ai_history:read`.
 - Gateway request creation requires `ai_tool:use` or `ai_assistant:use`.
-- Platform AI provider, model, capability, prompt, governance, credit grant/adjustment, provider-health, and cost dashboard routes require platform AI admin authority (`platform:admin`, `platform:ai_credit_admin`, `platform_admin`, or `platform_role` admin/owner).
+- Platform AI provider, model, capability, prompt, governance, credit grant/adjustment, provider-health, and cost dashboard routes require platform AI admin authority (`platform:creator`, `platform:admin`, `platform:ai_credit_admin`, `platform_admin`, or stored platform role `admin`/`owner`/`PLATFORM_ADMIN`/`PLATFORM_CREATOR`).
 - Portal tokens remain invalid for all EC16 staff/platform routes.

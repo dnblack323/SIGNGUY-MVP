@@ -323,13 +323,13 @@ async def update_quote(quote_id: str, payload: QuoteUpdateIn, user: dict = Depen
         updates["revision_number"] = new_rev
 
     updates["updated_at"] = utc_now().isoformat()
-    await db.quotes.update_one({"id": quote_id}, {"$set": updates})
+    await db.quotes.update_one({"id": quote_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         action="quote.updated", entity_type="quote", entity_id=quote_id,
         summary=f"Quote Q-{doc['number']} updated", diff={"changes": updates},
     )
-    doc = await db.quotes.find_one({"id": quote_id}, {"_id": 0})
+    doc = await db.quotes.find_one({"id": quote_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return _serialize_quote(doc)
 
 
@@ -376,14 +376,14 @@ async def set_status(quote_id: str, payload: QuoteStatusIn, user: dict = Depends
         updates["declined_at"] = now
         updates["declined_reason"] = payload.reason
 
-    await db.quotes.update_one({"id": quote_id}, {"$set": prepare_for_mongo(updates)})
+    await db.quotes.update_one({"id": quote_id, "tenant_id": user["tenant_id"]}, {"$set": prepare_for_mongo(updates)})
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         action=f"quote.{target}", entity_type="quote", entity_id=quote_id,
         summary=f"Quote Q-{doc['number']} → {target}",
         diff={"from": current, "to": target, "reason": payload.reason},
     )
-    doc = await db.quotes.find_one({"id": quote_id}, {"_id": 0})
+    doc = await db.quotes.find_one({"id": quote_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return _serialize_quote(doc)
 
 
@@ -395,7 +395,7 @@ async def archive_quote(quote_id: str, user: dict = Depends(require_permission(P
     if doc.get("archived_at"):
         return _serialize_quote(doc)
     await db.quotes.update_one(
-        {"id": quote_id},
+        {"id": quote_id, "tenant_id": user["tenant_id"]},
         {"$set": {"archived_at": utc_now(), "updated_at": utc_now().isoformat()}},
     )
     await record_audit(
@@ -403,7 +403,7 @@ async def archive_quote(quote_id: str, user: dict = Depends(require_permission(P
         action="quote.archived", entity_type="quote", entity_id=quote_id,
         summary=f"Quote Q-{doc['number']} archived",
     )
-    doc = await db.quotes.find_one({"id": quote_id}, {"_id": 0})
+    doc = await db.quotes.find_one({"id": quote_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return _serialize_quote(doc)
 
 
@@ -442,7 +442,10 @@ async def add_line_item(
     # sent+ quote: bump revision first
     if quote.get("status") not in {"draft"}:
         new_rev = await _create_revision_before_edit(quote, user, reason="line_item_add")
-        await db.quotes.update_one({"id": quote_id}, {"$set": {"revision_number": new_rev, "updated_at": utc_now().isoformat()}})
+        await db.quotes.update_one(
+            {"id": quote_id, "tenant_id": user["tenant_id"]},
+            {"$set": {"revision_number": new_rev, "updated_at": utc_now().isoformat()}},
+        )
         quote["revision_number"] = new_rev
 
     revision_number = int(quote.get("revision_number") or 1)
@@ -501,7 +504,7 @@ async def add_line_item(
     # Recompute + persist quote totals
     quote_totals = await _recompute_quote_totals(user["tenant_id"], quote_id)
     await db.quotes.update_one(
-        {"id": quote_id},
+        {"id": quote_id, "tenant_id": user["tenant_id"]},
         {"$set": {**quote_totals, "updated_at": utc_now().isoformat()}},
     )
     await record_audit(
@@ -536,8 +539,13 @@ async def update_line_item(
     # sent+ quote: bump revision + roll items forward
     if quote.get("status") not in {"draft"}:
         new_rev = await _create_revision_before_edit(quote, user, reason="line_item_update")
-        await db.quotes.update_one({"id": quote_id}, {"$set": {"revision_number": new_rev, "updated_at": utc_now().isoformat()}})
-        line = await db.quote_line_items.find_one({"id": item_id})
+        await db.quotes.update_one(
+            {"id": quote_id, "tenant_id": user["tenant_id"]},
+            {"$set": {"revision_number": new_rev, "updated_at": utc_now().isoformat()}},
+        )
+        line = await db.quote_line_items.find_one(
+            {"id": item_id, "quote_id": quote_id, "tenant_id": user["tenant_id"]}
+        )
 
     updates = payload.model_dump(exclude_none=True, exclude={"recalculate"})
     recalc_requested = payload.recalculate
@@ -591,7 +599,10 @@ async def update_line_item(
     )
     updates.update(totals)
     updates["updated_at"] = utc_now().isoformat()
-    await db.quote_line_items.update_one({"id": item_id}, {"$set": updates})
+    await db.quote_line_items.update_one(
+        {"id": item_id, "quote_id": quote_id, "tenant_id": user["tenant_id"]},
+        {"$set": updates},
+    )
 
     # EC9 Phase 9G — a repriced item gets a NEW immutable snapshot record; the
     # previous "active" record is relabeled "superseded" (never mutated).
@@ -603,7 +614,7 @@ async def update_line_item(
 
     quote_totals = await _recompute_quote_totals(user["tenant_id"], quote_id)
     await db.quotes.update_one(
-        {"id": quote_id},
+        {"id": quote_id, "tenant_id": user["tenant_id"]},
         {"$set": {**quote_totals, "updated_at": utc_now().isoformat()}},
     )
     await record_audit(
@@ -612,7 +623,10 @@ async def update_line_item(
         summary=f"Line item updated on Q-{quote['number']}",
         diff={"line_item_id": item_id, "changes": updates},
     )
-    doc = await db.quote_line_items.find_one({"id": item_id}, {"_id": 0})
+    doc = await db.quote_line_items.find_one(
+        {"id": item_id, "quote_id": quote_id, "tenant_id": user["tenant_id"]},
+        {"_id": 0},
+    )
     return serialize_doc(doc)
 
 
@@ -673,12 +687,20 @@ async def delete_line_item(
 
     if quote.get("status") not in {"draft"}:
         new_rev = await _create_revision_before_edit(quote, user, reason="line_item_delete")
-        await db.quotes.update_one({"id": quote_id}, {"$set": {"revision_number": new_rev, "updated_at": utc_now().isoformat()}})
-        line = await db.quote_line_items.find_one({"id": item_id})
+        await db.quotes.update_one(
+            {"id": quote_id, "tenant_id": user["tenant_id"]},
+            {"$set": {"revision_number": new_rev, "updated_at": utc_now().isoformat()}},
+        )
+        line = await db.quote_line_items.find_one(
+            {"id": item_id, "quote_id": quote_id, "tenant_id": user["tenant_id"]}
+        )
 
-    await db.quote_line_items.delete_one({"id": item_id})
+    await db.quote_line_items.delete_one({"id": item_id, "quote_id": quote_id, "tenant_id": user["tenant_id"]})
     quote_totals = await _recompute_quote_totals(user["tenant_id"], quote_id)
-    await db.quotes.update_one({"id": quote_id}, {"$set": {**quote_totals, "updated_at": utc_now().isoformat()}})
+    await db.quotes.update_one(
+        {"id": quote_id, "tenant_id": user["tenant_id"]},
+        {"$set": {**quote_totals, "updated_at": utc_now().isoformat()}},
+    )
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         action="quote.line_item.removed", entity_type="quote", entity_id=quote_id,

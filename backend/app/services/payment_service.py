@@ -100,7 +100,7 @@ async def record_manual(
     # Race-safe re-check: if concurrent inserts pushed us above total, roll back.
     _, new_balance = await _invoice_balance(tenant_id, invoice_id)
     if new_balance < 0:
-        await db.payments.delete_one({"id": pay.id})
+        await db.payments.delete_one({"id": pay.id, "tenant_id": tenant_id})
         await reconcile(tenant_id=tenant_id, invoice_id=invoice_id)
         raise ValueError("overpayment_rejected")
 
@@ -134,7 +134,7 @@ async def void_manual(
         raise ValueError("void_reason_required")
 
     await db.payments.update_one(
-        {"id": payment_id},
+        {"id": payment_id, "tenant_id": tenant_id},
         {"$set": {
             "status": "voided",
             "voided_at": utc_now().isoformat(),
@@ -150,7 +150,7 @@ async def void_manual(
         summary=f"Manual payment voided (${doc['amount_cents'] / 100:,.2f})",
         diff={"payment_id": payment_id, "reason": reason},
     )
-    updated = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+    updated = await db.payments.find_one({"id": payment_id, "tenant_id": tenant_id}, {"_id": 0})
     return serialize_doc(updated)
 
 
@@ -225,7 +225,7 @@ async def initiate_stripe(
     if not stripe_core.is_enabled():
         # Fail-closed for production; test mode may still proceed if key configured
         # via patched stripe_core.is_enabled(). Delete the pending row and bail.
-        await db.payments.delete_one({"id": pay.id})
+        await db.payments.delete_one({"id": pay.id, "tenant_id": tenant_id})
         raise ValueError("stripe_disabled")
     intent = stripe_core.create_payment_intent(
         amount_cents=amount_cents,
@@ -244,12 +244,12 @@ async def initiate_stripe(
         )
     except Exception as ex:  # noqa: BLE001
         import stripe as _stripe
-        await db.payments.delete_one({"id": pay.id})
+        await db.payments.delete_one({"id": pay.id, "tenant_id": tenant_id})
         if isinstance(ex, _stripe.error.StripeError):
             raise ValueError(f"stripe_error:{getattr(ex, 'user_message', None) or str(ex)}")
         raise
     await db.payments.update_one(
-        {"id": pay.id},
+        {"id": pay.id, "tenant_id": tenant_id},
         {"$set": {
             "stripe_payment_intent_id": intent["id"],
             "stripe_client_secret": intent["client_secret"],
@@ -292,7 +292,7 @@ async def confirm_stripe_from_webhook(
     }
     if dev_simulated:
         updates["dev_simulated"] = True
-    await db.payments.update_one({"id": doc["id"]}, {"$set": updates})
+    await db.payments.update_one({"id": doc["id"], "tenant_id": doc["tenant_id"]}, {"$set": updates})
     await reconcile(tenant_id=doc["tenant_id"], invoice_id=doc["invoice_id"])
     await record_audit(
         tenant_id=doc["tenant_id"], actor_user_id="webhook", actor_email="stripe",
@@ -325,7 +325,7 @@ async def fail_stripe_from_webhook(
     else:
         updates["failed_at"] = now
         updates["failure_reason"] = reason
-    await db.payments.update_one({"id": doc["id"]}, {"$set": updates})
+    await db.payments.update_one({"id": doc["id"], "tenant_id": doc["tenant_id"]}, {"$set": updates})
     await reconcile(tenant_id=doc["tenant_id"], invoice_id=doc["invoice_id"])
     await record_audit(
         tenant_id=doc["tenant_id"], actor_user_id="webhook", actor_email="stripe",
@@ -418,7 +418,7 @@ async def confirm_refund_from_webhook(*, stripe_refund_id: str, provider_event_i
         return
     now = utc_now().isoformat()
     await db.payments.update_one(
-        {"id": doc["id"]},
+        {"id": doc["id"], "tenant_id": doc["tenant_id"]},
         {"$set": {
             "status": "confirmed",
             "provider_event_id": provider_event_id,
@@ -429,7 +429,7 @@ async def confirm_refund_from_webhook(*, stripe_refund_id: str, provider_event_i
     )
     # Update the parent payment's own status marker.
     if doc.get("refund_of_payment_id"):
-        parent = await db.payments.find_one({"id": doc["refund_of_payment_id"]})
+        parent = await db.payments.find_one({"id": doc["refund_of_payment_id"], "tenant_id": doc["tenant_id"]})
         if parent:
             parent_amt = int(parent.get("amount_cents") or 0)
             refunded_total = 0
@@ -437,6 +437,7 @@ async def confirm_refund_from_webhook(*, stripe_refund_id: str, provider_event_i
                 refunded_total += int(r.get("amount_cents") or 0)
             parent_status = "refunded" if refunded_total >= parent_amt else "partially_refunded"
             await db.payments.update_one(
-                {"id": parent["id"]}, {"$set": {"status": parent_status, "updated_at": now}}
+                {"id": parent["id"], "tenant_id": doc["tenant_id"]},
+                {"$set": {"status": parent_status, "updated_at": now}},
             )
     await reconcile(tenant_id=doc["tenant_id"], invoice_id=doc["invoice_id"])

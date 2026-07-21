@@ -8,6 +8,7 @@ from typing import Any, Optional
 from pymongo.errors import DuplicateKeyError
 
 from ..core.db import db
+from ..core.permissions import PlatformPerm, has_platform_admin_access
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.commercial_catalog import PlatformFeeTransactionContract
 from ..models.tenant_billing import (
@@ -57,11 +58,9 @@ def _parse_iso(value: str | None) -> Optional[datetime]:
 
 
 def _is_platform_admin(user: dict) -> bool:
-    return bool(
-        user.get("platform_admin")
-        or user.get("platform_role") in {"admin", "owner"}
-        or "platform:admin" in set(user.get("permissions") or [])
-        or "platform:subscription_admin" in set(user.get("permissions") or [])
+    return has_platform_admin_access(
+        user,
+        extra_permissions={PlatformPerm.PLATFORM_SUBSCRIPTION_ADMIN.value},
     )
 
 

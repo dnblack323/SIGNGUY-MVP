@@ -151,13 +151,13 @@ async def update_invoice(invoice_id: str, payload: InvoiceUpdateIn, user: dict =
     if not updates:
         raise HTTPException(status_code=400, detail="No updates")
     updates["updated_at"] = utc_now().isoformat()
-    await db.invoices.update_one({"id": invoice_id}, {"$set": updates})
+    await db.invoices.update_one({"id": invoice_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         action="invoice.update", entity_type="invoice", entity_id=invoice_id,
         summary=f"Invoice I-{doc['number']} updated", diff={"changes": updates},
     )
-    doc = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    doc = await db.invoices.find_one({"id": invoice_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return serialize_doc(doc)
 
 
@@ -193,7 +193,7 @@ async def set_invoice_status(invoice_id: str, payload: InvoiceStatusIn, user: di
         # EC4 §22 — block void when net confirmed payments remain.
         from ..services.invoice_reconciliation import reconcile
         await reconcile(tenant_id=user["tenant_id"], invoice_id=invoice_id)
-        latest = await db.invoices.find_one({"id": invoice_id})
+        latest = await db.invoices.find_one({"id": invoice_id, "tenant_id": user["tenant_id"]})
         net_paid = int(latest.get("amount_paid_cents") or 0) - int(latest.get("amount_refunded_cents") or 0)
         if net_paid > 0:
             raise HTTPException(status_code=400,
@@ -204,7 +204,7 @@ async def set_invoice_status(invoice_id: str, payload: InvoiceStatusIn, user: di
         extras["void_reason"] = payload.reason.strip()
         extras["status"] = "void"                       # compat mirror
 
-    await db.invoices.update_one({"id": invoice_id}, {"$set": extras})
+    await db.invoices.update_one({"id": invoice_id, "tenant_id": user["tenant_id"]}, {"$set": extras})
     # Re-derive financial fields after any status change.
     from ..services.invoice_reconciliation import reconcile
     await reconcile(tenant_id=user["tenant_id"], invoice_id=invoice_id)
@@ -216,7 +216,7 @@ async def set_invoice_status(invoice_id: str, payload: InvoiceStatusIn, user: di
         summary=f"Invoice I-{doc['number']} document_status → {target}",
         diff={"from": current, "to": target, "reason": payload.reason},
     )
-    doc = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    doc = await db.invoices.find_one({"id": invoice_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return serialize_doc(doc)
 
 
@@ -251,7 +251,7 @@ async def add_payment(
     updates = {"updated_at": utc_now().isoformat()}
     if new_status != inv["status"]:
         updates["status"] = new_status
-    await db.invoices.update_one({"id": invoice_id}, {"$set": updates})
+    await db.invoices.update_one({"id": invoice_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         action="invoice.payment_added", entity_type="invoice", entity_id=invoice_id,

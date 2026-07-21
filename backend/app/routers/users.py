@@ -67,11 +67,11 @@ async def update_user(user_id: str, payload: UserUpdateIn, user: dict = Depends(
     updates = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
-    await db.users.update_one({"id": user_id}, {"$set": updates})
+    await db.users.update_one({"id": user_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         action="user.update", entity_type="user", entity_id=user_id,
         summary=f"Updated user {doc['email']}", diff={"changes": updates},
     )
-    doc = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    doc = await db.users.find_one({"id": user_id, "tenant_id": user["tenant_id"]}, {"_id": 0, "password_hash": 0})
     return serialize_doc(doc)
