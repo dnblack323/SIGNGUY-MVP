@@ -152,14 +152,14 @@ export const NAV_AREAS = [
     testId: "nav-help-community",
     perm: null,
     flyout: [
-      { key: "help-center", label: "Help Center", to: "/help", perm: null, testId: "flyout-help-center", disabled: true },
-      { key: "documentation", label: "Documentation", to: "/help/docs", perm: null, testId: "flyout-documentation", disabled: true },
-      { key: "onboarding", label: "Onboarding", to: "/help/onboarding", perm: null, testId: "flyout-onboarding", disabled: true },
+      { key: "help-center", label: "Help Center", to: "/help", perm: "help:read", testId: "flyout-help-center" },
+      { key: "documentation", label: "Documentation", to: "/help/docs", perm: "help:read", testId: "flyout-documentation" },
+      { key: "onboarding", label: "Onboarding", to: "/help/onboarding", perm: "onboarding:read", testId: "flyout-onboarding" },
       { key: "community", label: "Community", to: "/help/community", perm: "community:read", testId: "flyout-community" },
       { key: "bug-reports", label: "Bug Reports", to: "/help/bugs", perm: "community:read", testId: "flyout-bug-reports" },
       { key: "feature-requests", label: "Feature Requests", to: "/help/feature-requests", perm: "community:read", testId: "flyout-feature-requests" },
       { key: "contact-support", label: "Contact Support", to: "/help/contact", perm: "support:write", testId: "flyout-contact-support" },
-      { key: "whats-new", label: "What's New", to: "/help/whats-new", perm: null, testId: "flyout-whats-new", disabled: true },
+      { key: "whats-new", label: "What's New", to: "/help/whats-new", perm: "help:read", testId: "flyout-whats-new" },
     ],
   },
 ];

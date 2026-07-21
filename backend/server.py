@@ -285,6 +285,14 @@ api_router.include_router(ai_studio_router_module.router)
 from app.routers import business_assistant as business_assistant_router_module
 api_router.include_router(business_assistant_router_module.router)
 
+# EC19 - Onboarding, Help Center, contextual help, and app documentation.
+# Reuses EC2/EC9/EC10/EC12/EC13/EC16-EC18 contracts; no live provider or
+# commercial checkout work is introduced here.
+from app.routers import onboarding as onboarding_router_module
+from app.routers import help_center as help_center_router_module
+api_router.include_router(onboarding_router_module.router)
+api_router.include_router(help_center_router_module.router)
+
 app.include_router(api_router)
 
 app.add_middleware(

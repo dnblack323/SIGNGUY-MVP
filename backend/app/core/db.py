@@ -878,6 +878,59 @@ async def ensure_indexes() -> None:
         partialFilterExpression={"checkout_session_id": {"$type": "string"}},
     )
 
+    # ---- EC19 - onboarding, help center, contextual help, and app documentation ----
+    await db.onboarding_program_definitions.create_index("id", unique=True)
+    await db.onboarding_program_definitions.create_index([("program_key", 1), ("version", 1)], unique=True)
+    await db.onboarding_program_definitions.create_index([("status", 1), ("effective_at", 1)])
+
+    await db.tenant_onboarding_instances.create_index("id", unique=True)
+    await db.tenant_onboarding_instances.create_index([("tenant_id", 1), ("program_key", 1)], unique=True)
+    await db.tenant_onboarding_instances.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
+
+    await db.onboarding_task_states.create_index("id", unique=True)
+    await db.onboarding_task_states.create_index([("tenant_id", 1), ("program_key", 1), ("task_key", 1)], unique=True)
+    await db.onboarding_task_states.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
+
+    await db.onboarding_step_responses.create_index("id", unique=True)
+    await db.onboarding_step_responses.create_index([("tenant_id", 1), ("task_key", 1), ("created_at", -1)])
+    await db.onboarding_step_responses.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+
+    await db.onboarding_import_records.create_index("id", unique=True)
+    await db.onboarding_import_records.create_index([("tenant_id", 1), ("import_type", 1), ("status", 1), ("created_at", -1)])
+
+    await db.onboarding_template_exercises.create_index("id", unique=True)
+    await db.onboarding_template_exercises.create_index([("tenant_id", 1), ("template_id", 1), ("status", 1), ("updated_at", -1)])
+
+    await db.contextual_help_definitions.create_index("id", unique=True)
+    await db.contextual_help_definitions.create_index([("surface_key", 1), ("help_key", 1)], unique=True)
+    await db.contextual_help_definitions.create_index([("module", 1), ("status", 1)])
+
+    await db.help_articles.create_index("id", unique=True)
+    await db.help_articles.create_index("slug", unique=True)
+    await db.help_articles.create_index([("status", 1), ("category", 1), ("updated_at", -1)])
+    await db.help_articles.create_index([("module", 1), ("status", 1)])
+    await db.help_articles.create_index([("title", "text"), ("body", "text"), ("search_keywords", "text")])
+
+    await db.help_feedback.create_index("id", unique=True)
+    await db.help_feedback.create_index([("tenant_id", 1), ("article_id", 1), ("created_at", -1)])
+    await db.help_feedback.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+
+    await db.support_escalations.create_index("id", unique=True)
+    await db.support_escalations.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
+    await db.support_escalations.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+
     # ---- EC15 - Wrap Lab shared core ----
     await db.wrap_vehicles.create_index("id", unique=True)
     await db.wrap_vehicles.create_index([("tenant_id", 1), ("customer_id", 1)])
