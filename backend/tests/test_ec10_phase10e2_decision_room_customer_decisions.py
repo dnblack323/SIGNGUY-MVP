@@ -110,14 +110,18 @@ async def test_portal_select_creates_pending_review_decision(ctx):
         body = resp.json()
         assert body["action_type"] == "option_selected"
         assert body["option_id"] == opt_a
-        assert body["internal_review_status"] == "pending_review"
         assert body["source_access_mode"] == "portal"
-        assert body["customer_id"] == ctx["customer_a"]["id"]
         assert body["published_version_id"]
         assert body["published_version_number"] == 1
+        assert "internal_review_status" not in body
+        assert "customer_id" not in body
+        assert "public_token_id" not in body
+        assert "tenant_id" not in body
 
         mine = (await c2.get(f"/api/portal/decision-rooms/{rid}/decisions")).json()["items"]
         assert len(mine) == 1 and mine[0]["id"] == body["id"]
+        assert "internal_review_status" not in mine[0]
+        assert "customer_id" not in mine[0]
 
 
 @pytest.mark.asyncio
@@ -262,12 +266,14 @@ async def test_public_token_submit_and_list_parity(ctx):
         assert resp.status_code == 201, resp.text
         body = resp.json()
         assert body["source_access_mode"] == "public_token"
-        assert body["customer_id"] is None
-        assert body["public_token_id"]
         assert body["actor_display"] == "Public Jane"
+        assert "customer_id" not in body
+        assert "public_token_id" not in body
+        assert "tenant_id" not in body
 
         listed = (await c2.get(f"/api/public/decision-rooms/{rid}/decisions", params={"t": raw})).json()["items"]
         assert len(listed) == 1 and listed[0]["id"] == body["id"]
+        assert "public_token_id" not in listed[0]
 
 
 @pytest.mark.asyncio
@@ -324,5 +330,8 @@ async def test_customer_cannot_set_internal_review_fields(ctx):
         assert resp.status_code == 201
         body = resp.json()
         # Client-supplied identity/review fields are silently ignored — always server-derived.
-        assert body["internal_review_status"] == "pending_review"
-        assert body["customer_id"] == ctx["customer_a"]["id"]
+        assert "internal_review_status" not in body
+        assert "customer_id" not in body
+        stored = await db.customer_decisions.find_one({"id": body["id"], "tenant_id": ctx["ta"]}, {"_id": 0})
+        assert stored["internal_review_status"] == "pending_review"
+        assert stored["customer_id"] == ctx["customer_a"]["id"]

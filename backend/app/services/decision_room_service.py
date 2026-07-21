@@ -847,7 +847,28 @@ async def internal_preview(*, tenant_id: str, room_id: str) -> dict:
 _CUSTOMER_ACCESSIBLE_STATUSES = {"published", "closed", "expired"}
 
 
-def _customer_safe_room_response(room: dict[str, Any], version: dict[str, Any]) -> dict[str, Any]:
+async def _customer_option_preview(tenant_id: str, option: dict[str, Any]) -> dict[str, Any]:
+    preview = _option_preview(option)
+    file_ids = list(option.get("file_ids") or [])
+    if file_ids:
+        visible_ids = {
+            f["id"] async for f in db.files.find(
+                {
+                    "tenant_id": tenant_id,
+                    "id": {"$in": file_ids},
+                    "visibility": "customer_visible",
+                    "archived": {"$ne": True},
+                },
+                {"_id": 0, "id": 1},
+            )
+        }
+        preview["file_ids"] = [fid for fid in file_ids if fid in visible_ids]
+    else:
+        preview["file_ids"] = []
+    return preview
+
+
+async def _customer_safe_room_response(room: dict[str, Any], version: dict[str, Any]) -> dict[str, Any]:
     active_options = sorted(
         [o for o in (version.get("options_snapshot") or []) if o.get("active", True)],
         key=lambda o: o.get("display_order", 0),
@@ -865,7 +886,38 @@ def _customer_safe_room_response(room: dict[str, Any], version: dict[str, Any]) 
         "allow_customer_questions": version.get("allow_customer_questions", False),
         "allow_change_requests": version.get("allow_change_requests", False),
         "allow_reject_all": version.get("allow_reject_all", False),
-        "options": [_option_preview(o) for o in active_options],
+        "options": [await _customer_option_preview(room["tenant_id"], o) for o in active_options],
+    }
+
+
+def _customer_decision_safe(doc: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": doc.get("id"),
+        "decision_room_id": doc.get("decision_room_id"),
+        "published_version_id": doc.get("published_version_id"),
+        "published_version_number": doc.get("published_version_number"),
+        "action_type": doc.get("action_type"),
+        "option_id": doc.get("option_id"),
+        "comment": doc.get("comment"),
+        "source_access_mode": doc.get("source_access_mode"),
+        "actor_display": doc.get("actor_display"),
+        "supersedes_decision_id": doc.get("supersedes_decision_id"),
+        "submitted_at": doc.get("submitted_at"),
+        "created_at": doc.get("created_at"),
+        "updated_at": doc.get("updated_at"),
+    }
+
+
+def _saved_for_later_safe(doc: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": doc.get("id"),
+        "decision_room_id": doc.get("decision_room_id"),
+        "published_version_id": doc.get("published_version_id"),
+        "source_access_mode": doc.get("source_access_mode"),
+        "note": doc.get("note"),
+        "saved_at": doc.get("saved_at"),
+        "created_at": doc.get("created_at"),
+        "updated_at": doc.get("updated_at"),
     }
 
 
@@ -896,7 +948,7 @@ async def _get_accessible_room_and_version(
 async def get_customer_view(*, tenant_id: str, room_id: str, customer_id: Optional[str] = None) -> dict:
     """Shared by both the Customer Portal route and the Public Token route."""
     room, version = await _get_accessible_room_and_version(tenant_id, room_id, customer_id)
-    return _customer_safe_room_response(room, version)
+    return await _customer_safe_room_response(room, version)
 
 
 def _collect_customer_media_refs(version: dict[str, Any]) -> tuple[set[str], set[str]]:
@@ -1020,7 +1072,7 @@ async def submit_customer_decision(
             {"tenant_id": tenant_id, "decision_room_id": room_id, "idempotency_key": idempotency_key}, {"_id": 0},
         )
         if existing:
-            return serialize_doc(existing)
+            return _customer_decision_safe(serialize_doc(existing))
 
     if action_type in {"option_selected", "option_rejected"}:
         if not option_id:
@@ -1075,7 +1127,7 @@ async def submit_customer_decision(
                 {"tenant_id": tenant_id, "decision_room_id": room_id, "idempotency_key": idempotency_key}, {"_id": 0},
             )
             if existing:
-                return serialize_doc(existing)
+                return _customer_decision_safe(serialize_doc(existing))
         raise
 
     actor_user_id = f"portal:{customer_id}" if customer_id else f"public_token:{public_token_id}"
@@ -1106,7 +1158,7 @@ async def submit_customer_decision(
     except Exception:
         logger.exception("decision_room customer_decision_submitted notification failed (decision already saved)")
 
-    return serialize_doc(decision)
+    return _customer_decision_safe(serialize_doc(decision))
 
 
 async def list_customer_decisions(*, tenant_id: str, room_id: str) -> list[dict]:
@@ -1133,7 +1185,7 @@ async def list_my_customer_decisions(
     elif public_token_id is not None:
         q["public_token_id"] = public_token_id
     cur = db.customer_decisions.find(q, {"_id": 0}).sort("created_at", -1)
-    return [serialize_doc(d) async for d in cur]
+    return [_customer_decision_safe(serialize_doc(d)) async for d in cur]
 
 
 async def acknowledge_customer_decision(
@@ -1818,7 +1870,7 @@ async def submit_save_for_later(
 
     existing = await _find_by_idempotency_key("decision_room_saved_for_later", tenant_id=tenant_id, room_id=room_id, idempotency_key=idempotency_key)
     if existing:
-        return serialize_doc(existing)
+        return _saved_for_later_safe(serialize_doc(existing))
 
     now = _now_iso()
     saved = SavedForLater(
@@ -1832,7 +1884,7 @@ async def submit_save_for_later(
         if "E11000" in str(ex):
             dup = await _find_by_idempotency_key("decision_room_saved_for_later", tenant_id=tenant_id, room_id=room_id, idempotency_key=idempotency_key)
             if dup:
-                return serialize_doc(dup)
+                return _saved_for_later_safe(serialize_doc(dup))
         raise
 
     actor_user_id = _actor_user_id(customer_id, public_token_id)
@@ -1842,7 +1894,7 @@ async def submit_save_for_later(
         summary="Customer saved this Decision Room for later — no selection was submitted",
         diff={"saved_id": saved["id"]},
     )
-    return serialize_doc(saved)
+    return _saved_for_later_safe(serialize_doc(saved))
 
 
 async def list_my_saved_for_later(*, tenant_id: str, room_id: str, customer_id: Optional[str] = None, public_token_id: Optional[str] = None) -> list[dict]:
@@ -1853,7 +1905,7 @@ async def list_my_saved_for_later(*, tenant_id: str, room_id: str, customer_id: 
     elif public_token_id is not None:
         q["public_token_id"] = public_token_id
     cur = db.decision_room_saved_for_later.find(q, {"_id": 0}).sort("created_at", -1)
-    return [serialize_doc(d) async for d in cur]
+    return [_saved_for_later_safe(serialize_doc(d)) async for d in cur]
 
 
 

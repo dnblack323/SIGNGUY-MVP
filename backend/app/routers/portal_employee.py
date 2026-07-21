@@ -9,7 +9,7 @@ data directly with an explicit self/published-only filter.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
@@ -60,10 +60,150 @@ def _raise_stage(e: ProductionStageError) -> None:
     raise HTTPException(status_code=status, detail=str(e))
 
 
+def _pick(doc: Optional[dict], fields: tuple[str, ...]) -> Optional[dict]:
+    if doc is None:
+        return None
+    return {k: doc.get(k) for k in fields if k in doc}
+
+
+_EMPLOYEE_PORTAL_FIELDS = (
+    "id", "name", "preferred_name", "email", "phone", "profile_image_file_id",
+    "hire_date", "availability", "availability_blocks", "timezone",
+    "emergency_contact_name", "emergency_contact_phone", "created_at", "updated_at",
+)
+_PORTAL_IDENTITY_FIELDS = ("id", "portal_type", "employee_id", "email", "phone", "full_name")
+_TIME_ENTRY_FIELDS = (
+    "id", "employee_id", "work_date", "clock_in_at", "clock_out_at", "breaks",
+    "total_break_minutes", "worked_minutes", "regular_minutes", "overtime_minutes",
+    "status", "source", "work_order_id", "task_id", "notes", "created_at", "updated_at",
+)
+_SHIFT_FIELDS = (
+    "id", "employee_id", "shift_date", "start_at", "end_at", "break_minutes_expected",
+    "location", "title", "notes", "work_order_id", "order_id", "status", "created_at", "updated_at",
+)
+_TIMESHEET_FIELDS = (
+    "id", "employee_id", "week_start", "week_end", "status", "worked_minutes",
+    "break_minutes", "regular_minutes", "overtime_minutes", "incomplete_entry_count",
+    "missed_clock_count", "created_at", "updated_at",
+)
+_ANNOUNCEMENT_FIELDS = (
+    "id", "title", "body", "audience", "acknowledgement_required", "status",
+    "published_at", "expires_at", "created_at", "updated_at",
+)
+_TASK_FIELDS = (
+    "id", "title", "description", "status", "priority", "due_at", "assigned_employee_id",
+    "employee_visible", "linked_record_label", "available_actions", "created_at", "updated_at",
+)
+_TASK_COMMENT_FIELDS = (
+    "id", "task_id", "author_employee_id", "body", "visibility", "edited_at", "created_at", "updated_at",
+)
+_TIME_OFF_FIELDS = (
+    "id", "employee_id", "requested_by_employee_id", "request_type", "start_at", "end_at",
+    "all_day", "reason", "private_reason", "manager_note", "status", "clarification_requested_at",
+    "approved_at", "denied_at", "canceled_at", "conflicts", "created_at", "updated_at",
+)
+_THREAD_FIELDS = (
+    "id", "thread_type", "title", "participant_employee_ids", "customer_id", "order_id",
+    "order_item_id", "work_order_id", "production_stage_id", "task_id", "calendar_event_id",
+    "announcement_id", "visibility", "last_message_at", "unread_count", "created_at", "updated_at",
+)
+_MESSAGE_FIELDS = (
+    "id", "thread_id", "sender_employee_id", "body", "message_type", "visibility",
+    "edited_at", "created_at", "updated_at",
+)
+_PREFERENCE_FIELDS = (
+    "id", "identity_type", "identity_id", "in_app_messages", "task_notifications",
+    "schedule_changes", "time_off_decisions", "appointment_reminders", "announcements",
+    "daily_digest", "email_delivery", "digest_time", "digest_frequency", "quiet_hours",
+    "created_at", "updated_at",
+)
+_DIGEST_FIELDS = ("id", "digest_date", "status", "sections", "delivered_at", "delivery_channel", "created_at", "updated_at")
+_PRODUCTION_STAGE_FIELDS = (
+    "id", "workflow_instance_id", "order_id", "order_item_id", "work_order_id",
+    "stage_key", "stage_name", "description", "sequence", "required", "may_skip",
+    "requires_reason_to_skip", "status", "assigned_employee_id", "assigned_role",
+    "due_at", "started_at", "completed_at", "blocked_at", "waiting_since",
+    "blocker_reason", "completion_note", "proof_gate_type", "employee_visible",
+    "requires_previous_stage_complete", "created_at", "updated_at",
+)
+
+
 def _public_employee_view(emp: dict) -> dict:
-    """Strip manager-only / payroll-sensitive fields before returning to the portal."""
-    hidden = {"hourly_rate_cents", "notes", "status_history", "linked_user_id", "overtime_policy"}
-    return {k: v for k, v in emp.items() if k not in hidden}
+    return _pick(emp, _EMPLOYEE_PORTAL_FIELDS) or {}
+
+
+def _public_portal_identity_view(identity: dict) -> dict:
+    return _pick(identity, _PORTAL_IDENTITY_FIELDS) or {}
+
+
+def _public_time_entry_view(entry: Optional[dict]) -> Optional[dict]:
+    return _pick(entry, _TIME_ENTRY_FIELDS)
+
+
+def _public_shift_view(shift: dict) -> dict:
+    return _pick(shift, _SHIFT_FIELDS) or {}
+
+
+def _public_timesheet_view(doc: dict) -> dict:
+    return _pick(doc, _TIMESHEET_FIELDS) or {}
+
+
+def _public_announcement_view(doc: dict) -> dict:
+    return _pick(doc, _ANNOUNCEMENT_FIELDS) or {}
+
+
+def _public_task_view(doc: dict) -> dict:
+    return _pick(doc, _TASK_FIELDS) or {}
+
+
+def _public_task_comment_view(doc: dict) -> dict:
+    return _pick(doc, _TASK_COMMENT_FIELDS) or {}
+
+
+def _public_time_off_view(doc: dict) -> dict:
+    return _pick(doc, _TIME_OFF_FIELDS) or {}
+
+
+def _public_thread_view(doc: dict) -> dict:
+    return _pick(doc, _THREAD_FIELDS) or {}
+
+
+def _public_message_view(doc: dict) -> dict:
+    return _pick(doc, _MESSAGE_FIELDS) or {}
+
+
+def _public_preferences_view(doc: dict) -> dict:
+    return _pick(doc, _PREFERENCE_FIELDS) or {}
+
+
+def _public_digest_view(doc: dict) -> dict:
+    return _pick(doc, _DIGEST_FIELDS) or {}
+
+
+def _public_production_stage_view(doc: dict) -> dict:
+    out = _pick(doc, _PRODUCTION_STAGE_FIELDS) or {}
+    out["production_notes"] = [
+        {k: note.get(k) for k in ("note", "created_at") if k in note}
+        for note in doc.get("production_notes") or []
+    ]
+    return out
+
+
+def _public_task_collection(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "available": payload.get("available", True),
+        "items": [_public_task_view(t) for t in payload.get("items") or []],
+        "total": payload.get("total", 0),
+        "summary": payload.get("summary"),
+    }
+
+
+def _public_thread_collection(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "items": [_public_thread_view(t) for t in payload.get("items") or []],
+        "total": payload.get("total", 0),
+        "unread_total": payload.get("unread_total", 0),
+    }
 
 
 async def _get_self_employee(identity: dict) -> dict:
@@ -129,14 +269,14 @@ async def dashboard(identity: dict = Depends(VIEW)) -> dict:
     task_summary = await task_service.list_employee_tasks(tenant_id=tenant_id, employee_id=employee_id)
     return {
         "employee": _public_employee_view(emp),
-        "active_entry": active_entry,
-        "today_shifts": [s for s in today_shifts if s["status"] != "cancelled"],
-        "next_shift": next_shift,
+        "active_entry": _public_time_entry_view(active_entry),
+        "today_shifts": [_public_shift_view(s) for s in today_shifts if s["status"] != "cancelled"],
+        "next_shift": _public_shift_view(next_shift) if next_shift else None,
         "week_hours": {"worked_minutes": week_summary["worked_minutes"], "week_start": week_summary["week_start"],
                        "week_end": week_summary["week_end"]},
         "timesheet_status": week_summary["status"],
-        "announcements": visible_announcements,
-        "tasks": {"available": True, "items": task_summary["items"][:3], "total": task_summary["total"]},
+        "announcements": [_public_announcement_view(a) for a in visible_announcements],
+        "tasks": {"available": True, "items": [_public_task_view(t) for t in task_summary["items"][:3]], "total": task_summary["total"]},
         "pay": latest_pay,
     }
 
@@ -163,9 +303,10 @@ async def production_home(search: Optional[str] = None, identity: dict = Depends
 async def production_start(stage_id: str, identity: dict = Depends(VIEW)) -> dict:
     await _get_own_stage(identity, stage_id)
     try:
-        return await production_stage_service.transition_stage(
+        stage = await production_stage_service.transition_stage(
             tenant_id=identity["tenant_id"], stage_id=stage_id, target="in_progress", user=_portal_actor(identity),
         )
+        return _public_production_stage_view(stage)
     except ProductionStageError as e:
         _raise_stage(e)
 
@@ -174,9 +315,10 @@ async def production_start(stage_id: str, identity: dict = Depends(VIEW)) -> dic
 async def production_resume(stage_id: str, identity: dict = Depends(VIEW)) -> dict:
     await _get_own_stage(identity, stage_id)
     try:
-        return await production_stage_service.transition_stage(
+        stage = await production_stage_service.transition_stage(
             tenant_id=identity["tenant_id"], stage_id=stage_id, target="in_progress", user=_portal_actor(identity),
         )
+        return _public_production_stage_view(stage)
     except ProductionStageError as e:
         _raise_stage(e)
 
@@ -185,10 +327,11 @@ async def production_resume(stage_id: str, identity: dict = Depends(VIEW)) -> di
 async def production_wait(stage_id: str, payload: ProductionActionIn, identity: dict = Depends(VIEW)) -> dict:
     await _get_own_stage(identity, stage_id)
     try:
-        return await production_stage_service.transition_stage(
+        stage = await production_stage_service.transition_stage(
             tenant_id=identity["tenant_id"], stage_id=stage_id, target="waiting",
             user=_portal_actor(identity), reason=payload.reason,
         )
+        return _public_production_stage_view(stage)
     except ProductionStageError as e:
         _raise_stage(e)
 
@@ -197,10 +340,11 @@ async def production_wait(stage_id: str, payload: ProductionActionIn, identity: 
 async def production_block(stage_id: str, payload: ProductionActionIn, identity: dict = Depends(VIEW)) -> dict:
     await _get_own_stage(identity, stage_id)
     try:
-        return await production_stage_service.transition_stage(
+        stage = await production_stage_service.transition_stage(
             tenant_id=identity["tenant_id"], stage_id=stage_id, target="blocked",
             user=_portal_actor(identity), reason=payload.reason,
         )
+        return _public_production_stage_view(stage)
     except ProductionStageError as e:
         _raise_stage(e)
 
@@ -209,10 +353,11 @@ async def production_block(stage_id: str, payload: ProductionActionIn, identity:
 async def production_complete(stage_id: str, payload: ProductionActionIn, identity: dict = Depends(VIEW)) -> dict:
     await _get_own_stage(identity, stage_id)
     try:
-        return await production_stage_service.transition_stage(
+        stage = await production_stage_service.transition_stage(
             tenant_id=identity["tenant_id"], stage_id=stage_id, target="completed",
             user=_portal_actor(identity), completion_note=payload.completion_note,
         )
+        return _public_production_stage_view(stage)
     except ProductionStageError as e:
         _raise_stage(e)
 
@@ -221,9 +366,10 @@ async def production_complete(stage_id: str, payload: ProductionActionIn, identi
 async def production_note(stage_id: str, payload: ProductionActionIn, identity: dict = Depends(VIEW)) -> dict:
     await _get_own_stage(identity, stage_id)
     try:
-        return await production_stage_service.add_stage_note(
+        stage = await production_stage_service.add_stage_note(
             tenant_id=identity["tenant_id"], stage_id=stage_id, note=payload.note or "", user=_portal_actor(identity),
         )
+        return _public_production_stage_view(stage)
     except ProductionStageError as e:
         _raise_stage(e)
 
@@ -238,17 +384,18 @@ class ClockInIn(BaseModel):
 @router.get("/time-clock/me")
 async def time_clock_me(identity: dict = Depends(CLOCK)) -> dict:
     active = await time_clock_service.get_active_entry(tenant_id=identity["tenant_id"], employee_id=identity["employee_id"])
-    return {"active_entry": active}
+    return {"active_entry": _public_time_entry_view(active)}
 
 
 @router.post("/time-clock/clock-in")
 async def clock_in(payload: ClockInIn, identity: dict = Depends(CLOCK)) -> dict:
     try:
-        return await time_clock_service.clock_in(
+        entry = await time_clock_service.clock_in(
             tenant_id=identity["tenant_id"], employee_id=identity["employee_id"],
             actor_user_id=f"portal:{identity['id']}", actor_email=identity["email"],
             source="self", work_order_id=payload.work_order_id, notes=payload.notes,
         )
+        return _public_time_entry_view(entry) or {}
     except TimeEntryError as e:
         _raise(e)
 
@@ -261,7 +408,7 @@ async def clock_out(identity: dict = Depends(CLOCK)) -> dict:
             actor_user_id=f"portal:{identity['id']}", actor_email=identity["email"],
         )
         await _refresh_timesheet(identity["tenant_id"], identity["employee_id"], entry)
-        return entry
+        return _public_time_entry_view(entry) or {}
     except TimeEntryError as e:
         _raise(e)
 
@@ -269,10 +416,11 @@ async def clock_out(identity: dict = Depends(CLOCK)) -> dict:
 @router.post("/time-clock/break-start")
 async def break_start(identity: dict = Depends(CLOCK)) -> dict:
     try:
-        return await time_clock_service.start_break(
+        entry = await time_clock_service.start_break(
             tenant_id=identity["tenant_id"], employee_id=identity["employee_id"],
             actor_user_id=f"portal:{identity['id']}", actor_email=identity["email"],
         )
+        return _public_time_entry_view(entry) or {}
     except TimeEntryError as e:
         _raise(e)
 
@@ -280,10 +428,11 @@ async def break_start(identity: dict = Depends(CLOCK)) -> dict:
 @router.post("/time-clock/break-end")
 async def break_end(identity: dict = Depends(CLOCK)) -> dict:
     try:
-        return await time_clock_service.end_break(
+        entry = await time_clock_service.end_break(
             tenant_id=identity["tenant_id"], employee_id=identity["employee_id"],
             actor_user_id=f"portal:{identity['id']}", actor_email=identity["email"],
         )
+        return _public_time_entry_view(entry) or {}
     except TimeEntryError as e:
         _raise(e)
 
@@ -299,7 +448,7 @@ async def schedule_today(identity: dict = Depends(SCHEDULE)) -> dict:
         tenant_id=identity["tenant_id"], employee_id=identity["employee_id"],
         date_from=today, date_to=today, published_only=True,
     )
-    return {"date": today, "items": items}
+    return {"date": today, "items": [_public_shift_view(s) for s in items]}
 
 
 @router.get("/schedule/week")
@@ -312,7 +461,7 @@ async def schedule_week(week_start: Optional[str] = None, identity: dict = Depen
         tenant_id=identity["tenant_id"], employee_id=identity["employee_id"],
         date_from=start, date_to=end, published_only=True,
     )
-    return {"week_start": start, "week_end": end, "items": items}
+    return {"week_start": start, "week_end": end, "items": [_public_shift_view(s) for s in items]}
 
 
 # ---- My Timesheet (self-scoped, read-only — no approval action here) ----
@@ -322,10 +471,6 @@ async def schedule_week(week_start: Optional[str] = None, identity: dict = Depen
 # rate; even though it isn't the rate itself, it lets an employee reverse
 # it out of their known hours, so it is stripped from every portal response.
 _TIMESHEET_HIDDEN_FIELDS = {"estimated_gross_cents"}
-
-
-def _public_timesheet_view(doc: dict) -> dict:
-    return {k: v for k, v in doc.items() if k not in _TIMESHEET_HIDDEN_FIELDS}
 
 
 @router.get("/timesheet/summary")
@@ -494,7 +639,7 @@ async def announcements(identity: dict = Depends(VIEW)) -> dict:
         a for a in all_active
         if a.get("audience") == "all" or identity["employee_id"] in (a.get("employee_ids") or [])
     ]
-    return {"items": visible}
+    return {"items": [_public_announcement_view(a) for a in visible]}
 
 
 class PortalTaskActionIn(BaseModel):
@@ -526,9 +671,10 @@ class PortalPreferenceIn(BaseModel):
 
 @router.get("/tasks")
 async def my_tasks(status: Optional[str] = None, view: Optional[str] = None, identity: dict = Depends(TASKS)) -> dict:
-    return await task_service.list_employee_tasks(
+    payload = await task_service.list_employee_tasks(
         tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], status=status, view=view,
     )
+    return _public_task_collection(payload)
 
 
 @router.get("/tasks/{task_id}")
@@ -540,7 +686,10 @@ async def task_detail(task_id: str, identity: dict = Depends(TASKS)) -> dict:
         comments = await task_service.list_comments(
             tenant_id=identity["tenant_id"], task_id=task_id, employee_visible_only=True,
         )
-        return {"task": task, "comments": comments}
+        return {
+            "task": _public_task_view(task),
+            "comments": [_public_task_comment_view(c) for c in comments],
+        }
     except TaskError as e:
         _raise(e)
 
@@ -565,19 +714,26 @@ class TimeOffCancelIn(BaseModel):
 
 @router.get("/time-off")
 async def my_time_off(status: Optional[str] = None, identity: dict = Depends(SCHEDULE)) -> dict:
-    return await time_off_service.list_requests(
+    payload = await time_off_service.list_requests(
         tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], status=status, include_private=True,
     )
+    return {
+        "items": [_public_time_off_view(t) for t in payload.get("items") or []],
+        "total": payload.get("total", 0),
+        "limit": payload.get("limit"),
+        "skip": payload.get("skip"),
+    }
 
 
 @router.post("/time-off", status_code=201)
 async def submit_time_off(payload: TimeOffCreateIn, identity: dict = Depends(SCHEDULE)) -> dict:
     try:
-        return await time_off_service.create_request(
+        request = await time_off_service.create_request(
             tenant_id=identity["tenant_id"], employee_id=identity["employee_id"],
             actor_employee_id=identity["employee_id"], actor_email=identity.get("email", "employee-portal"),
             payload=payload.model_dump(exclude_none=True),
         )
+        return _public_time_off_view(request)
     except TimeOffError as e:
         _raise(e)
 
@@ -585,9 +741,10 @@ async def submit_time_off(payload: TimeOffCreateIn, identity: dict = Depends(SCH
 @router.get("/time-off/{request_id}")
 async def my_time_off_detail(request_id: str, identity: dict = Depends(SCHEDULE)) -> dict:
     try:
-        return await time_off_service.employee_get_request(
+        request = await time_off_service.employee_get_request(
             tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], request_id=request_id,
         )
+        return _public_time_off_view(request)
     except TimeOffError as e:
         _raise(e)
 
@@ -595,11 +752,12 @@ async def my_time_off_detail(request_id: str, identity: dict = Depends(SCHEDULE)
 @router.post("/time-off/{request_id}/clarification")
 async def respond_time_off(request_id: str, payload: TimeOffClarificationIn, identity: dict = Depends(SCHEDULE)) -> dict:
     try:
-        return await time_off_service.respond_to_clarification(
+        request = await time_off_service.respond_to_clarification(
             tenant_id=identity["tenant_id"], request_id=request_id, employee_id=identity["employee_id"],
             actor_email=identity.get("email", "employee-portal"), response=payload.response,
             private_reason=payload.private_reason,
         )
+        return _public_time_off_view(request)
     except TimeOffError as e:
         _raise(e)
 
@@ -607,10 +765,11 @@ async def respond_time_off(request_id: str, payload: TimeOffClarificationIn, ide
 @router.post("/time-off/{request_id}/cancel")
 async def cancel_time_off(request_id: str, payload: TimeOffCancelIn, identity: dict = Depends(SCHEDULE)) -> dict:
     try:
-        return await time_off_service.cancel_request(
+        request = await time_off_service.cancel_request(
             tenant_id=identity["tenant_id"], request_id=request_id, employee_id=identity["employee_id"],
             actor_email=identity.get("email", "employee-portal"), reason=payload.reason,
         )
+        return _public_time_off_view(request)
     except TimeOffError as e:
         _raise(e)
 
@@ -618,20 +777,32 @@ async def cancel_time_off(request_id: str, payload: TimeOffCancelIn, identity: d
 @router.get("/calendar")
 async def my_calendar(start_at: str, end_at: str, identity: dict = Depends(SCHEDULE)) -> dict:
     try:
-        return await calendar_service.employee_feed(
+        feed = await calendar_service.employee_feed(
             tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], start_at=start_at, end_at=end_at,
         )
+        return {
+            "items": [
+                {k: event.get(k) for k in (
+                    "id", "title", "description", "start_at", "end_at", "all_day",
+                    "event_type", "status", "employee_id", "work_order_id", "order_id",
+                    "time_off_request_id", "created_at", "updated_at",
+                ) if k in event}
+                for event in feed.get("items", [])
+            ],
+            "total": feed.get("total", len(feed.get("items", []))),
+        }
     except CalendarError as e:
         _raise(e)
 
 
 async def _task_transition(identity: dict, task_id: str, target: str, payload: PortalTaskActionIn) -> dict:
     try:
-        return await task_service.transition_task(
+        task = await task_service.transition_task(
             tenant_id=identity["tenant_id"], task_id=task_id, target=target,
             actor_user_id=f"portal:{identity['id']}", actor_email=identity.get("email", "employee-portal"),
             actor_employee_id=identity["employee_id"], reason=payload.reason, allow_employee=True,
         )
+        return _public_task_view(task)
     except TaskError as e:
         _raise(e)
 
@@ -667,9 +838,10 @@ async def task_comments(task_id: str, identity: dict = Depends(TASKS)) -> dict:
         await task_service.get_employee_task(
             tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], task_id=task_id,
         )
-        return {"items": await task_service.list_comments(
+        comments = await task_service.list_comments(
             tenant_id=identity["tenant_id"], task_id=task_id, employee_visible_only=True,
-        )}
+        )
+        return {"items": [_public_task_comment_view(c) for c in comments]}
     except TaskError as e:
         _raise(e)
 
@@ -677,11 +849,12 @@ async def task_comments(task_id: str, identity: dict = Depends(TASKS)) -> dict:
 @router.post("/tasks/{task_id}/comments", status_code=201)
 async def task_add_comment(task_id: str, payload: PortalTaskCommentIn, identity: dict = Depends(TASKS)) -> dict:
     try:
-        return await task_service.add_comment(
+        comment = await task_service.add_comment(
             tenant_id=identity["tenant_id"], task_id=task_id,
             actor_user_id=f"portal:{identity['id']}", actor_email=identity.get("email", "employee-portal"),
             author_employee_id=identity["employee_id"], body=payload.body, employee_scope=True,
         )
+        return _public_task_comment_view(comment)
     except TaskError as e:
         _raise(e)
 
@@ -691,9 +864,10 @@ async def task_add_comment(task_id: str, payload: PortalTaskCommentIn, identity:
 @router.get("/messages")
 async def my_message_threads(q: Optional[str] = None, identity: dict = Depends(MESSAGES)) -> dict:
     try:
-        return await communication_service.list_threads(
+        payload = await communication_service.list_threads(
             tenant_id=identity["tenant_id"], identity_type="employee", identity_id=identity["employee_id"], q=q,
         )
+        return _public_thread_collection(payload)
     except CommunicationError as e:
         _raise(e)
 
@@ -709,7 +883,10 @@ async def my_message_thread(thread_id: str, identity: dict = Depends(MESSAGES)) 
             tenant_id=identity["tenant_id"], thread_id=thread_id,
             identity_type="employee", identity_id=identity["employee_id"],
         )
-        return {"thread": thread, "messages": messages["items"]}
+        return {
+            "thread": _public_thread_view(thread),
+            "messages": [_public_message_view(m) for m in messages["items"]],
+        }
     except CommunicationError as e:
         _raise(e)
 
@@ -717,11 +894,12 @@ async def my_message_thread(thread_id: str, identity: dict = Depends(MESSAGES)) 
 @router.post("/messages/{thread_id}/messages", status_code=201)
 async def my_send_message(thread_id: str, payload: PortalMessageIn, identity: dict = Depends(MESSAGES)) -> dict:
     try:
-        return await communication_service.send_message(
+        message = await communication_service.send_message(
             tenant_id=identity["tenant_id"], thread_id=thread_id, body=payload.body,
             actor_employee_id=identity["employee_id"], actor_email=identity.get("email", "employee-portal"),
             idempotency_key=payload.idempotency_key,
         )
+        return _public_message_view(message)
     except CommunicationError as e:
         _raise(e)
 
@@ -739,34 +917,38 @@ async def my_mark_message_read(thread_id: str, identity: dict = Depends(MESSAGES
 
 @router.get("/preferences")
 async def my_preferences(identity: dict = Depends(PROFILE)) -> dict:
-    return await communication_service.get_preferences(
+    prefs = await communication_service.get_preferences(
         tenant_id=identity["tenant_id"], identity_type="employee", identity_id=identity["employee_id"],
     )
+    return _public_preferences_view(prefs)
 
 
 @router.patch("/preferences")
 async def update_my_preferences(payload: PortalPreferenceIn, identity: dict = Depends(PROFILE)) -> dict:
-    return await communication_service.update_preferences(
+    prefs = await communication_service.update_preferences(
         tenant_id=identity["tenant_id"], identity_type="employee", identity_id=identity["employee_id"],
         actor_employee_id=identity["employee_id"], actor_email=identity.get("email", "employee-portal"),
         updates=payload.model_dump(exclude_none=True),
     )
+    return _public_preferences_view(prefs)
 
 
 @router.get("/digest/preview")
 async def my_digest_preview(digest_date: Optional[str] = None, identity: dict = Depends(MESSAGES)) -> dict:
-    return await communication_service.preview_digest(
+    digest = await communication_service.preview_digest(
         tenant_id=identity["tenant_id"], recipient_type="employee",
         recipient_id=identity["employee_id"], digest_date=digest_date,
     )
+    return _public_digest_view(digest)
 
 
 @router.post("/digest/generate")
 async def my_digest_generate(digest_date: Optional[str] = None, identity: dict = Depends(MESSAGES)) -> dict:
-    return await communication_service.generate_digest(
+    digest = await communication_service.generate_digest(
         tenant_id=identity["tenant_id"], recipient_type="employee",
         recipient_id=identity["employee_id"], digest_date=digest_date,
     )
+    return _public_digest_view(digest)
 
 
 # ---- Profile ----
@@ -782,7 +964,7 @@ async def profile(identity: dict = Depends(PROFILE)) -> dict:
         "portal_email": identity["email"],
         "portal_phone": identity.get("phone"),
         "portal_full_name": identity.get("full_name"),
-        "preferences": prefs,
+        "preferences": _public_preferences_view(prefs),
     }
 
 
@@ -868,5 +1050,7 @@ async def update_profile(payload: ProfileUpdateIn, identity: dict = Depends(PROF
     emp = await _get_self_employee(identity)
     return {
         "employee": _public_employee_view(emp),
-        "portal": updated_identity or {"id": identity["id"], "email": identity["email"], "phone": identity.get("phone"), "full_name": identity.get("full_name")},
+        "portal": _public_portal_identity_view(
+            updated_identity or {"id": identity["id"], "portal_type": identity.get("portal_type"), "employee_id": identity.get("employee_id"), "email": identity["email"], "phone": identity.get("phone"), "full_name": identity.get("full_name")}
+        ),
     }

@@ -380,6 +380,8 @@ async def test_save_for_later_gating_and_lifecycle(ctx):
         assert saved.status_code == 201, saved.text
         room2 = (await c2.get(f"/api/portal/decision-rooms/{rid2}")).json()
         assert saved.json()["published_version_id"] == room2["published_version_id"]
+        for forbidden in ("tenant_id", "customer_id", "public_token_id", "idempotency_key"):
+            assert forbidden not in saved.json()
 
         dup = await c2.post(f"/api/portal/decision-rooms/{rid2}/save-for-later", json={"note": "different note", "idempotency_key": "sfl-1"})
         assert dup.status_code == 201
@@ -387,6 +389,8 @@ async def test_save_for_later_gating_and_lifecycle(ctx):
 
         mine = (await c2.get(f"/api/portal/decision-rooms/{rid2}/save-for-later")).json()["items"]
         assert len(mine) == 1
+        for forbidden in ("tenant_id", "customer_id", "public_token_id", "idempotency_key"):
+            assert forbidden not in mine[0]
 
     count = await db.decision_room_saved_for_later.count_documents({"decision_room_id": rid2})
     assert count == 1
