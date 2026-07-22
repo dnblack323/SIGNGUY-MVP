@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api, { extractError } from "@/lib/api";
 import PageHeader from "@/components/layout/PageHeader";
+import CommandRibbon from "@/components/command-ribbon/CommandRibbon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,9 +16,12 @@ import { Plus, Search, Users } from "lucide-react";
 import { toast } from "sonner";
 import { relativeTime } from "@/lib/format";
 import { useAuth } from "@/auth/AuthContext";
+import { buildCustomersRibbonGroups } from "@/lib/shopOperationRibbon";
 
-function NewCustomerDialog({ onCreated }) {
-  const [open, setOpen] = useState(false);
+function NewCustomerDialog({ onCreated, open: controlledOpen, onOpenChange, trigger }) {
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  const setOpen = onOpenChange ?? setLocalOpen;
   const [form, setForm] = useState({ name: "", company: "", email: "", phone: "", notes: "" });
   const upd = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const [busy, setBusy] = useState(false);
@@ -39,9 +43,11 @@ function NewCustomerDialog({ onCreated }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button data-testid="customers-create-button"><Plus className="size-4 mr-1" />New customer</Button>
-      </DialogTrigger>
+      {trigger !== null && (
+        <DialogTrigger asChild>
+          {trigger || <Button data-testid="customers-create-button"><Plus className="size-4 mr-1" />New customer</Button>}
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle>New customer</DialogTitle>
@@ -67,18 +73,38 @@ function NewCustomerDialog({ onCreated }) {
 
 export default function CustomersPage() {
   const [q, setQ] = useState("");
+  const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   const qc = useQueryClient();
   const { hasPerm } = useAuth();
   const canWrite = hasPerm("customer:write");
+  const handleNewCustomerOpenChange = (nextOpen) => {
+    setNewCustomerOpen(nextOpen);
+    if (!nextOpen) {
+      window.requestAnimationFrame(() => {
+        document.querySelector('[data-testid="ribbon-new-customer"]')?.focus();
+      });
+    }
+  };
   const { data, isLoading, error } = useQuery({
     queryKey: ["customers", q],
     queryFn: async () => (await api.get("/customers", { params: { search: q || undefined, limit: 100 } })).data,
   });
   const items = data?.items || [];
+  const ribbonGroups = buildCustomersRibbonGroups({
+    canWrite,
+    onNewCustomer: () => setNewCustomerOpen(true),
+  });
 
   return (
     <div className="space-y-4" data-testid="customers-page">
-      <PageHeader title="Customers" subtitle="Everyone you’ve done work for." actions={canWrite && <NewCustomerDialog onCreated={() => qc.invalidateQueries({ queryKey: ["customers"] })} />} />
+      <PageHeader title="Customers" subtitle="Everyone you’ve done work for." />
+      <CommandRibbon groups={ribbonGroups} data-testid="customers-command-ribbon" />
+      <NewCustomerDialog
+        open={newCustomerOpen}
+        onOpenChange={handleNewCustomerOpenChange}
+        trigger={null}
+        onCreated={() => qc.invalidateQueries({ queryKey: ["customers"] })}
+      />
       <div className="flex items-center gap-2">
         <div className="relative w-full max-w-md">
           <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
