@@ -136,6 +136,8 @@ async def ensure_indexes() -> None:
     await db.orders.create_index([("tenant_id", 1), ("customer_id", 1), ("created_at", -1)])
     await db.orders.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
     await db.orders.create_index([("tenant_id", 1), ("source_quote_id", 1)])
+    await db.orders.create_index([("tenant_id", 1), ("order_source", 1), ("updated_at", -1)])
+    await db.orders.create_index([("tenant_id", 1), ("order_source_record_type", 1), ("order_source_record_id", 1)])
     # order_items
     await db.order_items.create_index("id", unique=True)
     await db.order_items.create_index([("tenant_id", 1), ("order_id", 1), ("position", 1)])
@@ -830,6 +832,10 @@ async def ensure_indexes() -> None:
     await db.webstore_buyer_orders.create_index("id", unique=True)
     await db.webstore_buyer_orders.create_index([("tenant_id", 1), ("webstore_id", 1), ("created_at", -1)])
     await db.webstore_buyer_orders.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
+    await db.webstore_buyer_orders.create_index(
+        [("tenant_id", 1), ("bridged_order_id", 1)],
+        partialFilterExpression={"bridged_order_id": {"$type": "string"}},
+    )
     await db.webstore_buyer_orders.create_index(
         [("tenant_id", 1), ("webstore_id", 1), ("idempotency_key", 1)],
         unique=True,

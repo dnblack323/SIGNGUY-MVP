@@ -10,6 +10,10 @@ OrderStatus = Literal[
     "draft", "confirmed", "in_production", "ready", "completed", "cancelled", "archived"
 ]
 
+OrderSource = Literal[
+    "manual", "quote", "webstore", "wrap_lab", "email", "facebook", "legacy_unknown"
+]
+
 
 class OrderItem(BaseDoc):
     tenant_id: str
@@ -87,6 +91,11 @@ class Order(BaseDoc):
     tenant_id: str
     number: int  # sequential per tenant
     customer_id: str
+
+    # Canonical source classification is assigned only by trusted backend flows.
+    order_source: OrderSource = "manual"
+    order_source_record_type: Optional[str] = None
+    order_source_record_id: Optional[str] = None
 
     # Source linkage (EC3 keeps backward-compatible `quote_id`)
     quote_id: Optional[str] = None

@@ -6,10 +6,11 @@ flag / override.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..core.db import db
 from ..core.permissions import Perm
@@ -19,6 +20,13 @@ from ..models.order import Order, OrderItem
 from ..services.audit import record_audit
 from ..services.commerce_totals import compute_document_totals, compute_line_totals, compute_pricing_summary
 from ..services.order_item_rules import default_production_required
+from ..services.order_source import (
+    ORDER_SOURCE_MANUAL,
+    normalize_order_source,
+    normalize_order_sources,
+    parse_order_source_filter,
+    visible_filter_contract,
+)
 from ..services.order_pricing import build_item_pricing_fields, calculate_for_references
 from ..services.pricing import get_or_init_pricing_settings
 from ..services.pricing_snapshot_records import create_snapshot_record
@@ -30,6 +38,8 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 
 class OrderCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     customer_id: str
     job_name: str = Field(min_length=1, max_length=200)
     title: Optional[str] = None
@@ -41,6 +51,8 @@ class OrderCreateIn(BaseModel):
 
 
 class OrderUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     job_name: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
@@ -194,19 +206,40 @@ async def _resolve_item_pricing(
 async def list_orders(
     status: Optional[str] = Query(None),
     customer_id: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, min_length=1, max_length=120),
+    order_source: Optional[str] = Query(None),
     limit: int = Query(50, le=200),
     skip: int = Query(0, ge=0),
     user: dict = Depends(require_permission(Perm.ORDER_READ)),
 ) -> dict:
+    source_filter = parse_order_source_filter(order_source)
     q: dict = {"tenant_id": user["tenant_id"]}
     if status:
         q["status"] = status
     if customer_id:
         q["customer_id"] = customer_id
-    total = await db.orders.count_documents(q)
-    cursor = db.orders.find(q, {"_id": 0}).sort("number", -1).skip(skip).limit(limit)
-    items = [serialize_doc(d) async for d in cursor]
+    if search:
+        pattern = re.compile(re.escape(search), re.IGNORECASE)
+        q["$or"] = [
+            {"job_name": pattern},
+            {"title": pattern},
+            {"description": pattern},
+            {"notes": pattern},
+        ]
+        if search.isdigit():
+            q["$or"].append({"number": int(search)})
+    cursor = db.orders.find(q, {"_id": 0}).sort("number", -1)
+    normalized = await normalize_order_sources([doc async for doc in cursor])
+    if source_filter:
+        normalized = [order for order in normalized if order.get("order_source") in source_filter]
+    total = len(normalized)
+    items = normalized[skip:skip + limit]
     return {"items": items, "total": total, "limit": limit, "skip": skip}
+
+
+@router.get("/source-filters")
+async def order_source_filters(user: dict = Depends(require_permission(Perm.ORDER_READ))) -> dict:
+    return visible_filter_contract()
 
 
 @router.post("", status_code=201)
@@ -219,6 +252,7 @@ async def create_order(payload: OrderCreateIn, user: dict = Depends(require_perm
         tenant_id=user["tenant_id"],
         number=number,
         customer_id=payload.customer_id,
+        order_source=ORDER_SOURCE_MANUAL,
         job_name=payload.job_name,
         title=payload.title or payload.job_name,
         description=payload.description,
@@ -244,7 +278,7 @@ async def get_order(order_id: str, user: dict = Depends(require_permission(Perm.
         raise HTTPException(status_code=404, detail="Order not found")
     items = await _list_items(user["tenant_id"], order_id)
     return {
-        "order": serialize_doc(doc), "items": items, "totals": compute_document_totals(items),
+        "order": await normalize_order_source(doc), "items": items, "totals": compute_document_totals(items),
         "pricing_summary": compute_pricing_summary(items),
     }
 
@@ -264,7 +298,7 @@ async def update_order(order_id: str, payload: OrderUpdateIn, user: dict = Depen
         summary="Order updated", diff={"changes": updates},
     )
     doc = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
-    return serialize_doc(doc)
+    return await normalize_order_source(doc)
 
 
 @router.post("/{order_id}/status")
@@ -276,7 +310,7 @@ async def set_order_status(order_id: str, payload: OrderStatusIn, user: dict = D
         raise HTTPException(status_code=404, detail="Order not found")
     current = doc.get("status") or "draft"
     if payload.status == current:
-        return serialize_doc(doc)
+        return await normalize_order_source(doc)
 
     allowed = {
         "draft": {"confirmed", "cancelled"},
@@ -301,7 +335,7 @@ async def set_order_status(order_id: str, payload: OrderStatusIn, user: dict = D
         diff={"from": current, "to": payload.status, "reason": payload.reason},
     )
     doc = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
-    return serialize_doc(doc)
+    return await normalize_order_source(doc)
 
 
 @router.post("/{order_id}/recalculate")

@@ -30,6 +30,7 @@ from ..models.webstore import (
 from ..repositories.webstores import WebstoreRepository
 from .activity import record_activity_with_audit
 from .entitlements import has_entitlement
+from .order_source import ORDER_SOURCE_RECORD_TYPES, ORDER_SOURCE_WEBSTORE, normalize_order_source
 from .portal_identity import create_portal_identity
 from .sequence import next_number
 from .webstore_stripe_connect import create_local_checkout_record
@@ -1010,7 +1011,7 @@ async def bridge_buyer_order_to_order(user: dict, buyer_order_id: str) -> dict:
         raise WebstoreError("buyer_order_not_found", "Buyer order not found", 404)
     if buyer.get("bridged_order_id"):
         order = await db.orders.find_one({"tenant_id": user["tenant_id"], "id": buyer["bridged_order_id"]}, {"_id": 0})
-        return {"order": serialize_doc(order), "bridge_status": buyer.get("bridge_status", "bridged")}
+        return {"order": await normalize_order_source(order), "bridge_status": buyer.get("bridge_status", "bridged")}
     customer = await db.customers.find_one({"tenant_id": user["tenant_id"], "email": buyer["buyer_email"]}, {"_id": 0})
     if not customer:
         customer_doc = Customer(
@@ -1027,6 +1028,9 @@ async def bridge_buyer_order_to_order(user: dict, buyer_order_id: str) -> dict:
         tenant_id=user["tenant_id"],
         number=number,
         customer_id=customer["id"],
+        order_source=ORDER_SOURCE_WEBSTORE,
+        order_source_record_type=ORDER_SOURCE_RECORD_TYPES[ORDER_SOURCE_WEBSTORE],
+        order_source_record_id=buyer["id"],
         job_name=f"Webstore order - {buyer['buyer_name']}",
         title=f"Webstore order {buyer['id']}",
         description="Created from Webstore buyer order",

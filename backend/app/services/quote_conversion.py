@@ -21,6 +21,11 @@ from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.order import Order, OrderItem
 from ..services.sequence import next_number
 from ..services.order_item_rules import default_production_required
+from ..services.order_source import (
+    ORDER_SOURCE_QUOTE,
+    ORDER_SOURCE_RECORD_TYPES,
+    normalize_order_source,
+)
 from ..services.pricing_snapshot_records import create_snapshot_record
 
 
@@ -58,7 +63,8 @@ async def convert_quote_to_order(
     # Idempotent short-circuit
     if quote.get("converted_order_id"):
         existing = await db.orders.find_one({"id": quote["converted_order_id"]}, {"_id": 0})
-        return serialize_doc(existing) if existing else {"id": quote["converted_order_id"]}, True
+        normalized = await normalize_order_source(existing)
+        return normalized if normalized else {"id": quote["converted_order_id"]}, True
 
     if quote.get("status") == "declined":
         raise ValueError("quote_declined")
@@ -82,7 +88,8 @@ async def convert_quote_to_order(
         quote2 = await db.quotes.find_one({"id": quote_id}, {"_id": 0})
         if quote2 and quote2.get("converted_order_id"):
             existing = await db.orders.find_one({"id": quote2["converted_order_id"]}, {"_id": 0})
-            return serialize_doc(existing) if existing else {"id": quote2["converted_order_id"]}, True
+            normalized = await normalize_order_source(existing)
+            return normalized if normalized else {"id": quote2["converted_order_id"]}, True
         raise ValueError("conversion_race_lost")
 
     revision_number = int(quote.get("revision_number") or 1)
@@ -93,6 +100,9 @@ async def convert_quote_to_order(
         tenant_id=tenant_id,
         number=number,
         customer_id=quote["customer_id"],
+        order_source=ORDER_SOURCE_QUOTE,
+        order_source_record_type=ORDER_SOURCE_RECORD_TYPES[ORDER_SOURCE_QUOTE],
+        order_source_record_id=quote_id,
         quote_id=quote_id,                         # backward compat
         source_quote_id=quote_id,
         source_quote_revision=revision_number,
