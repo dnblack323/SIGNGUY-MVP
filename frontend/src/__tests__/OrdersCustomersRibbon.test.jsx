@@ -39,6 +39,21 @@ const sourceFilters = {
   ],
 };
 
+beforeAll(() => {
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = jest.fn(() => false);
+  }
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = jest.fn();
+  }
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = jest.fn();
+  }
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = jest.fn();
+  }
+});
+
 beforeEach(() => {
   mockPermissions = [
     "order:write",
@@ -92,12 +107,17 @@ test("Orders page uses shared ribbon and canonical source filters without reserv
 
   expect(await screen.findByTestId("orders-command-ribbon")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "New Order" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "More commands" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Status" })).not.toBeInTheDocument();
+  expect(screen.getByTestId("orders-page-tabs")).toBeInTheDocument();
+  expect(screen.getByTestId("orders-search-views-filters")).toBeInTheDocument();
+  expect(screen.getByTestId("orders-source-filter")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Orders" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Customers" })).not.toBeInTheDocument();
   expect(screen.queryByText("Email")).not.toBeInTheDocument();
   expect(screen.queryByText("Facebook")).not.toBeInTheDocument();
 
-  await user.click(screen.getByRole("button", { name: "More commands" }));
-  await user.click(await screen.findByTestId("ribbon-order-source-legacy_unknown"));
+  await user.click(screen.getByTestId("orders-source-filter"));
+  await user.click(await screen.findByTestId("orders-source-option-legacy_unknown"));
 
   await waitFor(() => {
     expect(api.get).toHaveBeenCalledWith(
@@ -108,6 +128,23 @@ test("Orders page uses shared ribbon and canonical source filters without reserv
     );
   });
   expect((await screen.findAllByText("Legacy / Unknown")).length).toBeGreaterThan(0);
+});
+
+test("Orders page preserves page-level search outside navigation and ribbon", async () => {
+  const user = userEvent.setup();
+  renderWithProviders(<OrdersPage />, { route: "/orders" });
+
+  await screen.findByTestId("orders-command-ribbon");
+  await user.type(screen.getByTestId("orders-search-input"), "Lobby");
+
+  await waitFor(() => {
+    expect(api.get).toHaveBeenCalledWith(
+      "/orders",
+      expect.objectContaining({
+        params: expect.objectContaining({ search: "Lobby" }),
+      }),
+    );
+  });
 });
 
 test("Orders ribbon opens the existing New Order dialog action", async () => {
@@ -125,6 +162,8 @@ test("Customers page uses shared ribbon while preserving search", async () => {
 
   expect(await screen.findByTestId("customers-command-ribbon")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "New Customer" })).toBeInTheDocument();
+  expect(screen.getByTestId("customers-page-tabs")).toBeInTheDocument();
+  expect(screen.getByTestId("customers-search-views-filters")).toBeInTheDocument();
   await user.type(screen.getByTestId("customers-search-input"), "Ada");
 
   await waitFor(() => {

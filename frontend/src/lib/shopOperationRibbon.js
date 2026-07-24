@@ -5,6 +5,7 @@ import {
   DollarSign,
   FileText,
   Filter,
+  ListFilter,
   Plus,
   UserPlus,
   Users,
@@ -31,21 +32,41 @@ function navCommand({ id, label, icon, to, permission, tooltip, responsivePriori
   return { id, label, icon, to, permission, tooltip, responsivePriority };
 }
 
-export function createCommands({ onNewOrder, onNewCustomer, canCreateOrder, canCreateCustomer }) {
-  return [
-    {
-      id: "new-order",
-      label: "New Order",
-      icon: Plus,
-      permission: "order:write",
-      onSelect: onNewOrder,
-      to: onNewOrder ? undefined : "/orders",
-      disabled: !!onNewOrder && !canCreateOrder,
-      disabledReason: "Order write permission required",
-      tooltip: "Create a manual Order",
-      responsivePriority: 1,
-      testId: "ribbon-new-order",
-    },
+export function newOrderCommand({ onNewOrder, canCreateOrder }) {
+  return {
+    id: "new-order",
+    label: "New Order",
+    icon: Plus,
+    permission: "order:write",
+    onSelect: onNewOrder,
+    to: onNewOrder ? undefined : "/orders",
+    disabled: !!onNewOrder && !canCreateOrder,
+    disabledReason: "Order write permission required",
+    tooltip: "Create a manual Order",
+    responsivePriority: 1,
+    testId: "ribbon-new-order",
+  };
+}
+
+export function newCustomerCommand({ onNewCustomer, canCreateCustomer }) {
+  return {
+    id: "new-customer",
+    label: "New Customer",
+    icon: UserPlus,
+    permission: "customer:write",
+    onSelect: onNewCustomer,
+    to: onNewCustomer ? undefined : "/customers",
+    disabled: !!onNewCustomer && !canCreateCustomer,
+    disabledReason: "Customer write permission required",
+    tooltip: "Add a customer",
+    responsivePriority: 1,
+    testId: "ribbon-new-customer",
+  };
+}
+
+export function createDropdown({ onNewOrder, onNewCustomer, canCreateOrder, canCreateCustomer, omit = [] }) {
+  const commands = [
+    omit.includes("new-order") ? null : newOrderCommand({ onNewOrder, canCreateOrder }),
     navCommand({
       id: "new-quote",
       label: "New Quote",
@@ -55,19 +76,21 @@ export function createCommands({ onNewOrder, onNewCustomer, canCreateOrder, canC
       tooltip: "Open Quotes to create a Quote",
       responsivePriority: 2,
     }),
-    {
-      id: "new-customer",
-      label: "New Customer",
-      icon: UserPlus,
-      permission: "customer:write",
-      onSelect: onNewCustomer,
-      to: onNewCustomer ? undefined : "/customers",
-      disabled: !!onNewCustomer && !canCreateCustomer,
-      disabledReason: "Customer write permission required",
-      tooltip: "Add a customer",
-      responsivePriority: 3,
-      testId: "ribbon-new-customer",
-    },
+    omit.includes("new-customer") ? null : newCustomerCommand({ onNewCustomer, canCreateCustomer }),
+  ].filter(Boolean);
+  return {
+    id: "create-actions",
+    label: "Create",
+    icon: Plus,
+    tooltip: "Create related records",
+    responsivePriority: 2,
+    testId: "ribbon-create-actions",
+    children: commands,
+  };
+}
+
+export function toolCommands() {
+  return [
     navCommand({
       id: "pricing-calculator",
       label: "Pricing Calculator",
@@ -149,24 +172,29 @@ export function orderSourceDropdown({ source, setSource, sourceFilters = ORDER_S
 export function buildOrdersRibbonGroups({ canWrite, onNewOrder, status, setStatus, source, setSource, sourceFilters }) {
   return [
     {
+      id: "primary",
+      label: "Primary",
+      commands: [newOrderCommand({ onNewOrder, canCreateOrder: canWrite })],
+    },
+    {
       id: "create",
       label: "Create",
-      commands: createCommands({ onNewOrder, canCreateOrder: canWrite }),
-    },
-    {
-      id: "status",
-      label: "Status",
-      commands: orderStatusCommands({ status, setStatus }),
-    },
-    {
-      id: "source",
-      label: "Source",
-      commands: [orderSourceDropdown({ source, setSource, sourceFilters })],
+      commands: [createDropdown({ onNewOrder, canCreateOrder: canWrite, omit: ["new-order"] })],
     },
     {
       id: "workflow",
       label: "Workflow",
-      commands: workflowCommands(),
+      commands: [
+        {
+          id: "workflow-actions",
+          label: "Workflow",
+          icon: CheckCircle2,
+          tooltip: "Open workflow actions",
+          responsivePriority: 5,
+          testId: "ribbon-workflow-actions",
+          children: workflowCommands(),
+        },
+      ],
     },
   ];
 }
@@ -174,14 +202,29 @@ export function buildOrdersRibbonGroups({ canWrite, onNewOrder, status, setStatu
 export function buildCustomersRibbonGroups({ canWrite, onNewCustomer }) {
   return [
     {
+      id: "primary",
+      label: "Primary",
+      commands: [newCustomerCommand({ onNewCustomer, canCreateCustomer: canWrite })],
+    },
+    {
       id: "create",
       label: "Create",
-      commands: createCommands({ onNewCustomer, canCreateCustomer: canWrite }),
+      commands: [createDropdown({ onNewCustomer, canCreateCustomer: canWrite, omit: ["new-customer"] })],
     },
     {
       id: "workflow",
       label: "Workflow",
-      commands: workflowCommands(),
+      commands: [
+        {
+          id: "workflow-actions",
+          label: "Workflow",
+          icon: CheckCircle2,
+          tooltip: "Open workflow actions",
+          responsivePriority: 5,
+          testId: "ribbon-workflow-actions",
+          children: workflowCommands(),
+        },
+      ],
     },
   ];
 }

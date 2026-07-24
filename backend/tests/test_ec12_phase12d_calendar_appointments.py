@@ -68,6 +68,7 @@ async def ctx():
     schedule_id = f"schedule-{suffix}"
     await db.schedules.insert_one({"id": schedule_id, "tenant_id": tenant_id, "period_start": _date(2), "period_end": _date(8), "status": "published", "version": 1, "created_by": owner["id"], "updated_by": owner["id"]})
     await db.shifts.insert_one({"id": f"shift-{suffix}", "tenant_id": tenant_id, "schedule_id": schedule_id, "employee_id": employee["id"], "shift_date": _date(2), "start_at": _iso(2, 9), "end_at": _iso(2, 17), "status": "scheduled", "created_by": owner["id"], "updated_by": owner["id"]})
+    await db.time_off_requests.insert_one({"id": f"timeoff-{suffix}", "tenant_id": tenant_id, "employee_id": employee["id"], "requested_by_employee_id": employee["id"], "request_type": "personal", "start_at": _iso(2, 13), "end_at": _iso(2, 16), "status": "approved", "approved_at": _iso(0), "version": 1, "history": []})
     identity = await create_portal_identity(tenant_id=tenant_id, portal_type="employee", employee_id=employee["id"], email=f"portal-{suffix}@example.com")
     yield {
         "tenant_id": tenant_id, "other_tenant_id": other_tenant_id, "owner": owner, "staff": staff,
@@ -136,9 +137,17 @@ async def test_appointment_crud_conflicts_projection_filters_and_security(ctx):
         assert any(i["source_type"] == "task" for i in items)
         assert any(i["source_type"] == "production_stage" for i in items)
         assert any(i["source_type"] == "calendar_event" for i in items)
+        assert any(i["source_type"] == "time_off_request" for i in items)
         assert all("private_reason" not in i and "profit" not in i and "pricing" not in i for i in items)
         assert (await c.get("/api/calendar/feed", params={"start_at": _iso(2, 0), "end_at": _iso(4, 0), "event_type": "task_due"})).json()["total"] >= 1
         assert (await c.get("/api/calendar/feed", params={"start_at": _iso(2, 0), "end_at": _iso(4, 0), "source_type": "shift"})).json()["total"] >= 1
+        shop_feed = await c.get("/api/calendar/feed", params={"start_at": _iso(2, 0), "end_at": _iso(4, 0), "surface": "shop"})
+        assert shop_feed.status_code == 200
+        shop_items = shop_feed.json()["items"]
+        shop_source_types = {i["source_type"] for i in shop_items}
+        assert "shift" not in shop_source_types
+        assert "time_off_request" not in shop_source_types
+        assert {"task", "production_stage", "calendar_event"}.issubset(shop_source_types)
 
     async with await _token_client(ctx["token"]) as c:
         self_feed = await c.get("/api/portal/employee/calendar", params={"start_at": _iso(2, 0), "end_at": _iso(4, 0)})
@@ -158,4 +167,3 @@ async def test_appointment_crud_conflicts_projection_filters_and_security(ctx):
     assert after == before
     assert await db.activity_events.count_documents({"tenant_id": ctx["tenant_id"], "entity_type": "calendar_event"}) >= 4
     assert await db.notifications.count_documents({"tenant_id": ctx["tenant_id"], "module": "calendar"}) >= 1
-

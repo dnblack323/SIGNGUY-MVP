@@ -90,6 +90,8 @@ async def test_configured_realtime_session_uses_backend_key_ephemeral_secret_and
     assert captured["headers"]["OpenAI-Safety-Identifier"]
     assert captured["json"]["session"]["type"] == "realtime"
     assert captured["json"]["session"]["model"] == "gpt-realtime-2.1"
+    assert "turn_detection" not in captured["json"]["session"]
+    assert captured["json"]["session"]["audio"]["input"]["turn_detection"]["type"] == "server_vad"
     assert captured["json"]["session"]["tools"][0]["name"] == "propose_assistant_action"
 
     stored = await db.assistant_voice_sessions.find_one({"tenant_id": voice_ctx["tenant_id"], "provider_session_id": f"realtime-session-test-{voice_ctx['tenant_id']}"}, {"_id": 0})

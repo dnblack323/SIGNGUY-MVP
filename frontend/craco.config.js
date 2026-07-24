@@ -31,6 +31,11 @@ function makeDevServerV5Compatible(devServerConfig) {
     ...compatibleConfig.headers,
     "Cross-Origin-Resource-Policy": "same-origin",
   };
+  compatibleConfig.historyApiFallback = {
+    ...(typeof compatibleConfig.historyApiFallback === "object" ? compatibleConfig.historyApiFallback : {}),
+    disableDotRule: true,
+    index: "/index.html",
+  };
 
   if (onBeforeSetupMiddleware || setupMiddlewares) {
     compatibleConfig.setupMiddlewares = (middlewares, devServer) => {
@@ -140,15 +145,17 @@ webpackConfig.devServer = (devServerConfig) => {
   return devServerConfig;
 };
 
-// Wrap with visual edits (automatically adds babel plugin, dev server, and overlay in dev mode)
-if (isDevServer) {
+// Visual edits are an Emergent-only overlay. Keep them opt-in so local CRA
+// preview keeps its normal SPA history fallback for direct route refreshes.
+const enableVisualEdits = process.env.ENABLE_VISUAL_EDITS === "true";
+if (isDevServer && enableVisualEdits) {
   try {
     const { withVisualEdits } = require("@emergentbase/visual-edits/craco");
     webpackConfig = withVisualEdits(webpackConfig);
   } catch (err) {
     if (err.code === 'MODULE_NOT_FOUND' && err.message.includes('@emergentbase/visual-edits/craco')) {
       console.warn(
-        "[visual-edits] @emergentbase/visual-edits not installed — visual editing disabled."
+        "[visual-edits] @emergentbase/visual-edits not installed - visual editing disabled."
       );
     } else {
       throw err;

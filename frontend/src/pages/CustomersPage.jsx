@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import TableSkeleton from "@/components/common/LoadingSkeleton";
 import EmptyState from "@/components/common/EmptyState";
-import { Plus, Search, Users } from "lucide-react";
+import { LayoutList, Plus, Search, Users } from "lucide-react";
 import { toast } from "sonner";
 import { relativeTime } from "@/lib/format";
 import { useAuth } from "@/auth/AuthContext";
@@ -63,7 +63,7 @@ function NewCustomerDialog({ onCreated, open: controlledOpen, onOpenChange, trig
           <div className="grid gap-1.5"><Label>Notes</Label><Textarea rows={3} value={form.notes} onChange={upd("notes")} /></div>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" disabled={busy} data-testid="customer-submit-button">{busy ? "Saving…" : "Create"}</Button>
+            <Button type="submit" disabled={busy} data-testid="customer-submit-button">{busy ? "Saving..." : "Create"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -97,22 +97,36 @@ export default function CustomersPage() {
 
   return (
     <div className="space-y-4" data-testid="customers-page">
-      <PageHeader title="Customers" subtitle="Everyone you’ve done work for." />
       <CommandRibbon groups={ribbonGroups} data-testid="customers-command-ribbon" />
+      <PageHeader breadcrumb="Shop Operations / Customers" title="Customers" subtitle="Everyone you've done work for." />
       <NewCustomerDialog
         open={newCustomerOpen}
         onOpenChange={handleNewCustomerOpenChange}
         trigger={null}
         onCreated={() => qc.invalidateQueries({ queryKey: ["customers"] })}
       />
-      <div className="flex items-center gap-2">
-        <div className="relative w-full max-w-md">
+      <div className="flex flex-wrap items-center gap-1 rounded-lg border bg-card p-1" data-testid="customers-page-tabs" aria-label="Customer tabs">
+        <button
+          type="button"
+          data-testid="customers-tab-all"
+          aria-current="page"
+          className="h-8 rounded-md bg-slate-950 px-3 text-sm font-medium text-white shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          All Customers
+        </button>
+      </div>
+      <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 md:flex-row md:items-center md:justify-between" data-testid="customers-search-views-filters">
+        <div className="relative w-full md:max-w-md">
           <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, company, or email" className="pl-9" data-testid="customers-search-input" />
         </div>
+        <div className="inline-flex h-9 w-fit items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground" data-testid="customers-table-view">
+          <LayoutList className="size-4" aria-hidden="true" />
+          Table
+        </div>
       </div>
       {isLoading ? <TableSkeleton /> : error ? (
-        <EmptyState title="Couldn’t load customers" description="Please try again." />
+        <EmptyState title="Couldn't load customers" description="Please try again." />
       ) : items.length === 0 ? (
         <EmptyState icon={Users} title={q ? "No matches" : "No customers yet"} description={q ? "Try a different search." : "Create your first customer to get started."} action={canWrite && !q ? <NewCustomerDialog onCreated={() => qc.invalidateQueries({ queryKey: ["customers"] })} /> : null} />
       ) : (
@@ -131,9 +145,9 @@ export default function CustomersPage() {
               {items.map((c) => (
                 <TableRow key={c.id} className="hover:bg-muted/40" data-testid={`customer-row-${c.id}`}>
                   <TableCell><Link className="font-medium hover:underline" to={`/customers/${c.id}`}>{c.name}</Link></TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{c.company || "—"}</TableCell>
-                  <TableCell className="text-sm">{c.email || "—"}</TableCell>
-                  <TableCell className="text-sm">{c.phone || "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{c.company || "-"}</TableCell>
+                  <TableCell className="text-sm">{c.email || "-"}</TableCell>
+                  <TableCell className="text-sm">{c.phone || "-"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{relativeTime(c.created_at)}</TableCell>
                 </TableRow>
               ))}

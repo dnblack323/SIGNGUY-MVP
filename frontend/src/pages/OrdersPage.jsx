@@ -15,10 +15,11 @@ import TableSkeleton from "@/components/common/LoadingSkeleton";
 import EmptyState from "@/components/common/EmptyState";
 import StatusPill from "@/components/common/StatusPill";
 import { toast } from "sonner";
-import { Plus, ShoppingBag } from "lucide-react";
+import { LayoutList, Plus, Search, ShoppingBag } from "lucide-react";
 import { relativeTime } from "@/lib/format";
 import { useAuth } from "@/auth/AuthContext";
-import { buildOrdersRibbonGroups, ORDER_SOURCE_FILTER_FALLBACK } from "@/lib/shopOperationRibbon";
+import { buildOrdersRibbonGroups, ORDER_SOURCE_FILTER_FALLBACK, ORDER_STATUS_FILTERS } from "@/lib/shopOperationRibbon";
+import { cn } from "@/lib/utils";
 
 function NewOrderDialog({ onCreated, open: controlledOpen, onOpenChange, trigger }) {
   const [localOpen, setLocalOpen] = useState(false);
@@ -75,6 +76,7 @@ export default function OrdersPage() {
   const qc = useQueryClient();
   const [status, setStatus] = useState("all");
   const [source, setSource] = useState("all");
+  const [q, setQ] = useState("");
   const [newOrderOpen, setNewOrderOpen] = useState(false);
   const { hasPerm } = useAuth();
   const canWrite = hasPerm("order:write");
@@ -91,11 +93,12 @@ export default function OrdersPage() {
     queryFn: async () => (await api.get("/orders/source-filters")).data,
   });
   const { data, isLoading } = useQuery({
-    queryKey: ["orders", status, source],
+    queryKey: ["orders", status, source, q],
     queryFn: async () => (await api.get("/orders", {
       params: {
         status: status === "all" ? undefined : status,
         order_source: source === "all" ? undefined : source,
+        search: q || undefined,
         limit: 100,
       },
     })).data,
@@ -113,14 +116,60 @@ export default function OrdersPage() {
 
   return (
     <div className="space-y-4" data-testid="orders-page">
-      <PageHeader title="Orders" subtitle="Everything in flight." />
       <CommandRibbon groups={ribbonGroups} data-testid="orders-command-ribbon" />
+      <PageHeader breadcrumb="Shop Operations / Orders" title="Orders" subtitle="Everything in flight." />
       <NewOrderDialog
         open={newOrderOpen}
         onOpenChange={handleNewOrderOpenChange}
         trigger={null}
         onCreated={() => qc.invalidateQueries({ queryKey: ["orders"] })}
       />
+      <div className="flex flex-wrap items-center gap-1 rounded-lg border bg-card p-1" data-testid="orders-page-tabs" aria-label="Order status tabs">
+        {ORDER_STATUS_FILTERS.map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            data-testid={`orders-status-tab-${item.value}`}
+            aria-current={status === item.value ? "page" : undefined}
+            onClick={() => setStatus(item.value)}
+            className={cn(
+              "h-8 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              status === item.value ? "bg-slate-950 text-white shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 md:flex-row md:items-center md:justify-between" data-testid="orders-search-views-filters">
+        <div className="relative w-full md:max-w-md">
+          <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search by order, job, or notes"
+            className="pl-9"
+            data-testid="orders-search-input"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground" data-testid="orders-table-view">
+            <LayoutList className="size-4" aria-hidden="true" />
+            Table
+          </div>
+          <Select value={source} onValueChange={setSource}>
+            <SelectTrigger className="h-9 w-[180px]" data-testid="orders-source-filter">
+              <SelectValue placeholder="Source" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All sources</SelectItem>
+              {(sourceFilters.data?.visible_sources || ORDER_SOURCE_FILTER_FALLBACK).map((item) => (
+                <SelectItem key={item.value} value={item.value} data-testid={`orders-source-option-${item.value}`}>{item.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
       {isLoading ? <TableSkeleton /> : items.length === 0 ? (
         <EmptyState icon={ShoppingBag} title="No orders yet" description="Convert a quote or create an order directly." action={canWrite ? <NewOrderDialog onCreated={() => qc.invalidateQueries({ queryKey: ["orders"] })} /> : null} />
       ) : (

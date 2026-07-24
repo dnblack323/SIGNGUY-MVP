@@ -49,14 +49,14 @@ function RibbonCommandButton({ command, entitlements }) {
       data-active={active ? "true" : "false"}
       onClick={execute}
       className={cn(
-        "h-[70px] w-[82px] flex-col gap-1 rounded-md px-2 py-1 text-center",
+        "h-10 min-w-[66px] flex-col gap-0.5 rounded-md px-1.5 py-1 text-center",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         state.disabled && "cursor-not-allowed opacity-55",
         active && "bg-muted text-foreground",
       )}
     >
-      {Icon && <Icon className="size-4 shrink-0" aria-hidden="true" />}
-      <span className="overflow-hidden text-[11px] leading-tight whitespace-normal [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{command.label}</span>
+      {Icon && <Icon className="size-3.5 shrink-0" aria-hidden="true" />}
+      <span className="overflow-hidden text-[10px] leading-tight whitespace-normal [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{command.label}</span>
       {command.badge && <Badge variant="outline" className="h-4 px-1 text-[9px]">{command.badge}</Badge>}
     </Button>
   );
@@ -107,10 +107,10 @@ function RibbonDropdownButton({ command, entitlements }) {
               size="sm"
               aria-label={command.label}
               data-testid={command.testId || `ribbon-command-${command.id}`}
-              className="h-[70px] w-[82px] flex-col gap-1 rounded-md px-2 py-1 text-center focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="h-10 min-w-[66px] flex-col gap-0.5 rounded-md px-1.5 py-1 text-center focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              {Icon && <Icon className="size-4 shrink-0" aria-hidden="true" />}
-              <span className="overflow-hidden text-[11px] leading-tight whitespace-normal [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{command.label}</span>
+              {Icon && <Icon className="size-3.5 shrink-0" aria-hidden="true" />}
+              <span className="overflow-hidden text-[10px] leading-tight whitespace-normal [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{command.label}</span>
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
@@ -140,12 +140,12 @@ function OverflowMenu({ commands, entitlements }) {
             type="button"
             variant="ghost"
             size="sm"
-            className="h-[70px] w-[76px] flex-col gap-1 rounded-md px-2 py-1"
+            className="h-10 min-w-[66px] flex-col gap-0.5 rounded-md px-1.5 py-1"
             aria-label="More commands"
             data-testid="ribbon-overflow-trigger"
           >
-            <MoreHorizontal className="size-4" aria-hidden="true" />
-            <span className="text-[11px] leading-tight">More</span>
+            <MoreHorizontal className="size-3.5" aria-hidden="true" />
+            <span className="text-[10px] leading-tight">More</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" data-testid="ribbon-overflow-menu">
@@ -213,9 +213,9 @@ export default function CommandRibbon({
         data-testid={testId}
         className="rounded-lg border bg-card text-card-foreground shadow-sm"
       >
-        <div className="flex max-w-full items-stretch gap-2 overflow-hidden px-2 py-2">
+        <div className="flex max-w-full items-stretch gap-1 overflow-hidden px-2 py-1">
           {primaryGroups.map((group) => (
-            <div key={group.id} className="flex shrink-0 flex-col gap-1 border-r pr-2 last:border-r-0" data-testid={`ribbon-group-${group.id}`}>
+            <div key={group.id} className="flex shrink-0 flex-col gap-0.5 border-r pr-1 last:border-r-0" data-testid={`ribbon-group-${group.id}`}>
               <div className="flex items-start gap-1">
                 {group.commands.map((command) => (
                   command.children?.length ? (
@@ -225,7 +225,7 @@ export default function CommandRibbon({
                   )
                 ))}
               </div>
-              <div className="text-center text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{group.label}</div>
+              <div className="text-center text-[8.5px] font-medium uppercase tracking-wide text-muted-foreground">{group.label}</div>
             </div>
           ))}
           <OverflowMenu commands={overflowCommands} entitlements={entitlements} />

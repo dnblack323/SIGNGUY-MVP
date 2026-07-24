@@ -557,7 +557,7 @@ async def _answer_business_question(user: dict[str, Any], *, conversation_id: st
         today = utc_now().date().isoformat()
         shifts = [d async for d in db.schedule_shifts.find({"tenant_id": tenant_id, "start_at": {"$regex": f"^{today}"}}, {"_id": 0}).limit(100)]
         citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="schedule_shift", source_id="today", source_label="Today's schedule", route="/team/schedule", date_range={"date": today}, calculation={"basis": "schedule_shifts_starting_today", "count": len(shifts)}, missing_data=[]))
-        return f"{len(shifts)} shift(s) are scheduled today based on shop schedule records.", citations, []
+        return f"{len(shifts)} shift(s) are scheduled today based on Team Schedule records.", citations, []
     if context:
         citations.append(await _create_citation(
             tenant_id,
@@ -1233,9 +1233,13 @@ async def create_realtime_session(user: dict[str, Any], fields: dict[str, Any]) 
             "type": "realtime",
             "model": settings.openai_realtime_model,
             "audio": {
+                "input": {
+                    "turn_detection": {"type": settings.openai_realtime_turn_detection}
+                    if settings.openai_realtime_turn_detection
+                    else None,
+                },
                 "output": {"voice": settings.openai_realtime_voice},
             },
-            "turn_detection": {"type": settings.openai_realtime_turn_detection} if settings.openai_realtime_turn_detection else None,
             "instructions": "You are SignGuy AI Business Assistant. Use tool calls only to request backend proposals; never claim external actions succeeded without backend confirmation.",
             "tools": [
                 {
@@ -1266,6 +1270,11 @@ async def create_realtime_session(user: dict[str, Any], fields: dict[str, Any]) 
         }
     }
     payload["session"] = {k: v for k, v in payload["session"].items() if v is not None}
+    payload["session"]["audio"]["input"] = {
+        k: v for k, v in payload["session"]["audio"]["input"].items() if v is not None
+    }
+    if not payload["session"]["audio"]["input"]:
+        payload["session"]["audio"].pop("input")
     try:
         secret = await _request_openai_realtime_client_secret(settings=settings, safety_id=safety_id, payload=payload)
     except httpx.HTTPError as exc:

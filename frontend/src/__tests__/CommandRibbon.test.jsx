@@ -147,3 +147,21 @@ test("keeps dropdown children actionable when the parent command overflows", asy
   await user.click(screen.getByTestId("ribbon-menu-command-manual"));
   expect(onManual).toHaveBeenCalledTimes(1);
 });
+
+test("does not render the ribbon as a horizontally scrolling command strip", () => {
+  renderWithProviders(
+    <CommandRibbon
+      groups={[
+        {
+          id: "create",
+          label: "Create",
+          commands: [{ id: "new-order", label: "New Order", icon: Plus, permission: "order:write", onSelect: jest.fn() }],
+        },
+      ]}
+    />,
+  );
+
+  const ribbon = screen.getByTestId("command-ribbon");
+  const forbiddenHorizontalScrollClass = ["overflow", "x", "auto"].join("-");
+  expect(ribbon.innerHTML).not.toContain(forbiddenHorizontalScrollClass);
+});

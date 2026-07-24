@@ -77,6 +77,7 @@ async def feed(
     work_order_id: Optional[str] = None,
     status: Optional[str] = None,
     source_type: Optional[str] = None,
+    surface: Optional[str] = None,
     visibility: Optional[str] = None,
     limit: int = Query(200, ge=1, le=500),
     skip: int = Query(0, ge=0),
@@ -87,7 +88,7 @@ async def feed(
             tenant_id=user["tenant_id"], start_at=start_at, end_at=end_at,
             event_type=event_type, employee_id=employee_id, customer_id=customer_id,
             order_id=order_id, work_order_id=work_order_id, status=status, source_type=source_type,
-            visibility=visibility, limit=limit, skip=skip,
+            surface=surface, visibility=visibility, limit=limit, skip=skip,
         )
     except CalendarError as e:
         _raise(e)
@@ -181,4 +182,3 @@ async def restore_event(event_id: str, user: dict = Depends(require_permission(P
         )
     except CalendarError as e:
         _raise(e)
-

@@ -166,8 +166,10 @@ async def list_events(*, tenant_id: str, start_at: str, end_at: str,
                       event_type: Optional[str] = None, employee_id: Optional[str] = None,
                       customer_id: Optional[str] = None, order_id: Optional[str] = None,
                       work_order_id: Optional[str] = None, status: Optional[str] = None,
-                      source_type: Optional[str] = None, visibility: Optional[str] = None,
+                      source_type: Optional[str] = None, surface: Optional[str] = None, visibility: Optional[str] = None,
                       limit: int = 200, skip: int = 0) -> dict:
+    if surface not in {None, "all", "shop"}:
+        raise CalendarError("invalid_surface", "Unsupported calendar surface", 400)
     filt: dict[str, Any] = {"tenant_id": tenant_id, "archived_at": None}
     if event_type:
         filt["event_type"] = event_type
@@ -189,7 +191,13 @@ async def list_events(*, tenant_id: str, start_at: str, end_at: str,
     async for ev in db.calendar_events.find(filt, {"_id": 0}).sort("start_at", 1).skip(skip).limit(min(limit, 500)):
         if _overlaps(start_at, end_at, ev["start_at"], ev["end_at"]):
             stored.append(_normalize_stored_event(ev))
-    projections = await _projected_items(tenant_id=tenant_id, start_at=start_at, end_at=end_at, employee_id=employee_id)
+    projections = await _projected_items(
+        tenant_id=tenant_id,
+        start_at=start_at,
+        end_at=end_at,
+        employee_id=employee_id,
+        include_workforce=surface != "shop",
+    )
     items = [i for i in stored + projections if _feed_match(i, event_type=event_type, employee_id=employee_id, customer_id=customer_id, order_id=order_id, work_order_id=work_order_id, status=status, source_type=source_type, visibility=visibility)]
     items.sort(key=lambda i: (i.get("start_at") or "", i.get("title") or ""))
     return {"items": items[:limit], "total": len(items), "limit": limit, "skip": skip}
@@ -218,33 +226,40 @@ def _color_for_event(event_type: Optional[str]) -> str:
     }.get(event_type or "", "blue")
 
 
-async def _projected_items(*, tenant_id: str, start_at: str, end_at: str, employee_id: Optional[str] = None) -> list[dict]:
+async def _projected_items(*, tenant_id: str, start_at: str, end_at: str,
+                           employee_id: Optional[str] = None, include_workforce: bool = True) -> list[dict]:
     items: list[dict] = []
-    shift_filter: dict[str, Any] = {"tenant_id": tenant_id, "status": {"$ne": "cancelled"}}
-    if employee_id:
-        shift_filter["employee_id"] = employee_id
-    async for shift in db.shifts.find(shift_filter, {"_id": 0}).sort("start_at", 1):
-        if not _overlaps(start_at, end_at, shift["start_at"], shift["end_at"]):
-            continue
-        items.append({
-            "id": f"shift:{shift['id']}",
-            "source_type": "shift",
-            "source_id": shift["id"],
-            "event_type": "shift",
-            "title": shift.get("title") or "Shift",
-            "display_title": shift.get("title") or "Shift",
-            "start_at": shift["start_at"],
-            "end_at": shift["end_at"],
-            "status": shift.get("status"),
-            "employee_id": shift.get("employee_id"),
-            "work_order_id": shift.get("work_order_id"),
-            "order_id": shift.get("order_id"),
-            "location": shift.get("location"),
-            "visibility": "employee",
-            "color": "green",
-            "allowed_actions": [],
-        })
-    items.extend(await time_off_service.approved_absence_overlays(tenant_id=tenant_id, start_at=start_at, end_at=end_at, employee_id=employee_id))
+    if include_workforce:
+        shift_filter: dict[str, Any] = {"tenant_id": tenant_id, "status": {"$ne": "cancelled"}}
+        if employee_id:
+            shift_filter["employee_id"] = employee_id
+        async for shift in db.shifts.find(shift_filter, {"_id": 0}).sort("start_at", 1):
+            if not _overlaps(start_at, end_at, shift["start_at"], shift["end_at"]):
+                continue
+            items.append({
+                "id": f"shift:{shift['id']}",
+                "source_type": "shift",
+                "source_id": shift["id"],
+                "event_type": "shift",
+                "title": shift.get("title") or "Shift",
+                "display_title": shift.get("title") or "Shift",
+                "start_at": shift["start_at"],
+                "end_at": shift["end_at"],
+                "status": shift.get("status"),
+                "employee_id": shift.get("employee_id"),
+                "work_order_id": shift.get("work_order_id"),
+                "order_id": shift.get("order_id"),
+                "location": shift.get("location"),
+                "visibility": "employee",
+                "color": "green",
+                "allowed_actions": [],
+            })
+        items.extend(await time_off_service.approved_absence_overlays(
+            tenant_id=tenant_id,
+            start_at=start_at,
+            end_at=end_at,
+            employee_id=employee_id,
+        ))
     task_filter: dict[str, Any] = {"tenant_id": tenant_id, "due_at": {"$ne": None}, "archived_at": None, "status": {"$nin": ["completed", "canceled"]}}
     if employee_id:
         task_filter["assigned_employee_id"] = employee_id
