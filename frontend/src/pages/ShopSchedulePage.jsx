@@ -159,7 +159,7 @@ function AppointmentDialog({ open, onOpenChange, employees, initialDate, onSaved
 
 function EventChip({ item, onCancel }) {
   const label = item.display_title || item.title;
-  const tone = item.source_type === "time_off_request" ? "border-amber-300 bg-amber-50" : item.source_type === "shift" ? "border-emerald-300 bg-emerald-50" : item.source_type === "task" ? "border-violet-300 bg-violet-50" : "border-sky-300 bg-sky-50";
+  const tone = item.source_type === "production_stage" ? "border-orange-300 bg-orange-50" : item.source_type === "task" ? "border-violet-300 bg-violet-50" : "border-sky-300 bg-sky-50";
   return (
     <div className={`rounded border p-2 text-xs ${tone}`} data-testid={`calendar-item-${item.source_type}-${item.source_id}`}>
       <div className="font-medium">{label}</div>
@@ -181,7 +181,6 @@ export default function ShopSchedulePage() {
   const qc = useQueryClient();
   const [view, setView] = useState("week");
   const [anchor, setAnchor] = useState(isoDate(new Date()));
-  const [employeeFilter, setEmployeeFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -196,11 +195,11 @@ export default function ShopSchedulePage() {
   const employees = employeesData?.items || [];
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["calendar-feed", range.start_at, range.end_at, employeeFilter, typeFilter],
+    queryKey: ["calendar-feed", "shop", range.start_at, range.end_at, typeFilter],
     queryFn: async () => (await api.get("/calendar/feed", {
       params: {
         ...range,
-        employee_id: employeeFilter === "all" ? undefined : employeeFilter,
+        surface: "shop",
         event_type: typeFilter === "all" ? undefined : typeFilter,
       },
     })).data,
@@ -237,7 +236,7 @@ export default function ShopSchedulePage() {
     <div className="space-y-4" data-testid="shop-schedule-page">
       <PageHeader
         title="Shop Schedule"
-        subtitle="Appointments, shifts, absences, task due dates, and production milestones."
+        subtitle="Operational appointments, order deadlines, task due dates, and production milestones."
         actions={<Button size="sm" onClick={() => setDialogOpen(true)} data-testid="calendar-create-appointment"><Plus className="size-4 mr-1" />Appointment</Button>}
       />
       <div className="flex flex-wrap items-center gap-2">
@@ -253,19 +252,10 @@ export default function ShopSchedulePage() {
             <SelectItem value="agenda">Agenda</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
-          <SelectTrigger className="w-52" data-testid="calendar-employee-filter"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All employees</SelectItem>
-            {employees.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
           <SelectTrigger className="w-56" data-testid="calendar-type-filter"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All event types</SelectItem>
-            <SelectItem value="shift">Shifts</SelectItem>
-            <SelectItem value="absence">Absences</SelectItem>
             <SelectItem value="task_due">Task due dates</SelectItem>
             {Object.entries(TYPE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
           </SelectContent>
@@ -280,7 +270,7 @@ export default function ShopSchedulePage() {
       {isLoading ? (
         <div className="text-sm text-muted-foreground">Loading...</div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon={Clock} title="No calendar items" description="Try another range or create an appointment." />
+        <EmptyState icon={Clock} title="No operational schedule items" description="Try another range or create an appointment." />
       ) : view === "agenda" ? (
         <Card>
           <CardContent className="p-0 divide-y">
@@ -312,4 +302,3 @@ export default function ShopSchedulePage() {
     </div>
   );
 }
-

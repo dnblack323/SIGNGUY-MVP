@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import PageHeader from "@/components/layout/PageHeader";
+import CommandRibbon from "@/components/command-ribbon/CommandRibbon";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -11,6 +12,7 @@ import StatusPill from "@/components/common/StatusPill";
 import { Wrench, LayoutGrid } from "lucide-react";
 import { relativeTime } from "@/lib/format";
 import { useState } from "react";
+import { buildProductionRibbonGroups } from "@/lib/shopOperationRibbon";
 
 const STATUSES = ["all", "draft", "released", "queued", "in_progress", "blocked", "ready", "completed", "cancelled"];
 
@@ -29,10 +31,13 @@ export default function WorkOrdersPage() {
     })).data,
   });
   const items = data?.items || [];
+  const ribbonGroups = buildProductionRibbonGroups();
 
   return (
     <div className="space-y-4" data-testid="work-orders-page">
+      <CommandRibbon groups={ribbonGroups} data-testid="production-command-ribbon" />
       <PageHeader
+        breadcrumb="Shop Operations / Production"
         title="Work Orders"
         subtitle="Production floor list."
         actions={

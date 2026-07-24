@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api, { extractError } from "@/lib/api";
 import PageHeader from "@/components/layout/PageHeader";
+import CommandRibbon from "@/components/command-ribbon/CommandRibbon";
+import SalesPageTabs from "@/components/sales/SalesPageTabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,9 +20,12 @@ import { centsToDollarsString, relativeTime } from "@/lib/format";
 import { toast } from "sonner";
 import { Plus, FileText } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
+import { buildQuotesRibbonGroups } from "@/lib/shopOperationRibbon";
 
-function NewQuoteDialog({ onCreated }) {
-  const [open, setOpen] = useState(false);
+function NewQuoteDialog({ onCreated, open: controlledOpen, onOpenChange, trigger }) {
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  const setOpen = onOpenChange ?? setLocalOpen;
   const [customerId, setCustomerId] = useState("");
   const [jobName, setJobName] = useState("");
   const [notes, setNotes] = useState("");
@@ -48,7 +53,11 @@ function NewQuoteDialog({ onCreated }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button data-testid="quotes-create-button"><Plus className="size-4 mr-1" />New quote</Button></DialogTrigger>
+      {trigger !== null && (
+        <DialogTrigger asChild>
+          {trigger || <Button data-testid="quotes-create-button"><Plus className="size-4 mr-1" />New quote</Button>}
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader><DialogTitle>New quote</DialogTitle><DialogDescription>Enter a manually-typed price.</DialogDescription></DialogHeader>
         <form onSubmit={submit} className="grid gap-3">
@@ -77,20 +86,42 @@ function NewQuoteDialog({ onCreated }) {
 export default function QuotesPage() {
   const qc = useQueryClient();
   const [status, setStatus] = useState("all");
+  const [newQuoteOpen, setNewQuoteOpen] = useState(false);
   const { hasPerm } = useAuth();
   const canWrite = hasPerm("quote:write");
+  const handleNewQuoteOpenChange = (nextOpen) => {
+    setNewQuoteOpen(nextOpen);
+    if (!nextOpen) {
+      window.requestAnimationFrame(() => {
+        document.querySelector('[data-testid="ribbon-new-quote"]')?.focus();
+      });
+    }
+  };
   const { data, isLoading } = useQuery({
     queryKey: ["quotes", status],
     queryFn: async () => (await api.get("/quotes", { params: { status: status === "all" ? undefined : status, limit: 100 } })).data,
   });
   const items = data?.items || [];
+  const ribbonGroups = buildQuotesRibbonGroups({
+    canWrite,
+    onNewQuote: () => setNewQuoteOpen(true),
+  });
 
   return (
     <div className="space-y-4" data-testid="quotes-page">
+      <CommandRibbon groups={ribbonGroups} data-testid="quotes-command-ribbon" />
       <PageHeader
+        breadcrumb="Shop Operations / Sales / Quotes"
         title="Quotes" subtitle="Manual pricing. No calculators."
         actions={canWrite && <NewQuoteDialog onCreated={() => qc.invalidateQueries({ queryKey: ["quotes"] })} />}
       />
+      <NewQuoteDialog
+        open={newQuoteOpen}
+        onOpenChange={handleNewQuoteOpenChange}
+        trigger={null}
+        onCreated={() => qc.invalidateQueries({ queryKey: ["quotes"] })}
+      />
+      <SalesPageTabs />
       <div className="flex flex-wrap gap-2">
         {["all","draft","sent","approved","declined","converted"].map((s) => (
           <Button key={s} variant={status === s ? "default" : "outline"} size="sm" onClick={() => setStatus(s)} data-testid={`quotes-filter-${s}`}>

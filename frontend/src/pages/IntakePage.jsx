@@ -3,6 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import PageHeader from "@/components/layout/PageHeader";
+import CommandRibbon from "@/components/command-ribbon/CommandRibbon";
+import SalesPageTabs from "@/components/sales/SalesPageTabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -14,6 +16,7 @@ import { relativeTime } from "@/lib/format";
 import { Plus, Inbox, Search, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { INTAKE_STATUSES, INTAKE_PRIORITIES } from "@/lib/intake";
+import { buildIntakeRibbonGroups } from "@/lib/shopOperationRibbon";
 
 export default function IntakePage() {
   const navigate = useNavigate();
@@ -35,10 +38,16 @@ export default function IntakePage() {
     })).data,
   });
   const items = data?.items || [];
+  const ribbonGroups = buildIntakeRibbonGroups({
+    canWrite,
+    onNewIntake: () => navigate("/intake/new"),
+  });
 
   return (
     <div className="space-y-4" data-testid="intake-page">
+      <CommandRibbon groups={ribbonGroups} data-testid="intake-command-ribbon" />
       <PageHeader
+        breadcrumb="Shop Operations / Sales / Intake"
         title="Intake" subtitle="Requests captured before they become a Quote or Order."
         actions={canWrite && (
           <Button data-testid="intake-new-button" onClick={() => navigate("/intake/new")}>
@@ -46,6 +55,7 @@ export default function IntakePage() {
           </Button>
         )}
       />
+      <SalesPageTabs />
       <div className="flex flex-wrap items-center gap-2">
         {["all", ...INTAKE_STATUSES].map((s) => (
           <Button key={s} variant={status === s ? "default" : "outline"} size="sm" onClick={() => setStatus(s)} data-testid={`intake-filter-status-${s}`}>
