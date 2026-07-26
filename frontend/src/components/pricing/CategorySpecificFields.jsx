@@ -121,6 +121,8 @@ export function CategorySpecificFields({ category, values, onChange, designNeede
       <div className="grid gap-3 rounded-lg border p-3" data-testid="calc-category-fields-banners">
         <div className="text-xs font-medium text-muted-foreground">Banner options</div>
         <div className="grid grid-cols-2 gap-3">
+          <Selecty testId="calc-banner-use-type" label="Use type" field="use_type" defaultValue="indoor"
+            options={[["indoor", "Indoor"], ["outdoor", "Outdoor"], ["event_display", "Event / display"], ["fence", "Fence"], ["pole_banner", "Pole banner"], ["backwall_step_repeat", "Backwall / step-and-repeat"], ["custom", "Custom"]]} />
           <Selecty testId="calc-coating-type" label="Coating" field="coating_type" defaultValue="none"
             options={[["none", "None"], ["matte", "Matte laminate"], ["gloss", "Gloss laminate"]]} />
           <Selecty testId="calc-double-sided" label="Sided" field="double_sided" defaultValue="single"
@@ -150,6 +152,10 @@ export function CategorySpecificFields({ category, values, onChange, designNeede
             <Selecty testId="calc-pole-pocket-sides" label="Pole pocket side(s)" field="pole_pocket_sides" defaultValue="top"
               options={[["top", "Top only"], ["top_bottom", "Top & bottom"]]} />
           )}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Moneyy testId="calc-banner-hardware-charge" label="Hardware add-on" field="hardware_charge" defaultValue={0} />
+          <Moneyy testId="calc-banner-delivery-charge" label="Delivery / pickup add-on" field="delivery_charge" defaultValue={0} />
         </div>
         <div className="grid grid-cols-2 gap-3">{rushAndCleanup}</div>
       </div>

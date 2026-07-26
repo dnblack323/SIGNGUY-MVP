@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import api, { extractError } from "@/lib/api";
 import PageHeader from "@/components/layout/PageHeader";
@@ -25,6 +25,8 @@ const ITEM_LABEL_CATEGORIES = ["promotional", "services", "custom"];
 
 const fmtUSD = (n) => Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
 const fmtPct = (n) => `${Number(n || 0).toFixed(2)}%`;
+const dimensionUnit = (inputs) => inputs?.dimension_unit || "in";
+const normalizeDimension = (value, unit) => (unit === "ft" ? (Number(value) || 0) * 12 : Number(value) || 0);
 
 export default function PricingCalculatorPage() {
   const { data: settings } = useQuery({ queryKey: ["pricing-settings"], queryFn: async () => (await api.get("/pricing/settings")).data });
@@ -62,6 +64,38 @@ export default function PricingCalculatorPage() {
   // to a Quote/Order.
   const [materialProfileId, setMaterialProfileId] = useState(null);
   const [pricingComponentIds, setPricingComponentIds] = useState([]);
+  const [resultUpdating, setResultUpdating] = useState(false);
+  const resultKeyRef = useRef("");
+
+  const calculatorCategoryInputs = () => {
+    if (!CATEGORY_SPECIFIC_CATEGORIES.includes(form.category)) return {};
+    if (DIMENSIONLESS_CATEGORIES.includes(form.category)) return form.category_inputs;
+    const unit = dimensionUnit(form.category_inputs);
+    return {
+      ...form.category_inputs,
+      dimension_unit: unit,
+      entered_width: Number(form.width_inches) || 0,
+      entered_height: Number(form.height_inches) || 0,
+    };
+  };
+
+  const calculatorPayload = () => {
+    const unit = dimensionUnit(form.category_inputs);
+    return {
+      category: form.category,
+      width_inches: DIMENSIONLESS_CATEGORIES.includes(form.category) ? null : normalizeDimension(form.width_inches, unit),
+      height_inches: DIMENSIONLESS_CATEGORIES.includes(form.category) ? null : normalizeDimension(form.height_inches, unit),
+      quantity: Number(form.quantity) || 1,
+      material_key: form.material_key || null,
+      design_needed: form.design_needed,
+      install_needed: form.install_needed,
+      manual_selling_price: form.manual_selling_price != null ? Number(form.manual_selling_price) : null,
+      category_inputs: calculatorCategoryInputs(),
+      material_profile_id: materialProfileId || null,
+      pricing_component_ids: pricingComponentIds,
+      saved_item_id: savedItem?.id || null,
+    };
+  };
 
   // EC9 Phase 9F — Add the calculated result to an existing draft Quote or Order.
   const [addTarget, setAddTarget] = useState(null); // "quote" | "order" | null
@@ -78,22 +112,11 @@ export default function PricingCalculatorPage() {
   });
 
   const calc = useMutation({
-    mutationFn: async () => (await api.post("/pricing/calculate", {
-      category: form.category,
-      width_inches: Number(form.width_inches) || 0,
-      height_inches: Number(form.height_inches) || 0,
-      quantity: Number(form.quantity) || 1,
-      material_key: form.material_key || null,
-      design_needed: form.design_needed,
-      install_needed: form.install_needed,
-      manual_selling_price: form.manual_selling_price != null ? Number(form.manual_selling_price) : null,
-      category_inputs: CATEGORY_SPECIFIC_CATEGORIES.includes(form.category) ? form.category_inputs : {},
-      material_profile_id: materialProfileId || null,
-      pricing_component_ids: pricingComponentIds,
-      saved_item_id: savedItem?.id || null,
-    })).data,
-    onSuccess: async (data) => {
+    mutationFn: async () => (await api.post("/pricing/calculate", calculatorPayload())).data,
+    onSuccess: async (data, vars) => {
+      resultKeyRef.current = vars?.calculationKey || JSON.stringify(calculatorPayload());
       setResult(data);
+      setResultUpdating(false);
       if (savedItem?.default_pricing_method === "tier_pricing") {
         const r = await api.get(`/pricing/saved-items/${savedItem.id}/tier-price`, { params: { quantity: Number(form.quantity) || 1 } });
         setTierPreview(r.data);
@@ -101,13 +124,42 @@ export default function PricingCalculatorPage() {
         setTierPreview(null);
       }
     },
-    onError: (e) => toast.error(extractError(e)),
+    onError: (e, vars) => {
+      setResultUpdating(false);
+      if (!vars?.silent) toast.error(extractError(e));
+    },
+  });
+  const calcMutateRef = useRef(calc.mutate);
+  useEffect(() => {
+    calcMutateRef.current = calc.mutate;
   });
 
+  useEffect(() => {
+    if (!form.category) {
+      setResult(null);
+      setResultUpdating(false);
+      resultKeyRef.current = "";
+      return undefined;
+    }
+    const hasValidDimensions = DIMENSIONLESS_CATEGORIES.includes(form.category) || (Number(form.width_inches) > 0 && Number(form.height_inches) > 0);
+    if (!hasValidDimensions) {
+      setResult(null);
+      setResultUpdating(false);
+      resultKeyRef.current = "";
+      return undefined;
+    }
+    const calculationKey = JSON.stringify(calculatorPayload());
+    if (resultKeyRef.current && resultKeyRef.current !== calculationKey) {
+      setResultUpdating(true);
+    }
+    const timer = setTimeout(() => calcMutateRef.current({ silent: true, calculationKey }), 450);
+    return () => clearTimeout(timer);
+  }, [form, materialProfileId, pricingComponentIds, savedItem?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const savedItemConfig = () => ({
-    category: form.category, width_inches: Number(form.width_inches) || 0, height_inches: Number(form.height_inches) || 0,
+    category: form.category, width_inches: calculatorPayload().width_inches, height_inches: calculatorPayload().height_inches,
     quantity: Number(form.quantity) || 1, material_key: form.material_key || null,
-    design_needed: form.design_needed, install_needed: form.install_needed, category_inputs: form.category_inputs,
+    design_needed: form.design_needed, install_needed: form.install_needed, category_inputs: calculatorCategoryInputs(),
   });
 
   const addToDoc = useMutation({
@@ -119,9 +171,9 @@ export default function PricingCalculatorPage() {
         quantity: Number(form.quantity) || 1,
         unit_price_cents: 0,
         category: form.category,
-        width_inches: DIMENSIONLESS_CATEGORIES.includes(form.category) ? null : (Number(form.width_inches) || null),
-        height_inches: DIMENSIONLESS_CATEGORIES.includes(form.category) ? null : (Number(form.height_inches) || null),
-        category_inputs: CATEGORY_SPECIFIC_CATEGORIES.includes(form.category) ? form.category_inputs : {},
+        width_inches: calculatorPayload().width_inches,
+        height_inches: calculatorPayload().height_inches,
+        category_inputs: calculatorCategoryInputs(),
         material_profile_id: materialProfileId || null,
         pricing_component_ids: pricingComponentIds,
         saved_item_id: savedItem?.id || null,
@@ -164,6 +216,14 @@ export default function PricingCalculatorPage() {
   };
 
   const upd = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
+  const updCategoryInput = (k) => (v) => setForm((f) => ({ ...f, category_inputs: { ...(f.category_inputs || {}), [k]: v } }));
+  const chooseBannerMethod = (method) => {
+    setForm((f) => ({
+      ...f,
+      manual_selling_price: null,
+      category_inputs: { ...(f.category_inputs || {}), selected_pricing_method: method },
+    }));
+  };
 
   return (
     <div className="space-y-4" data-testid="pricing-calculator-page">
@@ -185,7 +245,7 @@ export default function PricingCalculatorPage() {
             </div>
             <div className="grid gap-1.5">
               <Label>Category</Label>
-              <Select value={form.category} onValueChange={(v) => { setForm((f) => ({ ...f, category: v, material_key: "", category_inputs: {} })); setMaterialProfileId(null); setPricingComponentIds([]); }}>
+              <Select value={form.category} onValueChange={(v) => { setForm((f) => ({ ...f, category: v, material_key: "", category_inputs: {} })); setResult(null); setMaterialProfileId(null); setPricingComponentIds([]); }}>
                 <SelectTrigger data-testid="calc-category-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(settings?.category_meta || {}).map(([id, m]) => <SelectItem key={id} value={id}>{m.name}</SelectItem>)}
@@ -195,9 +255,19 @@ export default function PricingCalculatorPage() {
             {DIMENSIONLESS_CATEGORIES.includes(form.category) ? (
               <div className="grid gap-1.5"><Label>Quantity</Label><Input type="number" min="1" value={form.quantity} onChange={(e) => upd("quantity")(e.target.value)} data-testid="calc-quantity-input" /></div>
             ) : (
-              <div className="grid grid-cols-3 gap-3">
-                <div className="grid gap-1.5"><Label>Width (in)</Label><Input type="number" value={form.width_inches} onChange={(e) => upd("width_inches")(e.target.value)} data-testid="calc-width-input" /></div>
-                <div className="grid gap-1.5"><Label>Height (in)</Label><Input type="number" value={form.height_inches} onChange={(e) => upd("height_inches")(e.target.value)} data-testid="calc-height-input" /></div>
+              <div className="grid grid-cols-4 gap-3">
+                <div className="grid gap-1.5"><Label>Width ({dimensionUnit(form.category_inputs)})</Label><Input type="number" value={form.width_inches} onChange={(e) => upd("width_inches")(e.target.value)} data-testid="calc-width-input" /></div>
+                <div className="grid gap-1.5"><Label>Height ({dimensionUnit(form.category_inputs)})</Label><Input type="number" value={form.height_inches} onChange={(e) => upd("height_inches")(e.target.value)} data-testid="calc-height-input" /></div>
+                <div className="grid gap-1.5">
+                  <Label>Unit</Label>
+                  <Select value={dimensionUnit(form.category_inputs)} onValueChange={updCategoryInput("dimension_unit")}>
+                    <SelectTrigger data-testid="calc-dimension-unit-select"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="in">Inches</SelectItem>
+                      <SelectItem value="ft">Feet</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="grid gap-1.5"><Label>Quantity</Label><Input type="number" min="1" value={form.quantity} onChange={(e) => upd("quantity")(e.target.value)} data-testid="calc-quantity-input" /></div>
               </div>
             )}
@@ -244,8 +314,8 @@ export default function PricingCalculatorPage() {
               <Label>Manual selling price override (optional)</Label>
               <MoneyInput value={form.manual_selling_price ? Math.round(form.manual_selling_price * 100) : 0} onChange={(cents) => upd("manual_selling_price")(cents ? cents / 100 : null)} testId="calc-manual-override" />
             </div>
-            <Button onClick={() => calc.mutate()} disabled={calc.isPending} data-testid="calc-run-button">
-              {calc.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}<Calculator className="size-4 mr-1" />Calculate
+            <Button onClick={() => calc.mutate({ silent: false, calculationKey: JSON.stringify(calculatorPayload()) })} disabled={calc.isPending} data-testid="calc-run-button">
+              {calc.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}<Calculator className="size-4 mr-1" />Recalculate
             </Button>
           </CardContent>
         </Card>
@@ -254,9 +324,18 @@ export default function PricingCalculatorPage() {
           <CardHeader><CardTitle className="text-base">Result</CardTitle></CardHeader>
           <CardContent>
             {!result ? (
-              <div className="text-sm text-muted-foreground">Fill in inputs and click Calculate.</div>
+              <div className="text-sm text-muted-foreground" data-testid="calc-empty-state">
+                {!DIMENSIONLESS_CATEGORIES.includes(form.category) && (!Number(form.width_inches) || !Number(form.height_inches))
+                  ? "Enter valid width and height to price this item."
+                  : "Fill in inputs. Pricing updates automatically; Recalculate is available for a manual refresh."}
+              </div>
             ) : (
               <div className="space-y-4" data-testid="calc-result">
+                {resultUpdating && (
+                  <Badge variant="secondary" data-testid="calc-result-updating">
+                    Updating calculated price...
+                  </Badge>
+                )}
                 {result.requires_manual_price && (
                   <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800" data-testid="calc-requires-manual-price-warning">
                     No configured tier price for quantity {result.quantity} — this is not a guessed price. Enter a manual selling price override below.
@@ -270,6 +349,7 @@ export default function PricingCalculatorPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-lg border p-3">
                     <div className="text-xs text-muted-foreground">Selling price</div>
+                    <div className="text-xs text-muted-foreground mt-1">Method: {String(result.selected_pricing_method || result.pricing_method_used).replace(/_/g, " ")}</div>
                     <div className="text-2xl font-semibold tabular-nums" data-testid="calc-selling-price">{result.selling_price != null ? fmtUSD(result.selling_price) : "—"}</div>
                   </div>
                   <div className="rounded-lg border p-3">
@@ -278,6 +358,41 @@ export default function PricingCalculatorPage() {
                     <div className="text-xs text-muted-foreground mt-1">{result.profit_amount != null ? fmtUSD(result.profit_amount) : "—"} profit</div>
                   </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border p-3">
+                    <div className="text-xs text-muted-foreground">True cost</div>
+                    <div className="text-2xl font-semibold tabular-nums" data-testid="calc-true-cost">{result.true_cost != null ? fmtUSD(result.true_cost) : "--"}</div>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <div className="text-xs text-muted-foreground">Area</div>
+                    <div className="text-2xl font-semibold tabular-nums">{result.area_sqft_total != null ? `${result.area_sqft_total} sqft` : "--"}</div>
+                    {result.measurement?.input_unit === "ft" && <div className="text-xs text-muted-foreground mt-1">{result.measurement.entered_width} ft x {result.measurement.entered_height} ft = {result.width_inches} in x {result.height_inches} in</div>}
+                  </div>
+                </div>
+
+                {result.pricing_method_results?.length > 0 && (
+                  <div className="rounded-lg border" data-testid="calc-method-comparison">
+                    <div className="px-3 py-2 border-b text-xs text-muted-foreground">Method comparison</div>
+                    <div className="divide-y">
+                      {result.pricing_method_results.map((row) => (
+                        <button
+                          key={row.method}
+                          type="button"
+                          onClick={() => chooseBannerMethod(row.method)}
+                          className="w-full px-3 py-2 text-left text-sm flex items-center justify-between hover:bg-muted"
+                          data-testid={`calc-method-${row.method}`}
+                        >
+                          <span>
+                            <span className="font-medium">{row.label}</span>
+                            <span className="ml-2 text-xs text-muted-foreground">{(row.status || []).join(", ")}</span>
+                          </span>
+                          <span className="tabular-nums font-semibold">{fmtUSD(row.amount)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="rounded-lg border">
                   <div className="px-3 py-2 border-b flex items-center justify-between text-xs">
@@ -293,6 +408,39 @@ export default function PricingCalculatorPage() {
                     ))}
                   </ul>
                 </div>
+
+                {result.detail_sections?.length > 0 && (
+                  <div className="rounded-lg border" data-testid="calc-detail-sections">
+                    <div className="px-3 py-2 border-b text-xs text-muted-foreground">Detailed calculation</div>
+                    <div className="divide-y">
+                      {result.detail_sections.map((section) => (
+                        <details key={section.section} className="px-3 py-2">
+                          <summary className="cursor-pointer text-sm font-medium capitalize">{section.section.replace(/_/g, " ")}</summary>
+                          <div className="mt-2 overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead className="text-muted-foreground">
+                                <tr><th className="text-left py-1">Item</th><th className="text-right py-1">Qty</th><th className="text-left py-1">Unit</th><th className="text-right py-1">Rate</th><th className="text-left py-1">Formula</th><th className="text-right py-1">Amount</th><th className="text-left py-1">Source</th></tr>
+                              </thead>
+                              <tbody>
+                                {(section.lines || []).map((line, i) => (
+                                  <tr key={i} className="border-t">
+                                    <td className="py-1">{line.item}</td>
+                                    <td className="py-1 text-right tabular-nums">{line.qty}</td>
+                                    <td className="py-1">{line.unit}</td>
+                                    <td className="py-1 text-right tabular-nums">{fmtUSD(line.rate)}</td>
+                                    <td className="py-1 text-muted-foreground">{line.formula}</td>
+                                    <td className="py-1 text-right tabular-nums">{fmtUSD(line.amount)}</td>
+                                    <td className="py-1 text-muted-foreground">{line.source}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </details>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
                   {!DIMENSIONLESS_CATEGORIES.includes(result.category) && (

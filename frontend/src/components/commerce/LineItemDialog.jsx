@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import api, { extractError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +50,8 @@ const CATEGORY_OPTIONS = [
 const DIMENSIONLESS_CATEGORIES = ["apparel", "promotional", "vehicle_graphics", "services", "custom"];
 const UOM_OPTIONS = ["each", "sqft", "linear_ft", "hour"];
 const NON_PRODUCTION = new Set(["services", "promotional"]);
+const dimensionUnit = (inputs) => inputs?.dimension_unit || "in";
+const normalizeDimension = (value, unit) => (unit === "ft" ? (Number(value) || 0) * 12 : Number(value) || 0);
 
 export default function LineItemDialog({
   open,
@@ -83,6 +85,8 @@ export default function LineItemDialog({
   const [busy, setBusy] = useState(false);
   const [calc, setCalc] = useState(null);   // last calculator result (full backend response)
   const [calcBusy, setCalcBusy] = useState(false);
+  const [calcUpdating, setCalcUpdating] = useState(false);
+  const calcResultKeyRef = useRef("");
 
   // EC9 Phase 9F — calculator/reference state
   const [designNeeded, setDesignNeeded] = useState(false);
@@ -104,14 +108,21 @@ export default function LineItemDialog({
     setRecalcPreview(null);
     setRecalcAccepted(false);
     if (initial) {
+      const snapshot = initial.pricing_snapshot || {};
+      const initialInputs = initial.category_inputs || {};
+      const measurement = snapshot.measurement || {};
+      const initialUnit = dimensionUnit(initialInputs);
+      const initialIsDimensionless = DIMENSIONLESS_CATEGORIES.includes(initial.category || "");
+      const enteredWidth = measurement.entered_width ?? initialInputs.entered_width;
+      const enteredHeight = measurement.entered_height ?? initialInputs.entered_height;
       setDescription(initial.description || "");
       setCategory(initial.category || "");
       setProductType(initial.product_type || "");
       setSku(initial.sku || "");
       setUom(initial.unit_of_measure || "each");
       setQuantity(initial.quantity || 1);
-      setWidth(initial.width_inches ?? "");
-      setHeight(initial.height_inches ?? "");
+      setWidth(!initialIsDimensionless && initialUnit !== "in" && enteredWidth != null ? enteredWidth : (initial.width_inches ?? ""));
+      setHeight(!initialIsDimensionless && initialUnit !== "in" && enteredHeight != null ? enteredHeight : (initial.height_inches ?? ""));
       setUnitPriceCents(initial.unit_price_cents || 0);
       setManualPriceCents(initial.manual_price_cents ?? initial.unit_price_cents ?? 0);
       setDiscountCents(initial.discount_cents || 0);
@@ -126,13 +137,30 @@ export default function LineItemDialog({
       setSavedItemId(initial.saved_item_id || null);
       setPriceSource(initial.selected_price_source || "manual");
       setPriceInputVersion((v) => v + 1);
+      setCalcUpdating(false);
+      calcResultKeyRef.current = initial.pricing_status === "calculated" ? JSON.stringify({
+        category: initial.category || "",
+        width_inches: initialIsDimensionless ? null : (initial.width_inches ?? null),
+        height_inches: initialIsDimensionless ? null : (initial.height_inches ?? null),
+        quantity: Math.max(1, Number(initial.quantity) || 1),
+        design_needed: false,
+        install_needed: false,
+        category_inputs: initialInputs,
+        material_profile_id: initial.material_profile_id || null,
+        pricing_component_ids: initial.pricing_component_ids || [],
+        saved_item_id: initial.saved_item_id || null,
+      }) : "";
       setCalc(initial.pricing_status === "calculated" ? {
-        selling_price: (initial.suggested_price_cents ?? 0) / 100,
+        selling_price: snapshot.selected_selling_price_dollars ?? snapshot.calculated_unit_price_dollars ?? ((initial.suggested_price_cents ?? 0) / 100),
         calculated_unit_price_cents: initial.suggested_price_cents,
-        pricing_method_used: initial.pricing_snapshot?.pricing_method,
-        breakdown: initial.pricing_snapshot?.breakdown,
+        pricing_method_used: snapshot.selected_pricing_method || snapshot.pricing_method,
+        true_cost: snapshot.true_cost_dollars,
+        pricing_method_results: snapshot.pricing_method_results,
+        breakdown: snapshot.breakdown,
+        detail_sections: snapshot.detail_sections,
+        measurement: snapshot.measurement,
         calculation_warnings: initial.calculation_warnings,
-        source_labels: initial.source_labels,
+        source_labels: initial.source_labels || snapshot.source_labels,
       } : null);
     } else {
       setDescription(""); setCategory(""); setProductType(""); setSku("");
@@ -140,6 +168,8 @@ export default function LineItemDialog({
       setUnitPriceCents(0); setManualPriceCents(0); setDiscountCents(0); setTaxCents(0);
       setNotes(""); setProductionRequired(true);
       setProductionOverrideReason(""); setOverrideReason(""); setCalc(null);
+      setCalcUpdating(false);
+      calcResultKeyRef.current = "";
       setDesignNeeded(false); setInstallNeeded(false); setCategoryInputs({});
       setMaterialProfileId(null); setPricingComponentIds([]); setSavedItemId(null);
       setPriceSource("manual");
@@ -153,38 +183,88 @@ export default function LineItemDialog({
     const total = sub - (Number(discountCents) || 0) + (Number(taxCents) || 0);
     return total < 0 ? 0 : total;
   }, [quantity, unitPriceCents, discountCents, taxCents]);
+  const isDimensionless = DIMENSIONLESS_CATEGORIES.includes(category);
 
   // If the item already has a saved reason, editing the price again does NOT require re-entering it,
   // but backend still requires a reason on change. We show a helper hint.
   const priceChangedFromInitial = mode === "edit" && initial && Number(unitPriceCents) !== Number(initial.unit_price_cents || 0);
+  const currentDimensionUnit = dimensionUnit(categoryInputs);
+  const calculatorCategoryInputs = () => {
+    if (isDimensionless) return categoryInputs;
+    return {
+      ...(categoryInputs || {}),
+      dimension_unit: currentDimensionUnit,
+      entered_width: width === "" ? null : Number(width),
+      entered_height: height === "" ? null : Number(height),
+    };
+  };
+  const normalizedWidthInches = isDimensionless ? null : normalizeDimension(width, currentDimensionUnit);
+  const normalizedHeightInches = isDimensionless ? null : normalizeDimension(height, currentDimensionUnit);
+  const hasValidCalculatorDimensions = isDimensionless || (Number(width) > 0 && Number(height) > 0);
+  const calculatorPayload = () => ({
+    category,
+    width_inches: normalizedWidthInches,
+    height_inches: normalizedHeightInches,
+    quantity: Math.max(1, Number(quantity) || 1),
+    design_needed: designNeeded,
+    install_needed: installNeeded,
+    category_inputs: calculatorCategoryInputs(),
+    material_profile_id: materialProfileId,
+    pricing_component_ids: pricingComponentIds,
+    saved_item_id: savedItemId,
+  });
 
-  async function runCalculator() {
+  async function runCalculator({ silent = false } = {}) {
     if (!category) { toast.error("Choose a category first"); return; }
+    if (!hasValidCalculatorDimensions) {
+      setCalc(null);
+      setCalcUpdating(false);
+      calcResultKeyRef.current = "";
+      if (!silent) toast.error("Enter valid width and height first");
+      return;
+    }
     setCalcBusy(true);
     try {
-      const body = {
-        category,
-        width_inches: width === "" ? null : Number(width),
-        height_inches: height === "" ? null : Number(height),
-        quantity: Math.max(1, Number(quantity) || 1),
-        design_needed: designNeeded,
-        install_needed: installNeeded,
-        category_inputs: categoryInputs,
-        material_profile_id: materialProfileId,
-        pricing_component_ids: pricingComponentIds,
-        saved_item_id: savedItemId,
-      };
+      const body = calculatorPayload();
+      const calculationKey = JSON.stringify(body);
       const { data } = await api.post("/pricing/calculate", body);
       const cents = Math.round(Number(data.selling_price || 0) * 100);
+      calcResultKeyRef.current = calculationKey;
       setCalc({ ...data, calculated_unit_price_cents: cents });
-      if (priceSource === "suggested") { setUnitPriceCents(cents); setPriceInputVersion((v) => v + 1); }
-      toast.success(`Calculator suggested ${centsToDollarsString(cents)} / unit`);
+      setCalcUpdating(false);
+      if (priceSource === "suggested" || (!unitPriceCents && !manualPriceCents)) {
+        setPriceSource("suggested");
+        setUnitPriceCents(cents);
+        setPriceInputVersion((v) => v + 1);
+      }
+      if (!silent) toast.success(`Calculator suggested ${centsToDollarsString(cents)} / unit`);
     } catch (e) {
-      toast.error(extractError(e));
+      setCalcUpdating(false);
+      if (!silent) toast.error(extractError(e));
     } finally {
       setCalcBusy(false);
     }
   }
+  const runCalculatorRef = useRef(runCalculator);
+  useEffect(() => {
+    runCalculatorRef.current = runCalculator;
+  });
+
+  useEffect(() => {
+    if (!open || tab !== "detailed" || !category) return undefined;
+    if (!hasValidCalculatorDimensions) {
+      setCalc(null);
+      setCalcUpdating(false);
+      calcResultKeyRef.current = "";
+      return undefined;
+    }
+    const calculationKey = JSON.stringify(calculatorPayload());
+    if (calcResultKeyRef.current && calcResultKeyRef.current !== calculationKey) {
+      setCalcUpdating(true);
+    }
+    const timer = setTimeout(() => runCalculatorRef.current({ silent: true }), 450);
+    return () => clearTimeout(timer);
+  }, [open, tab, category, width, height, quantity, designNeeded, installNeeded, categoryInputs, materialProfileId, pricingComponentIds, savedItemId, isDimensionless]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function choosePriceSource(next) {
     setPriceSource(next);
@@ -194,6 +274,11 @@ export default function LineItemDialog({
       setUnitPriceCents(manualPriceCents);
     }
     setPriceInputVersion((v) => v + 1);
+  }
+
+  function choosePricingMethod(method) {
+    setCategoryInputs((prev) => ({ ...(prev || {}), selected_pricing_method: method }));
+    setPriceSource("suggested");
   }
 
   async function runRecalculatePreview() {
@@ -249,8 +334,8 @@ export default function LineItemDialog({
       sku: sku || null,
       unit_of_measure: uom,
       quantity: Math.max(1, Number(quantity) || 1),
-      width_inches: width === "" ? null : Number(width),
-      height_inches: height === "" ? null : Number(height),
+      width_inches: normalizedWidthInches,
+      height_inches: normalizedHeightInches,
       unit_price_cents: Math.max(0, Number(unitPriceCents) || 0),
       discount_cents: Math.max(0, Number(discountCents) || 0),
       tax_cents: Math.max(0, Number(taxCents) || 0),
@@ -259,7 +344,7 @@ export default function LineItemDialog({
     if (overrideReason.trim()) payload.manual_override_reason = overrideReason.trim();
 
     if (usingCalculator) {
-      payload.category_inputs = categoryInputs;
+      payload.category_inputs = calculatorCategoryInputs();
       payload.material_profile_id = materialProfileId;
       payload.pricing_component_ids = pricingComponentIds;
       payload.saved_item_id = savedItemId;
@@ -298,7 +383,6 @@ export default function LineItemDialog({
     setProductionRequired(!NON_PRODUCTION.has(category));
   }, [category, mode, allowProductionRequired]);
 
-  const isDimensionless = DIMENSIONLESS_CATEGORIES.includes(category);
   const canRecalculate = mode === "edit" && initial?.category && initial?.pricing_status === "calculated" && onRecalculatePreview;
 
   return (
@@ -371,7 +455,7 @@ export default function LineItemDialog({
                 <Input value={sku} onChange={(e) => setSku(e.target.value)} data-testid="li-sku" />
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-5 gap-2">
               <div className="grid gap-1.5">
                 <Label>Qty*</Label>
                 <Input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} data-testid="li-quantity-detailed" />
@@ -386,12 +470,22 @@ export default function LineItemDialog({
               {!isDimensionless && (
                 <>
                   <div className="grid gap-1.5">
-                    <Label>Width (in)</Label>
+                    <Label>Width ({currentDimensionUnit})</Label>
                     <Input type="number" min="0" value={width} onChange={(e) => setWidth(e.target.value)} data-testid="li-width" />
                   </div>
                   <div className="grid gap-1.5">
-                    <Label>Height (in)</Label>
+                    <Label>Height ({currentDimensionUnit})</Label>
                     <Input type="number" min="0" value={height} onChange={(e) => setHeight(e.target.value)} data-testid="li-height" />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label>Unit</Label>
+                    <Select value={currentDimensionUnit} onValueChange={(val) => setCategoryInputs((prev) => ({ ...(prev || {}), dimension_unit: val }))}>
+                      <SelectTrigger data-testid="li-dimension-unit"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="in">Inches</SelectItem>
+                        <SelectItem value="ft">Feet</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </>
               )}
@@ -424,16 +518,37 @@ export default function LineItemDialog({
                 <Button type="button" variant="outline" onClick={runCalculator} disabled={calcBusy} data-testid="li-calculator">
                   <Calculator className="size-4 mr-1" />{calcBusy ? "Calculating…" : "Calculate"}
                 </Button>
+                {!hasValidCalculatorDimensions && (
+                  <div className="text-xs text-muted-foreground" data-testid="li-calc-empty-state">
+                    Enter valid width and height to price this item.
+                  </div>
+                )}
               </div>
             )}
 
             {calc && calc.calculated_unit_price_cents != null && (
               <div className="rounded-md border bg-muted/40 p-3 text-xs space-y-2" data-testid="li-calc-result">
+                {calcUpdating && (
+                  <Badge variant="secondary" data-testid="li-calc-updating">
+                    Updating calculated price...
+                  </Badge>
+                )}
                 <div>Suggested price: <span className="font-semibold tabular-nums">{centsToDollarsString(calc.calculated_unit_price_cents)}</span> / unit ({calc.pricing_method_used || "n/a"})</div>
+                {calc.true_cost != null && <div>True cost: <span className="font-semibold tabular-nums">{centsToDollarsString(Math.round(Number(calc.true_cost || 0) * 100))}</span> / unit</div>}
                 {calc.calculation_warnings?.length > 0 && (
                   <ul className="list-disc pl-4 text-amber-700" data-testid="li-calc-warnings">
                     {calc.calculation_warnings.map((w, i) => <li key={i}>{w}</li>)}
                   </ul>
+                )}
+                {calc.pricing_method_results?.length > 0 && (
+                  <div className="rounded border bg-background divide-y" data-testid="li-method-comparison">
+                    {calc.pricing_method_results.map((row) => (
+                      <button key={row.method} type="button" className="w-full flex items-center justify-between px-2 py-1.5 text-left hover:bg-muted" onClick={() => choosePricingMethod(row.method)} data-testid={`li-method-${row.method}`}>
+                        <span><span className="font-medium">{row.label}</span><span className="ml-2 text-muted-foreground">{(row.status || []).join(", ")}</span></span>
+                        <span className="font-semibold tabular-nums">{centsToDollarsString(Math.round(Number(row.amount || 0) * 100))}</span>
+                      </button>
+                    ))}
+                  </div>
                 )}
                 <div className="flex items-center gap-4 pt-1">
                   <label className="flex items-center gap-2 cursor-pointer">
