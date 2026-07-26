@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from ..core.config import get_settings
 from ..core.db import db
@@ -22,6 +22,7 @@ from ..core.security import (
     verify_password,
 )
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
+from ..core.user_output import serialize_external_user
 from ..deps import get_current_user
 from ..models.user import PasswordResetToken, Tenant, User
 from ..services.audit import record_audit
@@ -36,6 +37,8 @@ EMERGENT_AUTH_SESSION_DATA_URL = "https://demobackend.emergentagent.com/auth/v1/
 
 
 class RegisterTenantIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     tenant_name: str = Field(min_length=1, max_length=200)
     tenant_slug: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9\-]+$")
     owner_email: EmailStr
@@ -44,6 +47,8 @@ class RegisterTenantIn(BaseModel):
 
 
 class LoginIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     tenant_slug: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9\-]+$")
     email: EmailStr
     password: str
@@ -58,11 +63,15 @@ class TokenOut(BaseModel):
 
 
 class RequestPasswordResetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     tenant_slug: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9\-]+$")
     email: EmailStr
 
 
 class ResetPasswordIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     token: str
     new_password: str = Field(min_length=8, max_length=128)
 
@@ -96,8 +105,7 @@ async def register_tenant(payload: RegisterTenantIn) -> TokenOut:
     )
 
     token = create_access_token(subject=user.id, tenant_id=tenant.id)
-    user_out = serialize_doc(user.model_dump())
-    user_out.pop("password_hash", None)
+    user_out = serialize_external_user(user.model_dump())
     return TokenOut(
         access_token=token,
         user=user_out,
@@ -118,10 +126,12 @@ async def login(payload: LoginIn) -> TokenOut:
         doc = await db.users.find_one({"tenant_id": tenant["id"], "email": payload.email})
     if not doc or not verify_password(payload.password, doc["password_hash"]) or not doc.get("is_active", True):
         raise generic_error
-    await db.users.update_one({"id": doc["id"]}, {"$set": {"last_login_at": utc_now().isoformat()}})
+    await db.users.update_one(
+        {"id": doc["id"], "tenant_id": tenant["id"]},
+        {"$set": {"last_login_at": utc_now().isoformat()}},
+    )
     token = create_access_token(subject=doc["id"], tenant_id=doc["tenant_id"])
-    u = serialize_doc(doc)
-    u.pop("password_hash", None)
+    u = serialize_external_user(doc)
     return TokenOut(
         access_token=token,
         user=u,
@@ -131,6 +141,8 @@ async def login(payload: LoginIn) -> TokenOut:
 
 
 class GoogleSessionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     session_id: str = Field(min_length=1)
 
 
@@ -192,7 +204,10 @@ async def google_session(payload: GoogleSessionIn) -> TokenOut:
             )
         if matches:
             doc = matches[0]
-            await db.users.update_one({"id": doc["id"]}, {"$set": {"google_id": google_id}})
+            await db.users.update_one(
+                {"id": doc["id"], "tenant_id": doc["tenant_id"]},
+                {"$set": {"google_id": google_id}},
+            )
             doc["google_id"] = google_id
 
     if doc:
@@ -201,9 +216,11 @@ async def google_session(payload: GoogleSessionIn) -> TokenOut:
         tenant = await db.tenants.find_one({"id": doc["tenant_id"]})
         if not tenant:
             raise HTTPException(status_code=401, detail="Tenant not found")
-        await db.users.update_one({"id": doc["id"]}, {"$set": {"last_login_at": utc_now().isoformat()}})
-        u = serialize_doc(doc)
-        u.pop("password_hash", None)
+        await db.users.update_one(
+            {"id": doc["id"], "tenant_id": doc["tenant_id"]},
+            {"$set": {"last_login_at": utc_now().isoformat()}},
+        )
+        u = serialize_external_user(doc)
         return TokenOut(
             access_token=create_access_token(subject=doc["id"], tenant_id=doc["tenant_id"]),
             user=u,
@@ -232,8 +249,7 @@ async def google_session(payload: GoogleSessionIn) -> TokenOut:
         entity_id=tenant.id,
         summary=f"Tenant '{tenant.name}' created via Google sign-in",
     )
-    user_out = serialize_doc(user.model_dump())
-    user_out.pop("password_hash", None)
+    user_out = serialize_external_user(user.model_dump())
     return TokenOut(
         access_token=create_access_token(subject=user.id, tenant_id=tenant.id),
         user=user_out,
@@ -261,8 +277,7 @@ async def logout(user: dict = Depends(get_current_user)) -> Response:
 async def me(user: dict = Depends(get_current_user)) -> dict:
     tenant = await db.tenants.find_one({"id": user["tenant_id"]})
     perms = permissions_for_role(user.get("role", "staff"))
-    u = dict(user)
-    u.pop("password_hash", None)
+    u = serialize_external_user(user)
     return {"user": u, "tenant": serialize_doc(tenant), "permissions": perms}
 
 
@@ -331,9 +346,12 @@ async def reset_password(payload: ResetPasswordIn) -> Response:
         exp_dt = exp
     if exp_dt < utc_now():
         raise HTTPException(status_code=400, detail="Token expired")
-    await db.users.update_one({"id": tok["user_id"]}, {"$set": {"password_hash": hash_password(payload.new_password)}})
+    await db.users.update_one(
+        {"id": tok["user_id"], "tenant_id": tok["tenant_id"]},
+        {"$set": {"password_hash": hash_password(payload.new_password)}},
+    )
     await db.password_reset_tokens.update_one({"id": tok["id"]}, {"$set": {"used_at": utc_now().isoformat()}})
-    user = await db.users.find_one({"id": tok["user_id"]})
+    user = await db.users.find_one({"id": tok["user_id"], "tenant_id": tok["tenant_id"]})
     if user:
         await record_audit(
             tenant_id=user["tenant_id"],
@@ -389,12 +407,14 @@ async def dev_login() -> TokenOut:
             password_hash=hash_password("dev-bypass-not-a-real-password"),
         )
         await db.users.insert_one(prepare_for_mongo(u.model_dump()))
-        user = await db.users.find_one({"id": u.id})
+        user = await db.users.find_one({"id": u.id, "tenant_id": tenant["id"]})
 
-    await db.users.update_one({"id": user["id"]}, {"$set": {"last_login_at": utc_now().isoformat()}})
+    await db.users.update_one(
+        {"id": user["id"], "tenant_id": tenant["id"]},
+        {"$set": {"last_login_at": utc_now().isoformat()}},
+    )
     token = create_access_token(subject=user["id"], tenant_id=tenant["id"])
-    u_out = serialize_doc(user)
-    u_out.pop("password_hash", None)
+    u_out = serialize_external_user(user)
     return TokenOut(
         access_token=token,
         user=u_out,

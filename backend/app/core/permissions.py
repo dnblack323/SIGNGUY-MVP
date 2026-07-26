@@ -208,6 +208,7 @@ class Perm(str, Enum):
 
 class PlatformPerm(str, Enum):
     """Platform-scope permissions (cross-tenant). Never satisfies a Perm check."""
+    PLATFORM_CREATOR = "platform:creator"
     PLATFORM_ADMIN = "platform:admin"
     PLATFORM_TENANT_READ = "platform:tenant_read"
     PLATFORM_TENANT_WRITE = "platform:tenant_write"
@@ -295,6 +296,9 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
     "staff": STAFF_PERMS,
 }
 
+PLATFORM_CREATOR_ROLE = "PLATFORM_CREATOR"
+PLATFORM_ADMIN_ROLE_VALUES = {"admin", "owner", "PLATFORM_ADMIN", PLATFORM_CREATOR_ROLE}
+
 
 def permissions_for_role(role: str) -> list[str]:
     return ROLE_PERMISSIONS.get(role, [])
@@ -311,3 +315,43 @@ def is_platform_perm(value: str) -> bool:
 
 def is_portal_perm(value: str) -> bool:
     return value in {p.value for p in PortalPerm}
+
+
+def platform_permissions(user: dict | None) -> set[str]:
+    """Return platform-scope permissions derived from server-controlled fields."""
+    user = user or {}
+    values = {str(p) for p in (user.get("permissions") or []) if is_platform_perm(str(p))}
+    platform_role = user.get("platform_role")
+    if (
+        user.get("platform_admin")
+        or platform_role in PLATFORM_ADMIN_ROLE_VALUES
+        or PlatformPerm.PLATFORM_CREATOR.value in values
+    ):
+        values.add(PlatformPerm.PLATFORM_ADMIN.value)
+    if platform_role == PLATFORM_CREATOR_ROLE:
+        values.add(PlatformPerm.PLATFORM_CREATOR.value)
+    return values
+
+
+def is_platform_creator_user(user: dict | None) -> bool:
+    user = user or {}
+    return (
+        user.get("platform_role") == PLATFORM_CREATOR_ROLE
+        or PlatformPerm.PLATFORM_CREATOR.value in platform_permissions(user)
+    )
+
+
+def has_platform_admin_access(
+    user: dict | None,
+    *,
+    extra_permissions: set[str] | None = None,
+    include_founder_admin: bool = False,
+) -> bool:
+    """Preserve existing platform-admin shapes while adding Platform Creator."""
+    user = user or {}
+    if include_founder_admin and user.get("founder_access_admin"):
+        return True
+    perms = platform_permissions(user)
+    if PlatformPerm.PLATFORM_ADMIN.value in perms:
+        return True
+    return bool(extra_permissions and perms.intersection(extra_permissions))
