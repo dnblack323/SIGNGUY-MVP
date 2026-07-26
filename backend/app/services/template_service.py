@@ -8,6 +8,7 @@ from typing import Any, Optional
 from pymongo.errors import DuplicateKeyError
 
 from ..core.db import db
+from ..core.permissions import has_platform_admin_access
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.template_definition import TemplateDefinition, TemplatePack
 from ..services import decision_room_service, intake_service
@@ -74,13 +75,7 @@ def _now_iso() -> str:
 
 
 def _is_platform_admin(user: Optional[dict]) -> bool:
-    user = user or {}
-    return bool(
-        user.get("platform_admin")
-        or user.get("founder_access_admin")
-        or user.get("platform_role") in {"admin", "owner"}
-        or "platform:admin" in set(user.get("permissions") or [])
-    )
+    return has_platform_admin_access(user, include_founder_admin=True)
 
 
 def _actor_email(actor_email: Optional[str]) -> str:
