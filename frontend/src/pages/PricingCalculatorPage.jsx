@@ -64,6 +64,8 @@ export default function PricingCalculatorPage() {
   // to a Quote/Order.
   const [materialProfileId, setMaterialProfileId] = useState(null);
   const [pricingComponentIds, setPricingComponentIds] = useState([]);
+  const [resultUpdating, setResultUpdating] = useState(false);
+  const resultKeyRef = useRef("");
 
   const calculatorCategoryInputs = () => {
     if (!CATEGORY_SPECIFIC_CATEGORIES.includes(form.category)) return {};
@@ -111,8 +113,10 @@ export default function PricingCalculatorPage() {
 
   const calc = useMutation({
     mutationFn: async () => (await api.post("/pricing/calculate", calculatorPayload())).data,
-    onSuccess: async (data) => {
+    onSuccess: async (data, vars) => {
+      resultKeyRef.current = vars?.calculationKey || JSON.stringify(calculatorPayload());
       setResult(data);
+      setResultUpdating(false);
       if (savedItem?.default_pricing_method === "tier_pricing") {
         const r = await api.get(`/pricing/saved-items/${savedItem.id}/tier-price`, { params: { quantity: Number(form.quantity) || 1 } });
         setTierPreview(r.data);
@@ -120,7 +124,10 @@ export default function PricingCalculatorPage() {
         setTierPreview(null);
       }
     },
-    onError: (e, vars) => { if (!vars?.silent) toast.error(extractError(e)); },
+    onError: (e, vars) => {
+      setResultUpdating(false);
+      if (!vars?.silent) toast.error(extractError(e));
+    },
   });
   const calcMutateRef = useRef(calc.mutate);
   useEffect(() => {
@@ -128,11 +135,26 @@ export default function PricingCalculatorPage() {
   });
 
   useEffect(() => {
-    if (!form.category) return undefined;
-    if (!DIMENSIONLESS_CATEGORIES.includes(form.category) && (!Number(form.width_inches) || !Number(form.height_inches))) return undefined;
-    const timer = setTimeout(() => calcMutateRef.current({ silent: true }), 450);
+    if (!form.category) {
+      setResult(null);
+      setResultUpdating(false);
+      resultKeyRef.current = "";
+      return undefined;
+    }
+    const hasValidDimensions = DIMENSIONLESS_CATEGORIES.includes(form.category) || (Number(form.width_inches) > 0 && Number(form.height_inches) > 0);
+    if (!hasValidDimensions) {
+      setResult(null);
+      setResultUpdating(false);
+      resultKeyRef.current = "";
+      return undefined;
+    }
+    const calculationKey = JSON.stringify(calculatorPayload());
+    if (resultKeyRef.current && resultKeyRef.current !== calculationKey) {
+      setResultUpdating(true);
+    }
+    const timer = setTimeout(() => calcMutateRef.current({ silent: true, calculationKey }), 450);
     return () => clearTimeout(timer);
-  }, [form, materialProfileId, pricingComponentIds, savedItem?.id]);
+  }, [form, materialProfileId, pricingComponentIds, savedItem?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const savedItemConfig = () => ({
     category: form.category, width_inches: calculatorPayload().width_inches, height_inches: calculatorPayload().height_inches,
@@ -292,7 +314,7 @@ export default function PricingCalculatorPage() {
               <Label>Manual selling price override (optional)</Label>
               <MoneyInput value={form.manual_selling_price ? Math.round(form.manual_selling_price * 100) : 0} onChange={(cents) => upd("manual_selling_price")(cents ? cents / 100 : null)} testId="calc-manual-override" />
             </div>
-            <Button onClick={() => calc.mutate({ silent: false })} disabled={calc.isPending} data-testid="calc-run-button">
+            <Button onClick={() => calc.mutate({ silent: false, calculationKey: JSON.stringify(calculatorPayload()) })} disabled={calc.isPending} data-testid="calc-run-button">
               {calc.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}<Calculator className="size-4 mr-1" />Recalculate
             </Button>
           </CardContent>
@@ -302,9 +324,18 @@ export default function PricingCalculatorPage() {
           <CardHeader><CardTitle className="text-base">Result</CardTitle></CardHeader>
           <CardContent>
             {!result ? (
-              <div className="text-sm text-muted-foreground">Fill in inputs. Pricing updates automatically; Recalculate is available for a manual refresh.</div>
+              <div className="text-sm text-muted-foreground" data-testid="calc-empty-state">
+                {!DIMENSIONLESS_CATEGORIES.includes(form.category) && (!Number(form.width_inches) || !Number(form.height_inches))
+                  ? "Enter valid width and height to price this item."
+                  : "Fill in inputs. Pricing updates automatically; Recalculate is available for a manual refresh."}
+              </div>
             ) : (
               <div className="space-y-4" data-testid="calc-result">
+                {resultUpdating && (
+                  <Badge variant="secondary" data-testid="calc-result-updating">
+                    Updating calculated price...
+                  </Badge>
+                )}
                 {result.requires_manual_price && (
                   <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800" data-testid="calc-requires-manual-price-warning">
                     No configured tier price for quantity {result.quantity} — this is not a guessed price. Enter a manual selling price override below.

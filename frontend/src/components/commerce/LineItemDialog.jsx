@@ -85,6 +85,8 @@ export default function LineItemDialog({
   const [busy, setBusy] = useState(false);
   const [calc, setCalc] = useState(null);   // last calculator result (full backend response)
   const [calcBusy, setCalcBusy] = useState(false);
+  const [calcUpdating, setCalcUpdating] = useState(false);
+  const calcResultKeyRef = useRef("");
 
   // EC9 Phase 9F — calculator/reference state
   const [designNeeded, setDesignNeeded] = useState(false);
@@ -106,14 +108,21 @@ export default function LineItemDialog({
     setRecalcPreview(null);
     setRecalcAccepted(false);
     if (initial) {
+      const snapshot = initial.pricing_snapshot || {};
+      const initialInputs = initial.category_inputs || {};
+      const measurement = snapshot.measurement || {};
+      const initialUnit = dimensionUnit(initialInputs);
+      const initialIsDimensionless = DIMENSIONLESS_CATEGORIES.includes(initial.category || "");
+      const enteredWidth = measurement.entered_width ?? initialInputs.entered_width;
+      const enteredHeight = measurement.entered_height ?? initialInputs.entered_height;
       setDescription(initial.description || "");
       setCategory(initial.category || "");
       setProductType(initial.product_type || "");
       setSku(initial.sku || "");
       setUom(initial.unit_of_measure || "each");
       setQuantity(initial.quantity || 1);
-      setWidth(initial.width_inches ?? "");
-      setHeight(initial.height_inches ?? "");
+      setWidth(!initialIsDimensionless && initialUnit !== "in" && enteredWidth != null ? enteredWidth : (initial.width_inches ?? ""));
+      setHeight(!initialIsDimensionless && initialUnit !== "in" && enteredHeight != null ? enteredHeight : (initial.height_inches ?? ""));
       setUnitPriceCents(initial.unit_price_cents || 0);
       setManualPriceCents(initial.manual_price_cents ?? initial.unit_price_cents ?? 0);
       setDiscountCents(initial.discount_cents || 0);
@@ -128,13 +137,30 @@ export default function LineItemDialog({
       setSavedItemId(initial.saved_item_id || null);
       setPriceSource(initial.selected_price_source || "manual");
       setPriceInputVersion((v) => v + 1);
+      setCalcUpdating(false);
+      calcResultKeyRef.current = initial.pricing_status === "calculated" ? JSON.stringify({
+        category: initial.category || "",
+        width_inches: initialIsDimensionless ? null : (initial.width_inches ?? null),
+        height_inches: initialIsDimensionless ? null : (initial.height_inches ?? null),
+        quantity: Math.max(1, Number(initial.quantity) || 1),
+        design_needed: false,
+        install_needed: false,
+        category_inputs: initialInputs,
+        material_profile_id: initial.material_profile_id || null,
+        pricing_component_ids: initial.pricing_component_ids || [],
+        saved_item_id: initial.saved_item_id || null,
+      }) : "";
       setCalc(initial.pricing_status === "calculated" ? {
-        selling_price: (initial.suggested_price_cents ?? 0) / 100,
+        selling_price: snapshot.selected_selling_price_dollars ?? snapshot.calculated_unit_price_dollars ?? ((initial.suggested_price_cents ?? 0) / 100),
         calculated_unit_price_cents: initial.suggested_price_cents,
-        pricing_method_used: initial.pricing_snapshot?.pricing_method,
-        breakdown: initial.pricing_snapshot?.breakdown,
+        pricing_method_used: snapshot.selected_pricing_method || snapshot.pricing_method,
+        true_cost: snapshot.true_cost_dollars,
+        pricing_method_results: snapshot.pricing_method_results,
+        breakdown: snapshot.breakdown,
+        detail_sections: snapshot.detail_sections,
+        measurement: snapshot.measurement,
         calculation_warnings: initial.calculation_warnings,
-        source_labels: initial.source_labels,
+        source_labels: initial.source_labels || snapshot.source_labels,
       } : null);
     } else {
       setDescription(""); setCategory(""); setProductType(""); setSku("");
@@ -142,6 +168,8 @@ export default function LineItemDialog({
       setUnitPriceCents(0); setManualPriceCents(0); setDiscountCents(0); setTaxCents(0);
       setNotes(""); setProductionRequired(true);
       setProductionOverrideReason(""); setOverrideReason(""); setCalc(null);
+      setCalcUpdating(false);
+      calcResultKeyRef.current = "";
       setDesignNeeded(false); setInstallNeeded(false); setCategoryInputs({});
       setMaterialProfileId(null); setPricingComponentIds([]); setSavedItemId(null);
       setPriceSource("manual");
@@ -172,26 +200,38 @@ export default function LineItemDialog({
   };
   const normalizedWidthInches = isDimensionless ? null : normalizeDimension(width, currentDimensionUnit);
   const normalizedHeightInches = isDimensionless ? null : normalizeDimension(height, currentDimensionUnit);
+  const hasValidCalculatorDimensions = isDimensionless || (Number(width) > 0 && Number(height) > 0);
+  const calculatorPayload = () => ({
+    category,
+    width_inches: normalizedWidthInches,
+    height_inches: normalizedHeightInches,
+    quantity: Math.max(1, Number(quantity) || 1),
+    design_needed: designNeeded,
+    install_needed: installNeeded,
+    category_inputs: calculatorCategoryInputs(),
+    material_profile_id: materialProfileId,
+    pricing_component_ids: pricingComponentIds,
+    saved_item_id: savedItemId,
+  });
 
   async function runCalculator({ silent = false } = {}) {
     if (!category) { toast.error("Choose a category first"); return; }
+    if (!hasValidCalculatorDimensions) {
+      setCalc(null);
+      setCalcUpdating(false);
+      calcResultKeyRef.current = "";
+      if (!silent) toast.error("Enter valid width and height first");
+      return;
+    }
     setCalcBusy(true);
     try {
-      const body = {
-        category,
-        width_inches: normalizedWidthInches,
-        height_inches: normalizedHeightInches,
-        quantity: Math.max(1, Number(quantity) || 1),
-        design_needed: designNeeded,
-        install_needed: installNeeded,
-        category_inputs: calculatorCategoryInputs(),
-        material_profile_id: materialProfileId,
-        pricing_component_ids: pricingComponentIds,
-        saved_item_id: savedItemId,
-      };
+      const body = calculatorPayload();
+      const calculationKey = JSON.stringify(body);
       const { data } = await api.post("/pricing/calculate", body);
       const cents = Math.round(Number(data.selling_price || 0) * 100);
+      calcResultKeyRef.current = calculationKey;
       setCalc({ ...data, calculated_unit_price_cents: cents });
+      setCalcUpdating(false);
       if (priceSource === "suggested" || (!unitPriceCents && !manualPriceCents)) {
         setPriceSource("suggested");
         setUnitPriceCents(cents);
@@ -199,6 +239,7 @@ export default function LineItemDialog({
       }
       if (!silent) toast.success(`Calculator suggested ${centsToDollarsString(cents)} / unit`);
     } catch (e) {
+      setCalcUpdating(false);
       if (!silent) toast.error(extractError(e));
     } finally {
       setCalcBusy(false);
@@ -211,10 +252,19 @@ export default function LineItemDialog({
 
   useEffect(() => {
     if (!open || tab !== "detailed" || !category) return undefined;
-    if (!isDimensionless && (!Number(width) || !Number(height))) return undefined;
+    if (!hasValidCalculatorDimensions) {
+      setCalc(null);
+      setCalcUpdating(false);
+      calcResultKeyRef.current = "";
+      return undefined;
+    }
+    const calculationKey = JSON.stringify(calculatorPayload());
+    if (calcResultKeyRef.current && calcResultKeyRef.current !== calculationKey) {
+      setCalcUpdating(true);
+    }
     const timer = setTimeout(() => runCalculatorRef.current({ silent: true }), 450);
     return () => clearTimeout(timer);
-  }, [open, tab, category, width, height, quantity, designNeeded, installNeeded, categoryInputs, materialProfileId, pricingComponentIds, savedItemId, isDimensionless]);
+  }, [open, tab, category, width, height, quantity, designNeeded, installNeeded, categoryInputs, materialProfileId, pricingComponentIds, savedItemId, isDimensionless]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function choosePriceSource(next) {
     setPriceSource(next);
@@ -468,11 +518,21 @@ export default function LineItemDialog({
                 <Button type="button" variant="outline" onClick={runCalculator} disabled={calcBusy} data-testid="li-calculator">
                   <Calculator className="size-4 mr-1" />{calcBusy ? "Calculating…" : "Calculate"}
                 </Button>
+                {!hasValidCalculatorDimensions && (
+                  <div className="text-xs text-muted-foreground" data-testid="li-calc-empty-state">
+                    Enter valid width and height to price this item.
+                  </div>
+                )}
               </div>
             )}
 
             {calc && calc.calculated_unit_price_cents != null && (
               <div className="rounded-md border bg-muted/40 p-3 text-xs space-y-2" data-testid="li-calc-result">
+                {calcUpdating && (
+                  <Badge variant="secondary" data-testid="li-calc-updating">
+                    Updating calculated price...
+                  </Badge>
+                )}
                 <div>Suggested price: <span className="font-semibold tabular-nums">{centsToDollarsString(calc.calculated_unit_price_cents)}</span> / unit ({calc.pricing_method_used || "n/a"})</div>
                 {calc.true_cost != null && <div>True cost: <span className="font-semibold tabular-nums">{centsToDollarsString(Math.round(Number(calc.true_cost || 0) * 100))}</span> / unit</div>}
                 {calc.calculation_warnings?.length > 0 && (
