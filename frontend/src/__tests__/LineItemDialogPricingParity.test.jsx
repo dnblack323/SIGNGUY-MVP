@@ -10,7 +10,9 @@ import { toast } from "sonner";
 jest.mock("@/lib/api", () => ({
   __esModule: true,
   default: {
+    get: jest.fn(),
     post: jest.fn(),
+    patch: jest.fn(),
   },
   extractError: (error) => error?.response?.data?.detail || error?.message || "Request failed",
 }));
@@ -181,6 +183,26 @@ function comparisonResult(primaryMethodId = "square_foot_plus_addons") {
 }
 
 function mockApi({ failed = false } = {}) {
+  api.get.mockImplementation((url) => {
+    if (url === "/pricing/saved-calculations") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              id: "saved-calc-1",
+              name: "Saved banner",
+              category: "banners",
+              selling_price: 180,
+              canonical_method_id: "square_foot_plus_addons",
+              selected_method_id: "square_foot_plus_addons",
+              pricing_method_results: [successfulMethod("square_foot_plus_addons", 180, true)],
+            },
+          ],
+        },
+      });
+    }
+    return Promise.resolve({ data: {} });
+  });
   api.post.mockImplementation((url, payload) => {
     if (url === "/pricing/calculate") {
       if (failed) {
@@ -191,8 +213,41 @@ function mockApi({ failed = false } = {}) {
     if (url === "/pricing/method-comparison") {
       return Promise.resolve({ data: comparisonResult(payload.primary_method_id || "square_foot_plus_addons") });
     }
+    if (url === "/pricing/saved-calculations") {
+      return Promise.resolve({ data: { id: "saved-new", name: payload.name } });
+    }
+    if (url === "/pricing/saved-calculations/saved-calc-1/recalculate") {
+      return Promise.resolve({
+        data: {
+          saved_calculation: {
+            id: "saved-calc-1",
+            name: "Saved banner",
+            selling_price: 180,
+            calculation_inputs: {
+              category: "banners",
+              width_inches: 96,
+              height_inches: 36,
+              quantity: 1,
+              design_needed: false,
+              install_needed: false,
+              category_inputs: { dimension_unit: "in" },
+              material_profile_id: null,
+              pricing_component_ids: [],
+              saved_item_id: null,
+            },
+          },
+          current_result: pricingResult("banners"),
+          comparison_result: comparisonResult("square_foot_plus_addons"),
+          saved_price: 180,
+          current_price: 192,
+          price_changed: true,
+          transferable: true,
+        },
+      });
+    }
     return Promise.resolve({ data: {} });
   });
+  api.patch.mockResolvedValue({ data: {} });
 }
 
 function renderDialog(props = {}) {
@@ -222,7 +277,7 @@ async function calculateBanner() {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  useAuth.mockReturnValue({ hasPerm: (permission) => permission === "pricing:calculate" });
+  useAuth.mockReturnValue({ hasPerm: (permission) => ["pricing:calculate", "pricing:read", "pricing:write"].includes(permission) });
   mockApi();
 });
 
@@ -318,6 +373,44 @@ test("permission-blocked users cannot calculate or transfer suggested pricing", 
   expect(screen.getByTestId("li-calculator")).toBeDisabled();
   expect(screen.getByTestId("li-pricing-permission-blocked")).toBeInTheDocument();
   expect(api.post).not.toHaveBeenCalled();
+});
+
+test("explicitly saves the current backend calculation from the shared line item dialog", async () => {
+  renderDialog();
+  await calculateBanner();
+  fireEvent.change(screen.getByTestId("li-save-calculation-name"), { target: { value: "Reusable banner" } });
+  fireEvent.click(screen.getByTestId("li-save-calculation-button"));
+
+  await waitFor(() => {
+    expect(api.post).toHaveBeenCalledWith("/pricing/saved-calculations", expect.objectContaining({
+      name: "Reusable banner",
+      source_context: "quote_item",
+      calculation_inputs: expect.objectContaining({ category: "banners", width_inches: 96, height_inches: 36 }),
+    }));
+  });
+});
+
+test("uses a saved calculation through fresh backend recalculation before transfer", async () => {
+  const onSubmit = jest.fn().mockResolvedValue({});
+  renderDialog({ onSubmit });
+  fireEvent.change(screen.getByTestId("li-description-detailed"), { target: { value: "Saved reuse banner" } });
+  fireEvent.change(screen.getByTestId("li-category-detailed"), { target: { value: "banners" } });
+
+  fireEvent.click(screen.getByTestId("li-open-saved-library"));
+  fireEvent.click(await screen.findByTestId("saved-calc-row-saved-calc-1"));
+  fireEvent.click(screen.getByTestId("saved-calc-use"));
+
+  expect(await screen.findByTestId("li-saved-current-price-panel")).toHaveTextContent("$180.00");
+  expect(screen.getByTestId("li-saved-current-price-panel")).toHaveTextContent("$192.00");
+  expect(screen.getByTestId("li-saved-current-price-diff")).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId("li-submit"));
+
+  await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+  expect(onSubmit.mock.calls[0][0]).toEqual(expect.objectContaining({
+    selected_price_source: "suggested",
+    unit_price_cents: 19200,
+    category: "banners",
+  }));
 });
 
 test("manual override reason is still required for manual prices", async () => {

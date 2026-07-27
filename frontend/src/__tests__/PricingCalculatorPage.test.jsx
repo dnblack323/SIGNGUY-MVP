@@ -13,6 +13,7 @@ jest.mock("@/lib/api", () => ({
     get: jest.fn(),
     post: jest.fn(),
     put: jest.fn(),
+    patch: jest.fn(),
   },
   extractError: (error) => error?.response?.data?.detail || error?.message || "Request failed",
 }));
@@ -175,6 +176,29 @@ function mockApi() {
     if (url.includes("/tier-price")) {
       return response({ tier_price: 150 });
     }
+    if (url === "/pricing/saved-calculations") {
+      return response({
+        items: [
+          {
+            id: "saved-calc-1",
+            name: "Saved banner",
+            category: "banners",
+            selling_price: 180,
+            canonical_method_id: "square_foot_plus_addons",
+            selected_method_id: "square_foot_plus_addons",
+            pricing_method_results: [successfulMethod("square_foot_plus_addons", 180, true)],
+            calculation_inputs: {
+              category: "banners",
+              width_inches: 96,
+              height_inches: 36,
+              quantity: 1,
+              category_inputs: { dimension_unit: "in", selected_pricing_method: "square_foot_plus_addons" },
+              pricing_component_ids: [],
+            },
+          },
+        ],
+      });
+    }
     return response({});
   });
 
@@ -184,6 +208,32 @@ function mockApi() {
     }
     if (url === "/pricing/method-comparison") {
       return response(comparisonResult(payload.primary_method_id || "square_foot_plus_addons"));
+    }
+    if (url === "/pricing/saved-calculations") {
+      return response({ id: "saved-new", name: payload.name, category: payload.calculation_inputs.category });
+    }
+    if (url === "/pricing/saved-calculations/saved-calc-1/recalculate") {
+      return response({
+        saved_calculation: {
+          id: "saved-calc-1",
+          name: "Saved banner",
+          selling_price: 180,
+          calculation_inputs: {
+            category: "banners",
+            width_inches: 96,
+            height_inches: 36,
+            quantity: 1,
+            category_inputs: { dimension_unit: "in", selected_pricing_method: "square_foot_plus_addons" },
+            pricing_component_ids: [],
+          },
+        },
+        current_result: pricingResult("banners"),
+        comparison_result: comparisonResult("square_foot_plus_addons"),
+        saved_price: 180,
+        current_price: 192,
+        price_changed: true,
+        transferable: true,
+      });
     }
     if (url.includes("/method-availability")) {
       return response({
@@ -205,6 +255,7 @@ function mockApi() {
   });
 
   api.put.mockResolvedValue({ data: { configuration_version: 3 } });
+  api.patch.mockResolvedValue({ data: {} });
 }
 
 beforeEach(() => {
@@ -320,6 +371,38 @@ test("exposes simple and advanced method configuration controls without persisti
     expect(api.put).toHaveBeenCalledWith(expect.stringContaining("/advanced-setup"), expect.objectContaining({ primary_method_id: expect.any(String) }));
   });
   expect(api.post.mock.calls.some(([url]) => String(url).includes("calculations"))).toBe(false);
+});
+
+test("explicitly saves the current backend calculation from the dedicated workspace", async () => {
+  renderWithProviders(<PricingCalculatorPage />);
+  fireEvent.click(await screen.findByTestId("calc-run-button"));
+  await screen.findByTestId("calc-result");
+
+  fireEvent.change(screen.getByTestId("calc-save-name"), { target: { value: "8x3 saved banner" } });
+  fireEvent.click(screen.getByTestId("calc-save-inline-button"));
+
+  await waitFor(() => {
+    expect(api.post).toHaveBeenCalledWith("/pricing/saved-calculations", expect.objectContaining({
+      name: "8x3 saved banner",
+      source_context: "pricing_calculator",
+      calculation_inputs: expect.objectContaining({ category: "banners", width_inches: 96, height_inches: 36 }),
+    }));
+  });
+});
+
+test("uses a saved calculation as a fresh working copy and shows saved versus current price", async () => {
+  renderWithProviders(<PricingCalculatorPage />);
+
+  fireEvent.click(await screen.findByTestId("calc-view-library"));
+  expect(await screen.findByTestId("saved-calculation-library")).toBeInTheDocument();
+  fireEvent.click(await screen.findByTestId("saved-calc-row-saved-calc-1"));
+  fireEvent.click(screen.getByTestId("saved-calc-use"));
+
+  expect(await screen.findByTestId("calc-saved-current-price-panel")).toHaveTextContent("Saved Price");
+  expect(screen.getByTestId("calc-saved-current-price-panel")).toHaveTextContent("$180.00");
+  expect(screen.getByTestId("calc-saved-current-price-panel")).toHaveTextContent("$192.00");
+  expect(screen.getByTestId("calc-saved-current-price-diff")).toBeInTheDocument();
+  expect(screen.getByTestId("calc-authoritative-selling-price")).toHaveTextContent("$192.00");
 });
 
 test("denies the workspace when the user lacks pricing calculation permission", () => {

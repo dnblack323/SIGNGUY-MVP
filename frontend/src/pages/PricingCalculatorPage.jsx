@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calculator, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { Calculator, FolderOpen, Loader2, RefreshCw, Save, SlidersHorizontal } from "lucide-react";
 import api, { extractError } from "@/lib/api";
 import { useAuth } from "@/auth/AuthContext";
 import PageHeader from "@/components/layout/PageHeader";
@@ -15,6 +15,8 @@ import SavedItemSelector from "@/components/pricing/selectors/SavedItemSelector"
 import MaterialProfileSelector from "@/components/pricing/selectors/MaterialProfileSelector";
 import PricingComponentSelector from "@/components/pricing/selectors/PricingComponentSelector";
 import { CategorySpecificFields } from "@/components/pricing/CategorySpecificFields";
+import SavedCalculationLibrary from "@/components/pricing/SavedCalculationLibrary";
+import { toast } from "sonner";
 
 const DIMENSIONLESS_CATEGORIES = ["apparel", "promotional", "vehicle_graphics", "services", "custom"];
 const CATEGORY_SPECIFIC_CATEGORIES = ["banners", "rigid_signs", "digital_print", "cut_vinyl", "apparel", "promotional", "vehicle_graphics", "services", "custom"];
@@ -101,7 +103,18 @@ function CategoryTabs({ categories, activeCategory, onSelect }) {
   );
 }
 
-function WorkspaceRibbon({ activeView, setActiveView, onCalculate, calculating, canWrite, onPreviewSimple, previewing }) {
+function WorkspaceRibbon({
+  activeView,
+  setActiveView,
+  onCalculate,
+  calculating,
+  canWrite,
+  onPreviewSimple,
+  previewing,
+  onSaveCalculation,
+  canSaveCalculation,
+  savingCalculation,
+}) {
   return (
     <div className="rounded-lg border bg-muted/30 px-3 py-2" data-testid="pricing-calculator-ribbon">
       <div className="flex flex-wrap items-center gap-2">
@@ -125,6 +138,25 @@ function WorkspaceRibbon({ activeView, setActiveView, onCalculate, calculating, 
         >
           <SlidersHorizontal className="mr-2 size-4" />
           Method Setup
+        </Button>
+        <Button
+          size="sm"
+          variant={activeView === "library" ? "secondary" : "ghost"}
+          onClick={() => setActiveView("library")}
+          data-testid="calc-view-library"
+        >
+          <FolderOpen className="mr-2 size-4" />
+          Saved Library
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onSaveCalculation}
+          disabled={!canSaveCalculation || savingCalculation}
+          data-testid="calc-save-calculation-button"
+        >
+          {savingCalculation ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
+          Save Calculation
         </Button>
         <Button
           size="sm"
@@ -163,6 +195,9 @@ export default function PricingCalculatorPage() {
   const [selectedComparisonMethod, setSelectedComparisonMethod] = useState("");
   const [advancedSelection, setAdvancedSelection] = useState(BANNER_METHOD_IDS.slice(0, 2));
   const [advancedPrimary, setAdvancedPrimary] = useState(BANNER_METHOD_IDS[0]);
+  const [saveName, setSaveName] = useState("");
+  const [saveNotes, setSaveNotes] = useState("");
+  const [savedReuse, setSavedReuse] = useState(null);
   const resultKeyRef = useRef("");
 
   const settingsQuery = useQuery({
@@ -229,6 +264,23 @@ export default function PricingCalculatorPage() {
       expected_configuration_version: methodConfigQuery.data?.configuration_version || null,
     })).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pricing-method-configuration"] }),
+  });
+
+  const saveCalculation = useMutation({
+    mutationFn: async () => (await api.post("/pricing/saved-calculations", {
+      name: saveName.trim(),
+      notes: saveNotes.trim() || null,
+      calculation_inputs: calculatorPayload(),
+      selected_method_id: selectedComparisonMethod || selectedComparison,
+      source_context: "pricing_calculator",
+    })).data,
+    onSuccess: (doc) => {
+      queryClient.invalidateQueries({ queryKey: ["pricing-saved-calculations"] });
+      setSaveName(doc.name || "");
+      setSaveNotes(doc.notes || "");
+      toast.success("Calculation saved");
+    },
+    onError: (err) => toast.error(extractError(err)),
   });
 
   useEffect(() => {
@@ -335,7 +387,14 @@ export default function PricingCalculatorPage() {
     return () => clearTimeout(timer);
   }, [form, materialProfileId, pricingComponentIds, savedItem?.id, canCalculate]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!savedReuse) return;
+    const key = JSON.stringify(calculatorPayload());
+    if (savedReuse.calculationKey !== key) setSavedReuse(null);
+  }, [form, materialProfileId, pricingComponentIds, savedItem?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function updateForm(key, value) {
+    setSavedReuse(null);
     setForm((current) => ({ ...current, [key]: value }));
   }
 
@@ -354,18 +413,72 @@ export default function PricingCalculatorPage() {
     setComparison(null);
     setError("");
     setSelectedComparisonMethod("");
+    setSavedReuse(null);
   }
 
   function updateCategoryInput(key, value) {
+    setSavedReuse(null);
     setForm((current) => ({ ...current, category_inputs: { ...(current.category_inputs || {}), [key]: value } }));
   }
 
   function applySavedItem(id, item) {
+    setSavedReuse(null);
     setSavedItem(item);
     const shouldLoadDefaults = form.category !== "promotional" || useSavedDefaults;
     if (shouldLoadDefaults && item?.saved_config && Object.keys(item.saved_config).length) {
       setForm((current) => ({ ...current, ...item.saved_config }));
     }
+  }
+
+  function loadSavedCalculation(data) {
+    const inputs = data.saved_calculation?.calculation_inputs || {};
+    const nextCategoryInputs = inputs.category_inputs || {};
+    const isNextDimensionless = DIMENSIONLESS_CATEGORIES.includes(inputs.category || "");
+    const inputUnit = dimensionUnit(nextCategoryInputs);
+    const displayWidth = !isNextDimensionless && inputUnit !== "in" && nextCategoryInputs.entered_width != null ? nextCategoryInputs.entered_width : inputs.width_inches;
+    const displayHeight = !isNextDimensionless && inputUnit !== "in" && nextCategoryInputs.entered_height != null ? nextCategoryInputs.entered_height : inputs.height_inches;
+    setForm({
+      ...DEFAULT_FORM,
+      category: inputs.category || DEFAULT_FORM.category,
+      width_inches: displayWidth ?? DEFAULT_FORM.width_inches,
+      height_inches: displayHeight ?? DEFAULT_FORM.height_inches,
+      quantity: inputs.quantity || DEFAULT_FORM.quantity,
+      material_key: inputs.material_key || "",
+      design_needed: !!inputs.design_needed,
+      install_needed: !!inputs.install_needed,
+      manual_selling_price: inputs.manual_selling_price ?? null,
+      category_inputs: nextCategoryInputs,
+    });
+    setSavedItem(inputs.saved_item_id ? { id: inputs.saved_item_id } : null);
+    setMaterialProfileId(inputs.material_profile_id || null);
+    setPricingComponentIds(inputs.pricing_component_ids || []);
+    setResult(data.current_result || null);
+    setComparison(data.comparison_result || null);
+    const key = JSON.stringify({
+      category: inputs.category || DEFAULT_FORM.category,
+      width_inches: isNextDimensionless ? null : normalizeDimension(displayWidth ?? DEFAULT_FORM.width_inches, inputUnit),
+      height_inches: isNextDimensionless ? null : normalizeDimension(displayHeight ?? DEFAULT_FORM.height_inches, inputUnit),
+      quantity: inputs.quantity || DEFAULT_FORM.quantity,
+      material_key: inputs.material_key || null,
+      design_needed: !!inputs.design_needed,
+      install_needed: !!inputs.install_needed,
+      manual_selling_price: inputs.manual_selling_price != null ? Number(inputs.manual_selling_price) : null,
+      category_inputs: isNextDimensionless ? nextCategoryInputs : {
+        ...nextCategoryInputs,
+        dimension_unit: inputUnit,
+        entered_width: Number(displayWidth) || 0,
+        entered_height: Number(displayHeight) || 0,
+      },
+      material_profile_id: inputs.material_profile_id || null,
+      pricing_component_ids: inputs.pricing_component_ids || [],
+      saved_item_id: inputs.saved_item_id || null,
+    });
+    resultKeyRef.current = key;
+    setSelectedComparisonMethod(data.comparison_result?.selected_method_id || data.current_result?.selected_method_id || data.current_result?.canonical_method_id || "");
+    setResultUpdating(false);
+    setError("");
+    setSavedReuse({ ...data, calculationKey: key });
+    setActiveView("calculator");
   }
 
   function runCalculation() {
@@ -425,7 +538,7 @@ export default function PricingCalculatorPage() {
       <PageHeader
         title="Pricing Calculators"
         subtitle="Dedicated calculator workspace for Banner and normalized EC9 categories."
-        actions={<Badge variant="secondary">EC9 Phase 9I-E</Badge>}
+        actions={<Badge variant="secondary">EC9 Phase 9I-G</Badge>}
       />
 
       <CategoryTabs categories={categories} activeCategory={form.category} onSelect={setCategory} />
@@ -438,6 +551,9 @@ export default function PricingCalculatorPage() {
         canWrite={canWritePricing}
         onPreviewSimple={() => simplePreview.mutate()}
         previewing={simplePreview.isPending}
+        onSaveCalculation={() => saveCalculation.mutate()}
+        canSaveCalculation={canWritePricing && !!saveName.trim() && result?.selling_price != null && !resultUpdating && !calc.isPending}
+        savingCalculation={saveCalculation.isPending}
       />
 
       {activeView === "calculator" ? (
@@ -530,7 +646,7 @@ export default function PricingCalculatorPage() {
               <CategorySpecificFields
                 category={form.category}
                 values={form.category_inputs}
-                onChange={(next) => setForm((current) => ({ ...current, category_inputs: next }))}
+                onChange={(next) => { setSavedReuse(null); setForm((current) => ({ ...current, category_inputs: next })); }}
                 designNeeded={form.design_needed}
                 installNeeded={form.install_needed}
               />
@@ -538,11 +654,11 @@ export default function PricingCalculatorPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="grid gap-1.5">
                   <Label className="text-xs">Canonical material</Label>
-                  <MaterialProfileSelector value={materialProfileId} onChange={setMaterialProfileId} category={form.category} testIdPrefix="calc-material-profile" />
+                  <MaterialProfileSelector value={materialProfileId} onChange={(id) => { setMaterialProfileId(id); setSavedReuse(null); }} category={form.category} testIdPrefix="calc-material-profile" />
                 </div>
                 <div className="grid gap-1.5">
                   <Label className="text-xs">Pricing components</Label>
-                  <PricingComponentSelector value={pricingComponentIds} onChange={setPricingComponentIds} category={form.category} testIdPrefix="calc-components" />
+                  <PricingComponentSelector value={pricingComponentIds} onChange={(ids) => { setPricingComponentIds(ids); setSavedReuse(null); }} category={form.category} testIdPrefix="calc-components" />
                 </div>
               </div>
 
@@ -554,6 +670,34 @@ export default function PricingCalculatorPage() {
           </Card>
 
           <div className="space-y-4">
+            <Card>
+              <CardContent className="grid gap-3 py-4 md:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_auto] md:items-end" data-testid="calc-save-panel">
+                <div className="grid gap-1.5">
+                  <Label>Saved calculation name</Label>
+                  <Input value={saveName} onChange={(event) => setSaveName(event.target.value)} placeholder="e.g. 8x3 banner with hems" data-testid="calc-save-name" />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Notes</Label>
+                  <Input value={saveNotes} onChange={(event) => setSaveNotes(event.target.value)} placeholder="Optional" data-testid="calc-save-notes" />
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => saveCalculation.mutate()}
+                  disabled={!canWritePricing || !saveName.trim() || result?.selling_price == null || resultUpdating || calc.isPending}
+                  data-testid="calc-save-inline-button"
+                >
+                  Save Calculation
+                </Button>
+              </CardContent>
+            </Card>
+
+            {savedReuse && (
+              <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm" data-testid="calc-saved-current-price-panel">
+                Saved Price: <strong>{fmtUSD(savedReuse.saved_price)}</strong> · Current Price: <strong>{fmtUSD(savedReuse.current_price)}</strong>
+                {savedReuse.price_changed && <Badge className="ml-2" variant="secondary" data-testid="calc-saved-current-price-diff">Current price differs</Badge>}
+              </div>
+            )}
+
             {(calc.isPending || resultUpdating) && (
               <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm" data-testid="calc-loading-state">
                 {calc.isPending ? "Calculating current price..." : "Inputs changed. Updating result..."}
@@ -685,7 +829,7 @@ export default function PricingCalculatorPage() {
             )}
           </div>
         </div>
-      ) : (
+      ) : activeView === "methods" ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-testid="pricing-method-setup-panel">
           <Card>
             <CardHeader><CardTitle className="text-base">Current Method Setup</CardTitle></CardHeader>
@@ -759,6 +903,13 @@ export default function PricingCalculatorPage() {
             </CardContent>
           </Card>
         </div>
+      ) : (
+        <SavedCalculationLibrary
+          canRead={canReadPricing}
+          canWrite={canWritePricing}
+          canCalculate={canCalculate}
+          onUseCalculation={loadSavedCalculation}
+        />
       )}
     </div>
   );

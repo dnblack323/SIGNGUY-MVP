@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import api, { extractError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,8 +17,9 @@ import { CategorySpecificFields } from "@/components/pricing/CategorySpecificFie
 import SavedItemSelector from "@/components/pricing/selectors/SavedItemSelector";
 import PricingComponentSelector from "@/components/pricing/selectors/PricingComponentSelector";
 import MaterialProfilePicker from "@/components/pricing/selectors/MaterialProfileSelector";
+import SavedCalculationLibrary from "@/components/pricing/SavedCalculationLibrary";
 import { useAuth } from "@/auth/AuthContext";
-import { Calculator, RefreshCw } from "lucide-react";
+import { Calculator, FolderOpen, RefreshCw } from "lucide-react";
 
 /**
  * EC3/EC9 Phase 9F — Shared commerce line item editor. Used by Quote line
@@ -81,7 +83,10 @@ export default function LineItemDialog({
   allowProductionRequired = false,
 }) {
   const { hasPerm } = useAuth();
+  const queryClient = useQueryClient();
   const canCalculatePricing = typeof hasPerm === "function" ? hasPerm("pricing:calculate") : false;
+  const canReadPricing = canCalculatePricing || (typeof hasPerm === "function" ? hasPerm("pricing:read") : false);
+  const canWritePricing = typeof hasPerm === "function" ? hasPerm("pricing:write") : canCalculatePricing;
   const [tab, setTab] = useState(entryMode);
 
   // form state
@@ -122,12 +127,21 @@ export default function LineItemDialog({
   const [recalcAccepted, setRecalcAccepted] = useState(false);
   const [recalcBusy, setRecalcBusy] = useState(false);
   const [priceInputVersion, setPriceInputVersion] = useState(0); // bumped on programmatic price pushes so MoneyInput re-syncs
+  const [showSavedLibrary, setShowSavedLibrary] = useState(false);
+  const [saveCalculationName, setSaveCalculationName] = useState("");
+  const [saveCalculationNotes, setSaveCalculationNotes] = useState("");
+  const [saveCalculationBusy, setSaveCalculationBusy] = useState(false);
+  const [savedReuse, setSavedReuse] = useState(null);
 
   useEffect(() => {
     if (!open) return;
     setTab(entryMode);
     setRecalcPreview(null);
     setRecalcAccepted(false);
+    setShowSavedLibrary(false);
+    setSaveCalculationName("");
+    setSaveCalculationNotes("");
+    setSavedReuse(null);
     if (initial) {
       const snapshot = initial.pricing_snapshot || {};
       const initialInputs = initial.category_inputs || {};
@@ -247,6 +261,7 @@ export default function LineItemDialog({
     setSelectedComparisonMethod("");
     setCalcError("");
     setCalcUpdating(false);
+    setSavedReuse(null);
     calcResultKeyRef.current = "";
     if (clearTransferredPrice && priceSource === "suggested") {
       setUnitPriceCents(0);
@@ -347,6 +362,12 @@ export default function LineItemDialog({
     return () => clearTimeout(timer);
   }, [open, tab, category, width, height, quantity, designNeeded, installNeeded, categoryInputs, materialProfileId, pricingComponentIds, savedItemId, isDimensionless]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!savedReuse) return;
+    const key = currentCalculatorKey();
+    if (savedReuse.calculationKey !== key) setSavedReuse(null);
+  }, [category, width, height, quantity, designNeeded, installNeeded, categoryInputs, materialProfileId, pricingComponentIds, savedItemId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function choosePriceSource(next) {
     if (next === "suggested" && (!calc || calc.calculated_unit_price_cents == null || calcResultKeyRef.current !== currentCalculatorKey())) {
       toast.error("Calculate a current suggested price before using it");
@@ -367,6 +388,89 @@ export default function LineItemDialog({
     if (category !== "banners") return;
     setSelectedComparisonMethod(method);
     runCalculator({ primaryMethodId: method });
+  }
+
+  async function saveCurrentCalculation() {
+    if (!saveCalculationName.trim()) {
+      toast.error("Saved calculation name is required");
+      return;
+    }
+    if (!calc || calc.calculated_unit_price_cents == null || calcResultKeyRef.current !== currentCalculatorKey()) {
+      toast.error("Calculate a current successful result before saving");
+      return;
+    }
+    setSaveCalculationBusy(true);
+    try {
+      await api.post("/pricing/saved-calculations", {
+        name: saveCalculationName.trim(),
+        notes: saveCalculationNotes.trim() || null,
+        calculation_inputs: calculatorPayload(),
+        selected_method_id: selectedMethod,
+        source_context: entityLabel === "Order" ? "order_item" : "quote_item",
+      });
+      queryClient.invalidateQueries({ queryKey: ["pricing-saved-calculations"] });
+      toast.success("Calculation saved");
+    } catch (error) {
+      toast.error(extractError(error));
+    } finally {
+      setSaveCalculationBusy(false);
+    }
+  }
+
+  function loadSavedCalculation(data) {
+    const inputs = data.saved_calculation?.calculation_inputs || {};
+    const isNextDimensionless = DIMENSIONLESS_CATEGORIES.includes(inputs.category || "");
+    const nextCategoryInputs = inputs.category_inputs || {};
+    const inputUnit = dimensionUnit(nextCategoryInputs);
+    const displayWidth = !isNextDimensionless && inputUnit !== "in" && nextCategoryInputs.entered_width != null ? nextCategoryInputs.entered_width : inputs.width_inches;
+    const displayHeight = !isNextDimensionless && inputUnit !== "in" && nextCategoryInputs.entered_height != null ? nextCategoryInputs.entered_height : inputs.height_inches;
+    setCategory(inputs.category || "");
+    setWidth(isNextDimensionless ? "" : (displayWidth ?? ""));
+    setHeight(isNextDimensionless ? "" : (displayHeight ?? ""));
+    setQuantity(inputs.quantity || 1);
+    setDesignNeeded(!!inputs.design_needed);
+    setInstallNeeded(!!inputs.install_needed);
+    setCategoryInputs(nextCategoryInputs);
+    setMaterialProfileId(inputs.material_profile_id || null);
+    setPricingComponentIds(inputs.pricing_component_ids || []);
+    setSavedItemId(inputs.saved_item_id || null);
+    const sellingPrice = Number(data.current_result?.selling_price);
+    const cents = Number.isFinite(sellingPrice) ? Math.round(sellingPrice * 100) : null;
+    if (cents == null) {
+      setCalc(null);
+      setCalcError("Saved calculation could not produce a current transferable price.");
+      setPriceSource("manual");
+      setSavedReuse(data);
+      return;
+    }
+    setCalc({ ...data.current_result, calculated_unit_price_cents: cents });
+    setComparison(data.comparison_result || null);
+    setSelectedComparisonMethod(data.comparison_result?.selected_method_id || data.current_result?.selected_method_id || data.current_result?.canonical_method_id || "");
+    setPriceSource("suggested");
+    setUnitPriceCents(cents);
+    setPriceInputVersion((v) => v + 1);
+    setCalcError("");
+    setCalcUpdating(false);
+    const key = JSON.stringify({
+      category: inputs.category,
+      width_inches: isNextDimensionless ? null : normalizeDimension(displayWidth, inputUnit),
+      height_inches: isNextDimensionless ? null : normalizeDimension(displayHeight, inputUnit),
+      quantity: inputs.quantity || 1,
+      design_needed: !!inputs.design_needed,
+      install_needed: !!inputs.install_needed,
+      category_inputs: isNextDimensionless ? nextCategoryInputs : {
+        ...nextCategoryInputs,
+        dimension_unit: inputUnit,
+        entered_width: displayWidth === "" ? null : Number(displayWidth),
+        entered_height: displayHeight === "" ? null : Number(displayHeight),
+      },
+      material_profile_id: inputs.material_profile_id || null,
+      pricing_component_ids: inputs.pricing_component_ids || [],
+      saved_item_id: inputs.saved_item_id || null,
+    });
+    calcResultKeyRef.current = key;
+    setSavedReuse({ ...data, calculationKey: key });
+    setShowSavedLibrary(false);
   }
 
   async function runRecalculatePreview() {
@@ -627,6 +731,37 @@ export default function LineItemDialog({
                 <Button type="button" variant="outline" onClick={() => runCalculator()} disabled={calcBusy || !canCalculatePricing} data-testid="li-calculator">
                   <Calculator className="size-4 mr-1" />{calcBusy ? "Calculating…" : "Calculate"}
                 </Button>
+                <div className="grid gap-2 md:grid-cols-[minmax(140px,1fr)_minmax(140px,1fr)_auto_auto] md:items-end" data-testid="li-save-calculation-panel">
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs">Saved calculation name</Label>
+                    <Input value={saveCalculationName} onChange={(e) => setSaveCalculationName(e.target.value)} placeholder="Reusable price setup" data-testid="li-save-calculation-name" />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs">Notes</Label>
+                    <Input value={saveCalculationNotes} onChange={(e) => setSaveCalculationNotes(e.target.value)} placeholder="Optional" data-testid="li-save-calculation-notes" />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={saveCurrentCalculation}
+                    disabled={!canWritePricing || saveCalculationBusy || !saveCalculationName.trim() || !calc || calc.calculated_unit_price_cents == null || calcResultKeyRef.current !== currentCalculatorKey()}
+                    data-testid="li-save-calculation-button"
+                  >
+                    Save Calculation
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setShowSavedLibrary((value) => !value)} data-testid="li-open-saved-library">
+                    <FolderOpen className="size-4 mr-1" />Saved Library
+                  </Button>
+                </div>
+                {showSavedLibrary && (
+                  <SavedCalculationLibrary
+                    compact
+                    canRead={canReadPricing}
+                    canWrite={canWritePricing}
+                    canCalculate={canCalculatePricing}
+                    onUseCalculation={loadSavedCalculation}
+                  />
+                )}
                 {!canCalculatePricing && (
                   <div className="text-xs text-destructive" data-testid="li-pricing-permission-blocked">
                     You do not have permission to calculate prices.
@@ -732,6 +867,12 @@ export default function LineItemDialog({
                         ))}
                       </div>
                     ))}
+                  </div>
+                )}
+                {savedReuse && (
+                  <div className="rounded border bg-background p-2" data-testid="li-saved-current-price-panel">
+                    Saved Price: <strong>{centsToDollarsString(Math.round(Number(savedReuse.saved_price || 0) * 100))}</strong> · Current Price: <strong>{centsToDollarsString(calc.calculated_unit_price_cents)}</strong>
+                    {savedReuse.price_changed && <Badge className="ml-2" variant="secondary" data-testid="li-saved-current-price-diff">Current price differs</Badge>}
                   </div>
                 )}
                 <div className="flex items-center gap-4 pt-1">
