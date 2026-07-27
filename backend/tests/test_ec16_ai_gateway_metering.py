@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+import asyncio
 
 import pytest
 import pytest_asyncio
@@ -44,7 +45,7 @@ async def ctx():
     app.dependency_overrides.pop(get_current_user, None)
 
 
-async def _setup_gateway(ctx: dict) -> str:
+async def _setup_gateway(ctx: dict, *, included_credits: int = 10, purchased_credits: int = 5, billable: bool = True, default_credit_charge: int = 3) -> str:
     async with await _client_as(ctx["platform_admin"]) as platform:
         provider = await platform.post("/api/ai/platform/providers", json={"provider_key": f"meterprovider{ctx['suffix']}", "display_name": "Meter Provider", "status": "active"})
         assert provider.status_code == 201, provider.text
@@ -70,16 +71,18 @@ async def _setup_gateway(ctx: dict) -> str:
                 "action_key": "analysis",
                 "entitlement_feature_key": f"ai.meter.{ctx['suffix']}",
                 "status": "active",
-                "default_credit_charge": 3,
+                "billable": billable,
+                "default_credit_charge": default_credit_charge,
                 "allowed_model_profile_ids": [model.json()["id"]],
             },
         )
         assert capability.status_code == 201, capability.text
-        grant = await platform.post(
-            f"/api/ai/platform/credit-accounts/{ctx['tenant_id']}/grants",
-            json={"included_credits": 10, "purchased_credits": 5, "reason": "EC16 test grant", "idempotency_key": f"grant-{ctx['suffix']}"},
-        )
-        assert grant.status_code == 201, grant.text
+        if included_credits + purchased_credits:
+            grant = await platform.post(
+                f"/api/ai/platform/credit-accounts/{ctx['tenant_id']}/grants",
+                json={"included_credits": included_credits, "purchased_credits": purchased_credits, "reason": "EC16 test grant", "idempotency_key": f"grant-{ctx['suffix']}"},
+            )
+            assert grant.status_code == 201, grant.text
     await db.feature_entitlements.insert_one({"id": f"ent-{ctx['suffix']}", "tenant_id": ctx["tenant_id"], "feature_key": f"ai.meter.{ctx['suffix']}", "enabled": True, "granted_by": "test"})
     return capability.json()["capability_key"]
 
@@ -151,3 +154,57 @@ async def test_provider_failure_releases_reserved_credits_without_provider_call(
     assert await db.ai_credit_ledger_entries.count_documents({"tenant_id": ctx["tenant_id"], "action_request_id": failed.json()["id"], "entry_type": "release"}) == 1
     cost = await db.ai_provider_cost_ledger_entries.find_one({"tenant_id": ctx["tenant_id"], "action_request_id": failed.json()["id"]}, {"_id": 0})
     assert cost["actual_cost_micros"] == 0
+
+
+@pytest.mark.asyncio
+async def test_gateway_rejects_client_supplied_credit_charge_override(ctx):
+    capability_key = await _setup_gateway(ctx)
+    async with await _client_as(ctx["owner"]) as owner:
+        forged_zero = await owner.post(
+            "/api/ai/gateway/requests",
+            json={"capability_key": capability_key, "idempotency_key": f"forged-zero-{ctx['suffix']}", "credit_charge_credits": 0},
+        )
+        assert forged_zero.status_code == 422
+
+        forged_high = await owner.post(
+            "/api/ai/gateway/requests",
+            json={"capability_key": capability_key, "idempotency_key": f"forged-high-{ctx['suffix']}", "credit_charge_credits": 999},
+        )
+        assert forged_high.status_code == 422
+
+    assert await db.ai_action_requests.count_documents({"tenant_id": ctx["tenant_id"], "idempotency_key": {"$regex": "^forged-"}}) == 0
+
+
+@pytest.mark.asyncio
+async def test_non_billable_capability_can_execute_without_credit_balance(ctx):
+    capability_key = await _setup_gateway(ctx, included_credits=0, purchased_credits=0, billable=False, default_credit_charge=0)
+    async with await _client_as(ctx["owner"]) as owner:
+        request = await owner.post(
+            "/api/ai/gateway/requests",
+            json={"capability_key": capability_key, "idempotency_key": f"free-{ctx['suffix']}"},
+        )
+        assert request.status_code == 201, request.text
+        body = request.json()
+        assert body["status"] == "succeeded"
+        assert body["credit_charge_credits"] == 0
+
+    assert await db.ai_credit_ledger_entries.count_documents({"tenant_id": ctx["tenant_id"], "action_request_id": body["id"]}) == 0
+
+
+@pytest.mark.asyncio
+async def test_concurrent_gateway_requests_cannot_overspend_available_credits(ctx):
+    capability_key = await _setup_gateway(ctx, included_credits=5, purchased_credits=0, default_credit_charge=3)
+    async with await _client_as(ctx["owner"]) as owner:
+        first, second = await asyncio.gather(
+            owner.post("/api/ai/gateway/requests", json={"capability_key": capability_key, "idempotency_key": f"race-a-{ctx['suffix']}"}),
+            owner.post("/api/ai/gateway/requests", json={"capability_key": capability_key, "idempotency_key": f"race-b-{ctx['suffix']}"}),
+        )
+        statuses = sorted([first.status_code, second.status_code])
+        assert statuses == [201, 402]
+
+        account = (await owner.get("/api/ai/credits/account")).json()
+        assert account["included_balance_credits"] == 2
+        assert account["purchased_balance_credits"] == 0
+        assert account["reserved_credits"] == 0
+
+    assert await db.ai_credit_ledger_entries.count_documents({"tenant_id": ctx["tenant_id"], "entry_type": "commit"}) == 1

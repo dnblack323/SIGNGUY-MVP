@@ -123,6 +123,8 @@ class _FakeResp:
 
 @pytest.mark.asyncio
 async def test_google_link_rejects_ambiguous_email_across_tenants():
+    from app.routers import auth as auth_module
+
     shared_email = f"gdup-{uuid.uuid4().hex[:6]}@example.com"
     async with await _anon_client() as c:
         s1 = f"g-shop-a-{uuid.uuid4().hex[:6]}"
@@ -131,19 +133,29 @@ async def test_google_link_rejects_ambiguous_email_across_tenants():
         await _register_tenant(c, s2, shared_email)
 
         fake_profile = {"id": f"google-{uuid.uuid4().hex[:8]}", "email": shared_email, "name": "Dup"}
-        with patch("httpx.AsyncClient.get", new=AsyncMock(return_value=_FakeResp(200, fake_profile))):
+        with (
+            patch.object(auth_module._settings, "google_auth_enabled", True),
+            patch.object(auth_module._settings, "google_auth_session_data_url", "https://google-auth.test/session-data"),
+            patch("httpx.AsyncClient.get", new=AsyncMock(return_value=_FakeResp(200, fake_profile))),
+        ):
             r = await c.post("/api/auth/google/session", json={"session_id": "fake-session-id"})
         assert r.status_code == 409
 
 
 @pytest.mark.asyncio
 async def test_google_link_succeeds_for_unambiguous_email():
+    from app.routers import auth as auth_module
+
     email = f"gok-{uuid.uuid4().hex[:6]}@example.com"
     async with await _anon_client() as c:
         slug = f"g-ok-shop-{uuid.uuid4().hex[:6]}"
         await _register_tenant(c, slug, email)
         fake_profile = {"id": f"google-{uuid.uuid4().hex[:8]}", "email": email, "name": "OK"}
-        with patch("httpx.AsyncClient.get", new=AsyncMock(return_value=_FakeResp(200, fake_profile))):
+        with (
+            patch.object(auth_module._settings, "google_auth_enabled", True),
+            patch.object(auth_module._settings, "google_auth_session_data_url", "https://google-auth.test/session-data"),
+            patch("httpx.AsyncClient.get", new=AsyncMock(return_value=_FakeResp(200, fake_profile))),
+        ):
             r = await c.post("/api/auth/google/session", json={"session_id": "fake-session-id"})
         assert r.status_code == 200
         assert r.json()["tenant"]["slug"] == slug

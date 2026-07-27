@@ -1351,5 +1351,8 @@ async def record_voice_usage(user: dict[str, Any], voice_session_id: str, fields
         "usage_event_ids": list(set((voice.get("usage_event_ids") or []) + [action["id"]])),
         "updated_at": _now_iso(),
     }
-    await db.assistant_voice_sessions.update_one({"id": voice_session_id}, {"$set": updates})
-    return {"voice_session": serialize_doc(await db.assistant_voice_sessions.find_one({"id": voice_session_id}, {"_id": 0})), "action_request": action}
+    await db.assistant_voice_sessions.update_one({"tenant_id": user["tenant_id"], "id": voice_session_id}, {"$set": updates})
+    return {
+        "voice_session": serialize_doc(await db.assistant_voice_sessions.find_one({"tenant_id": user["tenant_id"], "id": voice_session_id}, {"_id": 0})),
+        "action_request": action,
+    }

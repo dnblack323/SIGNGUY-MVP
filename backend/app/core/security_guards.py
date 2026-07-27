@@ -63,6 +63,22 @@ def collect_violations(settings: Settings) -> list[GuardViolation]:
     """
     violations: list[GuardViolation] = []
 
+    if settings.env not in {"development", "test", "production"}:
+        violations.append(
+            GuardViolation(
+                code="invalid_environment",
+                message="ENV must be development, test, or production.",
+            )
+        )
+
+    if getattr(settings, "deployment_context", "local") in {"hosted", "staging", "production"} and settings.env != "production":
+        violations.append(
+            GuardViolation(
+                code="deployed_environment_not_production",
+                message="Hosted deployments must run with ENV=production.",
+            )
+        )
+
     if not _is_production(settings):
         return violations
 
@@ -81,6 +97,13 @@ def collect_violations(settings: Settings) -> list[GuardViolation]:
             GuardViolation(
                 code="jwt_secret_placeholder_in_production",
                 message="JWT_SECRET must be a strong non-placeholder value in production.",
+            )
+        )
+    if not settings.cors_origins or "*" in settings.cors_origins:
+        violations.append(
+            GuardViolation(
+                code="cors_origins_unsafe_in_production",
+                message="CORS_ORIGINS must list explicit trusted origins in production.",
             )
         )
 
@@ -106,11 +129,32 @@ def collect_violations(settings: Settings) -> list[GuardViolation]:
                 message="STRIPE_WEBHOOK_SECRET is required when STRIPE_WEBHOOK_ENABLED=true.",
             )
         )
-    if settings.ai_enabled and not settings.emergent_llm_key:
+    if settings.ai_enabled and not settings.ai_provider_api_key:
         violations.append(
             GuardViolation(
                 code="ai_provider_key_missing",
-                message="EMERGENT_LLM_KEY is required when AI_ENABLED=true.",
+                message="AI_PROVIDER_API_KEY is required when AI_ENABLED=true.",
+            )
+        )
+    if settings.storage_backend != "filesystem":
+        violations.append(
+            GuardViolation(
+                code="unsupported_storage_backend",
+                message="STORAGE_BACKEND must be 'filesystem' until another app-owned backend is implemented.",
+            )
+        )
+    if settings.env == "production" and not settings.object_storage_path:
+        violations.append(
+            GuardViolation(
+                code="object_storage_path_missing",
+                message="OBJECT_STORAGE_PATH is required in production.",
+            )
+        )
+    if settings.google_auth_enabled and not settings.google_auth_session_data_url:
+        violations.append(
+            GuardViolation(
+                code="google_auth_config_missing",
+                message="GOOGLE_AUTH_SESSION_DATA_URL is required when GOOGLE_AUTH_ENABLED=true.",
             )
         )
     if settings.sms_enabled and not (settings.sms_provider_key and settings.sms_provider_secret):

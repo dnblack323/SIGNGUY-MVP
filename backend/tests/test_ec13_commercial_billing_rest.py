@@ -15,6 +15,15 @@ from app.services import tenant_billing
 from server import app
 
 
+@pytest.fixture(autouse=True)
+def _local_stripe_placeholder(monkeypatch):
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "auth_dev_bypass", True, raising=False)
+    monkeypatch.setattr(settings, "stripe_api_key", "sk_test_placeholder", raising=False)
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 

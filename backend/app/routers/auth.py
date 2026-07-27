@@ -1,4 +1,4 @@
-"""Auth: register-tenant (bootstrap), login, logout, me, password reset, Google sign-in."""
+﻿"""Auth: register-tenant (bootstrap), login, logout, me, password reset, Google sign-in."""
 from __future__ import annotations
 
 import re
@@ -31,9 +31,6 @@ from ..services.email import send_email
 router = APIRouter(prefix="/auth", tags=["auth"])
 _settings = get_settings()
 
-# Emergent-managed Google Auth session exchange endpoint. Fixed platform URL,
-# not tenant/environment-specific — not sourced from .env.
-EMERGENT_AUTH_SESSION_DATA_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
 
 class RegisterTenantIn(BaseModel):
@@ -163,18 +160,20 @@ async def _unique_tenant_slug(base: str) -> str:
 
 @router.post("/google/session", response_model=TokenOut)
 async def google_session(payload: GoogleSessionIn) -> TokenOut:
-    """Exchange an Emergent-managed Google Auth `session_id` for our own JWT.
+    """Exchange a configured Google Auth `session_id` for our own JWT.
 
     This bridges Google Sign-In into the existing tenant/user/JWT system
     (same TokenOut shape as /login and /register-tenant) instead of adding
-    a second, cookie-based session mechanism — Google is only used here to
+    a second, cookie-based session mechanism â€” Google is only used here to
     verify identity (email/name), the app's own JWT remains the single
     source of truth for authenticated requests.
     """
+    if not _settings.google_auth_enabled or not _settings.google_auth_session_data_url:
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured")
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             resp = await client.get(
-                EMERGENT_AUTH_SESSION_DATA_URL,
+                _settings.google_auth_session_data_url,
                 headers={"X-Session-ID": payload.session_id},
             )
         except httpx.HTTPError:
@@ -190,7 +189,7 @@ async def google_session(payload: GoogleSessionIn) -> TokenOut:
 
     doc = await db.users.find_one({"google_id": google_id})
     if not doc:
-        # Link to an existing password-based account with the same email —
+        # Link to an existing password-based account with the same email â€”
         # but only when the email is unambiguous. Email is unique per-tenant,
         # not globally, so if more than one tenant has this email we must
         # not silently guess which shop to link (would risk logging the
@@ -228,7 +227,7 @@ async def google_session(payload: GoogleSessionIn) -> TokenOut:
             permissions=permissions_for_role(doc.get("role", "staff")),
         )
 
-    # First-ever sign-in for this Google identity — auto-create a new tenant + owner.
+    # First-ever sign-in for this Google identity â€” auto-create a new tenant + owner.
     tenant = Tenant(name=f"{name}'s Shop", slug=await _unique_tenant_slug(name or email))
     user = User(
         tenant_id=tenant.id,
@@ -285,7 +284,7 @@ async def me(user: dict = Depends(get_current_user)) -> dict:
 async def request_password_reset(payload: RequestPasswordResetIn) -> dict:
     """Always returns the identical `{"ok": true}` shape regardless of
     whether the shop/email combination exists, whether the account is
-    rate-limited, or whether the email actually sent — this prevents an
+    rate-limited, or whether the email actually sent â€” this prevents an
     attacker from using response differences to enumerate valid accounts."""
     response: dict = {"ok": True}
     tenant = await db.tenants.find_one({"slug": payload.tenant_slug})

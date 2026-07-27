@@ -2,7 +2,7 @@
 
 ## Configuration
 
-- `STRIPE_API_KEY` (env). Test mode defaults to `sk_test_emergent`.
+- `STRIPE_API_KEY` (env). Local placeholder mode uses `sk_test_placeholder`.
 - `STRIPE_PUBLISHABLE_KEY` (env, optional) — surfaced to the frontend when initiating a PaymentIntent.
 - `STRIPE_WRITES_ENABLED` — must be `true` to allow server-side PaymentIntent + Refund creation.
 - `STRIPE_WEBHOOK_ENABLED` + `STRIPE_WEBHOOK_SECRET` — required to enable the webhook route.

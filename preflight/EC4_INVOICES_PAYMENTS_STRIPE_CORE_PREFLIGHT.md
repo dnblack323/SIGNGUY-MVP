@@ -155,7 +155,7 @@ Frontend: paired status badges, Record Payment dialog with overpayment error sur
 
 ## 15. Stripe test-mode plan
 
-- Use `STRIPE_API_KEY` from `.env` (defaults to `sk_test_emergent`).
+- Use `STRIPE_API_KEY` from `.env`; local tests may use the explicit placeholder `sk_test_placeholder`, while production requires a real Stripe key.
 - Unit-test Stripe calls with `unittest.mock.patch("stripe.PaymentIntent.create", ...)` to avoid network.
 - Manual smoke-test path documented in `/app/docs/integrations/stripe_core.md`.
 

@@ -153,7 +153,10 @@ async def test_workspace_limit_pin_reorder_close_recent_and_reopen(seeded_users,
 
 
 @pytest.mark.asyncio
-async def test_concurrent_open_enforces_limit_without_eviction(seeded_users, clean_db):
+async def test_concurrent_open_enforces_limit_without_eviction(seeded_users, clean_db, monkeypatch):
+    from app.services import workspace_dock as workspace_dock_service
+
+    monkeypatch.setattr(workspace_dock_service, "_state_lock", lambda tenant_id, user_id: asyncio.Lock())
     user = seeded_users["user_a"]
     order_ids = []
     for idx in range(9):

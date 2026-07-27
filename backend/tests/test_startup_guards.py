@@ -24,6 +24,8 @@ from app.core.security_guards import (
 @dataclass
 class FakeSettings:
     env: str = "development"
+    deployment_context: str = "local"
+    cors_origins: list[str] | None = None
     auth_dev_bypass: bool = False
     jwt_secret: str = "a-strong-non-placeholder-secret-1234567890"
     sendgrid_webhook_enabled: bool = False
@@ -33,10 +35,18 @@ class FakeSettings:
     stripe_api_key: str | None = None
     stripe_webhook_secret: str | None = None
     ai_enabled: bool = False
-    emergent_llm_key: str | None = None
+    ai_provider_api_key: str | None = None
+    storage_backend: str = "filesystem"
+    object_storage_path: str | None = "/var/lib/signguy/object-storage"
+    google_auth_enabled: bool = False
+    google_auth_session_data_url: str | None = None
     sms_enabled: bool = False
     sms_provider_key: str | None = None
     sms_provider_secret: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.cors_origins is None:
+            self.cors_origins = ["https://app.signguy.test"]
 
 
 def _prod(**overrides) -> FakeSettings:
@@ -98,9 +108,27 @@ def test_production_sendgrid_webhook_requires_secret_when_enabled():
 
 
 def test_production_ai_requires_key_when_enabled():
-    s = _prod(ai_enabled=True, emergent_llm_key=None)
+    s = _prod(ai_enabled=True, ai_provider_api_key=None)
     vs = collect_violations(s)
     assert any(v.code == "ai_provider_key_missing" for v in vs)
+
+
+def test_production_requires_explicit_object_storage_path():
+    s = _prod(object_storage_path=None)
+    vs = collect_violations(s)
+    assert any(v.code == "object_storage_path_missing" for v in vs)
+
+
+def test_production_rejects_wildcard_cors():
+    s = _prod(cors_origins=["*"])
+    vs = collect_violations(s)
+    assert any(v.code == "cors_origins_unsafe_in_production" for v in vs)
+
+
+def test_hosted_context_must_use_production_env():
+    s = FakeSettings(env="development", deployment_context="hosted")
+    vs = collect_violations(s)
+    assert any(v.code == "deployed_environment_not_production" for v in vs)
 
 
 def test_production_sms_requires_credentials_when_enabled():

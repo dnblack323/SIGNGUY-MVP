@@ -71,8 +71,11 @@ async def portal_pay_ctx():
 
 
 @pytest.mark.asyncio
-async def test_portal_payment_end_to_end_via_ec4(portal_pay_ctx):
+async def test_portal_payment_end_to_end_via_ec4(portal_pay_ctx, monkeypatch):
     """Full happy path: initiate → confirm via EC4 webhook reconciliation → portal refetch shows confirmed + balance zero."""
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "auth_dev_bypass", True, raising=False)
     ctx = portal_pay_ctx
     headers = {"Authorization": f"Bearer {ctx['token_a']}"}
     with patch("app.services.stripe_core.is_enabled", return_value=True), \

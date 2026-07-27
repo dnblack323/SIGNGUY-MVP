@@ -15,7 +15,8 @@ class Settings:
     def __init__(self) -> None:
         self.mongo_url: str = os.environ["MONGO_URL"]
         self.db_name: str = os.environ["DB_NAME"]
-        self.cors_origins: list[str] = os.environ.get("CORS_ORIGINS", "*").split(",")
+        default_cors = "http://localhost:3000,http://127.0.0.1:3000"
+        self.cors_origins: list[str] = [origin.strip() for origin in os.environ.get("CORS_ORIGINS", default_cors).split(",") if origin.strip()]
 
         self.jwt_secret: str = os.environ.get("JWT_SECRET", "dev-secret-do-not-use-in-prod")
         self.jwt_algorithm: str = "HS256"
@@ -23,8 +24,10 @@ class Settings:
         self.password_reset_ttl_minutes: int = 60
 
         self.app_name: str = os.environ.get("APP_NAME", "signguy-ai")
-        self.emergent_llm_key: str | None = os.environ.get("EMERGENT_LLM_KEY") or None
-        self.storage_url: str = "https://integrations.emergentagent.com/objstore/api/v1/storage"
+        self.ai_provider_api_key: str | None = os.environ.get("AI_PROVIDER_API_KEY") or None
+        self.storage_backend: str = os.environ.get("STORAGE_BACKEND", "filesystem").strip().lower()
+        self.object_storage_path: str | None = os.environ.get("OBJECT_STORAGE_PATH") or None
+        self.object_storage_base_url: str | None = os.environ.get("OBJECT_STORAGE_BASE_URL") or None
 
         self.sendgrid_api_key: str | None = os.environ.get("SENDGRID_API_KEY") or None
         self.sendgrid_from_email: str | None = os.environ.get("SENDGRID_FROM_EMAIL") or None
@@ -40,6 +43,7 @@ class Settings:
         # Startup guards (app.core.security_guards) enforce required secrets only
         # when the corresponding integration is enabled in production.
         self.env: str = os.environ.get("ENV", "development").strip().lower()
+        self.deployment_context: str = os.environ.get("DEPLOYMENT_CONTEXT", "local").strip().lower()
 
         # SendGrid webhook (inbound delivery events). Requires webhook secret when enabled.
         self.sendgrid_webhook_enabled: bool = (
@@ -61,8 +65,10 @@ class Settings:
             os.environ.get("STRIPE_WEBHOOK_SECRET") or None
         )
 
-        # AI provider (Emergent LLM key). Only required when AI generation is enabled.
+        # AI provider. Only required when AI generation is enabled.
         self.ai_enabled: bool = os.environ.get("AI_ENABLED", "false").lower() == "true"
+        self.google_auth_enabled: bool = os.environ.get("GOOGLE_AUTH_ENABLED", "false").lower() == "true"
+        self.google_auth_session_data_url: str | None = os.environ.get("GOOGLE_AUTH_SESSION_DATA_URL") or None
 
         # EC18 - OpenAI Realtime voice for the paid Business Assistant.
         # The permanent API key is backend-only. Browser clients receive only

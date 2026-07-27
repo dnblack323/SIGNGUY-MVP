@@ -9,6 +9,7 @@ from datetime import timezone
 import re
 from typing import Any, Optional
 
+from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from ..core.db import db
@@ -390,27 +391,39 @@ async def _reserve_credits(tenant_id: str, action_request_id: str, amount: int, 
         existing = await db.ai_credit_ledger_entries.find_one({"tenant_id": tenant_id, "idempotency_key": existing_key}, {"_id": 0})
         if existing:
             return serialize_doc(existing)
-    account = await _ensure_credit_account(tenant_id)
-    available = account["included_balance_credits"] + account["purchased_balance_credits"] - account["reserved_credits"]
-    if account["status"] != "active":
-        raise AIGatewayError("credit_account_not_active", "AI credit account is not active", 402)
-    if available < amount:
-        await _open_alert(tenant_id, "zero_credit", f"AI request blocked: {amount} credits required", observed=available, threshold=amount, action_request_id=action_request_id)
-        raise AIGatewayError("insufficient_ai_credits", "Insufficient AI credits", 402)
-    await db.ai_credit_accounts.update_one(
-        {"tenant_id": tenant_id},
+    await _ensure_credit_account(tenant_id)
+    account = await db.ai_credit_accounts.find_one_and_update(
+        {
+            "tenant_id": tenant_id,
+            "status": "active",
+            "$expr": {
+                "$gte": [
+                    {"$subtract": [{"$add": ["$included_balance_credits", "$purchased_balance_credits"]}, "$reserved_credits"]},
+                    amount,
+                ]
+            },
+        },
         {"$inc": {"reserved_credits": amount}, "$set": {"updated_at": _now_iso()}},
+        projection={"_id": 0},
+        return_document=ReturnDocument.AFTER,
     )
-    account = await _ensure_credit_account(tenant_id)
-    return await _insert_credit_ledger(account, {
-        "entry_type": "reserve",
-        "amount_credits": -amount,
-        "reserved_credits_delta": amount,
-        "action_request_id": action_request_id,
-        "idempotency_key": existing_key,
-        "source_type": "ai_action_request",
-        "source_id": action_request_id,
-    })
+    if account:
+        account = serialize_doc(account)
+        return await _insert_credit_ledger(account, {
+            "entry_type": "reserve",
+            "amount_credits": -amount,
+            "reserved_credits_delta": amount,
+            "action_request_id": action_request_id,
+            "idempotency_key": existing_key,
+            "source_type": "ai_action_request",
+            "source_id": action_request_id,
+        })
+    current = await _ensure_credit_account(tenant_id)
+    available = int(current.get("included_balance_credits", 0)) + int(current.get("purchased_balance_credits", 0)) - int(current.get("reserved_credits", 0))
+    if current["status"] != "active":
+        raise AIGatewayError("credit_account_not_active", "AI credit account is not active", 402)
+    await _open_alert(tenant_id, "zero_credit", f"AI request blocked: {amount} credits required", observed=available, threshold=amount, action_request_id=action_request_id)
+    raise AIGatewayError("insufficient_ai_credits", "Insufficient AI credits", 402)
 
 
 async def _commit_credits(tenant_id: str, action_request_id: str, amount: int, *, idempotency_key: Optional[str]) -> Optional[dict[str, Any]]:
@@ -421,23 +434,35 @@ async def _commit_credits(tenant_id: str, action_request_id: str, amount: int, *
         existing = await db.ai_credit_ledger_entries.find_one({"tenant_id": tenant_id, "idempotency_key": existing_key}, {"_id": 0})
         if existing:
             return serialize_doc(existing)
-    account = await _ensure_credit_account(tenant_id)
-    included_used = min(account["included_balance_credits"], amount)
-    purchased_used = amount - included_used
-    if account["purchased_balance_credits"] < purchased_used:
-        raise AIGatewayError("insufficient_ai_credits", "Insufficient AI credits", 402)
-    await db.ai_credit_accounts.update_one(
-        {"tenant_id": tenant_id},
-        {
-            "$set": {
-                "included_balance_credits": account["included_balance_credits"] - included_used,
-                "purchased_balance_credits": account["purchased_balance_credits"] - purchased_used,
-                "reserved_credits": max(0, account["reserved_credits"] - amount),
-                "updated_at": _now_iso(),
-            }
-        },
-    )
-    account = await _ensure_credit_account(tenant_id)
+    for _ in range(5):
+        account = await _ensure_credit_account(tenant_id)
+        included_used = min(int(account["included_balance_credits"]), amount)
+        purchased_used = amount - included_used
+        if int(account["purchased_balance_credits"]) < purchased_used or int(account["reserved_credits"]) < amount:
+            raise AIGatewayError("insufficient_ai_credits", "Insufficient AI credits", 402)
+        updated = await db.ai_credit_accounts.find_one_and_update(
+            {
+                "tenant_id": tenant_id,
+                "included_balance_credits": account["included_balance_credits"],
+                "purchased_balance_credits": account["purchased_balance_credits"],
+                "reserved_credits": account["reserved_credits"],
+            },
+            {
+                "$set": {
+                    "included_balance_credits": int(account["included_balance_credits"]) - included_used,
+                    "purchased_balance_credits": int(account["purchased_balance_credits"]) - purchased_used,
+                    "reserved_credits": int(account["reserved_credits"]) - amount,
+                    "updated_at": _now_iso(),
+                }
+            },
+            projection={"_id": 0},
+            return_document=ReturnDocument.AFTER,
+        )
+        if updated:
+            account = serialize_doc(updated)
+            break
+    else:
+        raise AIGatewayError("ai_credit_conflict", "AI credit account changed while committing credits", 409)
     return await _insert_credit_ledger(account, {
         "entry_type": "commit",
         "amount_credits": -amount,
@@ -459,12 +484,13 @@ async def _release_credits(tenant_id: str, action_request_id: str, amount: int, 
         existing = await db.ai_credit_ledger_entries.find_one({"tenant_id": tenant_id, "idempotency_key": existing_key}, {"_id": 0})
         if existing:
             return serialize_doc(existing)
-    account = await _ensure_credit_account(tenant_id)
-    await db.ai_credit_accounts.update_one(
-        {"tenant_id": tenant_id},
-        {"$set": {"reserved_credits": max(0, account["reserved_credits"] - amount), "updated_at": _now_iso()}},
+    updated = await db.ai_credit_accounts.find_one_and_update(
+        {"tenant_id": tenant_id, "reserved_credits": {"$gte": amount}},
+        {"$inc": {"reserved_credits": -amount}, "$set": {"updated_at": _now_iso()}},
+        projection={"_id": 0},
+        return_document=ReturnDocument.AFTER,
     )
-    account = await _ensure_credit_account(tenant_id)
+    account = serialize_doc(updated) if updated else await _ensure_credit_account(tenant_id)
     return await _insert_credit_ledger(account, {
         "entry_type": "release",
         "amount_credits": amount,
@@ -475,6 +501,15 @@ async def _release_credits(tenant_id: str, action_request_id: str, amount: int, 
         "source_id": action_request_id,
         "reason": reason,
     })
+
+
+def _capability_credit_charge(capability: dict[str, Any]) -> int:
+    if not capability.get("billable"):
+        return 0
+    charge = int(capability.get("default_credit_charge") or 0)
+    if charge <= 0:
+        raise AIGatewayError("invalid_credit_configuration", "Billable AI capability must define a positive default credit charge", 409)
+    return charge
 
 
 async def _open_alert(
@@ -636,9 +671,8 @@ async def create_gateway_request(user: dict, fields: dict[str, Any]) -> dict[str
     if entitlement_key and not await has_entitlement(tenant_id=user["tenant_id"], feature_key=entitlement_key):
         raise AIGatewayError("feature_not_entitled", f"Feature not entitled: {entitlement_key}", 402)
     model_profile = await _select_model_profile(capability, fields.get("model_profile_id"))
-    credit_charge = int(fields.get("credit_charge_credits", capability.get("default_credit_charge", 0)) or 0)
-    if not capability.get("billable"):
-        credit_charge = 0
+    credit_charge = _capability_credit_charge(capability)
+    charge_source = "server_free_non_billable" if credit_charge == 0 else "capability.default_credit_charge"
     estimated_cost_micros = int(fields.get("estimated_cost_micros") or _estimate_cost(model_profile, fields))
     await _enforce_governance(user["tenant_id"], capability_key, model_profile["id"], credit_charge, estimated_cost_micros)
     action = AIActionRequest(
@@ -668,34 +702,34 @@ async def create_gateway_request(user: dict, fields: dict[str, Any]) -> dict[str
     try:
         reserve = await _reserve_credits(user["tenant_id"], action["id"], credit_charge, idempotency_key=idempotency_key)
     except AIGatewayError as exc:
-        await db.ai_action_requests.update_one({"id": action["id"]}, {"$set": {"status": "blocked", "failure_reason": exc.code, "updated_at": _now_iso()}})
+        await db.ai_action_requests.update_one({"tenant_id": user["tenant_id"], "id": action["id"]}, {"$set": {"status": "blocked", "failure_reason": exc.code, "updated_at": _now_iso()}})
         raise
     if reserve:
         action["reserved_credit_ledger_entry_id"] = reserve["id"]
-    await db.ai_action_requests.update_one({"id": action["id"]}, {"$set": {"status": "executing", "reserved_credit_ledger_entry_id": action.get("reserved_credit_ledger_entry_id"), "updated_at": _now_iso()}})
+    await db.ai_action_requests.update_one({"tenant_id": user["tenant_id"], "id": action["id"]}, {"$set": {"status": "executing", "reserved_credit_ledger_entry_id": action.get("reserved_credit_ledger_entry_id"), "updated_at": _now_iso()}})
     simulate = fields.get("simulate_result", "success")
     if simulate == "provider_failure":
         usage = await _record_usage(user, action, model_profile, fields, result_status="failed", credits_charged=0)
         cost = await _record_provider_cost(action, model_profile, usage["id"], fields, actual_cost_micros=0)
         release = await _release_credits(user["tenant_id"], action["id"], credit_charge, idempotency_key=idempotency_key, reason="provider_failure")
         await db.ai_action_requests.update_one(
-            {"id": action["id"]},
+            {"tenant_id": user["tenant_id"], "id": action["id"]},
             {"$set": {"status": "failed", "result_status": "failed", "failure_reason": "provider_failure", "usage_ledger_entry_id": usage["id"], "provider_cost_ledger_entry_id": cost["id"], "updated_at": _now_iso()}},
         )
-        await _audit(user, "ai.gateway_request_failed", "ai_action_request", action["id"], "AI gateway request failed without external provider call")
-        result = await db.ai_action_requests.find_one({"id": action["id"]}, {"_id": 0})
+        await _audit(user, "ai.gateway_request_failed", "ai_action_request", action["id"], "AI gateway request failed without external provider call", {"credit_charge_credits": credit_charge, "charge_source": charge_source})
+        result = await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "id": action["id"]}, {"_id": 0})
         result["released_credit_ledger_entry_id"] = release["id"] if release else None
         return serialize_doc(result)
     usage = await _record_usage(user, action, model_profile, fields, result_status="succeeded", credits_charged=credit_charge)
     cost = await _record_provider_cost(action, model_profile, usage["id"], fields, actual_cost_micros=estimated_cost_micros)
     commit = await _commit_credits(user["tenant_id"], action["id"], credit_charge, idempotency_key=idempotency_key)
     await db.ai_action_requests.update_one(
-        {"id": action["id"]},
+        {"tenant_id": user["tenant_id"], "id": action["id"]},
         {"$set": {"status": "succeeded", "result_status": "succeeded", "result_summary": "local_contract_execution", "usage_ledger_entry_id": usage["id"], "provider_cost_ledger_entry_id": cost["id"], "committed_credit_ledger_entry_id": commit["id"] if commit else None, "duration_ms": int(fields.get("duration_ms") or 0), "updated_at": _now_iso()}},
     )
     await _maybe_low_credit_alert(user["tenant_id"], capability_key)
-    await _audit(user, "ai.gateway_request_metered", "ai_action_request", action["id"], "AI gateway request metered without external provider call")
-    return serialize_doc(await db.ai_action_requests.find_one({"id": action["id"]}, {"_id": 0}))
+    await _audit(user, "ai.gateway_request_metered", "ai_action_request", action["id"], "AI gateway request metered without external provider call", {"credit_charge_credits": credit_charge, "charge_source": charge_source})
+    return serialize_doc(await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "id": action["id"]}, {"_id": 0}))
 
 
 async def _select_model_profile(capability: dict[str, Any], requested_model_profile_id: Optional[str]) -> dict[str, Any]:

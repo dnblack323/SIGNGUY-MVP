@@ -21,7 +21,7 @@ def test_sanitize_filename_strips_path_and_specials():
     result = sanitize_filename("../etc/passwd")
     assert "/" not in result
     assert "\\" not in result
-    assert result == ".._etc_passwd"
+    assert result == "passwd"
     assert sanitize_filename("").endswith("unnamed")
     long_name = "a" * 500 + ".pdf"
     assert len(sanitize_filename(long_name)) <= 200 + 4
@@ -43,6 +43,30 @@ def test_reject_too_large_file():
 def test_reject_disallowed_mime():
     with pytest.raises(HTTPException) as exc:
         validate_upload(filename="a.exe", content_type="application/x-msdownload", data=b"MZ...")
+    assert exc.value.status_code == 400
+
+
+def test_reject_generic_octet_stream():
+    with pytest.raises(HTTPException) as exc:
+        validate_upload(filename="payload.bin", content_type="application/octet-stream", data=b"opaque")
+    assert exc.value.status_code == 400
+
+
+def test_reject_missing_extension():
+    with pytest.raises(HTTPException) as exc:
+        validate_upload(filename="payload", content_type="text/plain", data=b"hello")
+    assert exc.value.status_code == 400
+
+
+def test_reject_extension_mime_mismatch():
+    with pytest.raises(HTTPException) as exc:
+        validate_upload(filename="payload.exe", content_type="image/png", data=PNG_HEADER)
+    assert exc.value.status_code == 400
+
+
+def test_reject_text_with_binary_nul_bytes():
+    with pytest.raises(HTTPException) as exc:
+        validate_upload(filename="payload.txt", content_type="text/plain", data=b"hello\x00there")
     assert exc.value.status_code == 400
 
 

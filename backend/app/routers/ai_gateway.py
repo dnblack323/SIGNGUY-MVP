@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from ..core.permissions import Perm
 from ..deps import get_current_user, require_permission
@@ -126,6 +126,8 @@ class GovernancePolicyIn(BaseModel):
 
 
 class GatewayRequestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     capability_key: str
     model_profile_id: Optional[str] = None
     prompt_version_id: Optional[str] = None
@@ -137,7 +139,6 @@ class GatewayRequestIn(BaseModel):
     output_units: StrictInt = Field(default=0, ge=0)
     estimated_cost_micros: Optional[StrictInt] = Field(default=None, ge=0)
     actual_cost_cents: Optional[StrictInt] = Field(default=None, ge=0)
-    credit_charge_credits: Optional[StrictInt] = Field(default=None, ge=0)
     duration_ms: StrictInt = Field(default=0, ge=0)
     source_links: list[dict[str, Any]] = Field(default_factory=list)
     provider_event_id: Optional[str] = None

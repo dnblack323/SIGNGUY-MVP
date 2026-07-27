@@ -30,6 +30,10 @@ class WorkspaceDockError(Exception):
         self.extra = extra or {}
 
 
+class WorkspaceDockConflict(WorkspaceDockError):
+    """Raised internally when the stored dock revision changed during a write."""
+
+
 @dataclass(frozen=True)
 class WorkspaceTarget:
     collection: Optional[str]
@@ -215,7 +219,9 @@ async def _validate_target(tenant_id: str, user: dict[str, Any], payload: dict[s
 async def _get_or_create_state(tenant_id: str, user_id: str) -> dict[str, Any]:
     existing = await db.workspace_docks.find_one({"tenant_id": tenant_id, "user_id": user_id}, {"_id": 0})
     if existing:
-        return serialize_doc(existing) or existing
+        doc = serialize_doc(existing) or existing
+        doc.setdefault("revision", 0)
+        return doc
     state = WorkspaceDockState(tenant_id=tenant_id, user_id=user_id)
     doc = prepare_for_mongo(state.model_dump())
     await db.workspace_docks.update_one(
@@ -252,19 +258,34 @@ def _trim_recent(recent_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 async def _save_state(state: dict[str, Any]) -> dict[str, Any]:
     tenant_id = state["tenant_id"]
     user_id = state["user_id"]
+    expected_revision = int(state.get("revision") or 0)
     state["updated_at"] = _now()
     state["open_workspaces"] = _normalize_positions(state.get("open_workspaces", []))
     state["recent_workspaces"] = _trim_recent(state.get("recent_workspaces", []))
-    await db.workspace_docks.update_one(
-        {"tenant_id": tenant_id, "user_id": user_id},
+    state["revision"] = expected_revision + 1
+    revision_filter: dict[str, Any] = {"revision": expected_revision}
+    if expected_revision == 0:
+        revision_filter = {"$or": [{"revision": 0}, {"revision": {"$exists": False}}]}
+    result = await db.workspace_docks.update_one(
+        {"tenant_id": tenant_id, "user_id": user_id, **revision_filter},
         {"$set": prepare_for_mongo(state)},
-        upsert=True,
     )
+    if result.matched_count == 0:
+        raise WorkspaceDockConflict("Workspace state changed; retry the operation", status_code=409)
     return await list_workspace_state(tenant_id, user_id)
 
 
 def _state_lock(tenant_id: str, user_id: str) -> asyncio.Lock:
     return _STATE_LOCKS[(tenant_id, user_id)]
+
+
+async def _retry_state_conflicts(operation):
+    for _ in range(20):
+        try:
+            return await operation()
+        except WorkspaceDockConflict:
+            continue
+    raise WorkspaceDockError("Workspace state changed; try again", status_code=409)
 
 
 async def list_workspace_state(tenant_id: str, user_id: str) -> dict[str, Any]:
@@ -281,7 +302,7 @@ async def list_workspace_state(tenant_id: str, user_id: str) -> dict[str, Any]:
 async def open_workspace(tenant_id: str, user: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     target, record = await _validate_target(tenant_id, user, payload)
     async with _state_lock(tenant_id, user["id"]):
-        return await _open_workspace_after_validation(tenant_id, user, payload, target, record)
+        return await _retry_state_conflicts(lambda: _open_workspace_after_validation(tenant_id, user, payload, target, record))
 
 
 async def _open_workspace_after_validation(
@@ -380,7 +401,7 @@ async def _open_workspace_after_validation(
 
 async def activate_workspace(tenant_id: str, user: dict[str, Any], workspace_id: str) -> dict[str, Any]:
     async with _state_lock(tenant_id, user["id"]):
-        return await _activate_workspace_locked(tenant_id, user, workspace_id)
+        return await _retry_state_conflicts(lambda: _activate_workspace_locked(tenant_id, user, workspace_id))
 
 
 async def _activate_workspace_locked(tenant_id: str, user: dict[str, Any], workspace_id: str) -> dict[str, Any]:
@@ -402,7 +423,7 @@ async def _activate_workspace_locked(tenant_id: str, user: dict[str, Any], works
 
 async def update_workspace(tenant_id: str, user_id: str, workspace_id: str, updates: dict[str, Any]) -> dict[str, Any]:
     async with _state_lock(tenant_id, user_id):
-        return await _update_workspace_locked(tenant_id, user_id, workspace_id, updates)
+        return await _retry_state_conflicts(lambda: _update_workspace_locked(tenant_id, user_id, workspace_id, updates))
 
 
 async def _update_workspace_locked(tenant_id: str, user_id: str, workspace_id: str, updates: dict[str, Any]) -> dict[str, Any]:
@@ -432,7 +453,7 @@ async def _update_workspace_locked(tenant_id: str, user_id: str, workspace_id: s
 
 async def set_pinned(tenant_id: str, user_id: str, workspace_id: str, pinned: bool) -> dict[str, Any]:
     async with _state_lock(tenant_id, user_id):
-        return await _set_pinned_locked(tenant_id, user_id, workspace_id, pinned)
+        return await _retry_state_conflicts(lambda: _set_pinned_locked(tenant_id, user_id, workspace_id, pinned))
 
 
 async def _set_pinned_locked(tenant_id: str, user_id: str, workspace_id: str, pinned: bool) -> dict[str, Any]:
@@ -449,7 +470,7 @@ async def _set_pinned_locked(tenant_id: str, user_id: str, workspace_id: str, pi
 
 async def reorder_workspaces(tenant_id: str, user_id: str, workspace_ids: list[str]) -> dict[str, Any]:
     async with _state_lock(tenant_id, user_id):
-        return await _reorder_workspaces_locked(tenant_id, user_id, workspace_ids)
+        return await _retry_state_conflicts(lambda: _reorder_workspaces_locked(tenant_id, user_id, workspace_ids))
 
 
 async def _reorder_workspaces_locked(tenant_id: str, user_id: str, workspace_ids: list[str]) -> dict[str, Any]:
@@ -467,7 +488,7 @@ async def _reorder_workspaces_locked(tenant_id: str, user_id: str, workspace_ids
 
 async def close_workspace(tenant_id: str, user_id: str, workspace_id: str) -> dict[str, Any]:
     async with _state_lock(tenant_id, user_id):
-        return await _close_workspace_locked(tenant_id, user_id, workspace_id)
+        return await _retry_state_conflicts(lambda: _close_workspace_locked(tenant_id, user_id, workspace_id))
 
 
 async def _close_workspace_locked(tenant_id: str, user_id: str, workspace_id: str) -> dict[str, Any]:
@@ -489,7 +510,7 @@ async def _close_workspace_locked(tenant_id: str, user_id: str, workspace_id: st
 
 async def reopen_recent_workspace(tenant_id: str, user: dict[str, Any], workspace_id: str) -> dict[str, Any]:
     async with _state_lock(tenant_id, user["id"]):
-        return await _reopen_recent_workspace_locked(tenant_id, user, workspace_id)
+        return await _retry_state_conflicts(lambda: _reopen_recent_workspace_locked(tenant_id, user, workspace_id))
 
 
 async def _reopen_recent_workspace_locked(tenant_id: str, user: dict[str, Any], workspace_id: str) -> dict[str, Any]:
@@ -504,7 +525,7 @@ async def _reopen_recent_workspace_locked(tenant_id: str, user: dict[str, Any], 
 
 async def remove_recent_workspace(tenant_id: str, user_id: str, workspace_id: str) -> dict[str, Any]:
     async with _state_lock(tenant_id, user_id):
-        return await _remove_recent_workspace_locked(tenant_id, user_id, workspace_id)
+        return await _retry_state_conflicts(lambda: _remove_recent_workspace_locked(tenant_id, user_id, workspace_id))
 
 
 async def _remove_recent_workspace_locked(tenant_id: str, user_id: str, workspace_id: str) -> dict[str, Any]:

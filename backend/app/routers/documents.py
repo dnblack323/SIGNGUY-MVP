@@ -10,9 +10,9 @@ Storage keys are prefixed with tenant path; enforced server-side.
 """
 from __future__ import annotations
 
-import hashlib
 import logging
 from typing import Literal, Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field
@@ -24,16 +24,11 @@ from ..deps import require_permission
 from ..models.file import Attachment, FileRecord
 from ..services import storage
 from ..services.audit import record_audit
+from ..services.upload_validation import validate_upload
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/files", tags=["documents"])
-
-ALLOWED_MIME_PREFIXES = ("image/", "application/pdf", "application/msword",
-                        "application/vnd.openxmlformats-officedocument", "text/",
-                        "application/zip", "application/x-zip-compressed", "application/octet-stream")
-MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB
-
 
 AttachmentParentType = Literal["customer", "quote", "order", "order_item", "work_order", "invoice", "email", "generic"]
 
@@ -49,11 +44,6 @@ class FileVisibilityIn(BaseModel):
     visibility: Literal["internal", "customer_visible"]
 
 
-def _validate_mime(mime: str) -> None:
-    if not any(mime.startswith(p) for p in ALLOWED_MIME_PREFIXES):
-        raise HTTPException(status_code=400, detail=f"Unsupported file type: {mime}")
-
-
 @router.post("/upload", status_code=201)
 async def upload_file(
     file: UploadFile = File(...),
@@ -62,39 +52,31 @@ async def upload_file(
     parent_id: Optional[str] = Form(None),
     user: dict = Depends(require_permission(Perm.DOCUMENT_WRITE)),
 ) -> dict:
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
     data = await file.read()
-    if len(data) == 0:
-        raise HTTPException(status_code=400, detail="Empty file")
-    if len(data) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="File too large (max 25MB)")
-    mime = file.content_type or "application/octet-stream"
-    _validate_mime(mime)
-    sha = hashlib.sha256(data).hexdigest()
+    validated = validate_upload(filename=file.filename or "", content_type=file.content_type, data=data)
 
     # De-duplicate by (tenant_id, sha256) — if the exact bytes already exist, reuse the record.
-    existing = await db.files.find_one({"tenant_id": user["tenant_id"], "sha256": sha, "archived": {"$ne": True}})
+    existing = await db.files.find_one({"tenant_id": user["tenant_id"], "sha256": validated.sha256, "archived": {"$ne": True}})
     if existing:
         file_record = FileRecord(**{**existing, **{"id": existing["id"]}})
     else:
-        storage_key = storage.build_key(user["tenant_id"], file.filename)
+        storage_key = storage.build_key(user["tenant_id"], validated.safe_filename)
         try:
-            storage.put_bytes(storage_key, data, mime)
+            storage.put_bytes(storage_key, data, validated.mime_type)
         except Exception as e:
             logger.exception("Storage upload failed")
             raise HTTPException(status_code=502, detail=f"Storage upload failed: {e}")
         file_record = FileRecord(
             tenant_id=user["tenant_id"], storage_key=storage_key,
-            original_filename=file.filename, mime_type=mime, size_bytes=len(data),
-            uploaded_by=user["id"], visibility=visibility, sha256=sha,
+            original_filename=validated.safe_filename, mime_type=validated.mime_type, size_bytes=validated.size_bytes,
+            uploaded_by=user["id"], visibility=visibility, sha256=validated.sha256,
         )
         await db.files.insert_one(prepare_for_mongo(file_record.model_dump()))
         await record_audit(
             tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
             action="file.upload", entity_type="file", entity_id=file_record.id,
-            summary=f"Uploaded '{file.filename}' ({len(data)} bytes)",
-            diff={"visibility": visibility, "mime": mime},
+            summary=f"Uploaded '{validated.safe_filename}' ({validated.size_bytes} bytes)",
+            diff={"visibility": visibility, "mime": validated.mime_type},
         )
 
     attachment = None
@@ -173,7 +155,7 @@ async def set_visibility(file_id: str, payload: FileVisibilityIn, user: dict = D
         summary=f"File visibility set to {payload.visibility}",
         diff={"visibility": payload.visibility},
     )
-    doc = await db.files.find_one({"id": file_id}, {"_id": 0})
+    doc = await db.files.find_one({"id": file_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return serialize_doc(doc)
 
 
@@ -209,7 +191,7 @@ async def download_file(file_id: str, user: dict = Depends(require_permission(Pe
     return Response(
         content=data,
         media_type=doc.get("mime_type") or ct,
-        headers={"Content-Disposition": f'attachment; filename="{doc["original_filename"]}"'},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(doc['original_filename'])}"},
     )
 
 

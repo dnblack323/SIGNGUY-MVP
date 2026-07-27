@@ -112,6 +112,18 @@ async def _active_core_product(client: AsyncClient, catalog_id: str, key: str = 
     return response.json()
 
 
+async def _available_founder_slot() -> int:
+    used = {
+        int(doc["founder_slot_number"])
+        async for doc in db.founder_tenant_contracts.find({"founder_slot_number": {"$ne": None}}, {"_id": 0, "founder_slot_number": 1})
+        if doc.get("founder_slot_number") is not None
+    }
+    for slot in range(1, 26):
+        if slot not in used:
+            return slot
+    raise AssertionError("No unused Founder test slot available")
+
+
 @pytest.mark.asyncio
 async def test_catalog_publish_price_immutability_and_purchase_rules(ctx):
     before = {
@@ -306,6 +318,8 @@ async def test_entitlement_contracts_founder_preservation_and_tenant_isolation(c
     }
 
     async with await _client_as(ctx["platform_admin"]) as platform:
+        founder_slot = await _available_founder_slot()
+        duplicate_slot = founder_slot + 1 if founder_slot < 25 else founder_slot - 1
         catalog = await _draft_catalog(platform, uuid.uuid4().hex[:6])
         product = await _active_core_product(platform, catalog["id"], key="entitled-core")
         rule = await platform.post(
@@ -349,17 +363,17 @@ async def test_entitlement_contracts_founder_preservation_and_tenant_isolation(c
             json={
                 "tenant_id": ctx["tenant_id"],
                 "user_id": ctx["staff"]["id"],
-                "founder_slot_number": 1,
+                "founder_slot_number": founder_slot,
                 "founder_status": "active",
             },
         )
         founder = await platform.post(
             "/api/commercial/founder-contracts",
-            json={"tenant_id": ctx["tenant_id"], "founder_slot_number": 1, "founder_status": "active"},
+            json={"tenant_id": ctx["tenant_id"], "founder_slot_number": founder_slot, "founder_status": "active"},
         )
         duplicate_active = await platform.post(
             "/api/commercial/founder-contracts",
-            json={"tenant_id": ctx["tenant_id"], "founder_slot_number": 2, "founder_status": "grace"},
+            json={"tenant_id": ctx["tenant_id"], "founder_slot_number": duplicate_slot, "founder_status": "grace"},
         )
         assert user_scoped_founder.status_code == 400
         assert founder.status_code == 201, founder.text

@@ -10,9 +10,14 @@ import { Loader2, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
 function handleGoogleLogin() {
-  // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+  const authUrl = process.env.REACT_APP_GOOGLE_AUTH_URL;
+  if (!authUrl) {
+    toast.error("Google sign-in is not configured for this environment.");
+    return;
+  }
   const redirectUrl = window.location.origin + "/";
-  window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+  const separator = authUrl.includes("?") ? "&" : "?";
+  window.location.href = `${authUrl}${separator}redirect=${encodeURIComponent(redirectUrl)}`;
 }
 
 export default function LoginPage() {

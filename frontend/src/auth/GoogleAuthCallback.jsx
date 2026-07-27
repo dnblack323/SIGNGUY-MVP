@@ -5,7 +5,7 @@ import { useAuth } from "@/auth/AuthContext";
 
 /**
  * Lands here when the URL fragment contains `#session_id=...` after the
- * user completes Google Sign-In via Emergent-managed Google Auth.
+ * user completes Google Sign-In via the configured Google Auth provider.
  * Exchanges the one-time session_id for our own app JWT, then continues
  * into the dashboard exactly like a normal email/password login.
  */

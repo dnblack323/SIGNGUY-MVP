@@ -147,6 +147,7 @@ async def initiate_stripe_payment(
 async def refund_payment(
     payment_id: str,
     payload: RefundIn,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user: dict = Depends(require_permission(Perm.PAYMENT_REFUND)),
 ) -> dict:
     try:
@@ -154,6 +155,7 @@ async def refund_payment(
             tenant_id=user["tenant_id"], payment_id=payment_id,
             amount_cents=payload.amount_cents, reason=payload.reason,
             actor_user_id=user["id"], actor_email=user["email"],
+            idempotency_key=idempotency_key,
         )
     except ValueError as ex:
         _raise(ex)

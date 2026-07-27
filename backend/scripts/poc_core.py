@@ -5,8 +5,7 @@ Phase 0 POC — combined test for the two integrations most likely to fail:
    - Concurrent writers must never produce duplicate numbers.
    - Numbers must be per (tenant_id, sequence_name).
 
-2) EMERGENT OBJECT STORAGE upload + download
-   - Init storage key once.
+2) APP OBJECT STORAGE upload + download
    - Upload bytes to a tenant-scoped path.
    - Download bytes and verify integrity.
    - Verify content-type round trip.
@@ -23,7 +22,6 @@ import sys
 import uuid
 from pathlib import Path
 
-import requests
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ReturnDocument
@@ -33,9 +31,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
-EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
 APP_NAME = os.environ.get("APP_NAME", "signguy-ai")
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -118,50 +114,10 @@ async def poc_sequence() -> bool:
 # 2) OBJECT STORAGE POC
 # ---------------------------------------------------------------------------
 
-_storage_key = None
-
-
-def init_storage() -> str:
-    global _storage_key
-    if _storage_key:
-        return _storage_key
-    if not EMERGENT_LLM_KEY:
-        raise RuntimeError("EMERGENT_LLM_KEY missing from env")
-    resp = requests.post(
-        f"{STORAGE_URL}/init",
-        json={"emergent_key": EMERGENT_LLM_KEY},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    _storage_key = resp.json()["storage_key"]
-    return _storage_key
-
-
-def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = requests.put(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key, "Content-Type": content_type},
-        data=data,
-        timeout=120,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-
-def get_object(path: str) -> tuple[bytes, str]:
-    key = init_storage()
-    resp = requests.get(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key},
-        timeout=60,
-    )
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
-
-
 def poc_storage() -> bool:
-    print("\n=== POC 2: Emergent Object Storage ===")
+    print("\n=== POC 2: App Object Storage ===")
+    from app.services import storage
+
     tenant_id = f"poc-tenant-{uuid.uuid4().hex[:6]}"
     file_id = str(uuid.uuid4())
     path = f"{APP_NAME}/tenants/{tenant_id}/files/{file_id}.txt"
@@ -170,21 +126,21 @@ def poc_storage() -> bool:
     payload_hash = hashlib.sha256(payload).hexdigest()
 
     try:
-        init_storage()
-        print("  OK   storage init")
+        storage.initialize()
+        print("  OK   storage initialized")
     except Exception as e:
         print(f"  FAIL storage init: {e}")
         return False
 
     try:
-        result = put_object(path, payload, "text/plain")
-        print(f"  OK   upload -> path={result.get('path')} size={result.get('size')}")
+        storage.put_bytes(path, payload, "text/plain")
+        print(f"  OK   upload -> path={path} size={len(payload)}")
     except Exception as e:
         print(f"  FAIL upload: {e}")
         return False
 
     try:
-        data, content_type = get_object(result["path"])
+        data, content_type = storage.get_bytes(path)
         redownload_hash = hashlib.sha256(data).hexdigest()
         if redownload_hash != payload_hash:
             print(f"  FAIL download integrity mismatch")
@@ -199,14 +155,11 @@ def poc_storage() -> bool:
     # Verify a missing object 404s (tenant isolation via unknown path)
     bogus_path = f"{APP_NAME}/tenants/other-tenant/files/{uuid.uuid4()}.txt"
     try:
-        get_object(bogus_path)
+        storage.get_bytes(bogus_path)
         print("  FAIL bogus path returned content (should 404)")
         return False
-    except requests.HTTPError as e:
-        if e.response.status_code == 404:
-            print("  OK   missing path returns 404")
-        else:
-            print(f"  WARN missing path returned status {e.response.status_code}")
+    except FileNotFoundError:
+        print("  OK   missing path returns 404-style not found")
 
     return True
 

@@ -1,4 +1,4 @@
-"""EC4 — Payment service.
+﻿"""EC4 â€” Payment service.
 
 Business logic for manual + Stripe payments, void, refund. Routers stay thin
 and only handle HTTP concerns.
@@ -100,7 +100,7 @@ async def record_manual(
     # Race-safe re-check: if concurrent inserts pushed us above total, roll back.
     _, new_balance = await _invoice_balance(tenant_id, invoice_id)
     if new_balance < 0:
-        await db.payments.delete_one({"id": pay.id})
+        await db.payments.delete_one({"id": pay.id, "tenant_id": tenant_id})
         await reconcile(tenant_id=tenant_id, invoice_id=invoice_id)
         raise ValueError("overpayment_rejected")
 
@@ -134,7 +134,7 @@ async def void_manual(
         raise ValueError("void_reason_required")
 
     await db.payments.update_one(
-        {"id": payment_id},
+        {"id": payment_id, "tenant_id": tenant_id},
         {"$set": {
             "status": "voided",
             "voided_at": utc_now().isoformat(),
@@ -150,7 +150,7 @@ async def void_manual(
         summary=f"Manual payment voided (${doc['amount_cents'] / 100:,.2f})",
         diff={"payment_id": payment_id, "reason": reason},
     )
-    updated = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+    updated = await db.payments.find_one({"id": payment_id, "tenant_id": tenant_id}, {"_id": 0})
     return serialize_doc(updated)
 
 
@@ -225,7 +225,7 @@ async def initiate_stripe(
     if not stripe_core.is_enabled():
         # Fail-closed for production; test mode may still proceed if key configured
         # via patched stripe_core.is_enabled(). Delete the pending row and bail.
-        await db.payments.delete_one({"id": pay.id})
+        await db.payments.delete_one({"id": pay.id, "tenant_id": tenant_id})
         raise ValueError("stripe_disabled")
     intent = stripe_core.create_payment_intent(
         amount_cents=amount_cents,
@@ -244,12 +244,12 @@ async def initiate_stripe(
         )
     except Exception as ex:  # noqa: BLE001
         import stripe as _stripe
-        await db.payments.delete_one({"id": pay.id})
+        await db.payments.delete_one({"id": pay.id, "tenant_id": tenant_id})
         if isinstance(ex, _stripe.error.StripeError):
             raise ValueError(f"stripe_error:{getattr(ex, 'user_message', None) or str(ex)}")
         raise
     await db.payments.update_one(
-        {"id": pay.id},
+        {"id": pay.id, "tenant_id": tenant_id},
         {"$set": {
             "stripe_payment_intent_id": intent["id"],
             "stripe_client_secret": intent["client_secret"],
@@ -292,7 +292,7 @@ async def confirm_stripe_from_webhook(
     }
     if dev_simulated:
         updates["dev_simulated"] = True
-    await db.payments.update_one({"id": doc["id"]}, {"$set": updates})
+    await db.payments.update_one({"id": doc["id"], "tenant_id": doc["tenant_id"]}, {"$set": updates})
     await reconcile(tenant_id=doc["tenant_id"], invoice_id=doc["invoice_id"])
     await record_audit(
         tenant_id=doc["tenant_id"], actor_user_id="webhook", actor_email="stripe",
@@ -325,7 +325,7 @@ async def fail_stripe_from_webhook(
     else:
         updates["failed_at"] = now
         updates["failure_reason"] = reason
-    await db.payments.update_one({"id": doc["id"]}, {"$set": updates})
+    await db.payments.update_one({"id": doc["id"], "tenant_id": doc["tenant_id"]}, {"$set": updates})
     await reconcile(tenant_id=doc["tenant_id"], invoice_id=doc["invoice_id"])
     await record_audit(
         tenant_id=doc["tenant_id"], actor_user_id="webhook", actor_email="stripe",
@@ -347,6 +347,7 @@ async def initiate_refund(
     reason: str,
     actor_user_id: str,
     actor_email: str,
+    idempotency_key: Optional[str] = None,
 ) -> dict:
     src = await db.payments.find_one({"id": payment_id, "tenant_id": tenant_id})
     if not src:
@@ -358,14 +359,32 @@ async def initiate_refund(
     if not reason or not reason.strip():
         raise ValueError("refund_reason_required")
 
-    refundable = int(src["amount_cents"])  # net after prior refunds → future TODO
+    if idempotency_key:
+        existing = await db.payments.find_one(
+            {"tenant_id": tenant_id, "refund_of_payment_id": payment_id, "idempotency_key": idempotency_key},
+            {"_id": 0},
+        )
+        if existing:
+            return serialize_doc(existing)
+
+    prior_refunded = 0
+    async for refund in db.payments.find(
+        {
+            "tenant_id": tenant_id,
+            "refund_of_payment_id": payment_id,
+            "status": {"$in": ["pending", "confirmed"]},
+        },
+        {"_id": 0, "amount_cents": 1},
+    ):
+        prior_refunded += int(refund.get("amount_cents") or 0)
+    refundable = int(src["amount_cents"]) - prior_refunded
     if amount_cents is None:
         amount_cents = refundable
     if amount_cents <= 0 or amount_cents > refundable:
         raise ValueError("refund_amount_invalid")
 
-    ikey = f"rf:{payment_id}:{amount_cents}:{uuid.uuid4().hex[:8]}"
-    # Dev-simulated payments never touched real Stripe → short-circuit refund too.
+    ikey = idempotency_key or f"rf:{payment_id}:{amount_cents}:{uuid.uuid4().hex[:8]}"
+    # Dev-simulated payments never touched real Stripe â†’ short-circuit refund too.
     from ..core.config import get_settings
     dev_simulated_source = bool(src.get("dev_simulated")) and get_settings().auth_dev_bypass
     try:
@@ -382,7 +401,7 @@ async def initiate_refund(
                 reason=reason,
                 idempotency_key=ikey,
             )
-    except Exception as ex:  # noqa: BLE001 — catch stripe.error.StripeError family
+    except Exception as ex:  # noqa: BLE001 â€” catch stripe.error.StripeError family
         import stripe as _stripe
         if isinstance(ex, _stripe.error.StripeError):
             raise ValueError(f"stripe_error:{getattr(ex, 'user_message', None) or str(ex)}")
@@ -402,7 +421,17 @@ async def initiate_refund(
         idempotency_key=ikey,
         created_by=actor_user_id,
     )
-    await db.payments.insert_one(prepare_for_mongo(refund_row.model_dump()))
+    try:
+        await db.payments.insert_one(prepare_for_mongo(refund_row.model_dump()))
+    except DuplicateKeyError:
+        if idempotency_key:
+            existing = await db.payments.find_one(
+                {"tenant_id": tenant_id, "refund_of_payment_id": payment_id, "idempotency_key": idempotency_key},
+                {"_id": 0},
+            )
+            if existing:
+                return serialize_doc(existing)
+        raise
     await record_audit(
         tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
         action="refund_initiated", entity_type="invoice", entity_id=src["invoice_id"],

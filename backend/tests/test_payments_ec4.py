@@ -201,6 +201,100 @@ async def test_stripe_initiate_pending_then_webhook_confirms(seeded_users, monke
 
 
 @pytest.mark.asyncio
+async def test_stripe_refund_idempotency_replays_existing_refund(seeded_users):
+    u = seeded_users["user_a"]
+    inv_id = await _seed_invoice(u["tenant_id"], 8000)
+    source_id = f"p-{uuid.uuid4().hex[:8]}"
+    await _db.payments.insert_one({
+        "id": source_id,
+        "tenant_id": u["tenant_id"],
+        "invoice_id": inv_id,
+        "customer_id": f"cust-{uuid.uuid4().hex[:6]}",
+        "source": "stripe",
+        "status": "confirmed",
+        "amount_cents": 8000,
+        "stripe_payment_intent_id": f"pi_test_{uuid.uuid4().hex[:20]}",
+    })
+
+    fake_refund = {"id": f"re_test_{uuid.uuid4().hex[:20]}", "status": "pending", "amount": 3000}
+    with patch("app.services.stripe_core.create_refund", return_value=fake_refund) as create_refund:
+        async with await _client_as(u) as c:
+            first = await c.post(
+                f"/api/payments/{source_id}/refund",
+                json={"amount_cents": 3000, "reason": "customer requested"},
+                headers={"Idempotency-Key": "refund-key-1"},
+            )
+            assert first.status_code == 201, first.text
+            second = await c.post(
+                f"/api/payments/{source_id}/refund",
+                json={"amount_cents": 3000, "reason": "customer requested"},
+                headers={"Idempotency-Key": "refund-key-1"},
+            )
+            assert second.status_code == 201, second.text
+            assert second.json()["id"] == first.json()["id"]
+            assert create_refund.call_count == 1
+    _clear()
+
+
+@pytest.mark.asyncio
+async def test_stripe_refund_nets_prior_pending_and_confirmed_refunds(seeded_users):
+    u = seeded_users["user_a"]
+    inv_id = await _seed_invoice(u["tenant_id"], 5000)
+    source_id = f"p-{uuid.uuid4().hex[:8]}"
+    await _db.payments.insert_one({
+        "id": source_id,
+        "tenant_id": u["tenant_id"],
+        "invoice_id": inv_id,
+        "customer_id": f"cust-{uuid.uuid4().hex[:6]}",
+        "source": "stripe",
+        "status": "confirmed",
+        "amount_cents": 5000,
+        "stripe_payment_intent_id": f"pi_test_{uuid.uuid4().hex[:20]}",
+    })
+    await _db.payments.insert_many([
+        {
+            "id": f"rf-pending-{uuid.uuid4().hex[:6]}",
+            "tenant_id": u["tenant_id"],
+            "invoice_id": inv_id,
+            "customer_id": f"cust-{uuid.uuid4().hex[:6]}",
+            "source": "stripe",
+            "status": "pending",
+            "amount_cents": 2000,
+            "refund_of_payment_id": source_id,
+        },
+        {
+            "id": f"rf-confirmed-{uuid.uuid4().hex[:6]}",
+            "tenant_id": u["tenant_id"],
+            "invoice_id": inv_id,
+            "customer_id": f"cust-{uuid.uuid4().hex[:6]}",
+            "source": "stripe",
+            "status": "confirmed",
+            "amount_cents": 1000,
+            "refund_of_payment_id": source_id,
+        },
+    ])
+
+    async with await _client_as(u) as c:
+        over = await c.post(
+            f"/api/payments/{source_id}/refund",
+            json={"amount_cents": 2500, "reason": "too much"},
+            headers={"Idempotency-Key": "refund-over-net"},
+        )
+        assert over.status_code == 400
+        assert "invalid" in over.json()["detail"].lower()
+
+        with patch("app.services.stripe_core.create_refund", return_value={"id": f"re_test_{uuid.uuid4().hex[:20]}", "status": "pending", "amount": 2000}):
+            ok = await c.post(
+                f"/api/payments/{source_id}/refund",
+                json={"amount_cents": 2000, "reason": "remaining balance"},
+                headers={"Idempotency-Key": "refund-remaining"},
+            )
+        assert ok.status_code == 201, ok.text
+        assert ok.json()["amount_cents"] == 2000
+    _clear()
+
+
+@pytest.mark.asyncio
 async def test_stripe_payment_cannot_be_manually_voided(seeded_users):
     u = seeded_users["user_a"]
     inv_id = await _seed_invoice(u["tenant_id"], 4000)

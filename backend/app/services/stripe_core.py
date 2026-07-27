@@ -33,13 +33,12 @@ def is_enabled() -> bool:
 def _is_dev_placeholder_key(key: str) -> bool:
     """Detect placeholder / non-live test keys used only for local regression.
 
-    Real Stripe test keys start with `sk_test_` and are 100+ chars long. The
-    Emergent-provisioned placeholder value `sk_test_emergent` (or empty) is
-    used to indicate 'no outbound Stripe traffic allowed in this env'.
+    Real Stripe test keys start with `sk_test_` and are long. A local
+    placeholder value (or empty key) means no outbound Stripe traffic is allowed.
     """
     if not key:
         return True
-    return key in {"sk_test_emergent", "sk_test_placeholder"} or len(key) < 24
+    return key == "sk_test_placeholder" or len(key) < 24
 
 
 def create_payment_intent(

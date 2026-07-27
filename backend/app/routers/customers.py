@@ -87,7 +87,7 @@ async def update_customer(customer_id: str, payload: CustomerUpdateIn, user: dic
         action="customer.update", entity_type="customer", entity_id=customer_id,
         summary=f"Updated customer {customer_id}", diff={"changes": updates},
     )
-    doc = await db.customers.find_one({"id": customer_id}, {"_id": 0})
+    doc = await db.customers.find_one({"id": customer_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return serialize_doc(doc)
 
 

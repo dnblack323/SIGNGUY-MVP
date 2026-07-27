@@ -36,5 +36,6 @@ class WorkspaceDockItem(BaseModel):
 class WorkspaceDockState(BaseDoc):
     tenant_id: str
     user_id: str
+    revision: int = 0
     open_workspaces: list[WorkspaceDockItem] = Field(default_factory=list)
     recent_workspaces: list[WorkspaceDockItem] = Field(default_factory=list)

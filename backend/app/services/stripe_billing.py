@@ -22,7 +22,7 @@ def _configured() -> bool:
 
 
 def _is_dev_placeholder_key(key: str) -> bool:
-    return not key or key in {"sk_test_emergent", "sk_test_placeholder"} or len(key) < 24
+    return not key or key == "sk_test_placeholder" or len(key) < 24
 
 
 def create_checkout_session(

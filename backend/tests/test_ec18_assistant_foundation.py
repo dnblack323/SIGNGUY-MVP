@@ -240,7 +240,12 @@ async def test_confirmed_safe_canonical_task_and_note_execution(ctx):
 
 
 @pytest.mark.asyncio
-async def test_voice_unconfigured_returns_safe_unavailable_without_fake_session(ctx):
+async def test_voice_unconfigured_returns_safe_unavailable_without_fake_session(ctx, monkeypatch):
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "openai_realtime_enabled", False, raising=False)
+    monkeypatch.setattr(settings, "openai_api_key", None, raising=False)
     async with await _client_as(ctx["owner"]) as client:
         config = await client.get("/api/assistant/voice/config")
         assert config.status_code == 200

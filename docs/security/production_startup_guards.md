@@ -9,8 +9,11 @@ The application refuses to start in production when:
 3. `SENDGRID_WEBHOOK_ENABLED=true` and `SENDGRID_WEBHOOK_SECRET` is missing.
 4. `STRIPE_WRITES_ENABLED=true` and `STRIPE_API_KEY` is missing.
 5. `STRIPE_WEBHOOK_ENABLED=true` and `STRIPE_WEBHOOK_SECRET` is missing.
-6. `AI_ENABLED=true` and `EMERGENT_LLM_KEY` is missing.
-7. `SMS_ENABLED=true` and both `SMS_PROVIDER_KEY` + `SMS_PROVIDER_SECRET` are missing.
+6. `AI_ENABLED=true` and `AI_PROVIDER_API_KEY` is missing.
+7. `STORAGE_BACKEND` is unsupported, or `OBJECT_STORAGE_PATH` is missing in production.
+8. `GOOGLE_AUTH_ENABLED=true` and `GOOGLE_AUTH_SESSION_DATA_URL` is missing.
+9. `SMS_ENABLED=true` and both `SMS_PROVIDER_KEY` + `SMS_PROVIDER_SECRET` are missing.
+10. Hosted deployment context is not running with `ENV=production`, or production CORS uses a wildcard.
 
 Development and test environments (`ENV=development` / `ENV=test`) pass through and are permitted to run with the documented test settings. The dev bypass remains visibly identified via `GET /api/auth/dev-config` and the amber banner in `AppShell`.
 
@@ -31,7 +34,7 @@ The following endpoints refuse to run outside `ENV=development` (return 404):
 
 ## Testing
 
-`backend/tests/test_startup_guards.py` verifies all seven conditions plus the disabled-integration passthrough.
+`backend/tests/test_startup_guards.py` verifies the production guard conditions plus the disabled-integration passthrough.
 
 ## Deployment checklist
 
@@ -39,8 +42,12 @@ Before setting `ENV=production`:
 
 - [ ] Rotate `JWT_SECRET` to a strong non-placeholder value.
 - [ ] Set `AUTH_DEV_BYPASS=false` (or unset).
+- [ ] Set `DEPLOYMENT_CONTEXT=production` and `ENV=production` for hosted production.
+- [ ] Set explicit `CORS_ORIGINS`; do not use `*`.
+- [ ] Set `STORAGE_BACKEND=filesystem` and `OBJECT_STORAGE_PATH`.
 - [ ] Set `SENDGRID_WEBHOOK_SECRET` if enabling the delivery-event webhook.
 - [ ] Set `STRIPE_API_KEY` (live) and `STRIPE_WEBHOOK_SECRET` when enabling Stripe writes/webhook.
-- [ ] Set `EMERGENT_LLM_KEY` when enabling AI generation.
+- [ ] Set `AI_PROVIDER_API_KEY` when enabling AI generation.
+- [ ] Set `GOOGLE_AUTH_SESSION_DATA_URL` when enabling Google sign-in.
 - [ ] Set `SMS_PROVIDER_KEY` + `SMS_PROVIDER_SECRET` when enabling SMS.
 - [ ] Confirm `/api/auth/dev-*` returns 404 in the deployed environment.

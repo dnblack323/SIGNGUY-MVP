@@ -58,8 +58,14 @@ def integration_status() -> dict[str, Any]:
             _report(
                 "ai_provider",
                 enabled=s.ai_enabled,
-                configured=bool(s.emergent_llm_key),
-                missing=(["EMERGENT_LLM_KEY"] if (s.ai_enabled and not s.emergent_llm_key) else []),
+                configured=bool(s.ai_provider_api_key),
+                missing=(["AI_PROVIDER_API_KEY"] if (s.ai_enabled and not s.ai_provider_api_key) else []),
+            ),
+            _report(
+                "google_auth",
+                enabled=s.google_auth_enabled,
+                configured=bool(s.google_auth_session_data_url),
+                missing=(["GOOGLE_AUTH_SESSION_DATA_URL"] if (s.google_auth_enabled and not s.google_auth_session_data_url) else []),
             ),
             _report(
                 "sms_provider",
@@ -75,8 +81,8 @@ def integration_status() -> dict[str, Any]:
             _report(
                 "object_storage",
                 enabled=True,
-                configured=bool(s.emergent_llm_key),
-                missing=(["EMERGENT_LLM_KEY"] if not s.emergent_llm_key else []),
+                configured=s.storage_backend == "filesystem",
+                missing=(["OBJECT_STORAGE_PATH"] if s.env == "production" and not s.object_storage_path else []),
             ),
         ],
     }
