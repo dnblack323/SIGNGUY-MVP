@@ -267,18 +267,19 @@ beforeEach(() => {
   mockApi();
 });
 
-test("adds Pricing Calculators under Shop Operations navigation", () => {
+test("adds Pricing under Shop Operations persistent module navigation", () => {
   const shopOperations = NAV_AREAS.find((area) => area.key === "shop-operations");
-  expect(shopOperations.flyout).toEqual(
+  expect(shopOperations.moduleNav).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
-        key: "pricing-calculators",
-        label: "Pricing Calculators",
+        key: "pricing",
+        label: "Pricing",
         to: "/pricing-calculator",
-        perm: "pricing:calculate",
+        perm: "pricing:read",
       }),
     ]),
   );
+  expect(shopOperations.flyout).toBeUndefined();
 });
 
 test("renders the dedicated workspace and displays Banner authoritative and comparison results", async () => {

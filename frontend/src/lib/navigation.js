@@ -1,176 +1,200 @@
 /**
- * EC1 — Locked Navigation Contract.
+ * Authenticated application shell navigation contract.
  *
- * Collapsible left sidebar with side flyouts. Home + six areas + divider between
- * Creative Studio and Control Center. Permanent second-level top navigation is
- * NOT used. Page-specific ribbons/tabs/filters/actions/breadcrumbs are allowed
- * but must not duplicate sidebar or flyout entries.
- *
- * Structure MUST match Part 3.2 of the Final Scope & Decision Register and the
- * flyout structure in Prompt 5 (EC1 section 9). Do not add duplicate entries.
- * Do not add a permanent "More" overflow menu.
- *
- * Fields:
- *   key       stable id used in tests + progress tracking
- *   label     user-facing sidebar label
- *   icon      lucide-react component
- *   testId    data-testid attribute for the sidebar entry
- *   flyout    array of entries { key, label, to, perm, testId, disabled }
- *   perm      backend permission required to see the AREA at all
- *   home      set to true for the home entry (no flyout)
- *   divider   set to true to render a divider AFTER this entry
+ * Desktop shell:
+ * - primary sidebar = six main application areas only;
+ * - module navigation = persistent horizontal tabs in the content header;
+ * - contextual ribbon = module-specific command surface.
  */
 import {
-  Home,
-  ShoppingBag,
+  CircleHelp,
   DollarSign,
-  Users,
-  Sparkles,
-  Settings,
   HelpCircle,
+  Palette,
+  Settings,
+  ShoppingBag,
+  Sparkles,
+  Users,
 } from "lucide-react";
 
-export const NAV_AREAS = [
-  {
-    key: "home",
-    label: "Home",
-    icon: Home,
-    to: "/",
-    testId: "nav-home",
-    home: true,
-    perm: null,
-  },
+export const PRIMARY_NAV_AREAS = [
   {
     key: "shop-operations",
     label: "Shop Operations",
     icon: ShoppingBag,
-    testId: "nav-shop-operations",
-    perm: null,
-    flyout: [
-      { key: "overview", label: "Overview", to: "/", perm: null, testId: "flyout-shop-overview" },
-      { key: "intake", label: "Intake", to: "/intake", perm: "intake:read", testId: "flyout-intake" },
-      { key: "decision-rooms", label: "Decision Rooms", to: "/decision-rooms", perm: "decision_room:read", testId: "flyout-decision-rooms" },
-      { key: "decision-room-review-queue", label: "Decision Review Queue", to: "/decision-room-review-queue", perm: "decision_room:read", testId: "flyout-decision-room-review-queue" },
-      { key: "templates", label: "Templates", to: "/templates", perm: "template:read", testId: "flyout-templates" },
-      { key: "customers", label: "Customers", to: "/customers", perm: "customer:read", testId: "flyout-customers" },
-      { key: "quotes", label: "Quotes", to: "/quotes", perm: "quote:read", testId: "flyout-quotes" },
-      { key: "orders", label: "Orders", to: "/orders", perm: "order:read", testId: "flyout-orders" },
-      { key: "pricing-calculators", label: "Pricing Calculators", to: "/pricing-calculator", perm: "pricing:calculate", testId: "flyout-pricing-calculators" },
-      { key: "production", label: "Production", to: "/work-orders", perm: "work_order:read", testId: "flyout-production" },
-      { key: "production-board", label: "Production Board", to: "/work-orders/board", perm: "work_order:read", testId: "flyout-production-board" },
-      { key: "production-kiosk", label: "Production Kiosk", to: "/kiosk/production", perm: "work_order:read", testId: "flyout-production-kiosk" },
-      { key: "shop-schedule", label: "Shop Schedule", to: "/shop-schedule", perm: "schedule:read", testId: "flyout-shop-schedule" },
-      { key: "asset-library", label: "Asset Library", to: "/documents", perm: "document:read", testId: "flyout-asset-library" },
-      { key: "inventory-purchasing", label: "Inventory & Purchasing", to: "/inventory", perm: "inventory:read", testId: "flyout-inventory-purchasing" },
-      { key: "supply-center", label: "Supply Center", to: "/supply-center", perm: "purchasing:read", testId: "flyout-supply-center" },
-      { key: "purchase-orders", label: "Purchase Orders", to: "/purchase-orders", perm: "purchasing:read", testId: "flyout-purchase-orders" },
-      { key: "webstores", label: "Webstores", to: "/webstores", perm: "webstore:read", testId: "flyout-webstores" },
-      { key: "wrap-lab", label: "Wrap Lab", to: "/wrap-lab", perm: "wrap_lab:read", testId: "flyout-wrap-lab" },
+    accent: "text-cyan-300",
+    to: "/",
+    testId: "primary-nav-shop-operations",
+    moduleNav: [
+      { key: "overview", label: "Overview", to: "/", testId: "module-nav-shop-overview" },
+      { key: "intake", label: "Intake", to: "/intake", perm: "intake:read", testId: "module-nav-intake", match: ["/intake"] },
+      { key: "customers", label: "Customers", to: "/customers", perm: "customer:read", testId: "module-nav-customers", match: ["/customers"] },
+      { key: "quotes", label: "Quotes", to: "/quotes", perm: "quote:read", testId: "module-nav-quotes", match: ["/quotes"] },
+      { key: "orders", label: "Orders", to: "/orders", perm: "order:read", testId: "module-nav-orders", match: ["/orders"] },
+      { key: "pricing", label: "Pricing", to: "/pricing-calculator", perm: "pricing:read", testId: "module-nav-pricing", match: ["/pricing-calculator"] },
+      { key: "production", label: "Production", to: "/work-orders", perm: "work_order:read", testId: "module-nav-production", match: ["/work-orders", "/kiosk/production"] },
+      { key: "shop-schedule", label: "Shop Schedule", to: "/shop-schedule", perm: "schedule:read", testId: "module-nav-shop-schedule" },
+      { key: "library", label: "Library/DocuLink", to: "/documents", perm: "document:read", testId: "module-nav-library", match: ["/documents", "/decision-rooms", "/decision-room-review-queue", "/templates"] },
+      { key: "webstores", label: "Webstores", to: "/webstores", perm: "webstore:read", testId: "module-nav-webstores", match: ["/webstores"] },
+      { key: "wrap-lab", label: "Wrap Lab", to: "/wrap-lab", perm: "wrap_lab:read", testId: "module-nav-wrap-lab", match: ["/wrap-lab"] },
     ],
   },
   {
     key: "business-finance",
     label: "Business & Finance",
     icon: DollarSign,
-    testId: "nav-business-finance",
-    perm: null,
-    flyout: [
-      { key: "overview", label: "Overview", to: "/finance", perm: "finance:read", testId: "flyout-bf-overview" },
-      { key: "financials", label: "Financials", to: "/finance", perm: "finance:read", testId: "flyout-financials" },
-      { key: "sales", label: "Sales", to: "/finance", perm: "finance:read", testId: "flyout-sales" },
-      { key: "expenses", label: "Expenses", to: "/expenses", perm: "expense:read", testId: "flyout-expenses" },
-      { key: "taxes", label: "Taxes", to: "/tax", perm: "tax_report:read", testId: "flyout-taxes" },
-      { key: "reports", label: "Reports", to: "/reports", perm: "report:read", testId: "flyout-reports" },
-      { key: "analytics", label: "Business Analytics", to: "/business-finance/analytics", perm: "analytics:read", testId: "flyout-analytics", disabled: true },
+    accent: "text-emerald-300",
+    to: "/finance",
+    testId: "primary-nav-business-finance",
+    moduleNav: [
+      { key: "overview", label: "Overview", to: "/finance", perm: "finance:read", testId: "module-nav-finance-overview" },
+      { key: "invoices", label: "Invoices", to: "/invoices", perm: "invoice:read", testId: "module-nav-invoices", match: ["/invoices"] },
+      { key: "expenses", label: "Expenses", to: "/expenses", perm: "expense:read", testId: "module-nav-expenses" },
+      { key: "taxes", label: "Taxes", to: "/tax", perm: "tax_report:read", testId: "module-nav-taxes" },
+      { key: "reports", label: "Reports", to: "/reports", perm: "report:read", testId: "module-nav-reports" },
+      { key: "pricing-defaults", label: "Pricing Defaults", to: "/pricing-foundation", perm: "pricing:read", testId: "module-nav-pricing-defaults" },
     ],
   },
   {
     key: "team-workflow",
     label: "Team & Workflow",
     icon: Users,
-    testId: "nav-team-workflow",
-    perm: null,
-    flyout: [
-      { key: "overview", label: "Overview", to: "/team", perm: null, testId: "flyout-team-overview" },
-      { key: "employees", label: "Employees", to: "/team/employees", perm: "employee:read", testId: "flyout-employees" },
-      { key: "equipment", label: "Equipment", to: "/team/equipment", perm: "equipment:read", testId: "flyout-equipment" },
-      { key: "training", label: "Training", to: "/team/training", perm: "training:manage", testId: "flyout-training" },
-      { key: "certifications", label: "Certifications", to: "/team/certifications", perm: "certification:read", testId: "flyout-certifications" },
-      { key: "tasks-kanban", label: "Tasks & Kanban", to: "/team/tasks", perm: "task:read", testId: "flyout-tasks-kanban" },
-      { key: "team-schedule", label: "Team Schedule", to: "/team/schedule", perm: "schedule:read", testId: "flyout-team-schedule" },
-      { key: "time-clock", label: "Time Clock", to: "/team/time-clock", perm: "timeclock:self", testId: "flyout-time-clock" },
-      { key: "timesheets", label: "Timesheets", to: "/team/timesheets", perm: "timesheet:self", testId: "flyout-timesheets" },
-      { key: "payroll", label: "Payroll", to: "/team/payroll", perm: "payroll:read", testId: "flyout-payroll" },
-      { key: "messages-notes", label: "Messages & Notes", to: "/team/messages", perm: "message:read", testId: "flyout-messages-notes" },
-      { key: "announcements", label: "Announcements", to: "/team/announcements", perm: null, testId: "flyout-announcements" },
-      { key: "employee-portal", label: "Employee Portal", to: "/team/employee-portal", perm: "employee:manage", testId: "flyout-employee-portal" },
+    accent: "text-violet-300",
+    to: "/team",
+    testId: "primary-nav-team-workflow",
+    moduleNav: [
+      { key: "overview", label: "Overview", to: "/team", testId: "module-nav-team-overview" },
+      { key: "employees", label: "Employees", to: "/team/employees", perm: "employee:read", testId: "module-nav-employees", match: ["/team/employees"] },
+      { key: "equipment", label: "Equipment", to: "/team/equipment", perm: "equipment:read", testId: "module-nav-equipment", match: ["/team/equipment"] },
+      { key: "training", label: "Training", to: "/team/training", perm: "training:manage", testId: "module-nav-training" },
+      { key: "certifications", label: "Certifications", to: "/team/certifications", perm: "certification:read", testId: "module-nav-certifications" },
+      { key: "tasks", label: "Tasks", to: "/team/tasks", perm: "task:read", testId: "module-nav-tasks" },
+      { key: "team-schedule", label: "Team Schedule", to: "/team/schedule", perm: "schedule:read", testId: "module-nav-team-schedule" },
+      { key: "time-clock", label: "Time Clock", to: "/team/time-clock", perm: "timeclock:self", testId: "module-nav-time-clock" },
+      { key: "timesheets", label: "Timesheets", to: "/team/timesheets", perm: "timesheet:self", testId: "module-nav-timesheets" },
+      { key: "payroll", label: "Payroll", to: "/team/payroll", perm: "payroll:read", testId: "module-nav-payroll" },
+      { key: "messages", label: "Messages", to: "/team/messages", perm: "message:read", testId: "module-nav-messages" },
+      { key: "announcements", label: "Announcements", to: "/team/announcements", testId: "module-nav-announcements" },
+      { key: "employee-portal", label: "Employee Portal", to: "/team/employee-portal", perm: "employee:manage", testId: "module-nav-employee-portal" },
     ],
   },
   {
-    key: "creative-studio",
-    label: "Creative Studio",
-    icon: Sparkles,
-    testId: "nav-creative-studio",
-    perm: null,
-    divider: true,
-    flyout: [
-      { key: "studio-overview", label: "Studio Overview", to: "/studio", perm: "ai_tool:use", testId: "flyout-studio-overview" },
-      { key: "ai-assistant", label: "Business Assistant", to: "/studio/assistant", perm: "ai_assistant:use", testId: "flyout-ai-assistant" },
-      { key: "design-image-studio", label: "Design & Image", to: "/studio/design-image", perm: "ai_tool:use", testId: "flyout-design-image-studio" },
-      { key: "marketing-brand-studio", label: "Marketing & Brand", to: "/studio/marketing-brand", perm: "ai_tool:use", testId: "flyout-marketing-brand-studio" },
-      { key: "writing-documents-studio", label: "Writing & Documents", to: "/studio/writing-documents", perm: "ai_tool:use", testId: "flyout-writing-documents-studio" },
-      { key: "pricing-profitability-studio", label: "Pricing & Profitability", to: "/studio/pricing-profitability", perm: "ai_tool:use", testId: "flyout-pricing-profitability-studio" },
-      { key: "prompt-library", label: "Prompt Library", to: "/studio/prompts", perm: "ai_prompt:read", testId: "flyout-prompt-library" },
-      { key: "generated-assets", label: "Generated Assets", to: "/studio/assets", perm: "document:read", testId: "flyout-generated-assets" },
-      { key: "ai-history", label: "AI Activity", to: "/studio/activity", perm: "ai_history:read", testId: "flyout-ai-history" },
+    key: "design-studio",
+    label: "Design Studio",
+    icon: Palette,
+    accent: "text-amber-300",
+    to: "/studio",
+    testId: "primary-nav-design-studio",
+    moduleNav: [
+      { key: "overview", label: "Overview", to: "/studio", perm: "ai_tool:use", testId: "module-nav-studio-overview" },
+      { key: "assistant", label: "Business Assistant", to: "/studio/assistant", perm: "ai_assistant:use", testId: "module-nav-business-assistant" },
+      { key: "design-image", label: "Design & Image", to: "/studio/design-image", perm: "ai_tool:use", testId: "module-nav-design-image" },
+      { key: "marketing-brand", label: "Marketing & Brand", to: "/studio/marketing-brand", perm: "ai_tool:use", testId: "module-nav-marketing-brand" },
+      { key: "writing-documents", label: "Writing & Documents", to: "/studio/writing-documents", perm: "ai_tool:use", testId: "module-nav-writing-documents" },
+      { key: "pricing-profitability", label: "Pricing & Profitability", to: "/studio/pricing-profitability", perm: "ai_tool:use", testId: "module-nav-pricing-profitability" },
+      { key: "prompts", label: "Prompt Library", to: "/studio/prompts", perm: "ai_prompt:read", testId: "module-nav-prompt-library" },
+      { key: "assets", label: "Generated Assets", to: "/studio/assets", perm: "document:read", testId: "module-nav-generated-assets" },
+      { key: "activity", label: "AI Activity", to: "/studio/activity", perm: "ai_history:read", testId: "module-nav-ai-activity" },
     ],
   },
   {
     key: "control-center",
     label: "Control Center",
     icon: Settings,
-    testId: "nav-control-center",
-    perm: null,
-    flyout: [
-      { key: "overview", label: "Overview", to: "/settings", perm: null, testId: "flyout-cc-overview" },
-      { key: "company-settings", label: "Company Settings", to: "/settings/company", perm: "settings:read", testId: "flyout-company-settings" },
-      { key: "users-permissions", label: "Users & Permissions", to: "/settings/users", perm: "user:read", testId: "flyout-users-permissions", disabled: true },
-      { key: "integrations", label: "Integrations", to: "/settings/integrations", perm: "integration:read", testId: "flyout-integrations" },
-      { key: "pricing-defaults", label: "Pricing Defaults", to: "/pricing-foundation", perm: "pricing:read", testId: "flyout-pricing-defaults" },
-      { key: "production-workflows", label: "Production Workflows", to: "/settings/production-workflows", perm: "production_workflow:read", testId: "flyout-production-workflows" },
-      { key: "portals", label: "Portals", to: "/settings/portals", perm: "settings:read", testId: "flyout-portals", disabled: true },
-      { key: "subscriptions", label: "Subscriptions", to: "/settings/subscriptions", perm: "subscription:read", testId: "flyout-subscriptions" },
-      { key: "ai-credits", label: "AI Credits", to: "/settings/ai-credits", perm: "ai_credit:read", testId: "flyout-ai-credits" },
-      { key: "feature-access", label: "Feature Access", to: "/settings/features", perm: "settings:read", testId: "flyout-feature-access" },
-      { key: "ai-governance", label: "AI Governance", to: "/settings/ai-governance", perm: null, testId: "flyout-ai-governance", platformOnly: true },
-      { key: "data-security", label: "Data & Security", to: "/settings/data-security", perm: "audit:read", testId: "flyout-data-security" },
+    accent: "text-rose-300",
+    to: "/settings",
+    testId: "primary-nav-control-center",
+    moduleNav: [
+      { key: "overview", label: "Overview", to: "/settings", testId: "module-nav-settings-overview" },
+      { key: "company", label: "Company Settings", to: "/settings/company", perm: "settings:read", testId: "module-nav-company-settings" },
+      { key: "integrations", label: "Integrations", to: "/settings/integrations", perm: "integration:read", testId: "module-nav-integrations" },
+      { key: "production-workflows", label: "Production Workflows", to: "/settings/production-workflows", perm: "production_workflow:read", testId: "module-nav-production-workflows" },
+      { key: "subscriptions", label: "Subscriptions", to: "/settings/subscriptions", perm: "subscription:read", testId: "module-nav-subscriptions" },
+      { key: "ai-credits", label: "AI Credits", to: "/settings/ai-credits", perm: "ai_credit:read", testId: "module-nav-ai-credits" },
+      { key: "feature-access", label: "Feature Access", to: "/settings/features", perm: "settings:read", testId: "module-nav-feature-access" },
+      { key: "ai-governance", label: "AI Governance", to: "/settings/ai-governance", platformOnly: true, testId: "module-nav-ai-governance" },
+      { key: "data-security", label: "Data & Security", to: "/settings/data-security", perm: "audit:read", testId: "module-nav-data-security" },
     ],
   },
   {
     key: "help-community",
     label: "Help & Community",
     icon: HelpCircle,
-    testId: "nav-help-community",
-    perm: null,
-    flyout: [
-      { key: "help-center", label: "Help Center", to: "/help", perm: "help:read", testId: "flyout-help-center" },
-      { key: "documentation", label: "Documentation", to: "/help/docs", perm: "help:read", testId: "flyout-documentation" },
-      { key: "onboarding", label: "Onboarding", to: "/help/onboarding", perm: "onboarding:read", testId: "flyout-onboarding" },
-      { key: "community", label: "Community", to: "/help/community", perm: "community:read", testId: "flyout-community" },
-      { key: "bug-reports", label: "Bug Reports", to: "/help/bugs", perm: "community:read", testId: "flyout-bug-reports" },
-      { key: "feature-requests", label: "Feature Requests", to: "/help/feature-requests", perm: "community:read", testId: "flyout-feature-requests" },
-      { key: "contact-support", label: "Contact Support", to: "/help/contact", perm: "support:write", testId: "flyout-contact-support" },
-      { key: "whats-new", label: "What's New", to: "/help/whats-new", perm: "help:read", testId: "flyout-whats-new" },
+    accent: "text-sky-300",
+    to: "/help",
+    testId: "primary-nav-help-community",
+    moduleNav: [
+      { key: "overview", label: "Help Center", to: "/help", perm: "help:read", testId: "module-nav-help-center" },
+      { key: "documentation", label: "Documentation", to: "/help/docs", perm: "help:read", testId: "module-nav-documentation" },
+      { key: "onboarding", label: "Onboarding", to: "/help/onboarding", perm: "onboarding:read", testId: "module-nav-onboarding", match: ["/help/onboarding", "/onboarding"] },
+      { key: "community", label: "Community", to: "/help/community", perm: "community:read", testId: "module-nav-community" },
+      { key: "bug-reports", label: "Bug Reports", to: "/help/bugs", perm: "community:read", testId: "module-nav-bug-reports" },
+      { key: "feature-requests", label: "Feature Requests", to: "/help/feature-requests", perm: "community:read", testId: "module-nav-feature-requests" },
+      { key: "contact-support", label: "Contact Support", to: "/help/contact", perm: "support:write", testId: "module-nav-contact-support" },
+      { key: "whats-new", label: "What's New", to: "/help/whats-new", perm: "help:read", testId: "module-nav-whats-new" },
     ],
   },
 ];
 
-export function filterFlyoutByPermissions(flyout, permissions, user = null) {
-  if (!Array.isArray(flyout)) return [];
+export function isPlatformUser(user = null, permissions = []) {
   const set = new Set(permissions || []);
-  const platformUser = !!(user?.platform_admin || ["admin", "owner"].includes(user?.platform_role));
-  return flyout.filter((entry) => {
+  return !!(
+    user?.platform_admin
+    || ["admin", "owner", "PLATFORM_ADMIN", "PLATFORM_CREATOR"].includes(user?.platform_role)
+    || set.has("platform:admin")
+    || set.has("platform:creator")
+  );
+}
+
+export function filterNavItemsByPermissions(items, permissions, user = null) {
+  if (!Array.isArray(items)) return [];
+  const set = new Set(permissions || []);
+  const platformUser = isPlatformUser(user, permissions);
+  return items.filter((entry) => {
     if (entry.platformOnly && !platformUser) return false;
-    return !entry.perm || set.has(entry.perm);
+    const requiredPermission = entry.perm || entry.permission;
+    return !requiredPermission || set.has(requiredPermission);
   });
 }
+
+function itemMatchStrength(item, pathname) {
+  if (!item || !pathname) return -1;
+  const targets = item.match || [item.to];
+  const matches = targets.filter((target) => (
+    target === "/"
+      ? pathname === "/"
+      : pathname === target || pathname.startsWith(`${target}/`)
+  ));
+  if (!matches.length) return -1;
+  return Math.max(...matches.map((target) => target.length));
+}
+
+export function itemMatchesPath(item, pathname) {
+  return itemMatchStrength(item, pathname) >= 0;
+}
+
+export function areaMatchesPath(area, pathname) {
+  return area?.moduleNav?.some((item) => itemMatchesPath(item, pathname));
+}
+
+export function findAreaForPath(pathname) {
+  return PRIMARY_NAV_AREAS.find((area) => areaMatchesPath(area, pathname)) || PRIMARY_NAV_AREAS[0];
+}
+
+export function firstAvailableModule(area, permissions, user = null) {
+  return filterNavItemsByPermissions(area?.moduleNav || [], permissions, user)[0] || null;
+}
+
+export function activeModuleForPath(area, pathname, permissions, user = null) {
+  const visible = filterNavItemsByPermissions(area?.moduleNav || [], permissions, user);
+  const matches = visible
+    .map((item) => ({ item, strength: itemMatchStrength(item, pathname) }))
+    .filter(({ strength }) => strength >= 0)
+    .sort((a, b) => b.strength - a.strength);
+  return matches[0]?.item || visible[0] || null;
+}
+
+export const HELP_ICON = CircleHelp;
+export const ASSISTANT_ICON = Sparkles;
+
+export const NAV_AREAS = PRIMARY_NAV_AREAS;
