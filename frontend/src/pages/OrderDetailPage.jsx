@@ -20,6 +20,7 @@ import GenerateWorkOrderDialog, { RegenerateDialog } from "@/components/work-ord
 import ProofsPanel from "@/components/proofs/ProofsPanel";
 import TaskHandoffButton from "@/components/tasks/TaskHandoffButton";
 import AIContextualActions from "@/components/ai/AIContextualActions";
+import { useWorkspaceDirty } from "@/context/WorkspaceContext";
 
 function ItemsPanel({ orderId, items, totals, pricingSummary, canWrite, orderStatus }) {
   const qc = useQueryClient();
@@ -184,6 +185,7 @@ export default function OrderDetailPage() {
   });
 
   const [form, setForm] = useState({});
+  useWorkspaceDirty(Object.keys(form).length > 0);
   const [genWOOpen, setGenWOOpen] = useState(false);
   const [regenWOOpen, setRegenWOOpen] = useState(false);
 

@@ -23,6 +23,10 @@ from .pricing_saved_items import get_saved_item
 from .pricing_snapshot import build_calculated_snapshot, build_manual_snapshot
 
 
+class PricingTransferError(ValueError):
+    """Raised when a calculator result cannot safely become a line-item price."""
+
+
 async def resolve_references(
     *, tenant_id: str, material_profile_id: Optional[str] = None,
     pricing_component_ids: Optional[list[str]] = None, saved_item_id: Optional[str] = None,
@@ -130,6 +134,8 @@ def build_item_pricing_fields(
             source = "manual"
             unit_price_cents = int(manual_price_cents if manual_price_cents is not None else fallback_unit_price_cents)
         else:
+            if suggested_price_cents is None:
+                raise PricingTransferError("Calculated pricing result is not transferable")
             source = "suggested"
             unit_price_cents = int(suggested_price_cents)
         snapshot = build_calculated_snapshot(

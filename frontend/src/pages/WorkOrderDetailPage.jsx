@@ -21,6 +21,7 @@ import RequirementsDialog from "@/components/work-orders/RequirementsDialog";
 import PrintSummaryDialog from "@/components/work-orders/PrintSummaryDialog";
 import WorkOrderStagesPanel from "@/components/production/WorkOrderStagesPanel";
 import TaskHandoffButton from "@/components/tasks/TaskHandoffButton";
+import { useWorkspaceDirty } from "@/context/WorkspaceContext";
 
 const ALLOWED = {
   draft: ["released", "cancelled"],
@@ -49,6 +50,7 @@ export default function WorkOrderDetailPage() {
   const { data: equipment } = useQuery({ queryKey: ["equipment-for-wo"], queryFn: async () => (await api.get("/equipment")).data.items, retry: false });
 
   const [form, setForm] = useState({});
+  useWorkspaceDirty(Object.keys(form).length > 0);
   const [pending, setPending] = useState(null); // {target}
   const [regenOpen, setRegenOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);

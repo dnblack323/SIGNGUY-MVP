@@ -20,14 +20,14 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from ..core.db import db
-from ..core.permissions import Perm
+from ..core.permissions import Perm, permissions_for_role
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..deps import require_permission
 from ..models.quote import Quote
 from ..models.quote_line_item import QuoteLineItem
 from ..services.audit import record_audit
 from ..services.commerce_totals import compute_document_totals, compute_line_totals, compute_pricing_summary
-from ..services.order_pricing import build_item_pricing_fields, calculate_for_references
+from ..services.order_pricing import PricingTransferError, build_item_pricing_fields, calculate_for_references
 from ..services.pricing import get_or_init_pricing_settings
 from ..services.pricing_snapshot_records import create_snapshot_record
 from ..services.quote_conversion import convert_quote_to_order
@@ -219,6 +219,8 @@ async def _resolve_item_pricing(
     calc_result = None
     foundation_effective_at = None
     if use_calculator:
+        if Perm.PRICING_CALCULATE.value not in permissions_for_role(user.get("role", "staff")):
+            raise HTTPException(status_code=403, detail=f"Missing permission: {Perm.PRICING_CALCULATE.value}")
         settings = await get_or_init_pricing_settings(user["tenant_id"])
         foundation_effective_at = settings.get("updated_at")
         try:
@@ -231,14 +233,17 @@ async def _resolve_item_pricing(
             detail = "Material pricing profile not found" if str(e) == "material_profile_not_found" else (
                 "Saved item not found" if str(e) == "saved_item_not_found" else str(e))
             raise HTTPException(status_code=404, detail=detail)
-    return build_item_pricing_fields(
-        calc_result=calc_result, quantity=quantity, category=category, category_inputs=category_inputs,
-        material_profile_id=material_profile_id, pricing_component_ids=pricing_component_ids,
-        saved_item_id=saved_item_id, manual_price_cents=manual_price_cents, selected_price_source=selected_price_source,
-        fallback_unit_price_cents=fallback_unit_price_cents, user_id=user["id"], actor_email=user["email"],
-        foundation_effective_at=foundation_effective_at, manual_override_reason=manual_override_reason,
-        recalculated=recalculated,
-    )
+    try:
+        return build_item_pricing_fields(
+            calc_result=calc_result, quantity=quantity, category=category, category_inputs=category_inputs,
+            material_profile_id=material_profile_id, pricing_component_ids=pricing_component_ids,
+            saved_item_id=saved_item_id, manual_price_cents=manual_price_cents, selected_price_source=selected_price_source,
+            fallback_unit_price_cents=fallback_unit_price_cents, user_id=user["id"], actor_email=user["email"],
+            foundation_effective_at=foundation_effective_at, manual_override_reason=manual_override_reason,
+            recalculated=recalculated,
+        )
+    except PricingTransferError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ---- Quote CRUD ----

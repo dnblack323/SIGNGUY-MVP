@@ -67,6 +67,14 @@ async def ensure_indexes() -> None:
 
     # Pricing settings \u2014 one doc per tenant
     await db.pricing_settings.create_index("tenant_id", unique=True)
+    await db.pricing_saved_calculations.create_index("id", unique=True)
+    await db.pricing_saved_calculations.create_index([("tenant_id", 1), ("archived", 1), ("updated_at", -1)])
+    await db.pricing_saved_calculations.create_index([("tenant_id", 1), ("category", 1), ("archived", 1), ("updated_at", -1)])
+    await db.pricing_saved_calculations.create_index([("tenant_id", 1), ("created_by_user_id", 1), ("created_at", -1)])
+    await db.workspace_docks.create_index("id", unique=True)
+    await db.workspace_docks.create_index([("tenant_id", 1), ("user_id", 1)], unique=True)
+    await db.workspace_docks.create_index([("tenant_id", 1), ("user_id", 1), ("open_workspaces.workspace_key", 1)])
+    await db.workspace_docks.create_index([("tenant_id", 1), ("user_id", 1), ("recent_workspaces.last_opened_at", -1)])
 
     # ---- EC2 — Shared Platform Services indexes ----
     # settings
