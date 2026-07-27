@@ -25,6 +25,7 @@ export default function GoogleAuthCallback() {
         if (!sessionId) throw new Error("Missing session_id");
         const { data } = await api.post("/auth/google/session", { session_id: sessionId });
         localStorage.setItem("signguy.token", data.access_token);
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
         await refresh();
         navigate("/", { replace: true });
       } catch {

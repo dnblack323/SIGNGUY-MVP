@@ -287,8 +287,8 @@ async def get_summary(wo_id: str, user: dict = Depends(require_permission(Perm.W
     wo = await db.work_orders.find_one({"id": wo_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
-    order = await db.orders.find_one({"id": wo["order_id"]}, {"_id": 0}) or {}
-    customer = await db.customers.find_one({"id": wo["customer_id"]}, {"_id": 0}) or {}
+    order = await db.orders.find_one({"id": wo["order_id"], "tenant_id": user["tenant_id"]}, {"_id": 0}) or {}
+    customer = await db.customers.find_one({"id": wo["customer_id"], "tenant_id": user["tenant_id"]}, {"_id": 0}) or {}
     from ..core.permissions import permissions_for_role
     if "permissions" in user:
         perms = set(user.get("permissions") or [])
