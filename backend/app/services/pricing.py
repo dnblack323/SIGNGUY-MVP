@@ -17,6 +17,7 @@ from .pricing_promotional import calculate_promotional_pricing
 from .pricing_vehicle_graphics import calculate_vehicle_graphics_pricing
 from .pricing_services import calculate_services_pricing
 from .pricing_custom import calculate_custom_pricing
+from .pricing_method_outputs import normalize_category_method_outputs
 
 
 def _now_iso() -> str:
@@ -172,45 +173,45 @@ def calculate_pricing(
     cat = cats.get(category) or {}
 
     if category in FLAT_SQFT_CATEGORIES:
-        return calculate_flat_sqft_pricing(
+        return normalize_category_method_outputs(calculate_flat_sqft_pricing(
             category=category, shop=shop, cat=cat, materials_legacy=materials,
             material_profile=material_profile, pricing_components=pricing_components or [],
             width_inches=width_inches, height_inches=height_inches, quantity=quantity,
             material_key=material_key, design_needed=design_needed, install_needed=install_needed,
             manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
-        )
+        ))
 
     if category == "apparel":
-        return calculate_apparel_pricing(
+        return normalize_category_method_outputs(calculate_apparel_pricing(
             shop=shop, cat=cat, pricing_components=pricing_components or [], quantity=quantity,
             manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
-        )
+        ))
 
     if category == "promotional":
-        return calculate_promotional_pricing(
+        return normalize_category_method_outputs(calculate_promotional_pricing(
             shop=shop, cat=cat, pricing_components=pricing_components or [], quantity=quantity,
             manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
             saved_item=saved_item,
-        )
+        ))
 
     if category == "vehicle_graphics":
-        return calculate_vehicle_graphics_pricing(
+        return normalize_category_method_outputs(calculate_vehicle_graphics_pricing(
             shop=shop, cat=cat, pricing_components=pricing_components or [], quantity=quantity,
             manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
-        )
+        ))
 
     if category == "services":
-        return calculate_services_pricing(
+        return normalize_category_method_outputs(calculate_services_pricing(
             shop=shop, cat=cat, pricing_components=pricing_components or [], quantity=quantity,
             manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
             material_profile=material_profile,
-        )
+        ))
 
     if category == "custom":
-        return calculate_custom_pricing(
+        return normalize_category_method_outputs(calculate_custom_pricing(
             cat=cat, quantity=quantity, manual_selling_price=manual_selling_price,
             category_inputs=category_inputs or {},
-        )
+        ))
 
     # Unreachable: every id in CATEGORY_IDS is dispatched above.
     raise ValueError(f"Unhandled category: {category}")

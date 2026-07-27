@@ -18,6 +18,22 @@ from ..services.pricing import (
     wizard_suggestions,
 )
 from ..services.order_pricing import resolve_references
+from ..services.pricing_method_configurations import (
+    apply_simple_setup,
+    get_category_method_configuration,
+    list_category_method_configuration_audit,
+    list_category_method_configurations,
+    preview_simple_setup,
+    raise_http,
+    resolve_method_availability,
+    restore_recommended_configuration,
+    save_advanced_setup,
+)
+from ..services.pricing_method_comparisons import (
+    PricingMethodComparisonError,
+    compare_pricing_methods,
+)
+from ..services.pricing_saved_items import get_saved_item
 from ..services.starter_defaults import CATEGORY_IDS
 
 router = APIRouter(prefix="/pricing", tags=["pricing"])
@@ -97,10 +113,181 @@ class ApplySuggestionsIn(BaseModel):
     mark_setup_complete: bool = True
 
 
+class MethodAvailabilityIn(BaseModel):
+    category_inputs: dict[str, Any] = Field(default_factory=dict)
+    saved_item_id: Optional[str] = None
+
+
+class SimpleSetupApplyIn(BaseModel):
+    expected_configuration_version: Optional[int] = Field(None, ge=1)
+    replace_advanced: bool = False
+
+
+class AdvancedSetupIn(BaseModel):
+    enabled_method_ids: list[str] = Field(min_length=1, max_length=3)
+    primary_method_id: str
+    comparison_order: list[str] = Field(default_factory=list, max_length=3)
+    compare_automatically: bool = False
+    method_configuration_refs: dict[str, str] = Field(default_factory=dict)
+    expected_configuration_version: Optional[int] = Field(None, ge=1)
+
+
+class MethodComparisonIn(CalcIn):
+    use_saved_configuration: bool = True
+    method_ids: list[str] = Field(default_factory=list, max_length=3)
+    primary_method_id: Optional[str] = None
+    expected_configuration_version: Optional[int] = Field(None, ge=1)
+
+
 @router.get("/settings")
 async def get_settings(user: dict = Depends(require_permission(Perm.PRICING_READ))) -> dict:
     doc = await get_or_init_pricing_settings(user["tenant_id"])
     return serialize_doc(doc)
+
+
+@router.get("/settings/category-method-configurations")
+async def list_method_configurations(user: dict = Depends(require_permission(Perm.PRICING_READ))) -> dict:
+    return await list_category_method_configurations(user["tenant_id"])
+
+
+@router.get("/settings/categories/{category_id}/method-configuration")
+async def get_method_configuration(category_id: str, user: dict = Depends(require_permission(Perm.PRICING_READ))) -> dict:
+    try:
+        doc = await get_category_method_configuration(user["tenant_id"], category_id)
+    except Exception as exc:
+        raise_http(exc)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Pricing method configuration not found")
+    return doc
+
+
+@router.post("/settings/categories/{category_id}/method-availability")
+async def method_availability(
+    category_id: str,
+    payload: MethodAvailabilityIn | None = None,
+    user: dict = Depends(require_permission(Perm.PRICING_READ)),
+) -> dict:
+    payload = payload or MethodAvailabilityIn()
+    saved_item = None
+    if payload.saved_item_id:
+        saved_item = await get_saved_item(user["tenant_id"], payload.saved_item_id)
+        if not saved_item:
+            raise HTTPException(status_code=404, detail="Saved item not found")
+    try:
+        return await resolve_method_availability(
+            user["tenant_id"],
+            category_id,
+            category_inputs=payload.category_inputs,
+            saved_item=saved_item,
+        )
+    except Exception as exc:
+        raise_http(exc)
+
+
+@router.post("/settings/categories/{category_id}/simple-setup/preview")
+async def simple_setup_preview(category_id: str, user: dict = Depends(require_permission(Perm.PRICING_READ))) -> dict:
+    try:
+        return await preview_simple_setup(user["tenant_id"], category_id)
+    except Exception as exc:
+        raise_http(exc)
+
+
+@router.post("/settings/categories/{category_id}/simple-setup/apply")
+async def simple_setup_apply(
+    category_id: str,
+    payload: SimpleSetupApplyIn,
+    user: dict = Depends(require_permission(Perm.PRICING_WRITE)),
+) -> dict:
+    try:
+        return serialize_doc(await apply_simple_setup(
+            user["tenant_id"],
+            category_id,
+            actor=user,
+            expected_configuration_version=payload.expected_configuration_version,
+            replace_advanced=payload.replace_advanced,
+        ))
+    except Exception as exc:
+        raise_http(exc)
+
+
+@router.put("/settings/categories/{category_id}/advanced-setup")
+async def advanced_setup_save(
+    category_id: str,
+    payload: AdvancedSetupIn,
+    user: dict = Depends(require_permission(Perm.PRICING_WRITE)),
+) -> dict:
+    try:
+        return serialize_doc(await save_advanced_setup(
+            user["tenant_id"],
+            category_id,
+            enabled_method_ids=payload.enabled_method_ids,
+            primary_method_id=payload.primary_method_id,
+            comparison_order=payload.comparison_order,
+            compare_automatically=payload.compare_automatically,
+            method_configuration_refs=payload.method_configuration_refs,
+            actor=user,
+            expected_configuration_version=payload.expected_configuration_version,
+        ))
+    except Exception as exc:
+        raise_http(exc)
+
+
+@router.post("/settings/categories/{category_id}/restore-recommendations")
+async def restore_recommendations(
+    category_id: str,
+    payload: SimpleSetupApplyIn,
+    user: dict = Depends(require_permission(Perm.PRICING_WRITE)),
+) -> dict:
+    try:
+        return serialize_doc(await restore_recommended_configuration(
+            user["tenant_id"],
+            category_id,
+            actor=user,
+            expected_configuration_version=payload.expected_configuration_version,
+            replace_advanced=payload.replace_advanced,
+        ))
+    except Exception as exc:
+        raise_http(exc)
+
+
+@router.get("/settings/categories/{category_id}/method-configuration/audit")
+async def method_configuration_audit(
+    category_id: str,
+    limit: int = 100,
+    user: dict = Depends(require_permission(Perm.PRICING_READ, Perm.AUDIT_READ)),
+) -> dict:
+    try:
+        return await list_category_method_configuration_audit(user["tenant_id"], category_id, limit=limit)
+    except Exception as exc:
+        raise_http(exc)
+
+
+@router.post("/method-comparison")
+async def method_comparison(payload: MethodComparisonIn, user: dict = Depends(require_permission(Perm.PRICING_CALCULATE))) -> dict:
+    try:
+        return await compare_pricing_methods(
+            tenant_id=user["tenant_id"],
+            category_id=payload.category,
+            width_inches=payload.width_inches,
+            height_inches=payload.height_inches,
+            quantity=payload.quantity,
+            material_key=payload.material_key,
+            design_needed=payload.design_needed,
+            install_needed=payload.install_needed,
+            manual_selling_price=payload.manual_selling_price,
+            category_inputs=payload.category_inputs,
+            material_profile_id=payload.material_profile_id,
+            pricing_component_ids=payload.pricing_component_ids,
+            saved_item_id=payload.saved_item_id,
+            use_saved_configuration=payload.use_saved_configuration,
+            method_ids=payload.method_ids,
+            primary_method_id=payload.primary_method_id,
+            expected_configuration_version=payload.expected_configuration_version,
+        )
+    except PricingMethodComparisonError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.to_detail())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.patch("/settings/shop-defaults")
