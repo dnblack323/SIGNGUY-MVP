@@ -19,8 +19,12 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from server import app
+from app.core.permissions import Perm, permissions_for_role as real_permissions_for_role
 from app.core.db import db as _db
 from app.deps import get_current_user
+import app.routers.orders as orders_router
+import app.routers.quotes as quotes_router
+import app.deps as deps_module
 
 
 def _override_as(user: dict):
@@ -63,6 +67,29 @@ CALC_PAYLOAD = {
 }
 
 
+PARITY_CATEGORY_PAYLOADS = [
+    {"category": "banners", "width_inches": 96, "height_inches": 36, "quantity": 1, "category_inputs": {"selected_pricing_method": "square_foot_plus_addons"}},
+    {"category": "rigid_signs", "width_inches": 24, "height_inches": 24, "quantity": 1, "category_inputs": {"hardware_option": "h_stake", "drill_prep_required": True}},
+    {"category": "cut_vinyl", "width_inches": 12, "height_inches": 12, "quantity": 1, "category_inputs": {"number_of_colors": "3", "weeding_complexity": "extreme", "masking": True}},
+    {"category": "digital_print", "width_inches": 24, "height_inches": 36, "quantity": 1, "category_inputs": {"laminate": True, "quality_mode": "photo", "contour_cut": True}},
+    {"category": "vehicle_graphics", "width_inches": None, "height_inches": None, "quantity": 1, "category_inputs": {"vehicle_type": "pickup", "coverage_type": "partial"}},
+    {"category": "apparel", "width_inches": None, "height_inches": None, "quantity": 25, "category_inputs": {"garment_type": "short_sleeve_tee", "brand": "gildan_5000", "placement": "front_small"}},
+    {"category": "promotional", "width_inches": None, "height_inches": None, "quantity": 100, "category_inputs": {"pricing_method": "per_piece", "unit_price": 2.5, "unit_cost": 1.0}},
+    {"category": "services", "width_inches": None, "height_inches": None, "quantity": 1, "category_inputs": {"service_type": "general_labor", "estimated_hours": 2}},
+    {"category": "custom", "width_inches": None, "height_inches": None, "quantity": 2, "category_inputs": {"item_name": "Custom", "unit_price": 25.0, "unit_cost_manual": 10.0}},
+]
+
+
+DEFERRED_CONSUMER_COLLECTIONS = [
+    "pricing_calculation_records",
+    "pricing_saved_calculations",
+    "webstores",
+    "webstore_products",
+    "wrap_lab_projects",
+    "wrap_lab_jobs",
+]
+
+
 # ============================================================
 # Add calculated / manual items to Quote and Order
 # ============================================================
@@ -97,6 +124,145 @@ async def test_add_calculated_item_to_order_as_order_item(seeded_users):
         assert item["pricing_status"] == "calculated"
         assert item["unit_price_cents"] == item["suggested_price_cents"]
         assert item["pricing_snapshot"]["source"] == "calculator"
+    _clear()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", PARITY_CATEGORY_PAYLOADS, ids=[case["category"] for case in PARITY_CATEGORY_PAYLOADS])
+async def test_quote_and_order_items_support_same_nine_pricing_categories(case, seeded_users):
+    user = seeded_users["user_a"]
+    cust = await _seed_customer(user["tenant_id"])
+    payload = {
+        "description": f"{case['category']} parity item",
+        "unit_price_cents": 1,
+        "selected_price_source": "suggested",
+        **case,
+    }
+    async with await _client_as(user) as c:
+        qid = await _new_quote(c, cust)
+        oid = await _new_order(c, cust)
+        quote_r = await c.post(f"/api/quotes/{qid}/line-items", json=payload)
+        order_r = await c.post(f"/api/orders/{oid}/items", json=payload)
+
+        assert quote_r.status_code == 201, quote_r.text
+        assert order_r.status_code == 201, order_r.text
+        quote_item = quote_r.json()
+        order_item = order_r.json()
+        assert quote_item["category"] == order_item["category"] == case["category"]
+        assert quote_item["unit_price_cents"] == order_item["unit_price_cents"]
+        assert quote_item["unit_price_cents"] == quote_item["suggested_price_cents"]
+        assert order_item["unit_price_cents"] == order_item["suggested_price_cents"]
+        assert quote_item["unit_price_cents"] > 0
+        assert quote_item["pricing_snapshot"]["selected_selling_price_dollars"] == order_item["pricing_snapshot"]["selected_selling_price_dollars"]
+        assert quote_item["pricing_snapshot"]["selected_pricing_method"] == order_item["pricing_snapshot"]["selected_pricing_method"]
+        assert quote_item["pricing_snapshot"].get("pricing_method_results") == order_item["pricing_snapshot"].get("pricing_method_results")
+        assert quote_item["pricing_snapshot"].get("detail_sections") == order_item["pricing_snapshot"].get("detail_sections")
+    _clear()
+
+
+@pytest.mark.asyncio
+async def test_failed_calculated_result_cannot_be_transferred_to_quote_or_order_item(monkeypatch, seeded_users):
+    async def failed_calculation(**kwargs):
+        return {
+            "category": kwargs["category"],
+            "selling_price": None,
+            "pricing_method_used": "manual_required_no_tier_match",
+            "pricing_method_results": [
+                {
+                    "method_id": "tier_pricing",
+                    "display_name": "Tier pricing",
+                    "amount": None,
+                    "available": False,
+                    "selected": True,
+                    "status": ["manual_price_required"],
+                    "errors": ["no_exact_tier_match"],
+                }
+            ],
+            "calculation_warnings": [],
+            "errors": ["no_exact_tier_match"],
+            "mutated": False,
+            "persistent_entities_created": [],
+        }
+
+    monkeypatch.setattr(quotes_router, "calculate_for_references", failed_calculation)
+    monkeypatch.setattr(orders_router, "calculate_for_references", failed_calculation)
+    user = seeded_users["user_a"]
+    cust = await _seed_customer(user["tenant_id"])
+    payload = {
+        "description": "Unavailable promotional tier",
+        "quantity": 125,
+        "unit_price_cents": 9999,
+        "category": "promotional",
+        "category_inputs": {"pricing_method": "tier_pricing"},
+        "selected_price_source": "suggested",
+    }
+    async with await _client_as(user) as c:
+        qid = await _new_quote(c, cust)
+        oid = await _new_order(c, cust)
+        quote_r = await c.post(f"/api/quotes/{qid}/line-items", json=payload)
+        order_r = await c.post(f"/api/orders/{oid}/items", json=payload)
+
+        assert quote_r.status_code == 400
+        assert order_r.status_code == 400
+        assert quote_r.json()["detail"] == "Calculated pricing result is not transferable"
+        assert order_r.json()["detail"] == "Calculated pricing result is not transferable"
+        assert await _db.quote_line_items.count_documents({"tenant_id": user["tenant_id"], "quote_id": qid}) == 0
+        assert await _db.order_items.count_documents({"tenant_id": user["tenant_id"], "order_id": oid}) == 0
+    _clear()
+
+
+@pytest.mark.asyncio
+async def test_price_calculation_requires_pricing_permission_in_quote_and_order_flows(monkeypatch, seeded_users):
+    def test_permissions_for_role(role: str) -> list[str]:
+        if role == "quote-order-no-pricing":
+            return [Perm.QUOTE_WRITE.value, Perm.ORDER_WRITE.value]
+        return real_permissions_for_role(role)
+
+    monkeypatch.setattr(deps_module, "permissions_for_role", test_permissions_for_role)
+    monkeypatch.setattr(quotes_router, "permissions_for_role", test_permissions_for_role)
+    monkeypatch.setattr(orders_router, "permissions_for_role", test_permissions_for_role)
+
+    user = seeded_users["user_a"]
+    cust = await _seed_customer(user["tenant_id"])
+    async with await _client_as(user) as c:
+        qid = await _new_quote(c, cust)
+        oid = await _new_order(c, cust)
+    no_pricing_user = {**user, "role": "quote-order-no-pricing"}
+    async with await _client_as(no_pricing_user) as c:
+        quote_r = await c.post(f"/api/quotes/{qid}/line-items", json=CALC_PAYLOAD)
+        order_r = await c.post(f"/api/orders/{oid}/items", json=CALC_PAYLOAD)
+        manual_r = await c.post(f"/api/quotes/{qid}/line-items", json={
+            "description": "Manual allowed", "quantity": 1, "unit_price_cents": 4200,
+        })
+        assert quote_r.status_code == 403
+        assert order_r.status_code == 403
+        assert quote_r.json()["detail"] == "Missing permission: pricing:calculate"
+        assert order_r.json()["detail"] == "Missing permission: pricing:calculate"
+        assert manual_r.status_code == 201, manual_r.text
+    _clear()
+
+
+@pytest.mark.asyncio
+async def test_quote_order_calculated_items_do_not_create_saved_calculation_webstore_or_wrap_lab_records(seeded_users):
+    user = seeded_users["user_a"]
+    cust = await _seed_customer(user["tenant_id"])
+    before = {
+        collection: await _db[collection].count_documents({"tenant_id": user["tenant_id"]})
+        for collection in DEFERRED_CONSUMER_COLLECTIONS
+    }
+    async with await _client_as(user) as c:
+        qid = await _new_quote(c, cust)
+        oid = await _new_order(c, cust)
+        quote_r = await c.post(f"/api/quotes/{qid}/line-items", json=CALC_PAYLOAD)
+        order_r = await c.post(f"/api/orders/{oid}/items", json=CALC_PAYLOAD)
+        assert quote_r.status_code == 201, quote_r.text
+        assert order_r.status_code == 201, order_r.text
+
+    after = {
+        collection: await _db[collection].count_documents({"tenant_id": user["tenant_id"]})
+        for collection in DEFERRED_CONSUMER_COLLECTIONS
+    }
+    assert after == before
     _clear()
 
 

@@ -16,6 +16,7 @@ import { CategorySpecificFields } from "@/components/pricing/CategorySpecificFie
 import SavedItemSelector from "@/components/pricing/selectors/SavedItemSelector";
 import PricingComponentSelector from "@/components/pricing/selectors/PricingComponentSelector";
 import MaterialProfilePicker from "@/components/pricing/selectors/MaterialProfileSelector";
+import { useAuth } from "@/auth/AuthContext";
 import { Calculator, RefreshCw } from "lucide-react";
 
 /**
@@ -52,6 +53,21 @@ const UOM_OPTIONS = ["each", "sqft", "linear_ft", "hour"];
 const NON_PRODUCTION = new Set(["services", "promotional"]);
 const dimensionUnit = (inputs) => inputs?.dimension_unit || "in";
 const normalizeDimension = (value, unit) => (unit === "ft" ? (Number(value) || 0) * 12 : Number(value) || 0);
+const fmtMethodMoney = (amount) => {
+  if (amount == null || Number.isNaN(Number(amount))) return "Unavailable";
+  return centsToDollarsString(Math.round(Number(amount) * 100));
+};
+const humanize = (value) => String(value || "n/a").replaceAll("_", " ");
+const methodRowId = (row) => row?.method_id || row?.method || row?.id || "";
+const methodStatusText = (row) => {
+  const statuses = Array.isArray(row?.status) ? row.status : (row?.status ? [row.status] : []);
+  return statuses.length ? statuses.join(", ") : (row?.available === false ? "unavailable" : "available");
+};
+const availabilityRows = (availability) => {
+  if (Array.isArray(availability)) return availability;
+  if (Array.isArray(availability?.methods)) return availability.methods;
+  return [];
+};
 
 export default function LineItemDialog({
   open,
@@ -64,6 +80,8 @@ export default function LineItemDialog({
   entityLabel = "Line",
   allowProductionRequired = false,
 }) {
+  const { hasPerm } = useAuth();
+  const canCalculatePricing = typeof hasPerm === "function" ? hasPerm("pricing:calculate") : false;
   const [tab, setTab] = useState(entryMode);
 
   // form state
@@ -86,6 +104,9 @@ export default function LineItemDialog({
   const [calc, setCalc] = useState(null);   // last calculator result (full backend response)
   const [calcBusy, setCalcBusy] = useState(false);
   const [calcUpdating, setCalcUpdating] = useState(false);
+  const [calcError, setCalcError] = useState("");
+  const [comparison, setComparison] = useState(null);
+  const [selectedComparisonMethod, setSelectedComparisonMethod] = useState("");
   const calcResultKeyRef = useRef("");
 
   // EC9 Phase 9F — calculator/reference state
@@ -138,6 +159,9 @@ export default function LineItemDialog({
       setPriceSource(initial.selected_price_source || "manual");
       setPriceInputVersion((v) => v + 1);
       setCalcUpdating(false);
+      setCalcError("");
+      setComparison(null);
+      setSelectedComparisonMethod("");
       calcResultKeyRef.current = initial.pricing_status === "calculated" ? JSON.stringify({
         category: initial.category || "",
         width_inches: initialIsDimensionless ? null : (initial.width_inches ?? null),
@@ -169,6 +193,9 @@ export default function LineItemDialog({
       setNotes(""); setProductionRequired(true);
       setProductionOverrideReason(""); setOverrideReason(""); setCalc(null);
       setCalcUpdating(false);
+      setCalcError("");
+      setComparison(null);
+      setSelectedComparisonMethod("");
       calcResultKeyRef.current = "";
       setDesignNeeded(false); setInstallNeeded(false); setCategoryInputs({});
       setMaterialProfileId(null); setPricingComponentIds([]); setSavedItemId(null);
@@ -213,11 +240,38 @@ export default function LineItemDialog({
     pricing_component_ids: pricingComponentIds,
     saved_item_id: savedItemId,
   });
+  const currentCalculatorKey = () => (category && hasValidCalculatorDimensions ? JSON.stringify(calculatorPayload()) : "");
+  const clearCalculatorResult = ({ clearTransferredPrice = true } = {}) => {
+    setCalc(null);
+    setComparison(null);
+    setSelectedComparisonMethod("");
+    setCalcError("");
+    setCalcUpdating(false);
+    calcResultKeyRef.current = "";
+    if (clearTransferredPrice && priceSource === "suggested") {
+      setUnitPriceCents(0);
+      setPriceInputVersion((v) => v + 1);
+    }
+  };
+  const onPriceAffectingChange = (applyChange) => {
+    applyChange();
+    clearCalculatorResult();
+  };
 
-  async function runCalculator({ silent = false } = {}) {
+  async function runCalculator({ silent = false, primaryMethodId = selectedComparisonMethod } = {}) {
+    if (!canCalculatePricing) {
+      setCalc(null);
+      setComparison(null);
+      setCalcError("You do not have permission to calculate prices.");
+      setCalcUpdating(false);
+      if (!silent) toast.error("You do not have permission to calculate prices");
+      return;
+    }
     if (!category) { toast.error("Choose a category first"); return; }
     if (!hasValidCalculatorDimensions) {
       setCalc(null);
+      setComparison(null);
+      setCalcError("");
       setCalcUpdating(false);
       calcResultKeyRef.current = "";
       if (!silent) toast.error("Enter valid width and height first");
@@ -228,9 +282,32 @@ export default function LineItemDialog({
       const body = calculatorPayload();
       const calculationKey = JSON.stringify(body);
       const { data } = await api.post("/pricing/calculate", body);
-      const cents = Math.round(Number(data.selling_price || 0) * 100);
+      const sellingPrice = Number(data.selling_price);
+      if (data.selling_price == null || !Number.isFinite(sellingPrice)) {
+        setCalc(null);
+        setComparison(null);
+        setCalcError("The calculator did not return a transferable selling price.");
+        calcResultKeyRef.current = "";
+        setCalcUpdating(false);
+        if (!silent) toast.error("Calculated pricing is unavailable for these inputs");
+        return;
+      }
+      const cents = Math.round(sellingPrice * 100);
+      let comparisonData = null;
+      if (category === "banners") {
+        comparisonData = (await api.post("/pricing/method-comparison", {
+          ...body,
+          use_saved_configuration: true,
+          primary_method_id: primaryMethodId || undefined,
+        })).data;
+      }
       calcResultKeyRef.current = calculationKey;
       setCalc({ ...data, calculated_unit_price_cents: cents });
+      setComparison(comparisonData);
+      setSelectedComparisonMethod(
+        comparisonData?.selected_method_id || primaryMethodId || data.selected_method_id || data.canonical_method_id || data.pricing_method_used || "",
+      );
+      setCalcError("");
       setCalcUpdating(false);
       if (priceSource === "suggested" || (!unitPriceCents && !manualPriceCents)) {
         setPriceSource("suggested");
@@ -240,6 +317,10 @@ export default function LineItemDialog({
       if (!silent) toast.success(`Calculator suggested ${centsToDollarsString(cents)} / unit`);
     } catch (e) {
       setCalcUpdating(false);
+      setCalcError(extractError(e));
+      setCalc(null);
+      setComparison(null);
+      calcResultKeyRef.current = "";
       if (!silent) toast.error(extractError(e));
     } finally {
       setCalcBusy(false);
@@ -267,6 +348,10 @@ export default function LineItemDialog({
   }, [open, tab, category, width, height, quantity, designNeeded, installNeeded, categoryInputs, materialProfileId, pricingComponentIds, savedItemId, isDimensionless]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function choosePriceSource(next) {
+    if (next === "suggested" && (!calc || calc.calculated_unit_price_cents == null || calcResultKeyRef.current !== currentCalculatorKey())) {
+      toast.error("Calculate a current suggested price before using it");
+      return;
+    }
     setPriceSource(next);
     if (next === "suggested" && calc?.calculated_unit_price_cents != null) {
       setUnitPriceCents(calc.calculated_unit_price_cents);
@@ -276,9 +361,12 @@ export default function LineItemDialog({
     setPriceInputVersion((v) => v + 1);
   }
 
-  function choosePricingMethod(method) {
-    setCategoryInputs((prev) => ({ ...(prev || {}), selected_pricing_method: method }));
-    setPriceSource("suggested");
+  function choosePricingMethod(row) {
+    const method = methodRowId(row);
+    if (!method || row?.available === false || row?.amount == null) return;
+    if (category !== "banners") return;
+    setSelectedComparisonMethod(method);
+    runCalculator({ primaryMethodId: method });
   }
 
   async function runRecalculatePreview() {
@@ -325,6 +413,16 @@ export default function LineItemDialog({
     if (priceSource === "manual" && priceChanged && !overrideReason.trim() && !initial?.manual_override_reason) {
       toast.error("Override reason is required for a manual price");
       return;
+    }
+    if (priceSource === "suggested") {
+      if (!canCalculatePricing) {
+        toast.error("You do not have permission to transfer calculated pricing");
+        return;
+      }
+      if (!calc || calc.calculated_unit_price_cents == null || calcResultKeyRef.current !== currentCalculatorKey()) {
+        toast.error("Calculate a current suggested price before saving");
+        return;
+      }
     }
 
     const payload = {
@@ -384,6 +482,17 @@ export default function LineItemDialog({
   }, [category, mode, allowProductionRequired]);
 
   const canRecalculate = mode === "edit" && initial?.category && initial?.pricing_status === "calculated" && onRecalculatePreview;
+  const comparisonRows = comparison?.comparison_results || calc?.pricing_method_results || [];
+  const selectedRow = comparisonRows.find((row) => row.selected) || comparisonRows.find((row) => methodRowId(row) === selectedComparisonMethod);
+  const canonicalMethod = comparison?.canonical_method_id || calc?.canonical_method_id || calc?.pricing_method_used || calc?.selected_pricing_method;
+  const selectedMethod = comparison?.selected_method_id || methodRowId(selectedRow) || calc?.selected_method_id || canonicalMethod;
+  const otherAvailableRows = comparisonRows.filter((row) => methodRowId(row) !== selectedMethod && row.amount != null && row.available !== false);
+  const unavailableRows = [
+    ...availabilityRows(calc?.method_availability).filter((row) => !row.available),
+    ...availabilityRows(comparison?.availability).filter((row) => !row.available),
+  ];
+  const warnings = calc?.calculation_warnings || calc?.warnings || [];
+  const errors = calc?.errors || [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -409,7 +518,7 @@ export default function LineItemDialog({
             <div className="grid grid-cols-[1fr_100px_160px] gap-2">
               <div className="grid gap-1.5">
                 <Label>Category</Label>
-                <Select value={category} onValueChange={setCategory}>
+                <Select value={category} onValueChange={(value) => onPriceAffectingChange(() => setCategory(value))}>
                   <SelectTrigger data-testid="li-category"><SelectValue placeholder="Choose" /></SelectTrigger>
                   <SelectContent>
                     {CATEGORY_OPTIONS.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
@@ -418,7 +527,7 @@ export default function LineItemDialog({
               </div>
               <div className="grid gap-1.5">
                 <Label>Qty*</Label>
-                <Input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} data-testid="li-quantity" />
+                <Input type="number" min="1" value={quantity} onChange={(e) => onPriceAffectingChange(() => setQuantity(e.target.value))} data-testid="li-quantity" />
               </div>
               <div className="grid gap-1.5">
                 <Label>Unit price</Label>
@@ -427,7 +536,7 @@ export default function LineItemDialog({
             </div>
             <div className="grid gap-1.5">
               <Label>Optional saved item</Label>
-              <SavedItemSelector value={savedItemId} onChange={(id) => setSavedItemId(id)} category={category || undefined} testIdPrefix="li-quick-saved-item" />
+              <SavedItemSelector value={savedItemId} onChange={(id) => onPriceAffectingChange(() => setSavedItemId(id))} category={category || undefined} testIdPrefix="li-quick-saved-item" />
             </div>
           </TabsContent>
 
@@ -439,7 +548,7 @@ export default function LineItemDialog({
             <div className="grid grid-cols-3 gap-2">
               <div className="grid gap-1.5">
                 <Label>Category</Label>
-                <Select value={category} onValueChange={(v) => { setCategory(v); setCategoryInputs({}); setCalc(null); }}>
+                <Select value={category} onValueChange={(v) => onPriceAffectingChange(() => { setCategory(v); setCategoryInputs({}); setMaterialProfileId(null); setPricingComponentIds([]); setSavedItemId(null); })}>
                   <SelectTrigger data-testid="li-category-detailed"><SelectValue placeholder="Choose" /></SelectTrigger>
                   <SelectContent>
                     {CATEGORY_OPTIONS.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
@@ -458,7 +567,7 @@ export default function LineItemDialog({
             <div className="grid grid-cols-5 gap-2">
               <div className="grid gap-1.5">
                 <Label>Qty*</Label>
-                <Input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} data-testid="li-quantity-detailed" />
+                <Input type="number" min="1" value={quantity} onChange={(e) => onPriceAffectingChange(() => setQuantity(e.target.value))} data-testid="li-quantity-detailed" />
               </div>
               <div className="grid gap-1.5">
                 <Label>UoM</Label>
@@ -471,15 +580,15 @@ export default function LineItemDialog({
                 <>
                   <div className="grid gap-1.5">
                     <Label>Width ({currentDimensionUnit})</Label>
-                    <Input type="number" min="0" value={width} onChange={(e) => setWidth(e.target.value)} data-testid="li-width" />
+                    <Input type="number" min="0" value={width} onChange={(e) => onPriceAffectingChange(() => setWidth(e.target.value))} data-testid="li-width" />
                   </div>
                   <div className="grid gap-1.5">
                     <Label>Height ({currentDimensionUnit})</Label>
-                    <Input type="number" min="0" value={height} onChange={(e) => setHeight(e.target.value)} data-testid="li-height" />
+                    <Input type="number" min="0" value={height} onChange={(e) => onPriceAffectingChange(() => setHeight(e.target.value))} data-testid="li-height" />
                   </div>
                   <div className="grid gap-1.5">
                     <Label>Unit</Label>
-                    <Select value={currentDimensionUnit} onValueChange={(val) => setCategoryInputs((prev) => ({ ...(prev || {}), dimension_unit: val }))}>
+                    <Select value={currentDimensionUnit} onValueChange={(val) => onPriceAffectingChange(() => setCategoryInputs((prev) => ({ ...(prev || {}), dimension_unit: val })))}>
                       <SelectTrigger data-testid="li-dimension-unit"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="in">Inches</SelectItem>
@@ -496,32 +605,40 @@ export default function LineItemDialog({
                 <div className="text-xs font-medium text-muted-foreground">Calculator inputs</div>
                 {!isDimensionless && (
                   <div className="flex items-center gap-6">
-                    <label className="flex items-center gap-2 text-sm cursor-pointer"><Switch checked={designNeeded} onCheckedChange={setDesignNeeded} data-testid="li-design-switch" />Design needed</label>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer"><Switch checked={installNeeded} onCheckedChange={setInstallNeeded} data-testid="li-install-switch" />Install needed</label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer"><Switch checked={designNeeded} onCheckedChange={(checked) => onPriceAffectingChange(() => setDesignNeeded(checked))} data-testid="li-design-switch" />Design needed</label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer"><Switch checked={installNeeded} onCheckedChange={(checked) => onPriceAffectingChange(() => setInstallNeeded(checked))} data-testid="li-install-switch" />Install needed</label>
                   </div>
                 )}
-                <CategorySpecificFields category={category} values={categoryInputs} onChange={setCategoryInputs} designNeeded={designNeeded} installNeeded={installNeeded} />
+                <CategorySpecificFields category={category} values={categoryInputs} onChange={(values) => onPriceAffectingChange(() => setCategoryInputs(values))} designNeeded={designNeeded} installNeeded={installNeeded} />
                 <div className="grid grid-cols-2 gap-3">
                   <div className="grid gap-1.5">
                     <Label className="text-xs">Canonical material (optional)</Label>
-                    <MaterialProfilePicker value={materialProfileId} onChange={setMaterialProfileId} category={category} testIdPrefix="li-material-profile" />
+                    <MaterialProfilePicker value={materialProfileId} onChange={(id) => onPriceAffectingChange(() => setMaterialProfileId(id))} category={category} testIdPrefix="li-material-profile" />
                   </div>
                   <div className="grid gap-1.5">
                     <Label className="text-xs">Saved item (optional)</Label>
-                    <SavedItemSelector value={savedItemId} onChange={(id) => setSavedItemId(id)} category={category} testIdPrefix="li-saved-item" />
+                    <SavedItemSelector value={savedItemId} onChange={(id) => onPriceAffectingChange(() => setSavedItemId(id))} category={category} testIdPrefix="li-saved-item" />
                   </div>
                 </div>
                 <div className="grid gap-1.5">
                   <Label className="text-xs">Pricing components (optional)</Label>
-                  <PricingComponentSelector value={pricingComponentIds} onChange={setPricingComponentIds} category={category} testIdPrefix="li-components" />
+                  <PricingComponentSelector value={pricingComponentIds} onChange={(ids) => onPriceAffectingChange(() => setPricingComponentIds(ids))} category={category} testIdPrefix="li-components" />
                 </div>
-                <Button type="button" variant="outline" onClick={runCalculator} disabled={calcBusy} data-testid="li-calculator">
+                <Button type="button" variant="outline" onClick={() => runCalculator()} disabled={calcBusy || !canCalculatePricing} data-testid="li-calculator">
                   <Calculator className="size-4 mr-1" />{calcBusy ? "Calculating…" : "Calculate"}
                 </Button>
+                {!canCalculatePricing && (
+                  <div className="text-xs text-destructive" data-testid="li-pricing-permission-blocked">
+                    You do not have permission to calculate prices.
+                  </div>
+                )}
                 {!hasValidCalculatorDimensions && (
                   <div className="text-xs text-muted-foreground" data-testid="li-calc-empty-state">
                     Enter valid width and height to price this item.
                   </div>
+                )}
+                {calcError && (
+                  <div className="text-xs text-destructive" data-testid="li-calc-error">{calcError}</div>
                 )}
               </div>
             )}
@@ -533,20 +650,87 @@ export default function LineItemDialog({
                     Updating calculated price...
                   </Badge>
                 )}
-                <div>Suggested price: <span className="font-semibold tabular-nums">{centsToDollarsString(calc.calculated_unit_price_cents)}</span> / unit ({calc.pricing_method_used || "n/a"})</div>
+                <div data-testid="li-authoritative-selling-price">
+                  Authoritative selling price: <span className="font-semibold tabular-nums">{centsToDollarsString(calc.calculated_unit_price_cents)}</span> / unit
+                </div>
+                <div data-testid="li-canonical-method">
+                  Canonical method: <span className="font-medium">{humanize(canonicalMethod)}</span>
+                </div>
+                <div data-testid="li-selected-method">
+                  Selected method: <span className="font-medium">{humanize(selectedMethod)}</span>
+                </div>
                 {calc.true_cost != null && <div>True cost: <span className="font-semibold tabular-nums">{centsToDollarsString(Math.round(Number(calc.true_cost || 0) * 100))}</span> / unit</div>}
-                {calc.calculation_warnings?.length > 0 && (
+                {warnings.length > 0 && (
                   <ul className="list-disc pl-4 text-amber-700" data-testid="li-calc-warnings">
-                    {calc.calculation_warnings.map((w, i) => <li key={i}>{w}</li>)}
+                    {warnings.map((w, i) => <li key={i}>{w}</li>)}
                   </ul>
                 )}
-                {calc.pricing_method_results?.length > 0 && (
+                {errors.length > 0 && (
+                  <ul className="list-disc pl-4 text-destructive" data-testid="li-calc-errors">
+                    {errors.map((err, i) => <li key={i}>{err}</li>)}
+                  </ul>
+                )}
+                {comparisonRows.length > 0 && (
                   <div className="rounded border bg-background divide-y" data-testid="li-method-comparison">
-                    {calc.pricing_method_results.map((row) => (
-                      <button key={row.method} type="button" className="w-full flex items-center justify-between px-2 py-1.5 text-left hover:bg-muted" onClick={() => choosePricingMethod(row.method)} data-testid={`li-method-${row.method}`}>
-                        <span><span className="font-medium">{row.label}</span><span className="ml-2 text-muted-foreground">{(row.status || []).join(", ")}</span></span>
-                        <span className="font-semibold tabular-nums">{centsToDollarsString(Math.round(Number(row.amount || 0) * 100))}</span>
-                      </button>
+                    {comparisonRows.map((row) => {
+                      const id = methodRowId(row);
+                      const selected = id === selectedMethod;
+                      const canSelect = category === "banners" && row.available !== false && row.amount != null;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          className={`w-full flex items-center justify-between px-2 py-1.5 text-left ${canSelect ? "hover:bg-muted" : "cursor-default"} ${selected ? "bg-primary/5" : ""}`}
+                          onClick={() => choosePricingMethod(row)}
+                          disabled={!canSelect}
+                          data-testid={`li-method-${id}`}
+                        >
+                          <span>
+                            <span className="font-medium">{row.display_name || row.label || humanize(id)}</span>
+                            <span className="ml-2 text-muted-foreground">{methodStatusText(row)}</span>
+                          </span>
+                          <span className="font-semibold tabular-nums">{fmtMethodMoney(row.amount)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {otherAvailableRows.length > 0 && (
+                  <div className="text-muted-foreground" data-testid="li-other-method-results">
+                    Other available results: {otherAvailableRows.map((row) => `${row.display_name || row.label || humanize(methodRowId(row))} ${fmtMethodMoney(row.amount)}`).join("; ")}
+                  </div>
+                )}
+                {unavailableRows.length > 0 && (
+                  <div className="rounded border bg-background p-2 text-muted-foreground" data-testid="li-unavailable-methods">
+                    <div className="font-medium text-foreground">Unavailable or unsupported methods</div>
+                    {unavailableRows.slice(0, 8).map((row, index) => (
+                      <div key={`${methodRowId(row)}-${index}`}>{humanize(methodRowId(row))}: {row.reason || row.explanation || "unavailable"}</div>
+                    ))}
+                  </div>
+                )}
+                {(calc.detail_sections?.length > 0 || calc.breakdown?.length > 0) && (
+                  <div className="rounded border bg-background p-2 space-y-2" data-testid="li-pricing-details">
+                    {calc.breakdown?.length > 0 && (
+                      <div>
+                        <div className="font-medium">Breakdown</div>
+                        {calc.breakdown.slice(0, 8).map((row, index) => (
+                          <div key={`${row.label}-${index}`} className="flex justify-between gap-2">
+                            <span>{row.label}</span>
+                            <span>{fmtMethodMoney(row.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {(calc.detail_sections || []).slice(0, 4).map((section) => (
+                      <div key={section.section}>
+                        <div className="font-medium">{humanize(section.section)}</div>
+                        {(section.lines || []).slice(0, 6).map((line, index) => (
+                          <div key={`${line.key || line.label}-${index}`} className="flex justify-between gap-2">
+                            <span>{line.label || humanize(line.key)}</span>
+                            <span>{String(line.value ?? line.amount ?? "")}</span>
+                          </div>
+                        ))}
+                      </div>
                     ))}
                   </div>
                 )}

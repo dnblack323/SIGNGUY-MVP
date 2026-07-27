@@ -1,9 +1,9 @@
 # EC9 Phase 9I - Shared Pricing Calculator Preflight and Implementation Plan
 
-**Status:** PHASE 9I-E REVIEW PASSED
+**Status:** PHASE 9I-F REVIEW PASSED
 **Date:** 2026-07-26  
 **Repository state audited:** `main` at `08fbe1fd1e4265df8b4047a5ca138b056cd0a82e`  
-**Implementation status:** Phase 9I-A passed owner review. Phase 9I-B backend tenant pricing-method configuration foundation is implemented. Phase 9I-C backend Banner comparison contract was corrected after read-only review findings and received an independent read-only re-review with final status `PHASE 9I-C RE-REVIEW PASSED`. Phase 9I-D normalizes every currently implemented non-Banner category output through the shared method-output contract. Its read-only review found one manual-override normalization defect; that defect was corrected and received final read-only re-review status `PHASE 9I-D RE-REVIEW PASSED`. Phase 9I-E implements the dedicated Pricing Calculators workspace and Shop Operations navigation exposure over the existing Phase 9I contracts. Live pricing math remains unchanged. Phase 9I-F and later remain pending and must not begin without separate owner authorization.
+**Implementation status:** Phase 9I-A passed owner review. Phase 9I-B backend tenant pricing-method configuration foundation is implemented. Phase 9I-C backend Banner comparison contract was corrected after read-only review findings and received an independent read-only re-review with final status `PHASE 9I-C RE-REVIEW PASSED`. Phase 9I-D normalizes every currently implemented non-Banner category output through the shared method-output contract. Its read-only review found one manual-override normalization defect; that defect was corrected and received final read-only re-review status `PHASE 9I-D RE-REVIEW PASSED`. Phase 9I-E implements the dedicated Pricing Calculators workspace and Shop Operations navigation exposure over the existing Phase 9I contracts. Phase 9I-F implements Quote/Order dialog parity over the shared calculator contracts, with backend-authoritative transfer guards and permission checks. Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`. Live pricing math remains unchanged. Phase 9I-G and later remain pending and must not begin without separate owner authorization.
 **Controlling authority:** `specs_pack/extracted/EC09_Pricing_Foundation_Calculators_and_Order_Pricing.docx`
 
 ## 0. Approved Owner Decisions Recorded For 9I-A
@@ -303,6 +303,21 @@ Phase 9I should add tests that the same category input produces identical result
 - Quote Item detailed dialog.
 - Order Item detailed dialog.
 
+Phase 9I-F implementation record:
+
+- `LineItemDialog.jsx` remains the shared Quote Item and Order Item editor.
+- The detailed dialog supports Banner plus the eight normalized categories: `rigid_signs`, `cut_vinyl`, `digital_print`, `vehicle_graphics`, `apparel`, `promotional`, `services`, and `custom`.
+- The dialog calls existing Phase 9I backend endpoints and does not duplicate pricing formulas in the frontend.
+- Banner comparison continues to use `/api/pricing/method-comparison`; non-Banner categories use normalized `/api/pricing/calculate` output.
+- The displayed and transferred line-item amount comes from backend `selling_price` only.
+- Canonical method, selected method, available rows, unavailable rows, warnings, errors, breakdowns, and category detail sections are preserved for display and snapshot transfer.
+- Category and price-affecting input changes clear stale calculated results before another transfer can occur.
+- Failed, unavailable, or missing calculated amounts cannot be transferred into Quote or Order items.
+- Quote/Order item calculator use requires the existing Quote/Order write permission and `pricing:calculate`; manual item entry remains backward compatible.
+- Manual price and override-reason rules remain unchanged.
+- Quote/Order pricing snapshots, Quote-to-Order conversion, revisions, totals, production behavior, and historical line items are preserved; no automatic historical recalculation was added.
+- No saved-calculation library, Webstore consumer, Wrap Lab consumer, new category, new formula, or Digital Print order-minimum enforcement was implemented in 9I-F.
+
 ## 12. Snapshot And Saved-Calculation Plan
 
 Current records:
@@ -368,6 +383,11 @@ Phase 9I-B index decision:
 - Cross-tenant references are rejected.
 - Suggested price is server authoritative.
 - Manual override requires reason where it replaces a calculated result.
+- Phase 9I-F verifies Quote Items and Order Items support the same nine categories.
+- Phase 9I-F verifies identical Quote/Order inputs produce the same backend-authoritative price, selected method, method rows, and detail-section snapshots.
+- Phase 9I-F verifies failed or missing calculated `selling_price` cannot become a saved Quote/Order item price.
+- Phase 9I-F verifies calculated Quote/Order item transfer requires `pricing:calculate` in addition to the appropriate Quote/Order write permission.
+- Phase 9I-F verifies Quote/Order calculator saves do not create saved-calculation, Webstore, or Wrap Lab records.
 
 ### Backend API
 
@@ -378,6 +398,16 @@ Phase 9I-B index decision:
 - Quote to Order conversion preserves pricing snapshots.
 - Saved standalone calculation behavior, if approved, is immutable and tenant-scoped.
 - Audit events are written for settings/saved item/component/profile mutations and standalone saved-calculation create/archive actions, if implemented.
+
+### Frontend 9I-F
+
+- Shared Quote/Order line-item dialog exposes all nine pricing categories.
+- Quote and Order dialogs transfer identical backend authoritative amounts for identical inputs.
+- Authoritative selling price, canonical method, selected method, other available rows, unavailable rows, warnings, errors, and detail sections are visible.
+- Category switching and price-affecting input changes clear stale calculated results.
+- Failed calculator results cannot be applied.
+- Permission-blocked users cannot calculate or transfer suggested pricing.
+- Existing manual override reason behavior remains required for manual prices.
 
 ### Frontend
 
@@ -501,7 +531,7 @@ git status --short --branch
 
 ### Current Implementation Boundary
 
-Phase 9I-A and Phase 9I-C have passed owner/review gates recorded in this document. Phase 9I-B backend tenant method-configuration work is implemented. Phase 9I-D is implemented, its manual-override normalization defect is corrected, and final re-review status is `PHASE 9I-D RE-REVIEW PASSED`. Phase 9I-E review status is `PHASE 9I-E REVIEW PASSED`. All of Phase 9I is not closed. Phase 9I-F and later remain deferred. Do not start Quote/Order parity, saved calculations, consumer contracts, or closure until the owner separately authorizes the next phase.
+Phase 9I-A and Phase 9I-C have passed owner/review gates recorded in this document. Phase 9I-B backend tenant method-configuration work is implemented. Phase 9I-D is implemented, its manual-override normalization defect is corrected, and final re-review status is `PHASE 9I-D RE-REVIEW PASSED`. Phase 9I-E review status is `PHASE 9I-E REVIEW PASSED`. Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`. All of Phase 9I is not closed. Phase 9I-G and later remain deferred. Do not start saved calculations, consumer contracts, or closure until the owner separately authorizes the next phase.
 
 ## 16. Exact Files Expected To Change In Implementation
 
@@ -887,7 +917,7 @@ Implemented:
 - Promotional exact-tier failure remains honest: a missing tier returns no selling price and a null tier row with `manual_price_required` / `no_exact_tier_match`; no replacement price is invented.
 - Banner remains protected and unchanged; its existing `pricing_method_results` and detailed Banner contract are not normalized by the 9I-D adapter.
 
-Behavior intentionally deferred after Phase 9I-D before 9I-E authorization:
+Behavior intentionally deferred after Phase 9I-D before later authorization at that time:
 
 - Frontend setup controls.
 - Calculator comparison UI changes.
@@ -930,7 +960,6 @@ Implemented scope:
 
 Behavior intentionally deferred after Phase 9I-E:
 
-- Quote/Order dialog parity.
 - Saved Calculation Library and saved-calculation transfer into Quote/Order.
 - Webstore and Wrap Lab consumer integration.
 - Digital Print order-minimum enforcement.
@@ -944,7 +973,43 @@ Phase 9I-E verification:
 - Phase 9I-A/B/C/D backend regression suite: `73 passed, 3 warnings`.
 - `git diff --check`: passed; only existing CRLF conversion warnings were reported.
 
-## 26. Risks And Controls
+## 26. Phase 9I-F Implementation Record
+
+Phase 9I-F implements Quote/Order Dialog Parity without changing pricing formulas, category defaults, owner-approved prices, minimums, markups, rounding, labor, materials, add-ons, Webstore behavior, Wrap Lab behavior, saved calculations, or Digital Print item/order-minimum enforcement.
+
+Implemented scope:
+
+- Kept `LineItemDialog.jsx` as the shared detailed editor for Quote Line Items and Order Items.
+- Exposed the shared calculator behavior in the dialog for Banner plus all eight normalized categories.
+- Reused existing Phase 9I endpoints and contracts: `/api/pricing/calculate` for authoritative calculations and `/api/pricing/method-comparison` for Banner comparison rows.
+- Displayed backend authoritative selling price, canonical method, selected method, available rows, unavailable rows, warnings, errors, breakdowns, and category-specific detail sections.
+- Used backend `selling_price` as the only transferred suggested unit price.
+- Cleared stale calculated results when category or price-affecting inputs change.
+- Blocked suggested-price transfer unless the current dialog state has a current successful calculator result.
+- Added backend transfer protection so failed, unavailable, or missing `selling_price` results return HTTP 400 instead of becoming line-item prices.
+- Added conditional backend `pricing:calculate` enforcement for calculator-backed Quote/Order item pricing while preserving manual item entry under Quote/Order write permissions.
+- Preserved manual price override reason rules.
+- Preserved pricing snapshots, Quote-to-Order conversion, revisions, totals, production behavior, and historical line items.
+
+Behavior intentionally deferred after Phase 9I-F:
+
+- Saved Calculation Library and saved-calculation transfer into Quote/Order.
+- Webstore and Wrap Lab consumer integration.
+- Digital Print order-minimum enforcement.
+- Final Phase 9I evidence/closure.
+
+Phase 9I-F verification:
+
+- Focused frontend Quote/Order dialog parity plus dedicated calculator tests: `15 passed`.
+- Focused backend Quote/Order integration tests: `35 passed, 3 warnings`.
+- Relevant Phase 9I backend regressions: `108 passed, 3 warnings`.
+- Quote/Order/Work Order/snapshot regressions: `79 passed, 3 warnings`.
+- Category/Banner/snapshot regressions: `110 passed, 3 warnings`.
+- Frontend production build: compiled successfully.
+- Backend compile/import validation: passed.
+- `git diff --check`: passed; only existing CRLF conversion warnings were reported.
+
+## 27. Risks And Controls
 
 | Risk | Control |
 |---|---|
@@ -958,8 +1023,8 @@ Phase 9I-E verification:
 | Expanding into Webstores/Wrap Lab | Keep 9I calculator-only; no payouts/storefront/wrap project changes |
 | Frontend stale totals | Preserve debounce/updating behavior from Banner repair |
 
-## 27. Stop Boundary
+## 28. Stop Boundary
 
-Phase 9I-A, 9I-B, 9I-C, 9I-D, and 9I-E are implemented in the current Phase 9I package. Phase 9I-C has final review status `PHASE 9I-C RE-REVIEW PASSED`; Phase 9I-D is implemented with the manual-override normalization defect corrected and final re-review status `PHASE 9I-D RE-REVIEW PASSED`; Phase 9I-E review status is `PHASE 9I-E REVIEW PASSED`. Phase 9I-F and later should not begin until separately authorized.
+Phase 9I-A, 9I-B, 9I-C, 9I-D, 9I-E, and 9I-F are implemented in the current Phase 9I package. Phase 9I-C has final review status `PHASE 9I-C RE-REVIEW PASSED`; Phase 9I-D is implemented with the manual-override normalization defect corrected and final re-review status `PHASE 9I-D RE-REVIEW PASSED`; Phase 9I-E review status is `PHASE 9I-E REVIEW PASSED`; Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`. Phase 9I-G and later should not begin until separately authorized.
 
 No EC20, EC21, EC22, AI, attachments, markup, navigation redesign, Webstore payout, Wrap Lab workflow, EC4 payment/invoice, Stripe, provider, or unrelated work is included.
