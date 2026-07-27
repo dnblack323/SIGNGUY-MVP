@@ -16,6 +16,7 @@ from ..models.payment import Payment
 from . import stripe_core
 from .audit import record_audit
 from .invoice_reconciliation import reconcile
+from .sequence import next_record_number
 
 
 async def _invoice_balance(tenant_id: str, invoice_id: str) -> tuple[dict, int]:
@@ -72,6 +73,7 @@ async def record_manual(
 
     pay = Payment(
         tenant_id=tenant_id,
+        record_number_type="payment",
         invoice_id=invoice_id,
         customer_id=inv["customer_id"],
         order_id=inv.get("order_id"),
@@ -86,6 +88,18 @@ async def record_manual(
         confirmed_at=utc_now(),
         created_by=actor_user_id,
     )
+    allocation = await next_record_number(
+        tenant_id=tenant_id,
+        record_type="payment",
+        idempotency_key=idempotency_key,
+        issued_to_entity_type="payment",
+        issued_to_entity_id=pay.id,
+        actor_user_id=actor_user_id,
+        actor_email=actor_email,
+        reason="payment.record_manual",
+        context={"invoice_id": invoice_id},
+    )
+    pay.number = allocation.number
     try:
         await db.payments.insert_one(prepare_for_mongo(pay.model_dump()))
     except DuplicateKeyError:
@@ -209,6 +223,7 @@ async def initiate_stripe(
 
     pay = Payment(
         tenant_id=tenant_id,
+        record_number_type="payment",
         invoice_id=invoice_id,
         customer_id=inv["customer_id"],
         order_id=inv.get("order_id"),
@@ -218,6 +233,18 @@ async def initiate_stripe(
         idempotency_key=ikey,
         created_by=actor_user_id,
     )
+    allocation = await next_record_number(
+        tenant_id=tenant_id,
+        record_type="payment",
+        idempotency_key=ikey,
+        issued_to_entity_type="payment",
+        issued_to_entity_id=pay.id,
+        actor_user_id=actor_user_id,
+        actor_email=actor_email,
+        reason="payment.initiate_stripe",
+        context={"invoice_id": invoice_id},
+    )
+    pay.number = allocation.number
     doc = prepare_for_mongo(pay.model_dump())
     await db.payments.insert_one(doc)
 
@@ -409,6 +436,7 @@ async def initiate_refund(
 
     refund_row = Payment(
         tenant_id=tenant_id,
+        record_number_type="refund",
         invoice_id=src["invoice_id"],
         customer_id=src["customer_id"],
         order_id=src.get("order_id"),
@@ -421,6 +449,18 @@ async def initiate_refund(
         idempotency_key=ikey,
         created_by=actor_user_id,
     )
+    allocation = await next_record_number(
+        tenant_id=tenant_id,
+        record_type="refund",
+        idempotency_key=ikey,
+        issued_to_entity_type="payment",
+        issued_to_entity_id=refund_row.id,
+        actor_user_id=actor_user_id,
+        actor_email=actor_email,
+        reason="payment.initiate_refund",
+        context={"source_payment_id": payment_id, "invoice_id": src["invoice_id"]},
+    )
+    refund_row.number = allocation.number
     try:
         await db.payments.insert_one(prepare_for_mongo(refund_row.model_dump()))
     except DuplicateKeyError:

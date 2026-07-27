@@ -9,6 +9,7 @@ from .base import BaseDoc
 
 class Customer(BaseDoc):
     tenant_id: str
+    number: Optional[int] = None
     name: str
     company: Optional[str] = None
     email: Optional[EmailStr] = None

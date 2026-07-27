@@ -37,6 +37,18 @@ async def ensure_indexes() -> None:
 
     # Sequence counters
     await db.counters.create_index([("tenant_id", 1), ("name", 1)], unique=True)
+    await db.record_number_configs.create_index("id", unique=True)
+    await db.record_number_configs.create_index([("tenant_id", 1), ("record_type", 1)], unique=True)
+    await db.record_number_allocations.create_index("id", unique=True)
+    await db.record_number_allocations.create_index([("tenant_id", 1), ("record_type", 1), ("number", 1)], unique=True)
+    await db.record_number_allocations.create_index(
+        [("tenant_id", 1), ("record_type", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.record_number_allocations.create_index(
+        [("tenant_id", 1), ("issued_to_entity_type", 1), ("issued_to_entity_id", 1)]
+    )
 
     # Domain entities — all tenant-scoped
     for coll in ("customers", "quotes", "orders", "work_orders", "invoices", "payments",
@@ -49,6 +61,11 @@ async def ensure_indexes() -> None:
     await db.orders.create_index([("tenant_id", 1), ("number", 1)], unique=True, sparse=True)
     await db.work_orders.create_index([("tenant_id", 1), ("number", 1)], unique=True, sparse=True)
     await db.invoices.create_index([("tenant_id", 1), ("number", 1)], unique=True, sparse=True)
+    await db.customers.create_index(
+        [("tenant_id", 1), ("number", 1)],
+        unique=True,
+        partialFilterExpression={"number": {"$type": "int"}},
+    )
 
     # One invoice per order (enforced) — user preference
     await db.invoices.create_index([("tenant_id", 1), ("order_id", 1)], unique=True, sparse=True)
@@ -154,6 +171,11 @@ async def ensure_indexes() -> None:
     await db.payments.create_index("id", unique=True)
     await db.payments.create_index([("tenant_id", 1), ("invoice_id", 1), ("received_at", -1)])
     await db.payments.create_index([("tenant_id", 1), ("customer_id", 1), ("created_at", -1)])
+    await db.payments.create_index(
+        [("tenant_id", 1), ("record_number_type", 1), ("number", 1)],
+        unique=True,
+        partialFilterExpression={"number": {"$type": "int"}, "record_number_type": {"$type": "string"}},
+    )
     await db.payments.create_index(
         [("tenant_id", 1), ("invoice_id", 1), ("idempotency_key", 1)],
         unique=True, partialFilterExpression={"idempotency_key": {"$type": "string"}},
@@ -837,6 +859,11 @@ async def ensure_indexes() -> None:
     await db.webstore_launch_packets.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
 
     await db.webstore_buyer_orders.create_index("id", unique=True)
+    await db.webstore_buyer_orders.create_index(
+        [("tenant_id", 1), ("number", 1)],
+        unique=True,
+        partialFilterExpression={"number": {"$type": "int"}},
+    )
     await db.webstore_buyer_orders.create_index([("tenant_id", 1), ("webstore_id", 1), ("created_at", -1)])
     await db.webstore_buyer_orders.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
     await db.webstore_buyer_orders.create_index(

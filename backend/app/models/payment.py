@@ -19,6 +19,8 @@ ManualMethod = Literal["cash", "check", "card_external", "bank_transfer_external
 
 class Payment(BaseDoc):
     tenant_id: str
+    number: Optional[int] = None
+    record_number_type: Optional[Literal["payment", "refund"]] = None
     invoice_id: str
     customer_id: str
     order_id: Optional[str] = None

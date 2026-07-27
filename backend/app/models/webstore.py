@@ -219,6 +219,7 @@ class WebstoreLaunchPacket(BaseDoc):
 
 class WebstoreBuyerOrder(BaseDoc):
     tenant_id: str
+    number: Optional[int] = None
     webstore_id: str
     buyer_name: str
     buyer_email: str

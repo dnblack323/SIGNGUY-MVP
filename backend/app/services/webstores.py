@@ -31,7 +31,7 @@ from ..repositories.webstores import WebstoreRepository
 from .activity import record_activity_with_audit
 from .entitlements import has_entitlement
 from .portal_identity import create_portal_identity
-from .sequence import next_number
+from .sequence import next_number, next_record_number
 from .webstore_stripe_connect import create_local_checkout_record
 
 WEBSTORES_FEATURE_KEY = "webstores"
@@ -802,6 +802,16 @@ async def create_buyer_order(slug: str, fields: dict[str, Any]) -> dict:
         total_cents=total,
         idempotency_key=fields.get("idempotency_key"),
     ).model_dump()
+    allocation = await next_record_number(
+        tenant_id=tenant_id,
+        record_type="webstore_order",
+        idempotency_key=fields.get("idempotency_key"),
+        issued_to_entity_type="webstore_buyer_order",
+        issued_to_entity_id=order["id"],
+        reason="webstore.buyer_order_created",
+        context={"webstore_id": store["id"], "slug": slug},
+    )
+    order["number"] = allocation.number
     try:
         await db.webstore_buyer_orders.insert_one(prepare_for_mongo(order))
     except DuplicateKeyError:
@@ -957,6 +967,17 @@ async def bridge_buyer_order_to_order(user: dict, buyer_order_id: str) -> dict:
             phone=buyer.get("buyer_phone"),
             notes=f"Created from Webstore buyer order {buyer['id']}",
         ).model_dump()
+        customer_number = await next_record_number(
+            tenant_id=user["tenant_id"],
+            record_type="customer",
+            issued_to_entity_type="customer",
+            issued_to_entity_id=customer_doc["id"],
+            actor_user_id=user["id"],
+            actor_email=user.get("email"),
+            reason="webstore.bridge_customer_create",
+            context={"buyer_order_id": buyer["id"], "webstore_id": buyer["webstore_id"]},
+        )
+        customer_doc["number"] = customer_number.number
         await db.customers.insert_one(prepare_for_mongo(customer_doc))
         customer = customer_doc
     number = await next_number(tenant_id=user["tenant_id"], name="order")
