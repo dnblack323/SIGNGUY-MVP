@@ -1,0 +1,332 @@
+import React from "react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import "@testing-library/jest-dom";
+import { renderWithProviders } from "../test-utils";
+import PricingCalculatorPage from "@/pages/PricingCalculatorPage";
+import { NAV_AREAS } from "@/lib/navigation";
+import api from "@/lib/api";
+import { useAuth } from "@/auth/AuthContext";
+
+jest.mock("@/lib/api", () => ({
+  __esModule: true,
+  default: {
+    get: jest.fn(),
+    post: jest.fn(),
+    put: jest.fn(),
+  },
+  extractError: (error) => error?.response?.data?.detail || error?.message || "Request failed",
+}));
+
+jest.mock("@/auth/AuthContext", () => ({
+  useAuth: jest.fn(),
+}));
+
+jest.mock("@/components/pricing/selectors/SavedItemSelector", () => ({
+  __esModule: true,
+  default: ({ onChange, testIdPrefix }) => (
+    <button
+      type="button"
+      data-testid={`${testIdPrefix}-selector`}
+      onClick={() => onChange("saved-1", { id: "saved-1", name: "Saved banner", saved_config: {}, default_pricing_method: "tier_pricing" })}
+    >
+      Saved banner
+    </button>
+  ),
+}));
+
+jest.mock("@/components/pricing/selectors/MaterialProfileSelector", () => ({
+  __esModule: true,
+  default: ({ onChange, testIdPrefix }) => (
+    <button type="button" data-testid={`${testIdPrefix}-selector`} onClick={() => onChange("vinyl-13oz")}>
+      13oz vinyl
+    </button>
+  ),
+}));
+
+jest.mock("@/components/pricing/selectors/PricingComponentSelector", () => ({
+  __esModule: true,
+  default: ({ onChange, testIdPrefix }) => (
+    <button type="button" data-testid={`${testIdPrefix}-selector`} onClick={() => onChange(["grommets"])}>
+      Grommets
+    </button>
+  ),
+}));
+
+jest.mock("@/components/pricing/CategorySpecificFields", () => ({
+  CategorySpecificFields: ({ category, values, onChange }) => (
+    <div data-testid={`calc-category-fields-${category.replaceAll("_", "-")}`}>
+      <button type="button" data-testid="mock-category-field-change" onClick={() => onChange({ ...values, finish: "matte" })}>
+        Set category option
+      </button>
+    </div>
+  ),
+}));
+
+const categoryMeta = {
+  banners: { name: "Banners" },
+  rigid_signs: { name: "Rigid Signs" },
+  cut_vinyl: { name: "Cut Vinyl" },
+  digital_print: { name: "Digital Print" },
+  vehicle_graphics: { name: "Vehicle Graphics" },
+  apparel: { name: "Apparel" },
+  promotional: { name: "Promotional" },
+  services: { name: "Services" },
+  custom: { name: "Custom" },
+};
+
+function successfulMethod(id, amount, selected = false) {
+  return {
+    method_id: id,
+    display_name: id.replaceAll("_", " "),
+    status: "success",
+    available: true,
+    amount,
+    selected,
+    details: { source: "fixture" },
+  };
+}
+
+function pricingResult(category = "banners") {
+  if (category === "banners") {
+    return {
+      category,
+      selling_price: 192,
+      canonical_method_id: "square_foot_plus_addons",
+      selected_method_id: "square_foot_plus_addons",
+      pricing_method_used: "square_foot_plus_addons",
+      pricing_method_results: [
+        successfulMethod("square_foot_plus_addons", 192, true),
+        successfulMethod("cost_plus", 170, false),
+        { method_id: "target_margin", display_name: "target margin", status: "unavailable", available: false, reason: "missing true cost", amount: null },
+      ],
+      method_availability: [
+        { method_id: "square_foot_plus_addons", available: true },
+        { method_id: "cost_plus", available: true },
+        { method_id: "target_margin", available: false, reason: "missing true cost" },
+      ],
+      breakdown: [{ label: "Base square-foot amount", amount: 144 }],
+      detail_sections: [{ section: "authoritative_result", lines: [{ label: "Area", value: "24 sq ft" }] }],
+      warnings: ["Owner-approved fixture warning"],
+      errors: [],
+    };
+  }
+
+  return {
+    category,
+    selling_price: 48,
+    canonical_method_id: "unit_price_x_quantity",
+    selected_method_id: "unit_price_x_quantity",
+    pricing_method_used: "unit_price_x_quantity",
+    pricing_method_results: [
+      successfulMethod("unit_price_x_quantity", 48, true),
+      { method_id: "manual_override", display_name: "manual override", status: "unavailable", available: false, reason: "no manual amount", amount: null },
+    ],
+    method_availability: [
+      { method_id: "unit_price_x_quantity", available: true },
+      { method_id: "manual_override", available: false, reason: "no manual amount" },
+    ],
+    detail_sections: [{ section: `${category}_details`, lines: [{ label: "Category detail", value: "preserved" }] }],
+    breakdown: [],
+    warnings: [],
+    errors: [],
+  };
+}
+
+function comparisonResult(selectedMethodId = "square_foot_plus_addons") {
+  return {
+    category_id: "banners",
+    pricing_result: pricingResult("banners"),
+    canonical_method_id: "square_foot_plus_addons",
+    selected_method_id: selectedMethodId,
+    primary_method_id: selectedMethodId,
+    comparison_results: [
+      { method_id: "square_foot_plus_addons", status: "success", available: true, amount: 192, selected: selectedMethodId === "square_foot_plus_addons" },
+      { method_id: "cost_plus", status: "success", available: true, amount: 170, selected: selectedMethodId === "cost_plus" },
+      { method_id: "target_margin", status: "unavailable", available: false, reason: "missing true cost", amount: null },
+    ],
+    availability: [
+      { method_id: "square_foot_plus_addons", available: true },
+      { method_id: "cost_plus", available: true },
+      { method_id: "target_margin", available: false, reason: "missing true cost" },
+    ],
+  };
+}
+
+function mockApi() {
+  const response = (data) => Promise.resolve({ data });
+
+  api.get.mockImplementation((url) => {
+    if (url === "/pricing/settings") {
+      return response({
+        category_meta: categoryMeta,
+        material_profiles: [],
+        pricing_components: [],
+        pricing_presets: [],
+      });
+    }
+    if (url.includes("/method-configuration")) {
+      return response({
+        configuration_mode: "starter_default",
+        configuration_version: 1,
+        primary_method_id: "square_foot_plus_addons",
+        enabled_method_ids: ["square_foot_plus_addons", "cost_plus"],
+      });
+    }
+    if (url.includes("/tier-price")) {
+      return response({ tier_price: 150 });
+    }
+    return response({});
+  });
+
+  api.post.mockImplementation((url, payload) => {
+    if (url === "/pricing/calculate") {
+      return response(pricingResult(payload.category));
+    }
+    if (url === "/pricing/method-comparison") {
+      return response(comparisonResult(payload.primary_method_id || "square_foot_plus_addons"));
+    }
+    if (url.includes("/method-availability")) {
+      return response({
+        recommended_primary_method_id: "square_foot_plus_addons",
+        methods: [
+          { method_id: "square_foot_plus_addons", available: true, method: { display_name: "Square foot plus add-ons" } },
+          { method_id: "cost_plus", available: true, method: { display_name: "Cost plus" } },
+          { method_id: "target_margin", available: false, reason: "missing true cost", method: { display_name: "Target margin" } },
+        ],
+      });
+    }
+    if (url.includes("/simple-setup/preview")) {
+      return response({ enabled_method_ids: ["square_foot_plus_addons", "cost_plus"] });
+    }
+    if (url.includes("/simple-setup/apply")) {
+      return response({ configuration_version: 2 });
+    }
+    return response({});
+  });
+
+  api.put.mockResolvedValue({ data: { configuration_version: 3 } });
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.useRealTimers();
+  useAuth.mockReturnValue({
+    hasPerm: (permission) => ["pricing:calculate", "pricing:read", "pricing:write"].includes(permission),
+  });
+  mockApi();
+});
+
+test("adds Pricing Calculators under Shop Operations navigation", () => {
+  const shopOperations = NAV_AREAS.find((area) => area.key === "shop-operations");
+  expect(shopOperations.flyout).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        key: "pricing-calculators",
+        label: "Pricing Calculators",
+        to: "/pricing-calculator",
+        perm: "pricing:calculate",
+      }),
+    ]),
+  );
+});
+
+test("renders the dedicated workspace and displays Banner authoritative and comparison results", async () => {
+  renderWithProviders(<PricingCalculatorPage />);
+
+  expect(await screen.findByTestId("pricing-calculator-workspace")).toBeInTheDocument();
+  for (const label of ["Banners", "Rigid Signs", "Cut Vinyl", "Digital Print", "Vehicle Graphics", "Apparel", "Promotional", "Services", "Custom"]) {
+    expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+  }
+  fireEvent.click(screen.getByTestId("calc-run-button"));
+
+  expect(await screen.findByTestId("calc-result")).toBeInTheDocument();
+  expect(screen.getByTestId("calc-authoritative-selling-price")).toHaveTextContent("$192.00");
+  expect(screen.getByTestId("calc-canonical-method")).toHaveTextContent("square foot plus addons");
+  expect(screen.getByTestId("calc-selected-comparison-method")).toHaveTextContent("square foot plus addons");
+  expect(screen.getByTestId("calc-method-square_foot_plus_addons")).toHaveTextContent("$192.00");
+  expect(screen.getByTestId("calc-method-cost_plus")).toHaveTextContent("$170.00");
+  expect(screen.getByTestId("calc-unavailable-methods")).toHaveTextContent("target margin");
+  expect(screen.getByTestId("calc-warnings-banner")).toHaveTextContent("Owner-approved fixture warning");
+  expect(screen.getByTestId("calc-detail-sections")).toHaveTextContent("24 sq ft");
+
+  expect(api.post).toHaveBeenCalledWith("/pricing/calculate", expect.objectContaining({ category: "banners" }));
+  expect(api.post).toHaveBeenCalledWith("/pricing/method-comparison", expect.objectContaining({ category: "banners" }));
+});
+
+test("switches to a normalized non-Banner category without calling Banner comparison", async () => {
+  renderWithProviders(<PricingCalculatorPage />);
+  fireEvent.change(await screen.findByTestId("calc-category-select"), { target: { value: "apparel" } });
+  fireEvent.click(screen.getByTestId("calc-run-button"));
+
+  expect(await screen.findByTestId("calc-category-fields-apparel")).toBeInTheDocument();
+  expect(await screen.findByTestId("calc-authoritative-selling-price")).toHaveTextContent("$48.00");
+  expect(screen.getByTestId("calc-method-unit_price_x_quantity")).toHaveTextContent("$48.00");
+  expect(screen.getByTestId("calc-unavailable-methods")).toHaveTextContent("manual override");
+  expect(screen.getByTestId("calc-detail-sections")).toHaveTextContent("Category detail");
+
+  expect(api.post).toHaveBeenCalledWith("/pricing/calculate", expect.objectContaining({ category: "apparel" }));
+  const comparisonCalls = api.post.mock.calls.filter(([url]) => url === "/pricing/method-comparison");
+  expect(comparisonCalls).toHaveLength(0);
+});
+
+test("selects a Banner comparison method deliberately without replacing the authoritative price", async () => {
+  renderWithProviders(<PricingCalculatorPage />);
+  fireEvent.click(await screen.findByTestId("calc-run-button"));
+  await screen.findByTestId("calc-result");
+
+  fireEvent.click(screen.getByTestId("calc-method-cost_plus"));
+
+  await waitFor(() => {
+    expect(screen.getByTestId("calc-selected-comparison-method")).toHaveTextContent("cost plus");
+  });
+  expect(screen.getByTestId("calc-authoritative-selling-price")).toHaveTextContent("$192.00");
+  expect(api.post).toHaveBeenCalledWith("/pricing/method-comparison", expect.objectContaining({ primary_method_id: "cost_plus" }));
+});
+
+test("shows loading and error states honestly", async () => {
+  let rejectCalculation;
+  api.post.mockImplementation((url) => {
+    if (url === "/pricing/calculate") {
+      return new Promise((resolve, reject) => {
+        rejectCalculation = reject;
+      });
+    }
+    if (url.includes("/method-availability")) {
+      return Promise.resolve({ data: { methods: [] } });
+    }
+    return Promise.resolve({ data: {} });
+  });
+
+  renderWithProviders(<PricingCalculatorPage />);
+  fireEvent.click(await screen.findByTestId("calc-run-button"));
+  expect(await screen.findByTestId("calc-loading-state")).toBeInTheDocument();
+
+  rejectCalculation(new Error("pricing failed"));
+  expect(await screen.findByTestId("calc-error-state")).toHaveTextContent("pricing failed");
+});
+
+test("exposes simple and advanced method configuration controls without persisting calculations", async () => {
+  renderWithProviders(<PricingCalculatorPage />);
+  fireEvent.click(await screen.findByTestId("calc-view-methods"));
+
+  expect(await screen.findByTestId("pricing-method-setup-panel")).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId("calc-simple-preview-inline-button"));
+  await waitFor(() => {
+    expect(screen.getByTestId("calc-simple-preview")).toHaveTextContent("square foot plus addons");
+  });
+
+  fireEvent.click(screen.getByTestId("calc-advanced-save-button"));
+  await waitFor(() => {
+    expect(api.put).toHaveBeenCalledWith(expect.stringContaining("/advanced-setup"), expect.objectContaining({ primary_method_id: expect.any(String) }));
+  });
+  expect(api.post.mock.calls.some(([url]) => String(url).includes("calculations"))).toBe(false);
+});
+
+test("denies the workspace when the user lacks pricing calculation permission", () => {
+  useAuth.mockReturnValue({ hasPerm: () => false });
+  renderWithProviders(<PricingCalculatorPage />);
+
+  expect(screen.getByTestId("pricing-calculator-permission-denied")).toBeInTheDocument();
+  expect(api.get).not.toHaveBeenCalled();
+  expect(api.post).not.toHaveBeenCalled();
+});

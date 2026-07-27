@@ -1,9 +1,9 @@
 # EC9 Phase 9I - Shared Pricing Calculator Preflight and Implementation Plan
 
-**Status:** PHASE 9I-D RE-REVIEW PASSED  
+**Status:** PHASE 9I-E REVIEW PASSED
 **Date:** 2026-07-26  
 **Repository state audited:** `main` at `08fbe1fd1e4265df8b4047a5ca138b056cd0a82e`  
-**Implementation status:** Phase 9I-A passed owner review. Phase 9I-B backend tenant pricing-method configuration foundation is implemented. Phase 9I-C backend Banner comparison contract was corrected after read-only review findings and received an independent read-only re-review with final status `PHASE 9I-C RE-REVIEW PASSED`. Phase 9I-D normalizes every currently implemented non-Banner category output through the shared method-output contract. Its read-only review found one manual-override normalization defect; that defect was corrected and received final read-only re-review status `PHASE 9I-D RE-REVIEW PASSED`. Live pricing math remains unchanged. Phase 9I-E and later remain pending and must not begin without separate owner authorization.  
+**Implementation status:** Phase 9I-A passed owner review. Phase 9I-B backend tenant pricing-method configuration foundation is implemented. Phase 9I-C backend Banner comparison contract was corrected after read-only review findings and received an independent read-only re-review with final status `PHASE 9I-C RE-REVIEW PASSED`. Phase 9I-D normalizes every currently implemented non-Banner category output through the shared method-output contract. Its read-only review found one manual-override normalization defect; that defect was corrected and received final read-only re-review status `PHASE 9I-D RE-REVIEW PASSED`. Phase 9I-E implements the dedicated Pricing Calculators workspace and Shop Operations navigation exposure over the existing Phase 9I contracts. Live pricing math remains unchanged. Phase 9I-F and later remain pending and must not begin without separate owner authorization.
 **Controlling authority:** `specs_pack/extracted/EC09_Pricing_Foundation_Calculators_and_Order_Pricing.docx`
 
 ## 0. Approved Owner Decisions Recorded For 9I-A
@@ -501,7 +501,7 @@ git status --short --branch
 
 ### Current Implementation Boundary
 
-Phase 9I-A and Phase 9I-C have passed owner/review gates recorded in this document. Phase 9I-B backend tenant method-configuration work remains implemented as part of the uncommitted Phase 9I package. Phase 9I-D is implemented, its manual-override normalization defect is corrected, and final re-review status is `PHASE 9I-D RE-REVIEW PASSED`. All of Phase 9I is not closed. Phase 9I-E and later remain deferred. Do not start frontend workspace, Quote/Order parity, saved calculations, consumer contracts, or closure until the owner separately authorizes the next phase.
+Phase 9I-A and Phase 9I-C have passed owner/review gates recorded in this document. Phase 9I-B backend tenant method-configuration work is implemented. Phase 9I-D is implemented, its manual-override normalization defect is corrected, and final re-review status is `PHASE 9I-D RE-REVIEW PASSED`. Phase 9I-E review status is `PHASE 9I-E REVIEW PASSED`. All of Phase 9I is not closed. Phase 9I-F and later remain deferred. Do not start Quote/Order parity, saved calculations, consumer contracts, or closure until the owner separately authorizes the next phase.
 
 ## 16. Exact Files Expected To Change In Implementation
 
@@ -887,7 +887,7 @@ Implemented:
 - Promotional exact-tier failure remains honest: a missing tier returns no selling price and a null tier row with `manual_price_required` / `no_exact_tier_match`; no replacement price is invented.
 - Banner remains protected and unchanged; its existing `pricing_method_results` and detailed Banner contract are not normalized by the 9I-D adapter.
 
-Behavior intentionally deferred after Phase 9I-D:
+Behavior intentionally deferred after Phase 9I-D before 9I-E authorization:
 
 - Frontend setup controls.
 - Calculator comparison UI changes.
@@ -912,7 +912,39 @@ Phase 9I-D verification:
 - `git diff --check`: passed; only existing CRLF conversion warnings were reported.
 - No test failures.
 
-## 25. Risks And Controls
+## 25. Phase 9I-E Implementation Record
+
+Phase 9I-E implements the dedicated Pricing Calculators workspace without changing pricing formulas, backend persistence, Quote/Order behavior, Webstore behavior, Wrap Lab behavior, saved calculations, snapshots, or Digital Print item/order-minimum enforcement.
+
+Implemented scope:
+
+- Added `Pricing Calculators` to Shop Operations navigation at `/pricing-calculator` with `pricing:calculate` access.
+- Rebuilt the dedicated calculator workspace to support Banner plus normalized categories: `rigid_signs`, `cut_vinyl`, `digital_print`, `vehicle_graphics`, `apparel`, `promotional`, `services`, and `custom`.
+- Kept `/pricing-foundation` under Control Center as the pricing defaults/setup destination.
+- Reused existing calculator endpoints and contracts: `/api/pricing/calculate` for all categories, `/api/pricing/method-comparison` for Banner comparison rows, and the existing method-configuration endpoints for Simple Setup preview/apply and Advanced Setup save controls.
+- Clearly separates authoritative selling price, canonical method, selected comparison method, other available method rows, unavailable methods, warnings, errors, category-specific details, and breakdown sections.
+- Handles string and array method-status contract shapes in the workspace renderer.
+- Preserves saved/common item, material profile, pricing component, category-specific input, manual selling price, design/install, and quantity entry surfaces for calculator input only.
+- Removes the old dedicated-calculator Quote/Order handoff controls from this phase surface; Quote/Order dialog parity and transfer behavior remain Phase 9I-F/later work.
+- Denies the workspace when the current user lacks `pricing:calculate` and does not call pricing APIs in that state.
+
+Behavior intentionally deferred after Phase 9I-E:
+
+- Quote/Order dialog parity.
+- Saved Calculation Library and saved-calculation transfer into Quote/Order.
+- Webstore and Wrap Lab consumer integration.
+- Digital Print order-minimum enforcement.
+- Final Phase 9I evidence/closure.
+
+Phase 9I-E verification:
+
+- Review status: `PHASE 9I-E REVIEW PASSED`.
+- Focused frontend workspace tests: `7 passed`.
+- Frontend production build: compiled successfully.
+- Phase 9I-A/B/C/D backend regression suite: `73 passed, 3 warnings`.
+- `git diff --check`: passed; only existing CRLF conversion warnings were reported.
+
+## 26. Risks And Controls
 
 | Risk | Control |
 |---|---|
@@ -926,8 +958,8 @@ Phase 9I-D verification:
 | Expanding into Webstores/Wrap Lab | Keep 9I calculator-only; no payouts/storefront/wrap project changes |
 | Frontend stale totals | Preserve debounce/updating behavior from Banner repair |
 
-## 26. Stop Boundary
+## 27. Stop Boundary
 
-Phase 9I-A, 9I-B, 9I-C, and 9I-D are implemented as the current uncommitted Phase 9I package. Phase 9I-C has final review status `PHASE 9I-C RE-REVIEW PASSED`; Phase 9I-D is implemented with the manual-override normalization defect corrected and final re-review status `PHASE 9I-D RE-REVIEW PASSED`. Phase 9I-E and later should not begin until separately authorized.
+Phase 9I-A, 9I-B, 9I-C, 9I-D, and 9I-E are implemented in the current Phase 9I package. Phase 9I-C has final review status `PHASE 9I-C RE-REVIEW PASSED`; Phase 9I-D is implemented with the manual-override normalization defect corrected and final re-review status `PHASE 9I-D RE-REVIEW PASSED`; Phase 9I-E review status is `PHASE 9I-E REVIEW PASSED`. Phase 9I-F and later should not begin until separately authorized.
 
 No EC20, EC21, EC22, AI, attachments, markup, navigation redesign, Webstore payout, Wrap Lab workflow, EC4 payment/invoice, Stripe, provider, or unrelated work is included.

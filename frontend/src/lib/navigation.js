@@ -55,6 +55,7 @@ export const NAV_AREAS = [
       { key: "customers", label: "Customers", to: "/customers", perm: "customer:read", testId: "flyout-customers" },
       { key: "quotes", label: "Quotes", to: "/quotes", perm: "quote:read", testId: "flyout-quotes" },
       { key: "orders", label: "Orders", to: "/orders", perm: "order:read", testId: "flyout-orders" },
+      { key: "pricing-calculators", label: "Pricing Calculators", to: "/pricing-calculator", perm: "pricing:calculate", testId: "flyout-pricing-calculators" },
       { key: "production", label: "Production", to: "/work-orders", perm: "work_order:read", testId: "flyout-production" },
       { key: "production-board", label: "Production Board", to: "/work-orders/board", perm: "work_order:read", testId: "flyout-production-board" },
       { key: "production-kiosk", label: "Production Kiosk", to: "/kiosk/production", perm: "work_order:read", testId: "flyout-production-kiosk" },
