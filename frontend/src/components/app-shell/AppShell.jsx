@@ -32,6 +32,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import AssistantLauncher from "@/components/assistant/AssistantLauncher";
+import WorkspaceDock from "@/components/workspaces/WorkspaceDock";
+import { WorkspaceProvider, useWorkspace } from "@/context/WorkspaceContext";
 import { cn } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -140,6 +142,7 @@ function PrimaryAreaButton({ area, active, collapsed, onSelect }) {
 
 function SidebarInner({ collapsed, setCollapsed, selectedAreaKey, onSelectArea, onNavigate, mobile = false }) {
   const { tenant, user, logout } = useAuth();
+  const { confirmBeforeAbandon } = useWorkspace();
   return (
     <TooltipProvider delayDuration={200}>
       <div
@@ -249,7 +252,7 @@ function SidebarInner({ collapsed, setCollapsed, selectedAreaKey, onSelectArea, 
             <DropdownMenuContent align="end" side="top" className="w-[240px]">
               <DropdownMenuLabel className="truncate">{user?.email}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={logout} data-testid="sidebar-logout">
+              <DropdownMenuItem onClick={() => confirmBeforeAbandon(logout, "Sign out and leave unsaved workspace changes?")} data-testid="sidebar-logout">
                 <LogOut className="size-4 mr-2" /> Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -368,6 +371,14 @@ function ShellPageHeading({ area, module }) {
 }
 
 export default function AppShell() {
+  return (
+    <WorkspaceProvider>
+      <AppShellFrame />
+    </WorkspaceProvider>
+  );
+}
+
+function AppShellFrame() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedAreaKey, setSelectedAreaKey] = useState(null);
@@ -426,10 +437,11 @@ export default function AppShell() {
           </header>
 
           <ShellPageHeading area={selectedArea} module={activeModule} />
-          <main className="px-4 md:px-6 py-5 max-w-[1400px]" data-testid="app-shell-content" data-active-path={location.pathname}>
+          <main className="px-4 md:px-6 py-5 pb-24 max-w-[1400px]" data-testid="app-shell-content" data-active-path={location.pathname}>
             <Outlet />
           </main>
-          <div className="h-3" data-testid="workspace-dock-reserved-space" aria-hidden="true" />
+          <div className="h-16 md:h-14" data-testid="workspace-dock-reserved-space" aria-hidden="true" />
+          <WorkspaceDock sidebarCollapsed={sidebarCollapsed} />
           <AssistantLauncher />
         </div>
       </div>

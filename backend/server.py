@@ -165,10 +165,12 @@ from app.routers import pricing_materials as pricing_materials_router_module
 from app.routers import pricing_components as pricing_components_router_module
 from app.routers import pricing_saved_items as pricing_saved_items_router_module
 from app.routers import pricing_saved_calculations as pricing_saved_calculations_router_module
+from app.routers import workspace_dock as workspace_dock_router_module
 api_router.include_router(pricing_materials_router_module.router)
 api_router.include_router(pricing_components_router_module.router)
 api_router.include_router(pricing_saved_items_router_module.router)
 api_router.include_router(pricing_saved_calculations_router_module.router)
+api_router.include_router(workspace_dock_router_module.router)
 
 # EC9 — Phase 9C Grouped Pricing Setup Quiz (additive to the detailed wizard)
 from app.routers import pricing_quiz as pricing_quiz_router_module

@@ -236,6 +236,11 @@ EC9 closure is **not blocked** by this register — every entry is warned, edita
 - EC12 is COMPLETE / CLOSED (Phases 12A-12I complete). EC13 is COMPLETE / CLOSED. EC19 foundation is COMPLETE and CI-verified; Advanced Onboarding is authorized but pending UX1.
 - EC13 Commercial Billing, Entitlements, Fees, Trials, Setup Packages (contradictions C1/C2 RESOLVED 2026-02 by owner decision — see hold register).
 
+### UX1 Shell And Workspace Dock Status
+
+- UX1 shell/dock status (2026-07-27): authenticated shell correction is committed (`05392ad995db3e62ca674e131ccb59d9e036c5dc`) with the six-area sidebar, persistent module tabs, contextual ribbon, and one Quick Access Toolbar. The owner-approved Workspace Dock is complete/tested: bottom authenticated open-work tabs, one visible workspace at a time, no overlap/split/draggable windows, desktop bottom row, mobile Open Work drawer, max 8 open workspaces, 20 recent references, tenant/user-scoped backend persistence, direct APIs, indexes, route integration, dirty warning, recent reopen, and visual QA screenshots under `/app/evidence/screenshots/workspace-dock/`.
+- Dashboard customizer, final visual finishing, record numbering, platform administration, Google auth, pricing formulas, Phase 9I-I, Webstore workflow changes, and Wrap Lab workflow changes remain outside the Workspace Dock checkpoint.
+
 ### P2 — Add-ons and AI (held on H2/H3/H4/H5/H8 — see `/app/memory/owner_specification_hold_register.md`)
 - **EC14 Webstores** — requires separate owner authorization (H2).
 - **EC15 Wrap Lab** — requires separate owner authorization (H3); standalone sale additionally requires its own preflight (H6).

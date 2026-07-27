@@ -23,6 +23,7 @@ import { useAuth } from "@/auth/AuthContext";
 import ComposeEmailDialog from "@/components/email/ComposeEmailDialog";
 import LineItemDialog from "@/components/commerce/LineItemDialog";
 import AIContextualActions from "@/components/ai/AIContextualActions";
+import { useWorkspaceDirty } from "@/context/WorkspaceContext";
 
 // ------------- helpers -------------
 
@@ -305,6 +306,7 @@ export default function QuoteDetailPage() {
   const { data: revs } = useQuery({ queryKey: ["quote-revs", id], queryFn: async () => (await api.get(`/quotes/${id}/revisions`)).data, enabled: !!id });
 
   const [form, setForm] = useState({});
+  useWorkspaceDirty(Object.keys(form).length > 0);
   const [revisionConfirm, setRevisionConfirm] = useState(false);
   const [pendingSave, setPendingSave] = useState(null);
 

@@ -17,6 +17,7 @@ import AIContextualActions from "@/components/ai/AIContextualActions";
 import { centsToDollarsString, relativeTime } from "@/lib/format";
 import { ArrowLeft, Save } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
+import { useWorkspaceDirty } from "@/context/WorkspaceContext";
 
 function Field({ label, value, onChange, textarea, type = "text", testId }) {
   const Comp = textarea ? Textarea : Input;
@@ -50,6 +51,7 @@ export default function CustomerDetailPage() {
   });
 
   const [form, setForm] = useState({});
+  useWorkspaceDirty(Object.keys(form).length > 0);
   const editForm = { ...c, ...form };
 
   const save = useMutation({
