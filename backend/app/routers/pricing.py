@@ -17,6 +17,10 @@ from ..services.pricing import (
     wizard_suggestions,
 )
 from ..services.pricing_engine_adapter import calculate_pricing_with_cents_first_envelope
+from ..services.pricing_config_export import (
+    export_portable_pricing_configuration,
+    preview_portable_pricing_configuration_import,
+)
 from ..services.order_pricing import resolve_references
 from ..services.pricing_method_configurations import (
     apply_simple_setup,
@@ -143,6 +147,19 @@ class MethodComparisonIn(CalcIn):
 async def get_settings(user: dict = Depends(require_permission(Perm.PRICING_READ))) -> dict:
     doc = await get_or_init_pricing_settings(user["tenant_id"])
     return serialize_doc(doc)
+
+
+@router.get("/settings/portable-configuration/export")
+async def export_portable_configuration(user: dict = Depends(require_permission(Perm.PRICING_READ))) -> dict:
+    return await export_portable_pricing_configuration(user["tenant_id"])
+
+
+@router.post("/settings/portable-configuration/import-preview")
+async def import_portable_configuration_preview(
+    payload: dict[str, Any],
+    user: dict = Depends(require_permission(Perm.PRICING_WRITE)),
+) -> dict:
+    return await preview_portable_pricing_configuration_import(user["tenant_id"], payload)
 
 
 @router.get("/settings/category-method-configurations")

@@ -1,6 +1,6 @@
 # EC9 Phase 9I Calculator Extraction And Money Normalization Implementation Plan
 
-**Status:** PHASE 9I-R FRONTEND/API CENTS-FIRST BOUNDARY IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-S NOT STARTED
+**Status:** PHASE 9I-S PORTABLE CONFIGURATION EXPORT AND PREVIEW IMPORT IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-T NOT STARTED
 **Date:** 2026-07-27
 **Repository gate verified:** `main` at `7334cb24867102013350bde3ea4c8b84a59c4ff1`
 **Planning document with implementation records:** Phase 9I-J, Phase 9I-K, Phase 9I-L, Phase 9I-M, Phase 9I-N, Phase 9I-O, Phase 9I-P, and Phase 9I-Q implementation results are recorded below. Phase 9I remains open.
@@ -554,6 +554,22 @@ Phase 9I-R implementation record:
 - Review gate: export/import security review.
 - Commit safety: yes.
 - Rollback: remove endpoints; engine remains unaffected.
+
+Phase 9I-S implementation record:
+
+- Added pure portable configuration contract module `backend/pricing_engine/config_export.py` with schema ID `pricing_portable_configuration_9is`, schema version `pricing_portable_configuration_9is_v1`, deterministic serialization, validation, deserialization, and type-aware comparison helpers.
+- Added read-only SaaS service `backend/app/services/pricing_config_export.py` that reads the authenticated tenant's current pricing settings without mutation, reuses the Phase 9I-Q `build_line_engine_configuration()` boundary for all nine categories, and exports only normalized pure-engine configuration.
+- Added `GET /api/pricing/settings/portable-configuration/export` with `pricing:read` and `POST /api/pricing/settings/portable-configuration/import-preview` with `pricing:write`; no apply/save/import-complete route exists.
+- Import preview validates the portable contract, compares against the authenticated tenant's current normalized configuration, returns compatibility/category/diff evidence, and performs no database writes or settings-version increments.
+- Fixed money values are exported as integer cents, high-precision rates and non-currency decimals use Decimal strings with explicit units, standard percentages/margins use integer basis points, valid zero values are preserved, and unsupported/fractional/boolean/non-finite values fail validation.
+- Export excludes tenant identity, Mongo IDs, users/emails, request/auth/permission/audit handles, entitlements, subscription/Stripe/license data, tokens, secrets, raw Mongo documents, and unresolved live references.
+- Supported legacy settings are mapped in memory through the existing SaaS adapter and starter fallbacks only where existing adapter behavior already authorizes them; no migration, rewrite, or historical backfill is performed.
+- All nine category configurations are represented: `banners`, `rigid_signs`, `cut_vinyl`, `digital_print`, `vehicle_graphics`, `apparel`, `promotional`, `services`, and `custom`.
+- Shared Phase 9I-K fixtures remain the expected-cents authority; exported configuration deserializes and reproduces all nine fixture results through `pricing_engine.line_engine.calculate_line` without Mongo access.
+- No calculator formula, owner-approved price, default, minimum, markup, margin, discount, tax, rounding result, Quote, Order, saved-calculation, snapshot, Webstore, Wrap Lab, frontend, standalone adapter, licensing, desktop, installer, packaging, or Phase 9I-T work changed.
+- Verification passed: Phase 9I-S tests `5 passed, 6 warnings`; Phase 9I-J/K `52 passed`; Phase 9I-O/P `28 passed, 6 warnings`; Phase 9I-Q/R `13 passed, 6 warnings`; Phase 9I-L/M/N `31 passed, 6 warnings`; pricing saved-items/materials/components `10 passed, 6 warnings`; pricing method configuration/contracts `36 passed, 6 warnings`; Quote/Order and Digital Print regressions `66 passed, 6 warnings`; snapshot/advisory regressions `22 passed, 6 warnings`; Orders/Quotes/Work Orders regressions `22 passed, 6 warnings`; money policy `14 passed`; backend compile/import validation passed; `git diff --check` passed with CRLF conversion warnings only.
+- Preserved follow-ups: visible `Digital Print order minimum adjustment` row remains complete from Phase 9I-R; identifier-only Quote/Order item update/delete tenant-authorization audit remains open; EC7 inventory duplicate-key setup evidence remains open/informational.
+- Full Phase 9I remains open. Phase 9I-T standalone adapter contract harness is next and not started.
 
 ### Phase 9I-T - Standalone adapter contract harness
 

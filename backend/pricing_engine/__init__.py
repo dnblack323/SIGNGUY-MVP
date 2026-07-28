@@ -35,6 +35,16 @@ from .contracts import (
     WasteFactorUnit,
     validate_category_id,
 )
+from .config_export import (
+    PORTABLE_CONFIGURATION_GENERATOR_ID,
+    PORTABLE_PRICING_CONFIGURATION_SCHEMA_ID,
+    PORTABLE_PRICING_CONFIGURATION_SCHEMA_VERSION,
+    build_portable_configuration,
+    deserialize_portable_configuration,
+    diff_portable_configurations,
+    serialize_portable_configuration,
+    validate_portable_configuration,
+)
 from .document_engine import calculate_document
 from .line_engine import calculate_line
 from .money import ROUNDING_MODE, ROUNDING_POLICY_ID, MoneyCents, RoundingEvidence, decimal_dollars_to_cents
@@ -78,6 +88,9 @@ __all__ = [
     "Markup",
     "MoneyCents",
     "PercentDecimal",
+    "PORTABLE_CONFIGURATION_GENERATOR_ID",
+    "PORTABLE_PRICING_CONFIGURATION_SCHEMA_ID",
+    "PORTABLE_PRICING_CONFIGURATION_SCHEMA_VERSION",
     "PortableConfigExport",
     "PRICING_ENGINE_RESULT_FIELD",
     "PRICING_SNAPSHOT_SCHEMA_FIELD",
@@ -89,6 +102,9 @@ __all__ = [
     "SnapshotEvidence",
     "calculate_document",
     "calculate_line",
+    "build_portable_configuration",
+    "deserialize_portable_configuration",
+    "diff_portable_configurations",
     "TimeAmount",
     "TimeUnit",
     "WasteFactor",
@@ -96,5 +112,7 @@ __all__ = [
     "decimal_dollars_to_cents",
     "read_embedded_snapshot",
     "read_snapshot_record",
+    "serialize_portable_configuration",
+    "validate_portable_configuration",
     "validate_category_id",
 ]
