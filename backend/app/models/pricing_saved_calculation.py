@@ -33,6 +33,8 @@ class PricingSavedCalculation(BaseDoc):
     breakdown: list[dict[str, Any]] = Field(default_factory=list)
     detail_sections: list[dict[str, Any]] = Field(default_factory=list)
     calculation_result: dict[str, Any] = Field(default_factory=dict)
+    pricing_engine_result: Optional[dict[str, Any]] = None
+    saved_calculation_contract_version: Optional[str] = None
     comparison_result: Optional[dict[str, Any]] = None
     pricing_reproducibility_ref: dict[str, Any] = Field(default_factory=dict)
 

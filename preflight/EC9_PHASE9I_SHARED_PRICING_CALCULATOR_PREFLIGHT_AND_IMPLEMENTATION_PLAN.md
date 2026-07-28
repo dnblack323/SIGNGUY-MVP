@@ -1164,7 +1164,7 @@ Phase 9I-K verification:
 - `git diff --check`: passed with CRLF conversion warnings only.
 - Current executed path: `legacy_saas_calculator_v1` through `app.services.pricing.calculate_pricing`.
 - Full all-adapter parity is not complete; future pure engine and standalone adapter parity are not claimed.
-- Phase 9I-L remains next and has not started.
+- Phase 9I-M is implemented and verified; Phase 9I-N remains next and has not started.
 
 Preserved non-blocking follow-ups:
 
@@ -1188,6 +1188,6 @@ Preserved non-blocking follow-ups:
 
 ## 32. Stop Boundary
 
-Phase 9I-A, 9I-B, 9I-C, 9I-D, 9I-E, 9I-F, 9I-G, and 9I-H are implemented in the current Phase 9I package. Phase 9I-C has final review status `PHASE 9I-C RE-REVIEW PASSED`; Phase 9I-D is implemented with the manual-override normalization defect corrected and final re-review status `PHASE 9I-D RE-REVIEW PASSED`; Phase 9I-E review status is `PHASE 9I-E REVIEW PASSED`; Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`; Phase 9I-G review status is `PHASE 9I-G REVIEW PASSED`; Phase 9I-H review status is `PHASE 9I-H REVIEW PASSED`; Phase 9I-I status is `PHASE 9I-I REVIEW PASSED - COMPLETE`; Phase 9I-J is implemented and verified; Phase 9I-K is implemented and verified; Phase 9I-L is implemented and verified with the additive `pricing_engine_result` cents-first compatibility DTO on `/pricing/calculate`. No calculator formula migration, data migration, saved-calculation normalization, snapshot normalization, standalone-adapter, pure line/document engine, frontend integration, or licensing implementation has started. All of Phase 9I remains open until the plan's required corrections and review gates pass. Phase 9I-M is next and has not started.
+Phase 9I-A, 9I-B, 9I-C, 9I-D, 9I-E, 9I-F, 9I-G, and 9I-H are implemented in the current Phase 9I package. Phase 9I-C has final review status `PHASE 9I-C RE-REVIEW PASSED`; Phase 9I-D is implemented with the manual-override normalization defect corrected and final re-review status `PHASE 9I-D RE-REVIEW PASSED`; Phase 9I-E review status is `PHASE 9I-E REVIEW PASSED`; Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`; Phase 9I-G review status is `PHASE 9I-G REVIEW PASSED`; Phase 9I-H review status is `PHASE 9I-H REVIEW PASSED`; Phase 9I-I status is `PHASE 9I-I REVIEW PASSED - COMPLETE`; Phase 9I-J is implemented and verified; Phase 9I-K is implemented and verified; Phase 9I-L is implemented and verified with the additive `pricing_engine_result` cents-first compatibility DTO on `/pricing/calculate`; Phase 9I-M is implemented and verified with new saved-calculation writes using `pricing_engine_result` as authoritative cents-first evidence and legacy readers remaining non-mutating. No calculator formula migration, data migration, snapshot normalization, standalone-adapter, pure line/document engine, frontend integration, or licensing implementation has started. All of Phase 9I remains open until the plan's required corrections and review gates pass. Phase 9I-N is next and has not started.
 
 No EC20, EC21, EC22, AI, attachments, markup, navigation redesign, Webstore payout, Wrap Lab workflow, EC4 payment/invoice, Stripe, provider, or unrelated work is included.
