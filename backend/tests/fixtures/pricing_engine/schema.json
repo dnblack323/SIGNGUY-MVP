@@ -1,0 +1,362 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://signguy.ai/schemas/tests/pricing_fixture_v1.schema.json",
+  "title": "EC9 Phase 9I-K Pricing Engine Parity Fixture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "fixture_schema_version",
+    "engine_version",
+    "formula_version",
+    "category",
+    "case_id",
+    "description",
+    "case_scope",
+    "applicable_adapters",
+    "normalized_inputs",
+    "normalized_configuration",
+    "expected_line_results",
+    "expected_document_results",
+    "decimal_rate_evidence",
+    "rounding_evidence",
+    "minimum_adjustment_evidence",
+    "expected_validation_errors",
+    "snapshot_evidence",
+    "legacy_compatibility"
+  ],
+  "properties": {
+    "fixture_schema_version": {"const": "pricing_fixture_v1"},
+    "engine_version": {"const": "pricing_engine_v1"},
+    "formula_version": {"const": "ec9_current"},
+    "category": {
+      "enum": [
+        "banners",
+        "rigid_signs",
+        "cut_vinyl",
+        "digital_print",
+        "vehicle_graphics",
+        "apparel",
+        "promotional",
+        "services",
+        "custom"
+      ]
+    },
+    "case_id": {"type": "string", "minLength": 1, "pattern": "^[a-z0-9_]+$"},
+    "description": {"type": "string", "minLength": 1},
+    "case_scope": {"enum": ["normal_line", "document", "validation", "legacy_snapshot"]},
+    "applicable_adapters": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["legacy_saas_calculator_v1"]}
+    },
+    "normalized_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["calculator_request"],
+      "properties": {
+        "calculator_request": {"$ref": "#/$defs/calculatorRequest"}
+      }
+    },
+    "normalized_configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["configuration_source", "starter_default_version"],
+      "properties": {
+        "configuration_source": {"const": "starter_defaults"},
+        "starter_default_version": {"const": "1.2.1"}
+      }
+    },
+    "expected_line_results": {"$ref": "#/$defs/expectedLineResults"},
+    "expected_document_results": {"$ref": "#/$defs/expectedDocumentResults"},
+    "decimal_rate_evidence": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/decimalEvidence"}
+    },
+    "rounding_evidence": {"$ref": "#/$defs/roundingEvidence"},
+    "minimum_adjustment_evidence": {"$ref": "#/$defs/minimumEvidence"},
+    "expected_validation_errors": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "snapshot_evidence": {"$ref": "#/$defs/snapshotEvidence"},
+    "legacy_compatibility": {"$ref": "#/$defs/legacyCompatibility"}
+  },
+  "$defs": {
+    "decimalString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "unit": {
+      "enum": [
+        "in",
+        "ft",
+        "sqft",
+        "sqin",
+        "each",
+        "item",
+        "piece",
+        "hour",
+        "minute",
+        "USD",
+        "USD_per_sqft",
+        "USD_per_sqin",
+        "USD_per_hour",
+        "USD_per_minute",
+        "USD_per_each",
+        "percent",
+        "basis_points",
+        "ratio"
+      ]
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "unit"],
+      "properties": {
+        "value": {"$ref": "#/$defs/decimalString"},
+        "unit": {"$ref": "#/$defs/unit"}
+      }
+    },
+    "calculatorRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "width",
+        "height",
+        "quantity",
+        "material_key",
+        "design_needed",
+        "install_needed",
+        "manual_selling_price_cents",
+        "category_inputs"
+      ],
+      "properties": {
+        "width": {
+          "anyOf": [
+            {"$ref": "#/$defs/measurement"},
+            {"type": "null"}
+          ]
+        },
+        "height": {
+          "anyOf": [
+            {"$ref": "#/$defs/measurement"},
+            {"type": "null"}
+          ]
+        },
+        "quantity": {"$ref": "#/$defs/measurement"},
+        "material_key": {
+          "anyOf": [
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
+        "design_needed": {"type": "boolean"},
+        "install_needed": {"type": "boolean"},
+        "manual_selling_price_cents": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "category_inputs": {"type": "object"}
+      }
+    },
+    "methodRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method_id", "selected", "available", "amount_cents", "status"],
+      "properties": {
+        "method_id": {"type": "string", "minLength": 1},
+        "selected": {"type": "boolean"},
+        "available": {"type": "boolean"},
+        "amount_cents": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "status": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "expectedLineResults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "selling_price_cents",
+        "suggested_price_cents",
+        "true_cost_cents",
+        "profit_amount_cents",
+        "profit_margin_percent",
+        "pricing_method_used",
+        "canonical_method_id",
+        "selected_method_id",
+        "warnings",
+        "method_rows"
+      ],
+      "properties": {
+        "status": {"enum": ["success", "failed", "unavailable"]},
+        "selling_price_cents": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "suggested_price_cents": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "true_cost_cents": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "profit_amount_cents": {
+          "anyOf": [
+            {"type": "integer"},
+            {"type": "null"}
+          ]
+        },
+        "profit_margin_percent": {
+          "anyOf": [
+            {"$ref": "#/$defs/decimalString"},
+            {"type": "null"}
+          ]
+        },
+        "pricing_method_used": {
+          "anyOf": [
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
+        "canonical_method_id": {
+          "anyOf": [
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
+        "selected_method_id": {
+          "anyOf": [
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "method_rows": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/methodRow"}
+        }
+      }
+    },
+    "expectedDocumentResults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applicability", "status", "total_cents"],
+      "properties": {
+        "applicability": {"enum": ["not_applicable", "applicable"]},
+        "status": {"enum": ["not_calculated", "success", "failed", "unavailable"]},
+        "total_cents": {
+          "anyOf": [
+            {"type": "integer"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "decimalEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "value", "unit", "source"],
+      "properties": {
+        "field": {"type": "string", "minLength": 1},
+        "value": {"$ref": "#/$defs/decimalString"},
+        "unit": {"$ref": "#/$defs/unit"},
+        "source": {"type": "string", "minLength": 1}
+      }
+    },
+    "roundingEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_id", "mode", "boundary", "legacy_dollar_bridge"],
+      "properties": {
+        "policy_id": {"const": "pricing_rounding_v1_round_half_up_final_cents"},
+        "mode": {"const": "ROUND_HALF_UP"},
+        "boundary": {"const": "final_cents"},
+        "legacy_dollar_bridge": {"const": "Decimal(str(value))"}
+      }
+    },
+    "minimumEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applicability", "minimum_charge_applied"],
+      "properties": {
+        "applicability": {"enum": ["not_applicable", "applicable"]},
+        "minimum_charge_applied": {"type": "boolean"},
+        "minimum_scope": {
+          "anyOf": [
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
+        "minimum_policy": {
+          "anyOf": [
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
+        "pre_minimum_selling_price_cents": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "minimum_adjustment_cents": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "snapshotEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applicability", "snapshot_created", "legacy_readable", "expected_shape"],
+      "properties": {
+        "applicability": {"enum": ["shape_only", "not_applicable", "applicable"]},
+        "snapshot_created": {"type": "boolean"},
+        "legacy_readable": {"type": "boolean"},
+        "expected_shape": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "legacyCompatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter_id", "execution_path", "source", "legacy_dollar_fields"],
+      "properties": {
+        "adapter_id": {"const": "legacy_saas_calculator_v1"},
+        "execution_path": {"const": "app.services.pricing.calculate_pricing"},
+        "source": {"const": "legacy compatibility value"},
+        "legacy_dollar_fields": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

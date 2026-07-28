@@ -1,9 +1,9 @@
 # EC9 Phase 9I - Shared Pricing Calculator Preflight and Implementation Plan
 
-**Status:** PHASE 9I-J CONTRACT FOUNDATION IMPLEMENTED AND VERIFIED; PHASE 9I REMAINS OPEN
+**Status:** PHASE 9I-K VERSIONED PARITY FIXTURE FRAMEWORK IMPLEMENTED AND VERIFIED; PHASE 9I REMAINS OPEN
 **Date:** 2026-07-26  
 **Repository state audited:** `main` at `08fbe1fd1e4265df8b4047a5ca138b056cd0a82e`  
-**Implementation status:** Phase 9I-A passed owner review. Phase 9I-B backend tenant pricing-method configuration foundation is implemented. Phase 9I-C backend Banner comparison contract was corrected after read-only review findings and received an independent read-only re-review with final status `PHASE 9I-C RE-REVIEW PASSED`. Phase 9I-D normalizes every currently implemented non-Banner category output through the shared method-output contract. Its read-only review found one manual-override normalization defect; that defect was corrected and received final read-only re-review status `PHASE 9I-D RE-REVIEW PASSED`. Phase 9I-E implements the dedicated Pricing Calculators workspace and Shop Operations navigation exposure over the existing Phase 9I contracts. Phase 9I-F implements Quote/Order dialog parity over the shared calculator contracts, with backend-authoritative transfer guards and permission checks. Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`. Phase 9I-G implements the Saved Calculation Library for explicit tenant-scoped save/reopen/search/filter/rename/notes/duplicate/archive/restore/use flows over existing backend calculators. Live pricing math remains unchanged. Phase 9I-G review status is `PHASE 9I-G REVIEW PASSED`. Phase 9I-H implements read-only direct consumer contracts for Work Order Summary, reporting, Webstore reports, and Wrap Lab reports without changing pricing formulas or downstream workflows. Phase 9I-H review status is `PHASE 9I-H REVIEW PASSED`. Phase 9I-I implements backend-authoritative Digital Print item/order minimum enforcement with snapshot evidence and shared calculator display coverage; Phase 9I-I passed independent focused read-only review and is complete. The separate Calculator Extraction, Money Normalization, and Standalone Licensing Readiness Audit has been accepted, final owner decisions are resolved, and the detailed implementation plan is recorded in `preflight/EC9_PHASE9I_CALCULATOR_EXTRACTION_AND_MONEY_NORMALIZATION_IMPLEMENTATION_PLAN.md`. Phase 9I-J implements and verifies the isolated `backend/pricing_engine/` contract/type foundation only. No calculator formula, production integration, data migration, or licensing work has started. All of Phase 9I remains open until the plan's required corrections, all-category parity fixtures, pure-engine extraction, adapter verification, and review gates pass.
+**Implementation status:** Phase 9I-A passed owner review. Phase 9I-B backend tenant pricing-method configuration foundation is implemented. Phase 9I-C backend Banner comparison contract was corrected after read-only review findings and received an independent read-only re-review with final status `PHASE 9I-C RE-REVIEW PASSED`. Phase 9I-D normalizes every currently implemented non-Banner category output through the shared method-output contract. Its read-only review found one manual-override normalization defect; that defect was corrected and received final read-only re-review status `PHASE 9I-D RE-REVIEW PASSED`. Phase 9I-E implements the dedicated Pricing Calculators workspace and Shop Operations navigation exposure over the existing Phase 9I contracts. Phase 9I-F implements Quote/Order dialog parity over the shared calculator contracts, with backend-authoritative transfer guards and permission checks. Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`. Phase 9I-G implements the Saved Calculation Library for explicit tenant-scoped save/reopen/search/filter/rename/notes/duplicate/archive/restore/use flows over existing backend calculators. Live pricing math remains unchanged. Phase 9I-G review status is `PHASE 9I-G REVIEW PASSED`. Phase 9I-H implements read-only direct consumer contracts for Work Order Summary, reporting, Webstore reports, and Wrap Lab reports without changing pricing formulas or downstream workflows. Phase 9I-H review status is `PHASE 9I-H REVIEW PASSED`. Phase 9I-I implements backend-authoritative Digital Print item/order minimum enforcement with snapshot evidence and shared calculator display coverage; Phase 9I-I passed independent focused read-only review and is complete. The separate Calculator Extraction, Money Normalization, and Standalone Licensing Readiness Audit has been accepted, final owner decisions are resolved, and the detailed implementation plan is recorded in `preflight/EC9_PHASE9I_CALCULATOR_EXTRACTION_AND_MONEY_NORMALIZATION_IMPLEMENTATION_PLAN.md`. Phase 9I-J implements and verifies the isolated `backend/pricing_engine/` contract/type foundation only. Phase 9I-K implements and verifies the test-only versioned parity fixture framework, shared schema `pricing_fixture_v1`, nine starter fixtures, and current legacy/SaaS calculator adapter runner. No calculator formula, production integration, data migration, or licensing work has started. All of Phase 9I remains open until the plan's required corrections, all-category parity fixtures, pure-engine extraction, adapter verification, and review gates pass.
 **Controlling authority:** `specs_pack/extracted/EC09_Pricing_Foundation_Calculators_and_Order_Pricing.docx`
 
 ## 0. Approved Owner Decisions Recorded For 9I-A
@@ -1137,8 +1137,34 @@ Phase 9I closure evaluation:
 - Phase 9I-G: review passed and committed.
 - Phase 9I-H: review passed and committed.
 - Phase 9I-I: review passed and complete.
+- Phase 9I-J: contract/type foundation implemented and verified.
+- Phase 9I-K: versioned parity fixture framework implemented and verified.
 
-Formal Phase 9I closure must remain open. The separate Calculator Extraction, Money Normalization, and Standalone Licensing Readiness Audit is accepted, and the implementation plan is recorded in `preflight/EC9_PHASE9I_CALCULATOR_EXTRACTION_AND_MONEY_NORMALIZATION_IMPLEMENTATION_PLAN.md`; implementation has not started and Phase 9I cannot close until the plan's required corrections and parity gates pass.
+Formal Phase 9I closure must remain open. The separate Calculator Extraction, Money Normalization, and Standalone Licensing Readiness Audit is accepted, and the implementation plan is recorded in `preflight/EC9_PHASE9I_CALCULATOR_EXTRACTION_AND_MONEY_NORMALIZATION_IMPLEMENTATION_PLAN.md`; implementation has started through Phase 9I-J and Phase 9I-K, but Phase 9I cannot close until the plan's required corrections and parity gates pass.
+
+## 30. Phase 9I-K Implementation Record
+
+Phase 9I-K implements the test-only versioned parity-fixture framework without changing pricing formulas, production routers/services, frontend behavior, persistence, Quote/Order behavior, saved calculations, snapshots, Webstore behavior, Wrap Lab behavior, data migrations, pure engine implementation, production SaaS adapter integration, standalone adapter behavior, or licensing.
+
+Implemented scope:
+
+- Added shared fixture schema `pricing_fixture_v1` at `backend/tests/fixtures/pricing_engine/schema.json`.
+- Added nine starter normal-line fixtures under `backend/tests/fixtures/pricing_engine/<category>/<case_id>.json`, one for each required category: `banners`, `rigid_signs`, `cut_vinyl`, `digital_print`, `vehicle_graphics`, `apparel`, `promotional`, `services`, and `custom`.
+- Added test-only runner `backend/tests/pricing_engine_fixture_runner.py` with deterministic discovery, schema/version validation, duplicate `case_id` detection, strict money/Decimal/unit/rounding validation, and a reusable adapter protocol.
+- Added current executable adapter `legacy_saas_calculator_v1`, which runs the existing `app.services.pricing.calculate_pricing` path only in tests and compares results to the fixed expected cents in the shared fixture.
+- Added focused tests in `backend/tests/test_ec9_phase9ik_parity_fixture_schema.py`.
+
+Phase 9I-K verification:
+
+- Focused Phase 9I-K tests: `29 passed`.
+- Phase 9I-J focused tests: `23 passed`.
+- Focused money-policy and existing Phase 9I contract regressions: `32 passed`.
+- Focused category-output and Banner regressions: `33 passed`.
+- Backend compile/import validation: passed.
+- `git diff --check`: passed with CRLF conversion warnings only.
+- Current executed path: `legacy_saas_calculator_v1` through `app.services.pricing.calculate_pricing`.
+- Full all-adapter parity is not complete; future pure engine and standalone adapter parity are not claimed.
+- Phase 9I-L remains next and has not started.
 
 Preserved non-blocking follow-ups:
 
@@ -1146,7 +1172,7 @@ Preserved non-blocking follow-ups:
 2. Audit pre-existing Quote and Order item mutation paths that perform identifier-only updates or deletes after tenant-scoped authorization lookups.
 3. Record the one-off duplicate-key setup failure in `tests/test_ec7_inventory.py` as informational test-reliability evidence; the immediate full-suite rerun passed.
 
-## 30. Risks And Controls
+## 31. Risks And Controls
 
 | Risk | Control |
 |---|---|
@@ -1160,8 +1186,8 @@ Preserved non-blocking follow-ups:
 | Expanding into Webstores/Wrap Lab | Keep 9I calculator-only; no payouts/storefront/wrap project changes |
 | Frontend stale totals | Preserve debounce/updating behavior from Banner repair |
 
-## 31. Stop Boundary
+## 32. Stop Boundary
 
-Phase 9I-A, 9I-B, 9I-C, 9I-D, 9I-E, 9I-F, 9I-G, and 9I-H are implemented in the current Phase 9I package. Phase 9I-C has final review status `PHASE 9I-C RE-REVIEW PASSED`; Phase 9I-D is implemented with the manual-override normalization defect corrected and final re-review status `PHASE 9I-D RE-REVIEW PASSED`; Phase 9I-E review status is `PHASE 9I-E REVIEW PASSED`; Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`; Phase 9I-G review status is `PHASE 9I-G REVIEW PASSED`; Phase 9I-H review status is `PHASE 9I-H REVIEW PASSED`; Phase 9I-I status is `PHASE 9I-I REVIEW PASSED - COMPLETE`; Phase 9I-J is implemented and verified. No calculator formula migration, production integration, data migration, standalone-adapter, or licensing implementation has started. All of Phase 9I remains open until the plan's required corrections and review gates pass. Phase 9I-K is next and has not started.
+Phase 9I-A, 9I-B, 9I-C, 9I-D, 9I-E, 9I-F, 9I-G, and 9I-H are implemented in the current Phase 9I package. Phase 9I-C has final review status `PHASE 9I-C RE-REVIEW PASSED`; Phase 9I-D is implemented with the manual-override normalization defect corrected and final re-review status `PHASE 9I-D RE-REVIEW PASSED`; Phase 9I-E review status is `PHASE 9I-E REVIEW PASSED`; Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`; Phase 9I-G review status is `PHASE 9I-G REVIEW PASSED`; Phase 9I-H review status is `PHASE 9I-H REVIEW PASSED`; Phase 9I-I status is `PHASE 9I-I REVIEW PASSED - COMPLETE`; Phase 9I-J is implemented and verified; Phase 9I-K is implemented and verified. No calculator formula migration, production integration, data migration, standalone-adapter, or licensing implementation has started. All of Phase 9I remains open until the plan's required corrections and review gates pass. Phase 9I-L is next and has not started.
 
 No EC20, EC21, EC22, AI, attachments, markup, navigation redesign, Webstore payout, Wrap Lab workflow, EC4 payment/invoice, Stripe, provider, or unrelated work is included.

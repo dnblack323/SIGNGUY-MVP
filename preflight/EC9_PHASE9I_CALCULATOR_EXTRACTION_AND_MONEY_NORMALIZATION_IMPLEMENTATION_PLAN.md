@@ -1,9 +1,9 @@
 # EC9 Phase 9I Calculator Extraction And Money Normalization Implementation Plan
 
-**Status:** PHASE 9I-J IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-K NOT STARTED
+**Status:** PHASE 9I-K VERSIONED PARITY FIXTURE FRAMEWORK IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-L NOT STARTED
 **Date:** 2026-07-27
 **Repository gate verified:** `main` at `7334cb24867102013350bde3ea4c8b84a59c4ff1`
-**Planning task only:** No calculator, schema, model, frontend, migration, test, or runtime implementation is included in this document change.
+**Planning document with implementation records:** Phase 9I-J and Phase 9I-K implementation results are recorded below. Phase 9I remains open.
 
 ## 1. Accepted Audit Conclusion
 
@@ -297,6 +297,37 @@ Verification:
 - Review gate: fixture coverage review.
 - Commit safety: yes.
 - Rollback: remove fixture harness.
+
+Implemented files:
+
+- `backend/tests/fixtures/pricing_engine/schema.json`
+- `backend/tests/fixtures/pricing_engine/banners/banners_normal.json`
+- `backend/tests/fixtures/pricing_engine/rigid_signs/rigid_signs_normal.json`
+- `backend/tests/fixtures/pricing_engine/cut_vinyl/cut_vinyl_normal.json`
+- `backend/tests/fixtures/pricing_engine/digital_print/digital_print_normal.json`
+- `backend/tests/fixtures/pricing_engine/vehicle_graphics/vehicle_graphics_normal.json`
+- `backend/tests/fixtures/pricing_engine/apparel/apparel_normal.json`
+- `backend/tests/fixtures/pricing_engine/promotional/promotional_normal.json`
+- `backend/tests/fixtures/pricing_engine/services/services_normal.json`
+- `backend/tests/fixtures/pricing_engine/custom/custom_normal.json`
+- `backend/tests/pricing_engine_fixture_runner.py`
+- `backend/tests/test_ec9_phase9ik_parity_fixture_schema.py`
+
+Verification:
+
+- Fixture schema version: `pricing_fixture_v1`.
+- Fixture engine version: `pricing_engine_v1`.
+- Formula version: `ec9_current`.
+- Rounding policy: `pricing_rounding_v1_round_half_up_final_cents`.
+- Starter fixtures: 9 total; all nine categories represented.
+- Executed adapter/path: `legacy_saas_calculator_v1` through `app.services.pricing.calculate_pricing`.
+- Phase 9I-K focused tests: `29 passed`.
+- Phase 9I-J focused tests: `23 passed`.
+- Focused money-policy and existing Phase 9I contract regressions: `32 passed`.
+- Focused category-output and Banner regressions: `33 passed`.
+- Backend compile/import validation: passed.
+- No calculator formula, production service, route, frontend, persistence model, migration, snapshot record, Quote, Order, Webstore, Wrap Lab, Record Numbering, Control Center, Platform Administration, standalone adapter, pure engine implementation, data migration, or licensing behavior changed.
+- Full all-adapter parity coverage is not complete; only the current legacy/SaaS calculator path executes in Phase 9I-K.
 
 ### Phase 9I-L - Cents-first compatibility DTOs around existing calculators
 
@@ -709,8 +740,10 @@ Documentation-only verification required before review:
 
 Phase 9I-J is implemented and verified.
 
-No calculator formula changes, production integration, data migration, schema/model migration, frontend changes, licensing work, or parity-fixture framework are implemented by Phase 9I-J.
+Phase 9I-K is implemented and verified.
+
+No calculator formula changes, production integration, data migration, schema/model migration, frontend changes, licensing work, pure engine implementation, standalone adapter implementation, or production SaaS adapter implementation are included in Phase 9I-K.
 
 Phase 9I remains open.
 
-Phase 9I-K is the next implementation slice under this plan and has not started.
+Phase 9I-L is the next implementation slice under this plan and has not started.

@@ -1,0 +1,79 @@
+{
+  "fixture_schema_version": "pricing_fixture_v1",
+  "engine_version": "pricing_engine_v1",
+  "formula_version": "ec9_current",
+  "category": "cut_vinyl",
+  "case_id": "cut_vinyl_normal",
+  "description": "Cut Vinyl normal line fixture with three colors, extreme weeding, and masking.",
+  "case_scope": "normal_line",
+  "applicable_adapters": ["legacy_saas_calculator_v1"],
+  "normalized_inputs": {
+    "calculator_request": {
+      "width": {"value": "12.0000", "unit": "in"},
+      "height": {"value": "12.0000", "unit": "in"},
+      "quantity": {"value": "1.0000", "unit": "each"},
+      "material_key": null,
+      "design_needed": false,
+      "install_needed": false,
+      "manual_selling_price_cents": null,
+      "category_inputs": {"number_of_colors": "3", "weeding_complexity": "extreme", "masking": true}
+    }
+  },
+  "normalized_configuration": {
+    "configuration_source": "starter_defaults",
+    "starter_default_version": "1.2.1"
+  },
+  "expected_line_results": {
+    "status": "success",
+    "selling_price_cents": 5968,
+    "suggested_price_cents": 5968,
+    "true_cost_cents": 2595,
+    "profit_amount_cents": 3373,
+    "profit_margin_percent": "56.5200",
+    "pricing_method_used": "per_sqft",
+    "canonical_method_id": "per_sqft",
+    "selected_method_id": "per_sqft",
+    "warnings": [],
+    "method_rows": [
+      {"method_id": "per_sqft", "selected": true, "available": true, "amount_cents": 5968, "status": ["selected", "authoritative_total"]}
+    ]
+  },
+  "expected_document_results": {
+    "applicability": "not_applicable",
+    "status": "not_calculated",
+    "total_cents": null
+  },
+  "decimal_rate_evidence": [
+    {"field": "width", "value": "12.0000", "unit": "in", "source": "fixture input"},
+    {"field": "height", "value": "12.0000", "unit": "in", "source": "fixture input"},
+    {"field": "quantity", "value": "1.0000", "unit": "each", "source": "fixture input"},
+    {"field": "base_sell_rate_per_sqft", "value": "12.000000", "unit": "USD_per_sqft", "source": "starter defaults"}
+  ],
+  "rounding_evidence": {
+    "policy_id": "pricing_rounding_v1_round_half_up_final_cents",
+    "mode": "ROUND_HALF_UP",
+    "boundary": "final_cents",
+    "legacy_dollar_bridge": "Decimal(str(value))"
+  },
+  "minimum_adjustment_evidence": {
+    "applicability": "not_applicable",
+    "minimum_charge_applied": false,
+    "minimum_scope": null,
+    "minimum_policy": null,
+    "pre_minimum_selling_price_cents": null,
+    "minimum_adjustment_cents": null
+  },
+  "expected_validation_errors": [],
+  "snapshot_evidence": {
+    "applicability": "shape_only",
+    "snapshot_created": false,
+    "legacy_readable": true,
+    "expected_shape": ["source", "pricing_method", "calculated_unit_price_cents"]
+  },
+  "legacy_compatibility": {
+    "adapter_id": "legacy_saas_calculator_v1",
+    "execution_path": "app.services.pricing.calculate_pricing",
+    "source": "legacy compatibility value",
+    "legacy_dollar_fields": ["selling_price", "suggested_price", "true_cost", "profit_amount"]
+  }
+}
