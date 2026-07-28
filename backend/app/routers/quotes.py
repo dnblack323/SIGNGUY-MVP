@@ -237,7 +237,8 @@ async def _resolve_item_pricing(
             )
         except ValueError as e:
             detail = "Material pricing profile not found" if str(e) == "material_profile_not_found" else (
-                "Saved item not found" if str(e) == "saved_item_not_found" else str(e))
+                "Pricing component not found" if str(e) == "pricing_component_not_found" else (
+                "Saved item not found" if str(e) == "saved_item_not_found" else str(e)))
             raise HTTPException(status_code=404, detail=detail)
     try:
         return build_item_pricing_fields(

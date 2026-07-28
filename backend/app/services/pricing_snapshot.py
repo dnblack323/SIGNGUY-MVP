@@ -175,6 +175,7 @@ def build_calculated_snapshot(
         "pricing_components_snapshot": calc_result.get("pricing_components_used") or [],
         "saved_item_snapshot": calc_result.get("saved_item_used"),
         "category_defaults_used": calc_result.get("category_defaults_used") or {},
+        "pricing_engine_configuration_used": calc_result.get("pricing_engine_configuration_used") or {},
         "captured_at": _now_iso(),
     }
 

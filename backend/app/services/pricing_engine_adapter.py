@@ -74,5 +74,6 @@ def calculate_pricing_with_cents_first_envelope(
             "material_profile_id": (material_profile or {}).get("id"),
             "pricing_component_ids": [component.get("id") for component in pricing_components or []],
             "saved_item_id": (saved_item or {}).get("id"),
+            "pricing_engine_configuration": deepcopy(legacy_result.get("pricing_engine_configuration_used") or {}),
         },
     )

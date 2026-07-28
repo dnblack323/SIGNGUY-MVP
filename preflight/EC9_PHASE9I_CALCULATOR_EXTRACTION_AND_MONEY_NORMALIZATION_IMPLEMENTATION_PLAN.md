@@ -1,9 +1,9 @@
 # EC9 Phase 9I Calculator Extraction And Money Normalization Implementation Plan
 
-**Status:** PHASE 9I-P PURE DOCUMENT PRICING PIPELINE IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-Q NOT STARTED
+**Status:** PHASE 9I-Q SAAS CONFIGURATION ADAPTER IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-R NOT STARTED
 **Date:** 2026-07-27
 **Repository gate verified:** `main` at `7334cb24867102013350bde3ea4c8b84a59c4ff1`
-**Planning document with implementation records:** Phase 9I-J, Phase 9I-K, Phase 9I-L, Phase 9I-M, Phase 9I-N, Phase 9I-O, and Phase 9I-P implementation results are recorded below. Phase 9I remains open.
+**Planning document with implementation records:** Phase 9I-J, Phase 9I-K, Phase 9I-L, Phase 9I-M, Phase 9I-N, Phase 9I-O, Phase 9I-P, and Phase 9I-Q implementation results are recorded below. Phase 9I remains open.
 
 ## 1. Accepted Audit Conclusion
 
@@ -482,7 +482,15 @@ Implementation record:
 ### Phase 9I-Q - SaaS configuration, tenant, persistence, and permission adapters
 
 - Scope: Formalize SaaS adapter mapping from Mongo settings/references to pure engine config/contracts.
-- Likely files: `backend/app/services/pricing_engine_config_adapter.py`, `backend/app/services/pricing_engine_result_adapter.py`, `backend/app/routers/pricing.py`, `backend/app/routers/quotes.py`, `backend/app/routers/orders.py`, targeted tests.
+- Status: implemented and verified on 2026-07-28.
+- Implemented files: `backend/app/services/pricing_engine_config_adapter.py`, `backend/app/services/pricing.py`, `backend/app/services/pricing_engine_adapter.py`, `backend/app/services/order_pricing.py`, `backend/app/services/pricing_saved_calculations.py`, `backend/app/services/pricing_snapshot.py`, `backend/app/routers/pricing.py`, `backend/app/routers/quotes.py`, `backend/app/routers/orders.py`, and `backend/tests/test_ec9_phase9iq_saas_configuration_adapter.py`.
+- Adapter entry point: `build_line_engine_configuration()` maps tenant-scoped SaaS settings and already-resolved references into `pricing_engine_saas_configuration_9iq_v1` plain engine settings; `calculate_pricing()` now passes only normalized `engine_settings` into `pricing_engine.line_engine.calculate_line`.
+- Normalized configuration contract: selected category defaults only, shop defaults, formula-required legacy material row, and response/snapshot-safe lineage. It excludes tenant IDs, Mongo `_id`, users, permissions, request/router objects, audit handles, entitlements, licensing, database handles, and unresolved references.
+- Result compatibility: `app.services.pricing_engine_adapter` remains the single cents-first/legacy compatibility boundary and adds configuration lineage into `pricing_engine_result.normalized_input`.
+- Reference resolution: material profiles, their linked canonical materials, pricing components, and saved items are tenant-scoped and active-only; missing, inactive, or cross-tenant IDs fail closed without foreign-record detail leakage. Pricing component ordering is preserved and missing IDs are no longer silently dropped.
+- Production callers: `/pricing/calculate`, Banner method comparison, Quote item calculation/reprice, Order item calculation/reprice, saved-calculation creation/reuse, embedded snapshots, and immutable snapshot records continue through existing SaaS orchestration while formula execution receives normalized configuration only.
+- Legacy settings: supported legacy settings are mapped in memory with starter fallback behavior where existing SaaS behavior already authorizes it; source dictionaries are not mutated and no migration/backfill/write-back is introduced.
+- Verification passed: Phase 9I-Q focused tests `7 passed, 6 warnings`; 9I-O/P parity `28 passed, 6 warnings`; 9I-N/M `15 passed, 6 warnings`; 9I-L/K `45 passed, 6 warnings`; pricing saved-items/materials/components `10 passed, 6 warnings`; pricing method configuration/contracts `36 passed, 6 warnings`; Quote/Order and Digital Print `66 passed, 6 warnings`; snapshot/advisory `22 passed, 6 warnings`; money policy `14 passed`; Orders/Quotes/Work Orders `22 passed, 6 warnings`; saved-calculation library `15 passed, 6 warnings`; EC9 materials/saved-items `10 passed, 6 warnings`; permission/tenant regressions `12 passed`; backend compile/import validation passed; pure pricing-engine import isolation passed.
 - Dependencies: 9I-O/P.
 - Unchanged: permission names, tenant boundaries, record mutation semantics.
 - Data migration: none.
@@ -807,4 +815,4 @@ No calculator formula changes, data migration, destructive migration, frontend c
 
 Phase 9I remains open.
 
-Phase 9I-O is implemented and verified. Phase 9I-P is implemented and verified. Phase 9I-Q is the next implementation slice under this plan and has not started.
+Phase 9I-O is implemented and verified. Phase 9I-P is implemented and verified. Phase 9I-Q is implemented and verified. Phase 9I-R is the next implementation slice under this plan and has not started.

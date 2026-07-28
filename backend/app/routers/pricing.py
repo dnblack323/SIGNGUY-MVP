@@ -389,6 +389,8 @@ async def calculate(payload: CalcIn, user: dict = Depends(require_permission(Per
     except ValueError as e:
         if str(e) == "material_profile_not_found":
             raise HTTPException(status_code=404, detail="Material pricing profile not found")
+        if str(e) == "pricing_component_not_found":
+            raise HTTPException(status_code=404, detail="Pricing component not found")
         if str(e) == "saved_item_not_found":
             raise HTTPException(status_code=404, detail="Saved item not found")
         raise

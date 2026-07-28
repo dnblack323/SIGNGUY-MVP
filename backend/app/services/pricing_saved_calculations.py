@@ -251,6 +251,8 @@ async def calculate_saved_calculation_result(
     except ValueError as exc:
         if str(exc) == "material_profile_not_found":
             raise SavedCalculationError("Material pricing profile not found", status_code=404) from exc
+        if str(exc) == "pricing_component_not_found":
+            raise SavedCalculationError("Pricing component not found", status_code=404) from exc
         if str(exc) == "saved_item_not_found":
             raise SavedCalculationError("Saved item not found", status_code=404) from exc
         raise

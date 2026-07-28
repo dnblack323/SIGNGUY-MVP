@@ -64,23 +64,28 @@ async def resolve_references(
     material_profile = None
     if material_profile_id:
         material_profile = await get_profile(tenant_id, material_profile_id)
-        if not material_profile:
+        if not material_profile or not material_profile.get("active", True):
             raise ValueError("material_profile_not_found")
         material_doc = await db.materials.find_one(
-            {"id": material_profile["material_id"], "tenant_id": tenant_id}, {"_id": 0, "name": 1}
+            {"id": material_profile["material_id"], "tenant_id": tenant_id}, {"_id": 0, "name": 1, "active": 1}
         )
+        if not material_doc or not material_doc.get("active", True):
+            raise ValueError("material_profile_not_found")
         material_profile = {**material_profile, "material_name": (material_doc or {}).get("name")}
 
     pricing_components: list[dict] = []
     if pricing_component_ids:
         all_components = await list_components(tenant_id, active=True)
         by_id = {c["id"]: c for c in all_components}
-        pricing_components = [by_id[cid] for cid in pricing_component_ids if cid in by_id]
+        missing = [cid for cid in pricing_component_ids if cid not in by_id]
+        if missing:
+            raise ValueError("pricing_component_not_found")
+        pricing_components = [by_id[cid] for cid in pricing_component_ids]
 
     saved_item = None
     if saved_item_id:
         saved_item = await get_saved_item(tenant_id, saved_item_id)
-        if not saved_item:
+        if not saved_item or not saved_item.get("active", True):
             raise ValueError("saved_item_not_found")
 
     return material_profile, pricing_components, saved_item

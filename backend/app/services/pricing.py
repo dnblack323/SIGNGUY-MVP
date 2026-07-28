@@ -12,6 +12,7 @@ from ..core.db import db
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from pricing_engine.line_engine import calculate_line
 
+from .pricing_engine_config_adapter import build_line_engine_configuration, public_configuration_lineage
 from .starter_defaults import build_starter_pack, CATEGORY_IDS, MATERIALS, STARTER_DEFAULT_VERSION
 
 
@@ -159,8 +160,16 @@ def calculate_pricing(
     optional resolved `saved_item` (a `PricingSavedItem`, e.g. a preloaded
     Business Card tier item) rather than by `width_inches`/`height_inches`.
     """
-    return calculate_line(
+    engine_configuration = build_line_engine_configuration(
         settings=settings,
+        category=category,
+        material_key=material_key,
+        material_profile=material_profile,
+        pricing_components=pricing_components,
+        saved_item=saved_item,
+    )
+    result = calculate_line(
+        settings=engine_configuration["engine_settings"],
         category=category,
         width_inches=width_inches,
         height_inches=height_inches,
@@ -174,6 +183,8 @@ def calculate_pricing(
         pricing_components=pricing_components,
         saved_item=saved_item,
     )
+    result["pricing_engine_configuration_used"] = public_configuration_lineage(engine_configuration)
+    return result
 
 
 # ---------------------------------------------------------------------------
