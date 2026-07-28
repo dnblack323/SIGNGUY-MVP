@@ -16,6 +16,7 @@ import { centsToDollarsString } from "@/lib/format";
 import { ArrowLeft, Plus, Pencil, Trash2, Wrench, Receipt, Zap, RefreshCw } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import LineItemDialog from "@/components/commerce/LineItemDialog";
+import DigitalPrintMinimumAdjustmentRow, { digitalPrintMinimumAdjustmentCents } from "@/components/commerce/DigitalPrintMinimumAdjustmentRow";
 import GenerateWorkOrderDialog, { RegenerateDialog } from "@/components/work-orders/GenerateWorkOrderDialog";
 import ProofsPanel from "@/components/proofs/ProofsPanel";
 import TaskHandoffButton from "@/components/tasks/TaskHandoffButton";
@@ -115,6 +116,7 @@ function ItemsPanel({ orderId, items, totals, pricingSummary, canWrite, orderSta
               <div className="text-right tabular-nums">{centsToDollarsString(totals.discount_cents ?? 0)}</div>
               <div className="text-xs text-muted-foreground text-right">Tax</div>
               <div className="text-right tabular-nums">{centsToDollarsString(totals.tax_cents ?? 0)}</div>
+              <DigitalPrintMinimumAdjustmentRow totals={totals} />
               <div className="text-sm font-medium text-right">Total</div>
               <div className="text-right tabular-nums font-semibold" data-testid="order-derived-total">
                 {centsToDollarsString(totals.total_cents ?? 0)}
@@ -192,6 +194,7 @@ export default function OrderDetailPage() {
   const order = data?.order;
   const items = data?.items || [];
   const totals = data?.totals || {};
+  const digitalPrintAdjustmentCents = digitalPrintMinimumAdjustmentCents(totals);
   const pricingSummary = data?.pricing_summary || {};
 
   const { data: workOrders } = useQuery({
@@ -332,6 +335,12 @@ export default function OrderDetailPage() {
               <div className="flex items-center justify-between"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums">{centsToDollarsString(totals.subtotal_cents ?? 0)}</span></div>
               <div className="flex items-center justify-between"><span className="text-muted-foreground">Discount</span><span className="tabular-nums">{centsToDollarsString(totals.discount_cents ?? 0)}</span></div>
               <div className="flex items-center justify-between"><span className="text-muted-foreground">Tax</span><span className="tabular-nums">{centsToDollarsString(totals.tax_cents ?? 0)}</span></div>
+              {digitalPrintAdjustmentCents != null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Digital Print order minimum adjustment</span>
+                  <span className="tabular-nums" data-testid="order-summary-digital-print-order-minimum-adjustment">{centsToDollarsString(digitalPrintAdjustmentCents)}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between border-t pt-1"><span className="font-medium">Total</span><span className="tabular-nums font-semibold">{centsToDollarsString(totals.total_cents ?? 0)}</span></div>
               {pricingSummary?.item_count > 0 && (
                 <div className="border-t pt-1 space-y-1" data-testid="order-summary-pricing-block">

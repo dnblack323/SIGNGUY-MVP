@@ -82,16 +82,64 @@ function successfulMethod(id, amount, selected = false) {
     status: "success",
     available: true,
     amount,
+    amount_cents: amount == null ? null : centsFor(amount),
     selected,
     details: { source: "fixture" },
   };
 }
 
+const CENTS = {
+  "3.55": 355,
+  "16.45": 1645,
+  "20": 2000,
+  "40": 4000,
+  "48": 4800,
+  "144": 14400,
+  "170": 17000,
+  "180": 18000,
+  "192": 19200,
+};
+
+function centsFor(amount) {
+  return CENTS[String(amount)] ?? null;
+}
+
+function withPricingEngineResult(result, sellingPriceCents) {
+  return {
+    ...result,
+    pricing_engine_result: {
+      status: "success",
+      selling_price_cents: sellingPriceCents,
+      selected_method_amount_cents: sellingPriceCents,
+      true_cost_cents: result.true_cost != null ? centsFor(result.true_cost) : null,
+      profit_amount_cents: result.profit_amount != null ? centsFor(result.profit_amount) : null,
+      method_rows: (result.pricing_method_results || []).map((row) => ({
+        method_id: row.method_id,
+        selected: !!row.selected,
+        available: row.available !== false,
+        amount_cents: row.amount_cents ?? null,
+      })),
+      breakdown_amounts: (result.breakdown || []).map((row) => ({
+        label: row.label,
+        amount_cents: row.amount_cents ?? centsFor(row.amount),
+      })),
+      component_amounts: [
+        ...["pre_minimum_selling_price", "item_minimum_total", "order_minimum_total", "minimum_adjustment"].map((field) => ({
+          field,
+          amount_cents: centsFor(result[field]),
+        })).filter((row) => row.amount_cents != null),
+      ],
+      errors: result.errors || [],
+      warnings: result.warnings || result.calculation_warnings || [],
+    },
+  };
+}
+
 function pricingResult(category = "banners") {
   if (category === "banners") {
-    return {
+    return withPricingEngineResult({
       category,
-      selling_price: 192,
+      selling_price: 999,
       canonical_method_id: "square_foot_plus_addons",
       selected_method_id: "square_foot_plus_addons",
       pricing_method_used: "square_foot_plus_addons",
@@ -109,11 +157,11 @@ function pricingResult(category = "banners") {
       detail_sections: [{ section: "authoritative_result", lines: [{ label: "Area", value: "24 sq ft" }] }],
       warnings: ["Owner-approved fixture warning"],
       errors: [],
-    };
+    }, 19200);
   }
 
   if (category === "digital_print") {
-    return {
+    return withPricingEngineResult({
       category,
       selling_price: 20,
       canonical_method_id: "per_sqft",
@@ -149,10 +197,10 @@ function pricingResult(category = "banners") {
       breakdown: [{ label: "Digital Print item minimum adjustment", amount: 3.55 }],
       warnings: ["Digital Print order minimum is evaluated once at Quote or Order document level."],
       errors: [],
-    };
+    }, 2000);
   }
 
-  return {
+  return withPricingEngineResult({
     category,
     selling_price: 48,
     canonical_method_id: "unit_price_x_quantity",
@@ -170,7 +218,7 @@ function pricingResult(category = "banners") {
     breakdown: [],
     warnings: [],
     errors: [],
-  };
+  }, 4800);
 }
 
 function comparisonResult(selectedMethodId = "square_foot_plus_addons") {
@@ -181,8 +229,8 @@ function comparisonResult(selectedMethodId = "square_foot_plus_addons") {
     selected_method_id: selectedMethodId,
     primary_method_id: selectedMethodId,
     comparison_results: [
-      { method_id: "square_foot_plus_addons", status: "success", available: true, amount: 192, selected: selectedMethodId === "square_foot_plus_addons" },
-      { method_id: "cost_plus", status: "success", available: true, amount: 170, selected: selectedMethodId === "cost_plus" },
+      { method_id: "square_foot_plus_addons", status: "success", available: true, amount: 999, amount_cents: 19200, selected: selectedMethodId === "square_foot_plus_addons" },
+      { method_id: "cost_plus", status: "success", available: true, amount: 170, amount_cents: 17000, selected: selectedMethodId === "cost_plus" },
       { method_id: "target_margin", status: "unavailable", available: false, reason: "missing true cost", amount: null },
     ],
     availability: [
@@ -223,7 +271,13 @@ function mockApi() {
             id: "saved-calc-1",
             name: "Saved banner",
             category: "banners",
-            selling_price: 180,
+            selling_price: 999,
+            selling_price_cents: 18000,
+            pricing_engine_result: {
+              status: "success",
+              selling_price_cents: 18000,
+              method_rows: [{ method_id: "square_foot_plus_addons", amount_cents: 18000, selected: true, available: true }],
+            },
             canonical_method_id: "square_foot_plus_addons",
             selected_method_id: "square_foot_plus_addons",
             pricing_method_results: [successfulMethod("square_foot_plus_addons", 180, true)],
@@ -257,7 +311,13 @@ function mockApi() {
         saved_calculation: {
           id: "saved-calc-1",
           name: "Saved banner",
-          selling_price: 180,
+          selling_price: 999,
+          selling_price_cents: 18000,
+          pricing_engine_result: {
+            status: "success",
+            selling_price_cents: 18000,
+            method_rows: [{ method_id: "square_foot_plus_addons", amount_cents: 18000, selected: true, available: true }],
+          },
           calculation_inputs: {
             category: "banners",
             width_inches: 96,
@@ -269,8 +329,10 @@ function mockApi() {
         },
         current_result: pricingResult("banners"),
         comparison_result: comparisonResult("square_foot_plus_addons"),
-        saved_price: 180,
-        current_price: 192,
+        saved_price: 999,
+        current_price: 999,
+        saved_selling_price_cents: 18000,
+        current_selling_price_cents: 19200,
         price_changed: true,
         transferable: true,
       });
@@ -409,6 +471,28 @@ test("shows loading and error states honestly", async () => {
 
   rejectCalculation(new Error("pricing failed"));
   expect(await screen.findByTestId("calc-error-state")).toHaveTextContent("pricing failed");
+});
+
+test("fails closed when a fresh current response has invalid normalized cents despite legacy dollars", async () => {
+  api.post.mockImplementation((url) => {
+    if (url === "/pricing/calculate") {
+      return Promise.resolve({
+        data: {
+          ...pricingResult("banners"),
+          selling_price: 192,
+          pricing_engine_result: { status: "success", selling_price_cents: true },
+        },
+      });
+    }
+    if (url.includes("/method-availability")) return Promise.resolve({ data: { methods: [] } });
+    return Promise.resolve({ data: {} });
+  });
+
+  renderWithProviders(<PricingCalculatorPage />);
+  fireEvent.click(await screen.findByTestId("calc-run-button"));
+
+  expect(await screen.findByTestId("calc-error-state")).toHaveTextContent("selling_price_cents");
+  expect(screen.queryByTestId("calc-result")).not.toBeInTheDocument();
 });
 
 test("exposes simple and advanced method configuration controls without persisting calculations", async () => {

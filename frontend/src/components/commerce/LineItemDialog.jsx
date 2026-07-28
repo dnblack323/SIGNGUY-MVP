@@ -12,7 +12,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import MoneyInput from "@/components/forms/MoneyInput";
-import { centsToDollarsString } from "@/lib/format";
+import {
+  authoritativeSellingPriceCents,
+  breakdownAmountCents,
+  centsToDollarsString,
+  componentAmountCents,
+  formatPricingCents,
+  methodAmountCents,
+  transferUnitPriceCentsFromPricingResult,
+} from "@/lib/format";
 import { CategorySpecificFields } from "@/components/pricing/CategorySpecificFields";
 import SavedItemSelector from "@/components/pricing/selectors/SavedItemSelector";
 import PricingComponentSelector from "@/components/pricing/selectors/PricingComponentSelector";
@@ -55,10 +63,7 @@ const UOM_OPTIONS = ["each", "sqft", "linear_ft", "hour"];
 const NON_PRODUCTION = new Set(["services", "promotional"]);
 const dimensionUnit = (inputs) => inputs?.dimension_unit || "in";
 const normalizeDimension = (value, unit) => (unit === "ft" ? (Number(value) || 0) * 12 : Number(value) || 0);
-const fmtMethodMoney = (amount) => {
-  if (amount == null || Number.isNaN(Number(amount))) return "Unavailable";
-  return centsToDollarsString(Math.round(Number(amount) * 100));
-};
+const fmtMethodMoney = (row, result = null) => formatPricingCents(methodAmountCents(row, result));
 const humanize = (value) => String(value || "n/a").replaceAll("_", " ");
 const methodRowId = (row) => row?.method_id || row?.method || row?.id || "";
 const methodStatusText = (row) => {
@@ -176,6 +181,13 @@ export default function LineItemDialog({
       setCalcError("");
       setComparison(null);
       setSelectedComparisonMethod("");
+      const snapshotSellingPriceCents = (() => {
+        try {
+          return authoritativeSellingPriceCents(snapshot, { allowLegacy: true });
+        } catch {
+          return initial.suggested_price_cents ?? null;
+        }
+      })();
       calcResultKeyRef.current = initial.pricing_status === "calculated" ? JSON.stringify({
         category: initial.category || "",
         width_inches: initialIsDimensionless ? null : (initial.width_inches ?? null),
@@ -190,7 +202,9 @@ export default function LineItemDialog({
       }) : "";
       setCalc(initial.pricing_status === "calculated" ? {
         selling_price: snapshot.selected_selling_price_dollars ?? snapshot.calculated_unit_price_dollars ?? ((initial.suggested_price_cents ?? 0) / 100),
-        calculated_unit_price_cents: initial.suggested_price_cents,
+        pricing_engine_result: snapshot.pricing_engine_result,
+        calculated_unit_price_cents: snapshot.calculated_unit_price_cents ?? initial.suggested_price_cents ?? snapshotSellingPriceCents,
+        calculated_line_price_cents: snapshot.calculated_line_price_cents ?? snapshotSellingPriceCents,
         pricing_method_used: snapshot.selected_pricing_method || snapshot.pricing_method,
         true_cost: snapshot.true_cost_dollars,
         pricing_method_results: snapshot.pricing_method_results,
@@ -297,8 +311,16 @@ export default function LineItemDialog({
       const body = calculatorPayload();
       const calculationKey = JSON.stringify(body);
       const { data } = await api.post("/pricing/calculate", body);
-      const sellingPrice = Number(data.selling_price);
-      if (data.selling_price == null || !Number.isFinite(sellingPrice)) {
+      let calculatedLineCents;
+      let cents;
+      try {
+        calculatedLineCents = authoritativeSellingPriceCents(data);
+        cents = transferUnitPriceCentsFromPricingResult(data, { category, quantity });
+      } catch (err) {
+        calculatedLineCents = null;
+        cents = null;
+      }
+      if (calculatedLineCents == null || cents == null) {
         setCalc(null);
         setComparison(null);
         setCalcError("The calculator did not return a transferable selling price.");
@@ -307,10 +329,6 @@ export default function LineItemDialog({
         if (!silent) toast.error("Calculated pricing is unavailable for these inputs");
         return;
       }
-      const calculatedLineCents = Math.round(sellingPrice * 100);
-      const cents = category === "digital_print"
-        ? Math.round(calculatedLineCents / Math.max(1, Number(quantity) || 1))
-        : calculatedLineCents;
       let comparisonData = null;
       if (category === "banners") {
         comparisonData = (await api.post("/pricing/method-comparison", {
@@ -387,7 +405,7 @@ export default function LineItemDialog({
 
   function choosePricingMethod(row) {
     const method = methodRowId(row);
-    if (!method || row?.available === false || row?.amount == null) return;
+    if (!method || row?.available === false || methodAmountCents(row, calc) == null) return;
     if (category !== "banners") return;
     setSelectedComparisonMethod(method);
     runCalculator({ primaryMethodId: method });
@@ -437,8 +455,17 @@ export default function LineItemDialog({
     setMaterialProfileId(inputs.material_profile_id || null);
     setPricingComponentIds(inputs.pricing_component_ids || []);
     setSavedItemId(inputs.saved_item_id || null);
-    const sellingPrice = Number(data.current_result?.selling_price);
-    const cents = Number.isFinite(sellingPrice) ? Math.round(sellingPrice * 100) : null;
+    let cents = null;
+    let lineCents = null;
+    try {
+      lineCents = authoritativeSellingPriceCents(data.current_result);
+      cents = transferUnitPriceCentsFromPricingResult(data.current_result, {
+        category: inputs.category,
+        quantity: inputs.quantity || 1,
+      });
+    } catch {
+      cents = null;
+    }
     if (cents == null) {
       setCalc(null);
       setCalcError("Saved calculation could not produce a current transferable price.");
@@ -446,7 +473,11 @@ export default function LineItemDialog({
       setSavedReuse(data);
       return;
     }
-    setCalc({ ...data.current_result, calculated_unit_price_cents: cents });
+    setCalc({
+      ...data.current_result,
+      calculated_unit_price_cents: cents,
+      calculated_line_price_cents: lineCents,
+    });
     setComparison(data.comparison_result || null);
     setSelectedComparisonMethod(data.comparison_result?.selected_method_id || data.current_result?.selected_method_id || data.current_result?.canonical_method_id || "");
     setPriceSource("suggested");
@@ -593,7 +624,8 @@ export default function LineItemDialog({
   const selectedRow = comparisonRows.find((row) => row.selected) || comparisonRows.find((row) => methodRowId(row) === selectedComparisonMethod);
   const canonicalMethod = comparison?.canonical_method_id || calc?.canonical_method_id || calc?.pricing_method_used || calc?.selected_pricing_method;
   const selectedMethod = comparison?.selected_method_id || methodRowId(selectedRow) || calc?.selected_method_id || canonicalMethod;
-  const otherAvailableRows = comparisonRows.filter((row) => methodRowId(row) !== selectedMethod && row.amount != null && row.available !== false);
+  const otherAvailableRows = comparisonRows.filter((row) => methodRowId(row) !== selectedMethod && methodAmountCents(row, calc) != null && row.available !== false);
+  const trueCostCents = componentAmountCents("true_cost", calc);
   const unavailableRows = [
     ...availabilityRows(calc?.method_availability).filter((row) => !row.available),
     ...availabilityRows(comparison?.availability).filter((row) => !row.available),
@@ -797,7 +829,7 @@ export default function LineItemDialog({
                 <div data-testid="li-selected-method">
                   Selected method: <span className="font-medium">{humanize(selectedMethod)}</span>
                 </div>
-                {calc.true_cost != null && <div>True cost: <span className="font-semibold tabular-nums">{centsToDollarsString(Math.round(Number(calc.true_cost || 0) * 100))}</span> / unit</div>}
+                {trueCostCents != null && <div>True cost: <span className="font-semibold tabular-nums">{formatPricingCents(trueCostCents)}</span> / unit</div>}
                 {warnings.length > 0 && (
                   <ul className="list-disc pl-4 text-amber-700" data-testid="li-calc-warnings">
                     {warnings.map((w, i) => <li key={i}>{w}</li>)}
@@ -813,7 +845,7 @@ export default function LineItemDialog({
                     {comparisonRows.map((row) => {
                       const id = methodRowId(row);
                       const selected = id === selectedMethod;
-                      const canSelect = category === "banners" && row.available !== false && row.amount != null;
+                      const canSelect = category === "banners" && row.available !== false && methodAmountCents(row, calc) != null;
                       return (
                         <button
                           key={id}
@@ -827,7 +859,7 @@ export default function LineItemDialog({
                             <span className="font-medium">{row.display_name || row.label || humanize(id)}</span>
                             <span className="ml-2 text-muted-foreground">{methodStatusText(row)}</span>
                           </span>
-                          <span className="font-semibold tabular-nums">{fmtMethodMoney(row.amount)}</span>
+                          <span className="font-semibold tabular-nums">{fmtMethodMoney(row, calc)}</span>
                         </button>
                       );
                     })}
@@ -835,7 +867,7 @@ export default function LineItemDialog({
                 )}
                 {otherAvailableRows.length > 0 && (
                   <div className="text-muted-foreground" data-testid="li-other-method-results">
-                    Other available results: {otherAvailableRows.map((row) => `${row.display_name || row.label || humanize(methodRowId(row))} ${fmtMethodMoney(row.amount)}`).join("; ")}
+                    Other available results: {otherAvailableRows.map((row) => `${row.display_name || row.label || humanize(methodRowId(row))} ${fmtMethodMoney(row, calc)}`).join("; ")}
                   </div>
                 )}
                 {unavailableRows.length > 0 && (
@@ -854,7 +886,7 @@ export default function LineItemDialog({
                         {calc.breakdown.slice(0, 8).map((row, index) => (
                           <div key={`${row.label}-${index}`} className="flex justify-between gap-2">
                             <span>{row.label}</span>
-                            <span>{fmtMethodMoney(row.amount)}</span>
+                            <span>{formatPricingCents(breakdownAmountCents(row, calc, index))}</span>
                           </div>
                         ))}
                       </div>
@@ -865,7 +897,9 @@ export default function LineItemDialog({
                         {(section.lines || []).slice(0, 6).map((line, index) => (
                           <div key={`${line.key || line.label}-${index}`} className="flex justify-between gap-2">
                             <span>{line.label || humanize(line.key)}</span>
-                            <span>{String(line.value ?? line.amount ?? "")}</span>
+                            <span>{line.amount_cents != null || componentAmountCents(line.key || line.field, calc) != null
+                              ? formatPricingCents(line.amount_cents ?? componentAmountCents(line.key || line.field, calc))
+                              : String(line.value ?? line.amount ?? "")}</span>
                           </div>
                         ))}
                       </div>
@@ -874,7 +908,7 @@ export default function LineItemDialog({
                 )}
                 {savedReuse && (
                   <div className="rounded border bg-background p-2" data-testid="li-saved-current-price-panel">
-                    Saved Price: <strong>{centsToDollarsString(Math.round(Number(savedReuse.saved_price || 0) * 100))}</strong> · Current Price: <strong>{centsToDollarsString(calc.calculated_unit_price_cents)}</strong>
+                    Saved Price: <strong>{formatPricingCents(savedReuse.saved_selling_price_cents)}</strong> · Current Price: <strong>{formatPricingCents(savedReuse.current_selling_price_cents)}</strong>
                     {savedReuse.price_changed && <Badge className="ml-2" variant="secondary" data-testid="li-saved-current-price-diff">Current price differs</Badge>}
                   </div>
                 )}

@@ -1164,7 +1164,7 @@ Phase 9I-K verification:
 - `git diff --check`: passed with CRLF conversion warnings only.
 - Current executed path: `app.services.pricing.calculate_pricing` builds normalized SaaS configuration through `app.services.pricing_engine_config_adapter.build_line_engine_configuration()` before delegating line calculation to `pricing_engine.line_engine.calculate_line`; `app.services.order_pricing.compute_document_totals_with_pricing_adjustments()` delegates document totals and Digital Print order-minimum evidence to `pricing_engine.document_engine.calculate_document`; the SaaS compatibility adapter still emits the additive `pricing_engine_result` with normalized configuration lineage.
 - Full all-adapter parity is not complete; future pure engine and standalone adapter parity are not claimed.
-- Phase 9I-O, Phase 9I-P, and Phase 9I-Q are implemented and verified; Phase 9I-R remains next and has not started.
+- Phase 9I-O, Phase 9I-P, Phase 9I-Q, and Phase 9I-R are implemented and verified; Phase 9I-S remains next and has not started.
 
 Preserved non-blocking follow-ups:
 
@@ -1172,7 +1172,41 @@ Preserved non-blocking follow-ups:
 2. Audit pre-existing Quote and Order item mutation paths that perform identifier-only updates or deletes after tenant-scoped authorization lookups.
 3. Record the one-off duplicate-key setup failure in `tests/test_ec7_inventory.py` as informational test-reliability evidence; the immediate full-suite rerun passed.
 
-## 31. Risks And Controls
+## 31. Phase 9I-R Implementation Record
+
+Phase 9I-R implements the frontend/API cents-first boundary conversion without changing calculator formulas, owner-approved prices, defaults, markups, minimums, discounts, tax, backend pricing behavior, saved-calculation persistence, pricing snapshots, Quote/Order business rules, Webstore behavior, Wrap Lab behavior, portable configuration export/import, standalone adapter behavior, or licensing.
+
+Implemented scope:
+
+- Added shared frontend money-boundary helpers in `frontend/src/lib/format.js` for authoritative normalized cents reads, integer-cent validation, display formatting, method amount lookup, breakdown amount lookup, and component amount lookup.
+- Updated the dedicated Pricing Calculator to require fresh successful normalized `pricing_engine_result.selling_price_cents` before presenting a transferable result or allowing saved-calculation creation.
+- Updated the shared Quote/Order line-item dialog to transfer only backend-authoritative normalized cents from fresh calculator or saved-calculation reuse responses. Invalid, failed, unavailable, or missing normalized cents cannot transfer even if legacy `selling_price` dollars are present.
+- Updated the Saved Calculation Library to display saved/current prices and method rows from normalized cents evidence while leaving historical records immutable.
+- Added a visible `Digital Print order minimum adjustment` row to Quote and Order detail totals. The row reads only stored backend document evidence and is omitted when that evidence is absent or zero.
+- Added focused backend and frontend tests covering normalized API cents, invalid cents fail-closed behavior, calculator/dialog cents transfer, saved reuse display, and Digital Print adjustment-row visibility.
+
+Verification:
+
+- Focused Phase 9I-R backend boundary tests: `6 passed, 6 warnings`.
+- Focused frontend calculator/dialog/Digital Print adjustment tests: `26 passed`.
+- Phase 9I-L/M/N regressions: `31 passed, 6 warnings`.
+- Phase 9I-O/P/Q regressions: `35 passed, 6 warnings`.
+- Digital Print and Quote/Order pricing regressions: `66 passed, 6 warnings`.
+- Category/Banner regressions: `44 passed, 6 warnings`.
+- Pricing method configuration/contract regressions: `36 passed, 6 warnings`.
+- Pricing saved-items/materials/components regressions: `10 passed, 6 warnings`.
+- Snapshot/advisory regressions: `22 passed, 6 warnings`.
+- Orders/Quotes/Work Orders regressions: `22 passed, 6 warnings`.
+- Saved-calculation library regressions: `15 passed, 6 warnings`.
+- Money policy: `14 passed`.
+- Full frontend suite: `77 passed`.
+- Frontend production build: compiled successfully.
+- Backend compile/import validation: passed.
+- `git diff --check`: passed with CRLF conversion warnings only.
+
+Phase 9I-R status: implemented and verified locally. Full Phase 9I remains open. Phase 9I-S portable configuration export/import is next and not started.
+
+## 32. Risks And Controls
 
 | Risk | Control |
 |---|---|
@@ -1186,8 +1220,8 @@ Preserved non-blocking follow-ups:
 | Expanding into Webstores/Wrap Lab | Keep 9I calculator-only; no payouts/storefront/wrap project changes |
 | Frontend stale totals | Preserve debounce/updating behavior from Banner repair |
 
-## 32. Stop Boundary
+## 33. Stop Boundary
 
-Phase 9I-A, 9I-B, 9I-C, 9I-D, 9I-E, 9I-F, 9I-G, and 9I-H are implemented in the current Phase 9I package. Phase 9I-C has final review status `PHASE 9I-C RE-REVIEW PASSED`; Phase 9I-D is implemented with the manual-override normalization defect corrected and final re-review status `PHASE 9I-D RE-REVIEW PASSED`; Phase 9I-E review status is `PHASE 9I-E REVIEW PASSED`; Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`; Phase 9I-G review status is `PHASE 9I-G REVIEW PASSED`; Phase 9I-H review status is `PHASE 9I-H REVIEW PASSED`; Phase 9I-I status is `PHASE 9I-I REVIEW PASSED - COMPLETE`; Phase 9I-J is implemented and verified; Phase 9I-K is implemented and verified; Phase 9I-L is implemented and verified with the additive `pricing_engine_result` cents-first compatibility DTO on `/pricing/calculate`; Phase 9I-M is implemented and verified with new saved-calculation writes using `pricing_engine_result` as authoritative cents-first evidence and legacy readers remaining non-mutating; Phase 9I-N is implemented and verified with `pricing_snapshot_schema_version` `pricing_snapshot_money_contract_9in_v1`, normalized embedded snapshots, normalized immutable snapshot records, and non-mutating legacy snapshot readers; Phase 9I-O is implemented and verified with `pricing_engine.line_engine.calculate_line`, pure category formula modules, app-service compatibility wrappers, all-nine fixture parity, and import isolation from SaaS app startup; Phase 9I-P is implemented and verified with `pricing_engine.document_engine.calculate_document`, app-service compatibility wrappers, Digital Print frozen-minimum evidence, Quote/Order lifecycle parity, and import isolation from SaaS app startup; Phase 9I-Q is implemented and verified with `app.services.pricing_engine_config_adapter.build_line_engine_configuration`, normalized SaaS settings/reference lineage, stricter tenant-scoped active-reference resolution, all-nine fixture parity through the SaaS adapter, and preserved result/snapshot compatibility. No data migration, historical backfill, standalone-adapter, frontend integration, portable configuration export/import, or licensing implementation has started. All of Phase 9I remains open until the plan's required corrections and review gates pass. Phase 9I-R is next and has not started.
+Phase 9I-A, 9I-B, 9I-C, 9I-D, 9I-E, 9I-F, 9I-G, and 9I-H are implemented in the current Phase 9I package. Phase 9I-C has final review status `PHASE 9I-C RE-REVIEW PASSED`; Phase 9I-D is implemented with the manual-override normalization defect corrected and final re-review status `PHASE 9I-D RE-REVIEW PASSED`; Phase 9I-E review status is `PHASE 9I-E REVIEW PASSED`; Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`; Phase 9I-G review status is `PHASE 9I-G REVIEW PASSED`; Phase 9I-H review status is `PHASE 9I-H REVIEW PASSED`; Phase 9I-I status is `PHASE 9I-I REVIEW PASSED - COMPLETE`; Phase 9I-J is implemented and verified; Phase 9I-K is implemented and verified; Phase 9I-L is implemented and verified with the additive `pricing_engine_result` cents-first compatibility DTO on `/pricing/calculate`; Phase 9I-M is implemented and verified with new saved-calculation writes using `pricing_engine_result` as authoritative cents-first evidence and legacy readers remaining non-mutating; Phase 9I-N is implemented and verified with `pricing_snapshot_schema_version` `pricing_snapshot_money_contract_9in_v1`, normalized embedded snapshots, normalized immutable snapshot records, and non-mutating legacy snapshot readers; Phase 9I-O is implemented and verified with `pricing_engine.line_engine.calculate_line`, pure category formula modules, app-service compatibility wrappers, all-nine fixture parity, and import isolation from SaaS app startup; Phase 9I-P is implemented and verified with `pricing_engine.document_engine.calculate_document`, app-service compatibility wrappers, Digital Print frozen-minimum evidence, Quote/Order lifecycle parity, and import isolation from SaaS app startup; Phase 9I-Q is implemented and verified with `app.services.pricing_engine_config_adapter.build_line_engine_configuration`, normalized SaaS settings/reference lineage, stricter tenant-scoped active-reference resolution, all-nine fixture parity through the SaaS adapter, and preserved result/snapshot compatibility; Phase 9I-R is implemented and verified with frontend/API cents-first consumption and visible Digital Print document-minimum evidence rows. No data migration, historical backfill, standalone-adapter, portable configuration export/import, or licensing implementation has started. All of Phase 9I remains open until the plan's required corrections and review gates pass. Phase 9I-S is next and has not started.
 
 No EC20, EC21, EC22, AI, attachments, markup, navigation redesign, Webstore payout, Wrap Lab workflow, EC4 payment/invoice, Stripe, provider, or unrelated work is included.

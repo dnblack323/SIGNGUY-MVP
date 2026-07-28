@@ -16,6 +16,14 @@ import MaterialProfileSelector from "@/components/pricing/selectors/MaterialProf
 import PricingComponentSelector from "@/components/pricing/selectors/PricingComponentSelector";
 import { CategorySpecificFields } from "@/components/pricing/CategorySpecificFields";
 import SavedCalculationLibrary from "@/components/pricing/SavedCalculationLibrary";
+import {
+  authoritativeSellingPriceCents,
+  breakdownAmountCents,
+  centsToDollarsString,
+  componentAmountCents,
+  formatPricingCents,
+  methodAmountCents,
+} from "@/lib/format";
 import { toast } from "sonner";
 
 const DIMENSIONLESS_CATEGORIES = ["apparel", "promotional", "vehicle_graphics", "services", "custom"];
@@ -53,7 +61,9 @@ const dimensionUnit = (inputs) => inputs?.dimension_unit || "in";
 const normalizeDimension = (value, unit) => (unit === "ft" ? (Number(value) || 0) * 12 : Number(value) || 0);
 const inputValue = (value) => (value == null ? "" : value);
 
-function sectionValue(line) {
+function sectionValue(line, result) {
+  const cents = line?.amount_cents ?? componentAmountCents(line?.key || line?.field, result);
+  if (cents != null) return formatPricingCents(cents);
   if (line?.amount != null) return fmtUSD(line.amount);
   if (line?.value != null) {
     if (typeof line.value === "object") return JSON.stringify(line.value);
@@ -71,6 +81,14 @@ function methodStatusText(row) {
   if (Array.isArray(row?.status)) return row.status.join(", ");
   if (row?.status) return String(row.status);
   return "status unavailable";
+}
+
+function safeSellingPriceCents(result) {
+  try {
+    return authoritativeSellingPriceCents(result);
+  } catch {
+    return null;
+  }
 }
 
 function PricingSummaryTile({ label, value, hint, testId }) {
@@ -345,6 +363,20 @@ export default function PricingCalculatorPage() {
       return { pricingResult, comparisonResult, calculationKey, silent };
     },
     onSuccess: async ({ pricingResult, comparisonResult, calculationKey }) => {
+      try {
+        const cents = authoritativeSellingPriceCents(pricingResult);
+        if (cents == null) {
+          throw new Error("The calculator did not return a transferable normalized selling price.");
+        }
+      } catch (err) {
+        setResult(null);
+        setComparison(null);
+        setSelectedComparisonMethod("");
+        setResultUpdating(false);
+        setError(err.message || "The calculator did not return a transferable normalized selling price.");
+        resultKeyRef.current = "";
+        return;
+      }
       resultKeyRef.current = calculationKey || JSON.stringify(calculatorPayload());
       setResult(pricingResult);
       setComparison(comparisonResult);
@@ -512,7 +544,11 @@ export default function PricingCalculatorPage() {
   const selectedRow = comparisonRows.find((row) => row.selected) || comparisonRows.find((row) => methodRowId(row) === selectedComparisonMethod);
   const canonicalMethod = comparison?.canonical_method_id || result?.canonical_method_id || result?.pricing_method_used || result?.selected_pricing_method;
   const selectedComparison = comparison?.selected_method_id || methodRowId(selectedRow) || canonicalMethod;
-  const availableOtherRows = comparisonRows.filter((row) => methodRowId(row) !== selectedComparison && row.amount != null);
+  const resultSellingPriceCents = safeSellingPriceCents(result);
+  const hasTransferableResult = resultSellingPriceCents != null;
+  const selectedMethodCents = methodAmountCents(selectedRow, result);
+  const profitAmountCents = componentAmountCents("profit_amount", result);
+  const availableOtherRows = comparisonRows.filter((row) => methodRowId(row) !== selectedComparison && methodAmountCents(row, result) != null);
   const unavailableRows = [
     ...(result?.method_availability || []).filter((row) => !row.available),
     ...((comparison?.availability?.methods || []).filter((row) => !row.available)),
@@ -552,7 +588,7 @@ export default function PricingCalculatorPage() {
         onPreviewSimple={() => simplePreview.mutate()}
         previewing={simplePreview.isPending}
         onSaveCalculation={() => saveCalculation.mutate()}
-        canSaveCalculation={canWritePricing && !!saveName.trim() && result?.selling_price != null && !resultUpdating && !calc.isPending}
+        canSaveCalculation={canWritePricing && !!saveName.trim() && hasTransferableResult && !resultUpdating && !calc.isPending}
         savingCalculation={saveCalculation.isPending}
       />
 
@@ -683,7 +719,7 @@ export default function PricingCalculatorPage() {
                 <Button
                   type="button"
                   onClick={() => saveCalculation.mutate()}
-                  disabled={!canWritePricing || !saveName.trim() || result?.selling_price == null || resultUpdating || calc.isPending}
+                  disabled={!canWritePricing || !saveName.trim() || !hasTransferableResult || resultUpdating || calc.isPending}
                   data-testid="calc-save-inline-button"
                 >
                   Save Calculation
@@ -693,7 +729,7 @@ export default function PricingCalculatorPage() {
 
             {savedReuse && (
               <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm" data-testid="calc-saved-current-price-panel">
-                Saved Price: <strong>{fmtUSD(savedReuse.saved_price)}</strong> · Current Price: <strong>{fmtUSD(savedReuse.current_price)}</strong>
+                Saved Price: <strong>{formatPricingCents(savedReuse.saved_selling_price_cents)}</strong> · Current Price: <strong>{formatPricingCents(savedReuse.current_selling_price_cents)}</strong>
                 {savedReuse.price_changed && <Badge className="ml-2" variant="secondary" data-testid="calc-saved-current-price-diff">Current price differs</Badge>}
               </div>
             )}
@@ -719,10 +755,10 @@ export default function PricingCalculatorPage() {
             ) : (
               <div className="space-y-4" data-testid="calc-result">
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-                  <PricingSummaryTile label="Authoritative selling price" value={fmtUSD(result.selling_price)} hint={`Calculator method: ${humanize(result.pricing_method_used || result.selected_pricing_method)}`} testId="calc-authoritative-selling-price" />
+                  <PricingSummaryTile label="Authoritative selling price" value={formatPricingCents(resultSellingPriceCents)} hint={`Calculator method: ${humanize(result.pricing_method_used || result.selected_pricing_method)}`} testId="calc-authoritative-selling-price" />
                   <PricingSummaryTile label="Canonical method" value={humanize(canonicalMethod)} hint="Existing calculator authority" testId="calc-canonical-method" />
-                  <PricingSummaryTile label="Selected comparison method" value={humanize(selectedComparison)} hint={selectedRow?.amount != null ? fmtUSD(selectedRow.amount) : "No available amount"} testId="calc-selected-comparison-method" />
-                  <PricingSummaryTile label="Profit margin" value={fmtPct(result.profit_margin_percent)} hint={result.profit_amount != null ? `${fmtUSD(result.profit_amount)} profit` : "Profit unavailable"} testId="calc-profit-margin" />
+                  <PricingSummaryTile label="Selected comparison method" value={humanize(selectedComparison)} hint={selectedMethodCents != null ? formatPricingCents(selectedMethodCents) : "No available amount"} testId="calc-selected-comparison-method" />
+                  <PricingSummaryTile label="Profit margin" value={fmtPct(result.profit_margin_percent)} hint={profitAmountCents != null ? `${formatPricingCents(profitAmountCents)} profit` : "Profit unavailable"} testId="calc-profit-margin" />
                 </div>
 
                 {warnings.length > 0 && (
@@ -765,7 +801,7 @@ export default function PricingCalculatorPage() {
                                 <div className="font-medium">{row.display_name || row.label || humanize(id)}</div>
                                 <div className="text-xs text-muted-foreground">{methodStatusText(row)}</div>
                               </div>
-                              <div className="text-lg font-semibold tabular-nums">{fmtUSD(row.amount)}</div>
+                              <div className="text-lg font-semibold tabular-nums">{formatPricingCents(methodAmountCents(row, result))}</div>
                             </div>
                           </button>
                         );
@@ -774,7 +810,7 @@ export default function PricingCalculatorPage() {
 
                     {availableOtherRows.length > 0 && (
                       <div className="text-xs text-muted-foreground" data-testid="calc-other-method-results">
-                        Other available results: {availableOtherRows.map((row) => `${row.display_name || row.label || humanize(methodRowId(row))} ${fmtUSD(row.amount)}`).join("; ")}
+                        Other available results: {availableOtherRows.map((row) => `${row.display_name || row.label || humanize(methodRowId(row))} ${formatPricingCents(methodAmountCents(row, result))}`).join("; ")}
                       </div>
                     )}
 
@@ -803,7 +839,7 @@ export default function PricingCalculatorPage() {
                           {result.breakdown.map((row, index) => (
                             <div key={`${row.label}-${index}`} className="flex items-center justify-between px-3 py-2 text-sm">
                               <span>{row.label}</span>
-                              <span className="tabular-nums">{fmtUSD(row.amount)}</span>
+                              <span className="tabular-nums">{formatPricingCents(breakdownAmountCents(row, result, index))}</span>
                             </div>
                           ))}
                         </div>
@@ -817,7 +853,7 @@ export default function PricingCalculatorPage() {
                           {(section.lines || []).map((line, index) => (
                             <div key={`${section.section}-${index}`} className="grid grid-cols-[minmax(120px,1fr)_minmax(120px,1fr)] gap-3 border-t py-1">
                               <span className="text-muted-foreground">{line.label || line.key || line.item || line.message || "Detail"}</span>
-                              <span className="tabular-nums">{sectionValue(line)}</span>
+                              <span className="tabular-nums">{sectionValue(line, result)}</span>
                             </div>
                           ))}
                         </div>

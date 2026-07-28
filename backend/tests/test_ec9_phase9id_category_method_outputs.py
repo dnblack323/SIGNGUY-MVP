@@ -391,6 +391,8 @@ def test_banner_pricing_output_remains_unchanged_by_category_normalizer():
         category_inputs=category_inputs,
     )
 
+    configuration_evidence = normalized.pop("pricing_engine_configuration_used", None)
+    assert configuration_evidence["adapter_id"] == "saas_configuration_adapter_9iq_v1"
     assert normalized == raw
     assert "pricing_output_contract_version" not in normalized
 

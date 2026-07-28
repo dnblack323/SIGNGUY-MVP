@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { authoritativeSellingPriceCents, formatPricingCents, methodAmountCents } from "@/lib/format";
 
 const CATEGORIES = [
   ["", "All categories"],
@@ -22,10 +23,15 @@ const CATEGORIES = [
   ["custom", "Custom"],
 ];
 
-const money = (value) => (
-  value == null ? "Unavailable" : Number(value).toLocaleString("en-US", { style: "currency", currency: "USD" })
-);
 const humanize = (value) => String(value || "").replaceAll("_", " ");
+
+function savedPriceCents(doc) {
+  try {
+    return authoritativeSellingPriceCents(doc, { allowLegacy: true });
+  } catch {
+    return null;
+  }
+}
 
 export default function SavedCalculationLibrary({
   canRead = false,
@@ -168,7 +174,7 @@ export default function SavedCalculationLibrary({
                   {item.archived && <Badge variant="secondary">Archived</Badge>}
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  {humanize(item.category)} · Saved {money(item.selling_price)}
+                  {humanize(item.category)} · Saved {formatPricingCents(savedPriceCents(item))}
                 </div>
               </button>
             ))}
@@ -192,7 +198,7 @@ export default function SavedCalculationLibrary({
                 </div>
                 <div className="rounded-md border bg-muted/30 p-3 text-sm">
                   <div className="text-xs text-muted-foreground">Saved Price</div>
-                  <div className="text-xl font-semibold tabular-nums" data-testid="saved-calc-saved-price">{money(selected.selling_price)}</div>
+                  <div className="text-xl font-semibold tabular-nums" data-testid="saved-calc-saved-price">{formatPricingCents(savedPriceCents(selected))}</div>
                 </div>
               </div>
               <div className="grid gap-1.5">
@@ -208,7 +214,7 @@ export default function SavedCalculationLibrary({
                 {(selected.pricing_method_results || []).slice(0, 6).map((row) => (
                   <div key={row.method_id} className="flex justify-between gap-2">
                     <span>{row.display_name || humanize(row.method_id)} {row.available === false ? "(unavailable)" : ""}</span>
-                    <span className="tabular-nums">{money(row.amount)}</span>
+                    <span className="tabular-nums">{formatPricingCents(methodAmountCents(row, selected))}</span>
                   </div>
                 ))}
               </div>
@@ -234,8 +240,8 @@ export default function SavedCalculationLibrary({
               )}
               {reuseResult && (
                 <div className="rounded-md border bg-muted/30 p-3 text-sm" data-testid="saved-calc-reuse-result">
-                  <div>Saved Price: <strong>{money(reuseResult.saved_price)}</strong></div>
-                  <div>Current Price: <strong>{money(reuseResult.current_price)}</strong></div>
+                  <div>Saved Price: <strong>{formatPricingCents(reuseResult.saved_selling_price_cents)}</strong></div>
+                  <div>Current Price: <strong>{formatPricingCents(reuseResult.current_selling_price_cents)}</strong></div>
                   {reuseResult.price_changed && <Badge variant="secondary" data-testid="saved-calc-price-diff">Current price differs from saved price</Badge>}
                 </div>
               )}

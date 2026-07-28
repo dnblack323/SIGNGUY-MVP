@@ -22,6 +22,7 @@ import { ArrowLeft, ArrowRightCircle, Save, Mail, Plus, Pencil, Trash2, AlertTri
 import { useAuth } from "@/auth/AuthContext";
 import ComposeEmailDialog from "@/components/email/ComposeEmailDialog";
 import LineItemDialog from "@/components/commerce/LineItemDialog";
+import DigitalPrintMinimumAdjustmentRow from "@/components/commerce/DigitalPrintMinimumAdjustmentRow";
 import AIContextualActions from "@/components/ai/AIContextualActions";
 import { useWorkspaceDirty } from "@/context/WorkspaceContext";
 
@@ -218,6 +219,7 @@ function LineItemsPanel({ quoteId, quote, lineItems, totals, pricingSummary, can
               <div className="text-right tabular-nums">{centsToDollarsString(totals.discount_cents ?? 0)}</div>
               <div className="text-xs text-muted-foreground text-right">Tax</div>
               <div className="text-right tabular-nums">{centsToDollarsString(totals.tax_cents ?? 0)}</div>
+              <DigitalPrintMinimumAdjustmentRow totals={totals} />
               <div className="text-sm font-medium text-right">Total</div>
               <div className="text-right tabular-nums font-semibold" data-testid="quote-derived-total">
                 {centsToDollarsString(totals.total_cents ?? quote.total_cents ?? 0)}

@@ -1,6 +1,6 @@
 # EC9 Phase 9I Calculator Extraction And Money Normalization Implementation Plan
 
-**Status:** PHASE 9I-Q SAAS CONFIGURATION ADAPTER IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-R NOT STARTED
+**Status:** PHASE 9I-R FRONTEND/API CENTS-FIRST BOUNDARY IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-S NOT STARTED
 **Date:** 2026-07-27
 **Repository gate verified:** `main` at `7334cb24867102013350bde3ea4c8b84a59c4ff1`
 **Planning document with implementation records:** Phase 9I-J, Phase 9I-K, Phase 9I-L, Phase 9I-M, Phase 9I-N, Phase 9I-O, Phase 9I-P, and Phase 9I-Q implementation results are recorded below. Phase 9I remains open.
@@ -525,6 +525,17 @@ Implementation record:
 - Commit safety: yes.
 - Rollback: keep legacy field fallback.
 
+Phase 9I-R implementation record:
+
+- Added shared frontend helpers in `frontend/src/lib/format.js` to read authoritative `pricing_engine_result.selling_price_cents`, validate integer non-boolean cents, compare top-level cents when present, format cents for display, and locate normalized method, breakdown, and component cents.
+- Updated the dedicated Pricing Calculator, Quote/Order item dialog, and Saved Calculation Library to consume cents-first API fields for authoritative prices, selected method rows, comparison rows, breakdown rows, saved/current reuse comparisons, and transferable prices. Fresh calculator transfer now fails closed when normalized cents are missing or invalid, even if legacy dollar fields are present.
+- Preserved legacy dollar fields only for non-authoritative compatibility display/read paths where no fresh transfer is allowed.
+- Added a visible `Digital Print order minimum adjustment` row to Quote and Order detail totals using stored backend evidence only; no frontend recalculation of the adjustment was introduced.
+- Added focused backend and frontend tests for normalized cents API boundaries, invalid cents fail-closed behavior, calculator/dialog transfer behavior, saved reuse display, and Digital Print order-minimum evidence rows.
+- No pricing formulas, defaults, markups, minimums, discounts, tax, backend pricing behavior, saved-calculation persistence, snapshots, Webstore behavior, Wrap Lab behavior, portable configuration export/import, standalone harness, or licensing work changed.
+- Verification passed: Phase 9I-R backend boundary tests `6 passed, 6 warnings`; focused frontend calculator/dialog/Digital Print adjustment tests `26 passed`; Phase 9I-L/M/N regressions `31 passed, 6 warnings`; Phase 9I-O/P/Q regressions `35 passed, 6 warnings`; Digital Print and Quote/Order pricing regressions `66 passed, 6 warnings`; category/Banner regressions `44 passed, 6 warnings`; pricing method configuration/contract regressions `36 passed, 6 warnings`; pricing saved-items/materials/components regressions `10 passed, 6 warnings`; snapshot/advisory regressions `22 passed, 6 warnings`; Orders/Quotes/Work Orders regressions `22 passed, 6 warnings`; saved-calculation library regressions `15 passed, 6 warnings`; money policy `14 passed`; full frontend suite `77 passed`; frontend production build compiled successfully; backend compile/import validation passed; `git diff --check` passed with CRLF conversion warnings only.
+- Full Phase 9I remains open. Phase 9I-S portable configuration export/import is next and not started.
+
 ### Phase 9I-S - Portable configuration export/import
 
 - Scope: Add versioned export/import contracts for pricing configuration without standalone licensing.
@@ -815,4 +826,4 @@ No calculator formula changes, data migration, destructive migration, frontend c
 
 Phase 9I remains open.
 
-Phase 9I-O is implemented and verified. Phase 9I-P is implemented and verified. Phase 9I-Q is implemented and verified. Phase 9I-R is the next implementation slice under this plan and has not started.
+Phase 9I-O is implemented and verified. Phase 9I-P is implemented and verified. Phase 9I-Q is implemented and verified. Phase 9I-R is implemented and verified with frontend/API cents-first consumption and visible Digital Print document-minimum evidence rows. Phase 9I-S is the next implementation slice under this plan and has not started.

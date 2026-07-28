@@ -126,15 +126,64 @@ function successfulMethod(methodId, amount, selected = false) {
     status: ["available", selected ? "selected" : "candidate"],
     available: true,
     amount,
+    amount_cents: amount == null ? null : centsFor(amount),
     selected,
+  };
+}
+
+const CENTS = {
+  "3.55": 355,
+  "10": 1000,
+  "16.45": 1645,
+  "20": 2000,
+  "40": 4000,
+  "48": 4800,
+  "100": 10000,
+  "144": 14400,
+  "170": 17000,
+  "180": 18000,
+  "192": 19200,
+};
+
+function centsFor(amount) {
+  return CENTS[String(amount)] ?? null;
+}
+
+function withPricingEngineResult(result, sellingPriceCents) {
+  return {
+    ...result,
+    pricing_engine_result: {
+      status: "success",
+      selling_price_cents: sellingPriceCents,
+      selected_method_amount_cents: sellingPriceCents,
+      true_cost_cents: result.true_cost != null ? centsFor(result.true_cost) : null,
+      method_rows: (result.pricing_method_results || []).map((row) => ({
+        method_id: row.method_id,
+        selected: !!row.selected,
+        available: row.available !== false,
+        amount_cents: row.amount_cents ?? null,
+      })),
+      breakdown_amounts: (result.breakdown || []).map((row) => ({
+        label: row.label,
+        amount_cents: row.amount_cents ?? centsFor(row.amount),
+      })),
+      component_amounts: [
+        ...["pre_minimum_selling_price", "item_minimum_total", "order_minimum_total", "minimum_adjustment"].map((field) => ({
+          field,
+          amount_cents: centsFor(result[field]),
+        })).filter((row) => row.amount_cents != null),
+      ],
+      warnings: result.calculation_warnings || [],
+      errors: result.errors || [],
+    },
   };
 }
 
 function pricingResult(category = "banners") {
   if (category === "banners") {
-    return {
+    return withPricingEngineResult({
       category,
-      selling_price: 192,
+      selling_price: 999,
       pricing_method_used: "square_foot_plus_addons",
       canonical_method_id: "square_foot_plus_addons",
       selected_method_id: "square_foot_plus_addons",
@@ -148,10 +197,10 @@ function pricingResult(category = "banners") {
       breakdown: [{ label: "Base square-foot amount", amount: 144 }],
       calculation_warnings: ["fixture warning"],
       true_cost: 100,
-    };
+    }, 19200);
   }
   if (category === "digital_print") {
-    return {
+    return withPricingEngineResult({
       category,
       selling_price: 20,
       pricing_method_used: "per_sqft",
@@ -184,9 +233,9 @@ function pricingResult(category = "banners") {
       breakdown: [{ label: "Digital Print item minimum adjustment", amount: 3.55 }],
       calculation_warnings: ["Digital Print order minimum is evaluated once at Quote or Order document level."],
       true_cost: 10,
-    };
+    }, 2000);
   }
-  return {
+  return withPricingEngineResult({
     category,
     selling_price: 48,
     pricing_method_used: "unit_price_x_quantity",
@@ -201,7 +250,7 @@ function pricingResult(category = "banners") {
     breakdown: [],
     calculation_warnings: [],
     true_cost: 20,
-  };
+  }, 4800);
 }
 
 function comparisonResult(primaryMethodId = "square_foot_plus_addons") {
@@ -210,7 +259,7 @@ function comparisonResult(primaryMethodId = "square_foot_plus_addons") {
     selected_method_id: primaryMethodId,
     primary_method_id: primaryMethodId,
     comparison_results: [
-      successfulMethod("square_foot_plus_addons", 192, primaryMethodId === "square_foot_plus_addons"),
+      { ...successfulMethod("square_foot_plus_addons", 999, primaryMethodId === "square_foot_plus_addons"), amount_cents: 19200 },
       successfulMethod("cost_plus", 170, primaryMethodId === "cost_plus"),
       { method_id: "target_margin", display_name: "target margin", status: ["unavailable"], available: false, amount: null, reason: "missing true cost" },
     ],
@@ -228,7 +277,13 @@ function mockApi({ failed = false } = {}) {
               id: "saved-calc-1",
               name: "Saved banner",
               category: "banners",
-              selling_price: 180,
+              selling_price: 999,
+              selling_price_cents: 18000,
+              pricing_engine_result: {
+                status: "success",
+                selling_price_cents: 18000,
+                method_rows: [{ method_id: "square_foot_plus_addons", amount_cents: 18000, selected: true, available: true }],
+              },
               canonical_method_id: "square_foot_plus_addons",
               selected_method_id: "square_foot_plus_addons",
               pricing_method_results: [successfulMethod("square_foot_plus_addons", 180, true)],
@@ -258,7 +313,13 @@ function mockApi({ failed = false } = {}) {
           saved_calculation: {
             id: "saved-calc-1",
             name: "Saved banner",
-            selling_price: 180,
+            selling_price: 999,
+            selling_price_cents: 18000,
+            pricing_engine_result: {
+              status: "success",
+              selling_price_cents: 18000,
+              method_rows: [{ method_id: "square_foot_plus_addons", amount_cents: 18000, selected: true, available: true }],
+            },
             calculation_inputs: {
               category: "banners",
               width_inches: 96,
@@ -274,8 +335,10 @@ function mockApi({ failed = false } = {}) {
           },
           current_result: pricingResult("banners"),
           comparison_result: comparisonResult("square_foot_plus_addons"),
-          saved_price: 180,
-          current_price: 192,
+          saved_price: 999,
+          current_price: 999,
+          saved_selling_price_cents: 18000,
+          current_selling_price_cents: 19200,
           price_changed: true,
           transferable: true,
         },
@@ -356,6 +419,33 @@ test("dialog displays authoritative, canonical, selected, available, unavailable
   expect(screen.getByTestId("li-calc-warnings")).toHaveTextContent("fixture warning");
   expect(screen.getByTestId("li-pricing-details")).toHaveTextContent("24 sq ft");
   expect(api.post).toHaveBeenCalledWith("/pricing/method-comparison", expect.objectContaining({ category: "banners" }));
+});
+
+test("dialog refuses to transfer a fresh result with invalid normalized cents despite legacy dollars", async () => {
+  api.post.mockImplementation((url, payload) => {
+    if (url === "/pricing/calculate") {
+      return Promise.resolve({
+        data: {
+          ...pricingResult(payload.category),
+          selling_price: 192,
+          pricing_engine_result: { status: "success", selling_price_cents: true },
+        },
+      });
+    }
+    return Promise.resolve({ data: {} });
+  });
+  const onSubmit = jest.fn().mockResolvedValue({});
+  renderDialog({ onSubmit });
+  fireEvent.change(screen.getByTestId("li-description-detailed"), { target: { value: "Banner item" } });
+  fireEvent.change(screen.getByTestId("li-category-detailed"), { target: { value: "banners" } });
+  fireEvent.change(screen.getByTestId("li-width"), { target: { value: "96" } });
+  fireEvent.change(screen.getByTestId("li-height"), { target: { value: "36" } });
+  fireEvent.click(screen.getByTestId("li-calculator"));
+
+  expect(await screen.findByTestId("li-calc-error")).toHaveTextContent("transferable selling price");
+  expect(screen.queryByTestId("li-calc-result")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByTestId("li-submit"));
+  expect(onSubmit).not.toHaveBeenCalled();
 });
 
 test("non-Banner normalized categories use calculate results without Banner comparison", async () => {
