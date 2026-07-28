@@ -21,6 +21,7 @@ FIXTURE_SCHEMA_VERSION = "pricing_fixture_v1"
 FIXTURE_ENGINE_VERSION = "pricing_engine_v1"
 FIXTURE_FORMULA_VERSION = "ec9_current"
 LEGACY_SAAS_ADAPTER_ID = "legacy_saas_calculator_v1"
+LEGACY_SAAS_CENTS_FIRST_ADAPTER_ID = "legacy_saas_cents_first_compatibility_adapter_9il_v1"
 FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "pricing_engine"
 SCHEMA_PATH = FIXTURE_ROOT / "schema.json"
 REQUIRED_CATEGORY_IDS = tuple(CATEGORY_IDS)
@@ -182,6 +183,29 @@ class LegacySaasCalculatorAdapter:
         )
 
 
+class LegacySaasCentsFirstCompatibilityAdapter:
+    adapter_id = LEGACY_SAAS_CENTS_FIRST_ADAPTER_ID
+
+    def run(self, fixture: PricingFixture) -> AdapterExecutionResult:
+        from pricing_engine.adapters import build_legacy_line_result
+
+        legacy_execution = LegacySaasCalculatorAdapter().run(fixture)
+        request = fixture.document["normalized_inputs"]["calculator_request"]
+        line_result = build_legacy_line_result(
+            category_id=fixture.category,
+            legacy_result=legacy_execution.raw_result,
+            normalized_input=request,
+        )
+        return AdapterExecutionResult(
+            adapter_id=self.adapter_id,
+            normalized_result=_project_cents_first_result_for_fixture(line_result),
+            raw_result={
+                "legacy_result": legacy_execution.raw_result,
+                "pricing_engine_result": line_result,
+            },
+        )
+
+
 def compare_fixture_result(fixture: PricingFixture, execution: AdapterExecutionResult) -> None:
     expected = fixture.document["expected_line_results"]
     actual = execution.normalized_result
@@ -208,6 +232,32 @@ def compare_fixture_result(fixture: PricingFixture, execution: AdapterExecutionR
     actual_rows = actual.get("method_rows") or []
     if actual_rows != expected_rows:
         raise AssertionError(f"{fixture.path}: {execution.adapter_id}: method_rows mismatch")
+
+
+def _project_cents_first_result_for_fixture(result: dict[str, Any]) -> dict[str, Any]:
+    selected_rows = [row for row in result.get("method_rows", []) if row.get("selected")]
+    return {
+        "status": result.get("status"),
+        "selling_price_cents": result.get("selling_price_cents"),
+        "suggested_price_cents": result.get("suggested_price_cents"),
+        "true_cost_cents": result.get("true_cost_cents"),
+        "profit_amount_cents": result.get("profit_amount_cents"),
+        "profit_margin_percent": result.get("profit_margin_percent"),
+        "pricing_method_used": result.get("pricing_method_used"),
+        "canonical_method_id": result.get("canonical_method_id"),
+        "selected_method_id": result.get("selected_method_id"),
+        "warnings": list(result.get("warnings") or []),
+        "method_rows": [
+            {
+                "method_id": row.get("method_id"),
+                "selected": bool(row.get("selected")),
+                "available": bool(row.get("available")),
+                "amount_cents": row.get("amount_cents"),
+                "status": list(row.get("status") or []),
+            }
+            for row in selected_rows
+        ],
+    }
 
 
 def _normalize_legacy_result(result: dict[str, Any]) -> dict[str, Any]:

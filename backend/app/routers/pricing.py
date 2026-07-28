@@ -10,13 +10,13 @@ from ..core.time_utils import serialize_doc, utc_now
 from ..deps import require_permission
 from ..services.audit import record_audit
 from ..services.pricing import (
-    calculate_pricing,
     get_or_init_pricing_settings,
     reset_category_to_starter,
     update_category,
     update_shop_defaults,
     wizard_suggestions,
 )
+from ..services.pricing_engine_adapter import calculate_pricing_with_cents_first_envelope
 from ..services.order_pricing import resolve_references
 from ..services.pricing_method_configurations import (
     apply_simple_setup,
@@ -394,7 +394,7 @@ async def calculate(payload: CalcIn, user: dict = Depends(require_permission(Per
         raise
 
     try:
-        return calculate_pricing(
+        return calculate_pricing_with_cents_first_envelope(
             settings=settings,
             category=payload.category,
             width_inches=payload.width_inches,
