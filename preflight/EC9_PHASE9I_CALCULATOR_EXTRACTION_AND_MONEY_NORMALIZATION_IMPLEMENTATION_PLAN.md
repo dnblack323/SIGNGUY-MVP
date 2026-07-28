@@ -1,6 +1,6 @@
 # EC9 Phase 9I Calculator Extraction And Money Normalization Implementation Plan
 
-**Status:** PHASE 9I-S PORTABLE CONFIGURATION EXPORT AND PREVIEW IMPORT IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-T NOT STARTED
+**Status:** PHASE 9I-T STANDALONE ADAPTER CONTRACT HARNESS IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-U NOT STARTED
 **Date:** 2026-07-27
 **Repository gate verified:** `main` at `7334cb24867102013350bde3ea4c8b84a59c4ff1`
 **Planning document with implementation records:** Phase 9I-J, Phase 9I-K, Phase 9I-L, Phase 9I-M, Phase 9I-N, Phase 9I-O, Phase 9I-P, and Phase 9I-Q implementation results are recorded below. Phase 9I remains open.
@@ -590,6 +590,20 @@ Phase 9I-S implementation record:
 - Commit safety: yes.
 - Rollback: remove harness/tests.
 
+Phase 9I-T implementation record:
+
+- Added test-only standalone harness `backend/tests/standalone_pricing_adapter_harness.py` with adapter ID `standalone_portable_configuration_adapter_9it_v1`.
+- The harness accepts only an explicit portable configuration mapping or explicit UTF-8 local JSON file, requires a JSON object root, validates through `validate_portable_configuration`, deserializes through `deserialize_portable_configuration`, and performs no fallback to starter defaults after a portable configuration is supplied.
+- The harness reuses `pricing_engine.line_engine.calculate_line` and the existing cents-first legacy result adapter; it does not duplicate category formulas, money conversion rules, minimums, markups, discounts, taxes, or rounding behavior.
+- All nine shared Phase 9I-K fixtures run through the standalone harness: `banners`, `rigid_signs`, `cut_vinyl`, `digital_print`, `vehicle_graphics`, `apparel`, `promotional`, `services`, and `custom`.
+- Standalone normalized results match the fixed shared fixture expectations and the SaaS cents-first adapter results for selling price cents, suggested price cents, true cost cents, profit cents, margin evidence, method IDs, selected rows, warnings, formula version, engine version, and rounding policy evidence.
+- The standalone subprocess isolation check runs the harness and fixture pack from `backend` without importing or initializing `app`, `server`, FastAPI, MongoDB drivers, network clients, Stripe/OpenAI clients, desktop frameworks, licensing modules, or packaging modules.
+- Configuration loading and fixture execution are deterministic and non-mutating; tests verify no filesystem writes, network operations, persistence, tenant/auth/permission/audit/entitlement/licensing inputs, secrets, tokens, Stripe data, Mongo IDs, Quote/Order/saved-calculation/snapshot writes, migration, backfill, historical rewrite, production runtime changes, or frontend changes.
+- Digital Print item and document minimums come from portable configuration and existing calculator evidence; the harness contains no hardcoded `$20`, `$40`, `2000`, or `4000` minimum values.
+- Verification passed: Phase 9I-T tests `24 passed`; Phase 9I-S tests `5 passed, 6 warnings` with `PYTHONPATH=backend` for subprocess package resolution; Phase 9I-J/K `52 passed`; Phase 9I-O/P `28 passed, 6 warnings`; Phase 9I-Q/R `13 passed, 6 warnings`; Phase 9I-L/M/N `31 passed, 6 warnings`; pricing saved-items/materials/components `10 passed, 6 warnings`; pricing method configuration/contracts `36 passed, 6 warnings`; Quote/Order and Digital Print regressions `66 passed, 6 warnings`; snapshot/advisory regressions `22 passed, 6 warnings`; Orders/Quotes/Work Orders regressions `22 passed, 6 warnings`; money policy `14 passed`; backend compile/import validation passed; `git diff --check` passed.
+- Preserved follow-ups: visible `Digital Print order minimum adjustment` row remains complete from Phase 9I-R; identifier-only Quote/Order item update/delete tenant-authorization audit remains open; EC7 inventory duplicate-key setup evidence remains open/informational.
+- Full Phase 9I remains open. Phase 9I-U final all-category parity and extraction verification is next and has not started.
+
 ### Phase 9I-U - Final all-category parity and extraction verification
 
 - Scope: Complete all fixture coverage and prove engine/SaaS/standalone harness parity.
@@ -842,4 +856,4 @@ No calculator formula changes, data migration, destructive migration, frontend c
 
 Phase 9I remains open.
 
-Phase 9I-O is implemented and verified. Phase 9I-P is implemented and verified. Phase 9I-Q is implemented and verified. Phase 9I-R is implemented and verified with frontend/API cents-first consumption and visible Digital Print document-minimum evidence rows. Phase 9I-S is the next implementation slice under this plan and has not started.
+Phase 9I-O is implemented and verified. Phase 9I-P is implemented and verified. Phase 9I-Q is implemented and verified. Phase 9I-R is implemented and verified with frontend/API cents-first consumption and visible Digital Print document-minimum evidence rows. Phase 9I-S is implemented and verified with portable configuration export and preview import. Phase 9I-T is implemented and verified with the standalone adapter contract harness. Phase 9I-U is the next implementation slice under this plan and has not started.
