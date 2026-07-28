@@ -37,6 +37,11 @@ class Settings:
         # Frontend uses it to auto-provision a Dev Shop so the user doesn't have to log in.
         # MUST be set to false before production/deploy.
         self.auth_dev_bypass: bool = os.environ.get("AUTH_DEV_BYPASS", "false").lower() == "true"
+        self.dev_login_email: str = os.environ.get("DEV_LOGIN_EMAIL", "dev@signguy-dev.example.com").strip().lower()
+        self.dev_login_full_name: str = os.environ.get("DEV_LOGIN_FULL_NAME", "Dev Owner").strip() or "Dev Owner"
+        self.dev_login_platform_creator: bool = (
+            os.environ.get("DEV_LOGIN_PLATFORM_CREATOR", "false").lower() == "true"
+        )
 
         # EC1 — Environment + Integration-Enabled flags.
         # ENV values: "development" (default), "test", "production".

@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from ..core.config import get_settings
 from ..core.db import db
-from ..core.permissions import permissions_for_role
+from ..core.permissions import PLATFORM_CREATOR_ROLE, PlatformPerm, permissions_for_role
 from ..core.security import (
     create_access_token,
     decode_access_token,
@@ -396,22 +396,36 @@ async def dev_login() -> TokenOut:
         await db.tenants.insert_one(prepare_for_mongo(t.model_dump()))
         tenant = await db.tenants.find_one({"id": t.id})
 
-    user = await db.users.find_one({"tenant_id": tenant["id"], "email": DEV_OWNER_EMAIL})
+    dev_email = _settings.dev_login_email or DEV_OWNER_EMAIL
+    user = await db.users.find_one({"tenant_id": tenant["id"], "email": dev_email})
     if not user:
         u = User(
             tenant_id=tenant["id"],
-            email=DEV_OWNER_EMAIL,
-            full_name="Dev Owner",
+            email=dev_email,
+            full_name=_settings.dev_login_full_name,
             role="owner",
             password_hash=hash_password("dev-bypass-not-a-real-password"),
         )
         await db.users.insert_one(prepare_for_mongo(u.model_dump()))
         user = await db.users.find_one({"id": u.id, "tenant_id": tenant["id"]})
 
+    set_updates: dict[str, object] = {"last_login_at": utc_now().isoformat()}
+    if _settings.dev_login_platform_creator:
+        existing_permissions = set(user.get("permissions") or [])
+        set_updates.update({
+            "platform_role": PLATFORM_CREATOR_ROLE,
+            "platform_admin": True,
+            "permissions": sorted(existing_permissions | {
+                PlatformPerm.PLATFORM_CREATOR.value,
+                PlatformPerm.PLATFORM_ADMIN.value,
+            }),
+        })
+
     await db.users.update_one(
         {"id": user["id"], "tenant_id": tenant["id"]},
-        {"$set": {"last_login_at": utc_now().isoformat()}},
+        {"$set": set_updates},
     )
+    user = await db.users.find_one({"id": user["id"], "tenant_id": tenant["id"]})
     token = create_access_token(subject=user["id"], tenant_id=tenant["id"])
     u_out = serialize_external_user(user)
     return TokenOut(
