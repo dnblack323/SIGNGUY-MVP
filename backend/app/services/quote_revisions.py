@@ -16,6 +16,15 @@ from ..core.time_utils import prepare_for_mongo, serialize_doc
 from ..models.quote_revision import QuoteRevision
 
 
+DOCUMENT_PRICING_FIELDS = (
+    "line_subtotal_cents",
+    "line_total_cents",
+    "document_pricing_adjustment_cents",
+    "digital_print_order_minimum_adjustment_cents",
+    "digital_print_minimum",
+)
+
+
 async def _load_line_items(tenant_id: str, quote_id: str, revision_number: int) -> list[dict[str, Any]]:
     """Load current line items for a quote scoped to a given revision number."""
     cursor = db.quote_line_items.find(
@@ -56,7 +65,11 @@ async def snapshot_current(
         actor_email=actor_email,
         reason=reason,
     )
-    await db.quote_revisions.insert_one(prepare_for_mongo(rev.model_dump()))
+    rev_doc = rev.model_dump()
+    for field in DOCUMENT_PRICING_FIELDS:
+        if field in quote_doc:
+            rev_doc[field] = quote_doc.get(field)
+    await db.quote_revisions.insert_one(prepare_for_mongo(rev_doc))
     return rev
 
 

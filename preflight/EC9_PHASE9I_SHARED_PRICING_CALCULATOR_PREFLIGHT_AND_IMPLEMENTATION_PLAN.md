@@ -1,16 +1,16 @@
 # EC9 Phase 9I - Shared Pricing Calculator Preflight and Implementation Plan
 
-**Status:** PHASE 9I-H REVIEW PASSED
+**Status:** PHASE 9I-I REVIEW PASSED - COMPLETE; PHASE 9I REMAINS OPEN
 **Date:** 2026-07-26  
 **Repository state audited:** `main` at `08fbe1fd1e4265df8b4047a5ca138b056cd0a82e`  
-**Implementation status:** Phase 9I-A passed owner review. Phase 9I-B backend tenant pricing-method configuration foundation is implemented. Phase 9I-C backend Banner comparison contract was corrected after read-only review findings and received an independent read-only re-review with final status `PHASE 9I-C RE-REVIEW PASSED`. Phase 9I-D normalizes every currently implemented non-Banner category output through the shared method-output contract. Its read-only review found one manual-override normalization defect; that defect was corrected and received final read-only re-review status `PHASE 9I-D RE-REVIEW PASSED`. Phase 9I-E implements the dedicated Pricing Calculators workspace and Shop Operations navigation exposure over the existing Phase 9I contracts. Phase 9I-F implements Quote/Order dialog parity over the shared calculator contracts, with backend-authoritative transfer guards and permission checks. Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`. Phase 9I-G implements the Saved Calculation Library for explicit tenant-scoped save/reopen/search/filter/rename/notes/duplicate/archive/restore/use flows over existing backend calculators. Live pricing math remains unchanged. Phase 9I-G review status is `PHASE 9I-G REVIEW PASSED`. Phase 9I-H implements read-only direct consumer contracts for Work Order Summary, reporting, Webstore reports, and Wrap Lab reports without changing pricing formulas or downstream workflows. Phase 9I-H review status is `PHASE 9I-H REVIEW PASSED`; Phase 9I-I and later remain pending and must not begin without separate owner authorization.
+**Implementation status:** Phase 9I-A passed owner review. Phase 9I-B backend tenant pricing-method configuration foundation is implemented. Phase 9I-C backend Banner comparison contract was corrected after read-only review findings and received an independent read-only re-review with final status `PHASE 9I-C RE-REVIEW PASSED`. Phase 9I-D normalizes every currently implemented non-Banner category output through the shared method-output contract. Its read-only review found one manual-override normalization defect; that defect was corrected and received final read-only re-review status `PHASE 9I-D RE-REVIEW PASSED`. Phase 9I-E implements the dedicated Pricing Calculators workspace and Shop Operations navigation exposure over the existing Phase 9I contracts. Phase 9I-F implements Quote/Order dialog parity over the shared calculator contracts, with backend-authoritative transfer guards and permission checks. Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`. Phase 9I-G implements the Saved Calculation Library for explicit tenant-scoped save/reopen/search/filter/rename/notes/duplicate/archive/restore/use flows over existing backend calculators. Live pricing math remains unchanged. Phase 9I-G review status is `PHASE 9I-G REVIEW PASSED`. Phase 9I-H implements read-only direct consumer contracts for Work Order Summary, reporting, Webstore reports, and Wrap Lab reports without changing pricing formulas or downstream workflows. Phase 9I-H review status is `PHASE 9I-H REVIEW PASSED`. Phase 9I-I implements backend-authoritative Digital Print item/order minimum enforcement with snapshot evidence and shared calculator display coverage; Phase 9I-I passed independent focused read-only review and is complete. All of Phase 9I remains open until the separate Calculator Extraction, Money Normalization, and Standalone Licensing Readiness Audit is completed and required corrections are resolved.
 **Controlling authority:** `specs_pack/extracted/EC09_Pricing_Foundation_Calculators_and_Order_Pricing.docx`
 
 ## 0. Approved Owner Decisions Recorded For 9I-A
 
 1. The checkpoint name and number is approved as **EC9 Phase 9I - Shared Pricing Calculator Completion / Recovery**.
 2. Cut Vinyl uses `$25` as the recommended starter item minimum. It remains tenant-configurable in later setup work. Phase 9I-A records this in contract metadata and does not change live pricing math.
-3. Digital Print has separate future configuration concepts: `item_minimum` recommended at `$20` and `order_minimum` recommended at `$40`. Phase 9I-A records the distinction in contract metadata and does not apply the split to live pricing.
+3. Digital Print has separate configuration concepts: `item_minimum` recommended at `$20` and `order_minimum` recommended at `$40`. Phase 9I-I applies the split through tenant pricing defaults, backend-authoritative line calculation evidence, and Quote/Order document-level aggregation.
 4. Saved Calculations Library is approved for a later Phase 9I implementation phase. Phase 9I-A does not build the library.
 5. Saved calculation transfer into Quote/Order will create an independent line-item pricing snapshot and preserve source ID/revision traceability in a later phase. Phase 9I-A does not implement transfer behavior.
 6. The future navigation label is **Pricing Calculators** under **Shop Operations**. **Pricing Defaults** remains under **Control Center**. Phase 9I-A does not modify navigation.
@@ -598,13 +598,13 @@ Expected documentation/evidence:
 
 All seven owner holds listed in the original preflight are resolved for Phase 9I-A by the approved decisions recorded at the top of this document.
 
-Remaining later-phase holds:
+Phase 9I-A originally left these as later-phase holds. Their current Phase 9I status is:
 
-1. Implementing Simple Setup and Advanced Setup frontend controls remains deferred to a later Phase 9I phase.
-2. Implementing the Saved Calculations Library remains deferred to a later Phase 9I phase.
-3. Implementing saved-calculation transfer into Quote/Order remains deferred to a later Phase 9I phase.
-4. Implementing the **Pricing Calculators** navigation destination remains deferred until the dedicated workspace phase.
-5. Enforcing Digital Print item/order minimum behavior remains deferred because order-level minimums must be handled at document-total level, not as a single line-item formula.
+1. Simple Setup and Advanced Setup frontend controls were addressed through the approved Phase 9I method-configuration and calculator-workspace phases where in scope.
+2. The Saved Calculations Library was implemented and reviewed in Phase 9I-G.
+3. Saved-calculation use in Quote/Order item calculator surfaces was implemented through Phase 9I-G with fresh backend recalculation before transfer.
+4. The **Pricing Calculators** navigation destination was implemented in Phase 9I-E.
+5. Digital Print item/order minimum behavior is implemented in Phase 9I-I: the line calculator enforces only `item_minimum * quantity`; Quote/Order orchestration applies the `$40` order minimum once at document-total level.
 
 ## 20. Phase 9I-A Implementation Record
 
@@ -1087,7 +1087,66 @@ Phase 9I-H verification:
 - `git diff --check`: passed with CRLF conversion warnings only.
 - Phase 9I-H status: `PHASE 9I-H REVIEW PASSED`.
 
-## 29. Risks And Controls
+## 29. Phase 9I-I Implementation Record
+
+Phase 9I-I implements Digital Print item/order minimum enforcement and reconciles Phase 9I for review without changing Banner pricing, unrelated category formulas, saved-calculation behavior, Webstore/Wrap Lab workflows, Control Center, Platform Administration, UX completion, or Record Numbering.
+
+Initial Phase 9I-I review found a blocking defect: the first implementation enforced `order_minimum` inside every individual Digital Print calculator invocation through `max(item_minimum * quantity, order_minimum)`. That contradicted the pre-existing Phase 9I authority, which required order-level Digital Print minimums to be handled at Quote/Order document-total level. The correction removes the per-calculation `$40` floor and applies the order minimum once per Quote or Order.
+
+Implemented scope:
+
+- Added tenant-configurable Digital Print `item_minimum` and `order_minimum` defaults to the starter pricing pack while preserving the existing legacy `minimum_charge` field for compatibility.
+- Enforced only the Digital Print item minimum in `calc_digital_print`: `item_minimum * quantity`. The standalone calculator returns the line calculation result and displays the `$40` order minimum as document-level context only.
+- Added backend document aggregation for Quotes and Orders. Eligible Digital Print line subtotals are summed after line-item minimum enforcement; non-Digital-Print line items are excluded; the `$40` `order_minimum` is compared once against the eligible subtotal before existing discounts and tax.
+- Applied one document-level adjustment, `digital_print_order_minimum_adjustment_cents`, only when the eligible Digital Print subtotal is below the configured order minimum. Multiple Digital Print lines do not receive duplicate `$40` floors.
+- Used decimal-safe money handling and the existing integer-cent commerce boundary. Digital Print calculator totals are converted to line-item unit cents at Quote/Order transfer while preserving the quantity-aware line calculation evidence in the snapshot.
+- Preserved authorized manual override behavior: manual line-price overrides still require the existing reason when they differ from the backend suggestion, and the document-level Digital Print minimum still evaluates against the selected stored line subtotal.
+- Added line snapshot fields for Digital Print item-minimum policy, pre-minimum price, item/order minimum context, item adjustment, and applied reason; document-level Quote/Order evidence stores eligible line identifiers, eligible subtotal, order minimum, adjustment, application state, and resulting authoritative totals.
+- Quote revisions persist the current document-level Digital Print minimum evidence; Quote-to-Order conversion copies the accepted Quote's stored evidence and does not recalculate against newer defaults.
+- Added Digital Print minimum details to normalized method output so the dedicated Pricing Calculator and Quote/Order item dialog can explain line price, item minimum, document order-minimum context, and warnings using existing result display surfaces.
+- Verified Quote and Order item create/update/delete/reprice paths recompute the document aggregate backend-side and cannot be bypassed by caller-supplied lower totals, minimums, adjustments, subtotals, or final totals.
+
+Phase 9I-I verification:
+
+- Focused corrected Digital Print document-minimum backend tests: `31 passed, 6 warnings`.
+- Focused Quote/Order dialog and dedicated Pricing Calculator frontend tests: `21 passed`.
+- Combined Phase 9I-A/B/C/D/F/G/H/I backend regressions: `163 passed, 6 warnings`.
+- Quote/Order/Work Order/pricing-snapshot regressions: `115 passed, 6 warnings`.
+- Category/Banner/snapshot regressions: `85 passed, 6 warnings`.
+- Complete backend suite: `879 passed, 3 skipped, 6 warnings`.
+- Complete frontend suite: `72 passed`.
+- Frontend production build compiled successfully, backend compile/import validation passed across `405` Python files, and `git diff --check` passed with CRLF conversion warnings only.
+
+Phase 9I-I review acceptance:
+
+- Independent focused read-only re-review status: `PHASE 9I-I DOCUMENT-LEVEL CORRECTION REVIEW PASSED - READY TO COMMIT, PHASE 9I REMAINS OPEN FOR EXTRACTION AUDIT`.
+- The review verified that the rejected per-calculator `$40 order_minimum` behavior was removed.
+- The review verified item minimum `item_minimum * quantity`, once-per-Quote/Order document minimum adjustment, authoritative eligible Digital Print subtotals, Banner and non-Digital-Print exclusion, backend total recomputation, forged-client value rejection, tenant-specific settings, integer-cent persisted adjustment fields, shared Quote/Order logic in `backend/app/services/order_pricing.py`, manual override reason preservation, revision/conversion historical evidence preservation, legacy readability, and unchanged Banner output.
+- Verification passed across focused backend/frontend tests, combined Phase 9I regressions, Quote/Order/Work Order/snapshot regressions, category/Banner/snapshot regressions, full backend, full frontend, frontend production build, backend compile/import validation, and `git diff --check`.
+
+Phase 9I-I status: `PHASE 9I-I REVIEW PASSED - COMPLETE`.
+
+Phase 9I closure evaluation:
+
+- Phase 9I-A: complete and reviewed.
+- Phase 9I-B: complete and reviewed.
+- Phase 9I-C: corrected and final re-review passed.
+- Phase 9I-D: corrected and final re-review passed.
+- Phase 9I-E: review passed and committed.
+- Phase 9I-F: review passed and committed.
+- Phase 9I-G: review passed and committed.
+- Phase 9I-H: review passed and committed.
+- Phase 9I-I: review passed and complete.
+
+Formal Phase 9I closure must remain open until the separate `Calculator Extraction, Money Normalization, and Standalone Licensing Readiness Audit` is completed and its required corrections are resolved.
+
+Preserved non-blocking follow-ups:
+
+1. Add a dedicated visible `Digital Print order minimum adjustment` breakdown row to applicable Quote and Order detail surfaces.
+2. Audit pre-existing Quote and Order item mutation paths that perform identifier-only updates or deletes after tenant-scoped authorization lookups.
+3. Record the one-off duplicate-key setup failure in `tests/test_ec7_inventory.py` as informational test-reliability evidence; the immediate full-suite rerun passed.
+
+## 30. Risks And Controls
 
 | Risk | Control |
 |---|---|
@@ -1097,12 +1156,12 @@ Phase 9I-H verification:
 | Silent price changes from live defaults | Preserve snapshot immutability and explicit recalculation behavior |
 | Cross-tenant reference misuse | Continue tenant-scoped lookups in `order_pricing.py`; add denial tests |
 | Inactive references used accidentally | Add shared active guards and tests |
-| Inventing unapproved prices | Owner holds for Cut Vinyl, Digital Print, and any missing category-specific constants |
+| Inventing unapproved prices | Owner holds for Cut Vinyl and any missing category-specific constants; Digital Print item/order minimums now use the approved `$20` / `$40` repository decision |
 | Expanding into Webstores/Wrap Lab | Keep 9I calculator-only; no payouts/storefront/wrap project changes |
 | Frontend stale totals | Preserve debounce/updating behavior from Banner repair |
 
-## 30. Stop Boundary
+## 31. Stop Boundary
 
-Phase 9I-A, 9I-B, 9I-C, 9I-D, 9I-E, 9I-F, 9I-G, and 9I-H are implemented in the current Phase 9I package. Phase 9I-C has final review status `PHASE 9I-C RE-REVIEW PASSED`; Phase 9I-D is implemented with the manual-override normalization defect corrected and final re-review status `PHASE 9I-D RE-REVIEW PASSED`; Phase 9I-E review status is `PHASE 9I-E REVIEW PASSED`; Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`; Phase 9I-G review status is `PHASE 9I-G REVIEW PASSED`; Phase 9I-H review status is `PHASE 9I-H REVIEW PASSED`. Phase 9I-I and later should not begin until separately authorized.
+Phase 9I-A, 9I-B, 9I-C, 9I-D, 9I-E, 9I-F, 9I-G, and 9I-H are implemented in the current Phase 9I package. Phase 9I-C has final review status `PHASE 9I-C RE-REVIEW PASSED`; Phase 9I-D is implemented with the manual-override normalization defect corrected and final re-review status `PHASE 9I-D RE-REVIEW PASSED`; Phase 9I-E review status is `PHASE 9I-E REVIEW PASSED`; Phase 9I-F review status is `PHASE 9I-F REVIEW PASSED`; Phase 9I-G review status is `PHASE 9I-G REVIEW PASSED`; Phase 9I-H review status is `PHASE 9I-H REVIEW PASSED`; Phase 9I-I status is `PHASE 9I-I REVIEW PASSED - COMPLETE`. All of Phase 9I remains open until the separate calculator extraction and money-normalization audit is completed and required corrections are resolved.
 
 No EC20, EC21, EC22, AI, attachments, markup, navigation redesign, Webstore payout, Wrap Lab workflow, EC4 payment/invoice, Stripe, provider, or unrelated work is included.

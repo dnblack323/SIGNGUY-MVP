@@ -11,6 +11,7 @@ Manual entry (`services/pricing_snapshot.build_manual_snapshot`):
 
 Calculator entry (`services/pricing_snapshot.build_calculated_snapshot`):
 - `source: "calculator"`, `pricing_method` (from calc result), `calculator_version` (from `starter_defaults.STARTER_DEFAULT_VERSION`), `category`, `quantity`, `width_inches`, `height_inches`, `area_sqft_total`, `material_key`, `material_cost_dollars`, `labor_cost_dollars`, `design_cost_dollars`, `install_cost_dollars`, `overhead_cost_dollars`, `true_cost_dollars`, `calculated_unit_price_cents`, `override_unit_price_cents`, override metadata, `captured_at`.
+- Digital Print calculator snapshots also preserve line-level item-minimum evidence and document-order-minimum context when present: `minimum_policy`, `minimum_scope`, `pre_minimum_selling_price`, `item_minimum`, `order_minimum`, `item_minimum_total`, `order_minimum_total`, `minimum_charge_applied`, `minimum_adjustment`, and `minimum_applied_reason`. The standalone calculator does not apply the document order-minimum floor.
 
 Override (`services/pricing_snapshot.apply_override`):
 - Preserves the original calculated cents, adds `override_unit_price_cents`, `override_reason`, actor, `override_applied_at`.
@@ -20,6 +21,7 @@ Override (`services/pricing_snapshot.apply_override`):
 - Snapshots are stored on the line item document, not in a separate collection (kept close to the record; can move later if reporting needs demand).
 - Snapshots never include secrets or full pricing_settings dumps — only relevant inputs.
 - A change to shop pricing defaults never mutates historical snapshots.
+- Digital Print line snapshots are historical evidence only. The once-per-document Digital Print order-minimum adjustment is stored on Quote/Order totals as `digital_print_minimum` / `digital_print_order_minimum_adjustment_cents`, using stored line snapshots and line subtotals rather than live defaults. It is not a hidden trigger to recalculate older line items.
 
 ## Direct Consumer Contracts (EC9 Phase 9I-H)
 

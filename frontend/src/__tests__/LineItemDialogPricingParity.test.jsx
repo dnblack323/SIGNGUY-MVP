@@ -150,6 +150,42 @@ function pricingResult(category = "banners") {
       true_cost: 100,
     };
   }
+  if (category === "digital_print") {
+    return {
+      category,
+      selling_price: 20,
+      pricing_method_used: "per_sqft",
+      canonical_method_id: "per_sqft",
+      selected_method_id: "per_sqft",
+      minimum_policy: "digital_print_item_minimum_document_order_minimum",
+      minimum_scope: "digital_print_line_item",
+      pre_minimum_selling_price: 16.45,
+      item_minimum: 20,
+      order_minimum: 40,
+      item_minimum_total: 20,
+      order_minimum_total: 40,
+      minimum_charge_applied: true,
+      minimum_adjustment: 3.55,
+      minimum_applied_reason: "item_minimum",
+      pricing_method_results: [
+        successfulMethod("per_sqft", 20, true),
+        { method_id: "manual_override", display_name: "manual override", status: ["unavailable"], available: false, amount: null, reason: "no manual amount" },
+      ],
+      method_availability: [{ method_id: "manual_override", available: false, reason: "no manual amount" }],
+      detail_sections: [{
+        section: "category_specific_details",
+        lines: [
+          { key: "pre_minimum_selling_price", label: "Pre Minimum Selling Price", amount: 16.45 },
+          { key: "item_minimum_total", label: "Item Minimum Total", amount: 20 },
+          { key: "order_minimum_total", label: "Document Order Minimum", amount: 40 },
+          { key: "minimum_adjustment", label: "Item Minimum Adjustment", amount: 3.55 },
+        ],
+      }],
+      breakdown: [{ label: "Digital Print item minimum adjustment", amount: 3.55 }],
+      calculation_warnings: ["Digital Print order minimum is evaluated once at Quote or Order document level."],
+      true_cost: 10,
+    };
+  }
   return {
     category,
     selling_price: 48,
@@ -428,4 +464,19 @@ test("all nine categories are available in the shared Quote and Order dialog", (
   renderDialog();
   const options = within(screen.getByTestId("li-category-detailed")).getAllByRole("option").map((option) => option.value);
   expect(options).toEqual(["banners", "rigid_signs", "cut_vinyl", "digital_print", "vehicle_graphics", "apparel", "services", "promotional", "custom"]);
+});
+
+test("displays backend Digital Print minimum evidence in the Quote and Order dialog", async () => {
+  renderDialog();
+  fireEvent.change(screen.getByTestId("li-category-detailed"), { target: { value: "digital_print" } });
+  fireEvent.change(screen.getByTestId("li-width"), { target: { value: "6" } });
+  fireEvent.change(screen.getByTestId("li-height"), { target: { value: "6" } });
+  fireEvent.click(screen.getByTestId("li-calculator"));
+
+  expect(await screen.findByTestId("li-authoritative-selling-price")).toHaveTextContent("$20.00");
+  expect(screen.getByTestId("li-pricing-details")).toHaveTextContent("Digital Print item minimum adjustment");
+  expect(screen.getByTestId("li-pricing-details")).toHaveTextContent("3.55");
+  expect(screen.getByTestId("li-pricing-details")).toHaveTextContent("Document Order Minimum");
+  expect(screen.getByTestId("li-pricing-details")).toHaveTextContent("40");
+  expect(screen.getByTestId("li-calc-warnings")).toHaveTextContent("document level");
 });

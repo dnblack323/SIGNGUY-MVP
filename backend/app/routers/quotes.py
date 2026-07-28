@@ -26,8 +26,13 @@ from ..deps import require_permission
 from ..models.quote import Quote
 from ..models.quote_line_item import QuoteLineItem
 from ..services.audit import record_audit
-from ..services.commerce_totals import compute_document_totals, compute_line_totals, compute_pricing_summary
-from ..services.order_pricing import PricingTransferError, build_item_pricing_fields, calculate_for_references
+from ..services.commerce_totals import compute_line_totals, compute_pricing_summary
+from ..services.order_pricing import (
+    PricingTransferError,
+    build_item_pricing_fields,
+    calculate_for_references,
+    compute_document_totals_with_pricing_adjustments,
+)
 from ..services.pricing import get_or_init_pricing_settings
 from ..services.pricing_snapshot_records import create_snapshot_record
 from ..services.quote_conversion import convert_quote_to_order
@@ -146,7 +151,7 @@ async def _recompute_quote_totals(tenant_id: str, quote_id: str) -> dict[str, in
             i for i in items
             if int(i.get("revision_number") or 1) == int(doc.get("revision_number") or 1)
         ]
-    totals = compute_document_totals(items)
+    totals = compute_document_totals_with_pricing_adjustments(items)
     return totals
 
 
@@ -215,6 +220,7 @@ async def _resolve_item_pricing(
     use_calculator = bool(category) and (
         bool(category_inputs) or bool(material_profile_id) or bool(pricing_component_ids)
         or bool(saved_item_id) or selected_price_source == "suggested"
+        or (selected_price_source == "manual" and (width_inches is not None or height_inches is not None))
     )
     calc_result = None
     foundation_effective_at = None
@@ -303,7 +309,7 @@ async def get_quote(quote_id: str, user: dict = Depends(require_permission(Perm.
     line_items = await _list_line_items(user["tenant_id"], quote_id, int(doc.get("revision_number") or 1))
     return {
         "quote": _serialize_quote(doc), "line_items": line_items,
-        "totals": compute_document_totals(line_items),
+        "totals": compute_document_totals_with_pricing_adjustments(line_items),
         "pricing_summary": compute_pricing_summary(line_items),
     }
 
@@ -429,7 +435,11 @@ async def list_line_items(quote_id: str, user: dict = Depends(require_permission
     if not quote:
         raise HTTPException(status_code=404, detail="Quote not found")
     items = await _list_line_items(user["tenant_id"], quote_id, int(quote.get("revision_number") or 1))
-    return {"items": items, "totals": compute_document_totals(items), "pricing_summary": compute_pricing_summary(items)}
+    return {
+        "items": items,
+        "totals": compute_document_totals_with_pricing_adjustments(items),
+        "pricing_summary": compute_pricing_summary(items),
+    }
 
 
 @router.post("/{quote_id}/line-items", status_code=201)

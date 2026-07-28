@@ -17,9 +17,14 @@ from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..deps import require_permission
 from ..models.order import Order, OrderItem
 from ..services.audit import record_audit
-from ..services.commerce_totals import compute_document_totals, compute_line_totals, compute_pricing_summary
+from ..services.commerce_totals import compute_line_totals, compute_pricing_summary
 from ..services.order_item_rules import default_production_required
-from ..services.order_pricing import PricingTransferError, build_item_pricing_fields, calculate_for_references
+from ..services.order_pricing import (
+    PricingTransferError,
+    build_item_pricing_fields,
+    calculate_for_references,
+    compute_document_totals_with_pricing_adjustments,
+)
 from ..services.pricing import get_or_init_pricing_settings
 from ..services.pricing_snapshot_records import create_snapshot_record
 from ..services.sequence import next_number
@@ -134,15 +139,8 @@ async def _list_items(tenant_id: str, order_id: str) -> list[dict[str, Any]]:
 
 async def _recompute_order_totals(tenant_id: str, order_id: str) -> dict[str, int]:
     items = await _list_items(tenant_id, order_id)
-    totals = compute_document_totals(items)
-    updates = {
-        "subtotal_cents": totals["subtotal_cents"],
-        "discount_cents": totals["discount_cents"],
-        "tax_cents": totals["tax_cents"],
-        "total_cents": totals["total_cents"],
-        "balance_cents": totals["total_cents"],
-        "updated_at": utc_now().isoformat(),
-    }
+    totals = compute_document_totals_with_pricing_adjustments(items)
+    updates = {**totals, "balance_cents": totals["total_cents"], "updated_at": utc_now().isoformat()}
     await db.orders.update_one({"id": order_id, "tenant_id": tenant_id}, {"$set": updates})
     return totals
 
@@ -161,6 +159,7 @@ async def _resolve_item_pricing(
     use_calculator = bool(category) and (
         bool(category_inputs) or bool(material_profile_id) or bool(pricing_component_ids)
         or bool(saved_item_id) or selected_price_source == "suggested"
+        or (selected_price_source == "manual" and (width_inches is not None or height_inches is not None))
     )
     calc_result = None
     foundation_effective_at = None
@@ -249,7 +248,7 @@ async def get_order(order_id: str, user: dict = Depends(require_permission(Perm.
         raise HTTPException(status_code=404, detail="Order not found")
     items = await _list_items(user["tenant_id"], order_id)
     return {
-        "order": serialize_doc(doc), "items": items, "totals": compute_document_totals(items),
+        "order": serialize_doc(doc), "items": items, "totals": compute_document_totals_with_pricing_adjustments(items),
         "pricing_summary": compute_pricing_summary(items),
     }
 

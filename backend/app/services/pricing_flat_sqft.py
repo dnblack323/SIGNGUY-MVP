@@ -320,6 +320,99 @@ def _install_cost(cat: dict[str, Any], shop: dict[str, Any], total_area: Decimal
     return max(install_cost, install_min) if install_min > 0 else install_cost
 
 
+def _digital_print_minimum_value(cat: dict[str, Any], key: str) -> Decimal:
+    if key not in cat or cat.get(key) is None:
+        raise ValueError(f"Digital Print pricing requires category_defaults.digital_print.{key}")
+    value = _d(cat.get(key))
+    if value < 0:
+        raise ValueError(f"Digital Print category_defaults.digital_print.{key} must be non-negative")
+    return value
+
+
+def _set_breakdown_amount(rows: list[dict[str, Any]], label: str, amount: Decimal) -> None:
+    for row in rows:
+        if row.get("label") == label:
+            row["amount"] = _r2(amount)
+            return
+
+
+def _apply_digital_print_item_minimum(
+    result: dict[str, Any],
+    *,
+    cat: dict[str, Any],
+    qty: int,
+    manual_selling_price: Optional[float],
+) -> dict[str, Any]:
+    item_minimum = _digital_print_minimum_value(cat, "item_minimum")
+    order_minimum = _digital_print_minimum_value(cat, "order_minimum")
+    pre_minimum_price = _d(result.get("suggested_price") or 0)
+    item_minimum_total = item_minimum * _d(qty)
+    minimum_adjustment = max(Decimal("0"), item_minimum_total - pre_minimum_price)
+    adjusted_suggested = pre_minimum_price + minimum_adjustment
+    minimum_applied = minimum_adjustment > 0
+
+    applied_reason = "item_minimum" if minimum_applied else None
+
+    selling_price = _d(result.get("selling_price") or 0)
+    manual_override_active = manual_selling_price is not None and manual_selling_price >= 0
+    if not manual_override_active:
+        selling_price = adjusted_suggested
+        result["selling_price"] = _r2(selling_price)
+        result["suggested_price"] = _r2(adjusted_suggested)
+        true_cost = _d(result.get("true_cost") or 0)
+        profit_amount = selling_price - true_cost
+        result["profit_amount"] = _r2(profit_amount)
+        result["profit_margin_percent"] = _r2((profit_amount / selling_price) * Decimal("100") if selling_price > 0 else Decimal("0"))
+        _set_breakdown_amount(result.get("breakdown") or [], "Suggested price", adjusted_suggested)
+        _set_breakdown_amount(result.get("breakdown") or [], "Selling price", selling_price)
+        _set_breakdown_amount(result.get("breakdown") or [], "Profit", profit_amount)
+    else:
+        result["suggested_price"] = _r2(adjusted_suggested)
+        _set_breakdown_amount(result.get("breakdown") or [], "Suggested price", adjusted_suggested)
+
+    minimum_rows = [
+        {"label": "Digital Print pre-minimum price", "amount": _r2(pre_minimum_price)},
+        {"label": "Digital Print item minimum total", "amount": _r2(item_minimum_total)},
+        {"label": "Digital Print document order minimum", "amount": _r2(order_minimum)},
+    ]
+    if minimum_applied:
+        minimum_rows.append({"label": "Digital Print item minimum adjustment", "amount": _r2(minimum_adjustment)})
+    breakdown = result.get("breakdown") or []
+    insert_at = next((idx for idx, row in enumerate(breakdown) if row.get("label") == "Suggested price"), len(breakdown))
+    result["breakdown"] = breakdown[:insert_at] + minimum_rows + breakdown[insert_at:]
+
+    result.update({
+        "minimum_policy": "digital_print_item_minimum_document_order_minimum",
+        "minimum_scope": "digital_print_line_item",
+        "pre_minimum_selling_price": _r2(pre_minimum_price),
+        "item_minimum": _r2(item_minimum),
+        "order_minimum": _r2(order_minimum),
+        "item_minimum_total": _r2(item_minimum_total),
+        "order_minimum_total": _r2(order_minimum),
+        "minimum_charge_applied": bool(minimum_applied),
+        "minimum_adjustment": _r2(minimum_adjustment),
+        "minimum_applied_reason": applied_reason,
+    })
+    result.setdefault("source_labels", {})
+    result["source_labels"].update({
+        "item_minimum": "shop_default",
+        "order_minimum": "shop_default",
+        "minimum_policy": "shop_default",
+    })
+    result.setdefault("category_inputs_used", {})
+    result["category_inputs_used"].update({
+        "item_minimum": _r2(item_minimum),
+        "order_minimum": _r2(order_minimum),
+        "order_minimum_evaluation": "document_total",
+    })
+    warnings = list(result.get("calculation_warnings") or [])
+    notice = "Digital Print order minimum is evaluated once at Quote or Order document level."
+    if notice not in warnings:
+        warnings.append(notice)
+    result["calculation_warnings"] = warnings
+    return result
+
+
 def calc_banners(*, shop, cat, materials_legacy, material_profile, pricing_components, width_inches, height_inches,
                  quantity, material_key, design_needed, install_needed, manual_selling_price, inputs: dict[str, Any]) -> dict[str, Any]:
     inputs, alias_sources = _normalize_banner_inputs(inputs)
@@ -773,13 +866,21 @@ def calc_digital_print(*, shop, cat, materials_legacy, material_profile, pricing
         "design_complexity": dc_src, "install_complexity": ic_src, "file_cleanup_needed": fc_src, "rush": rush_src,
     }
 
-    return _finalize(
-        category="digital_print", shop=shop, cat=cat, qty=qty, material_cost=material_cost, labor_cost=labor_cost,
+    without_legacy_minimum = {**cat, "minimum_charge": 0}
+    without_legacy_shop_minimum = {**shop, "minimum_order_amount": 0}
+    result = _finalize(
+        category="digital_print", shop=without_legacy_shop_minimum, cat=without_legacy_minimum, qty=qty, material_cost=material_cost, labor_cost=labor_cost,
         design_cost=design_cost, install_cost=install_cost, finishing_cost=finishing_cost, hardware_cost=Decimal("0"),
         file_cleanup_cost=file_cleanup_cost, premium_multiplier=Decimal("1"), pricing_components=pricing_components,
         width_inches=width_inches, height_inches=height_inches, area_sqft_each=area_each, total_area=total_area,
         material_key=mat_label, material_sell_rate=mat_sell_rate, manual_selling_price=manual_selling_price,
         category_inputs_used=category_inputs_used, source_labels=source_labels, rush_applied=bool(rush),
+    )
+    return _apply_digital_print_item_minimum(
+        result,
+        cat=cat,
+        qty=qty,
+        manual_selling_price=manual_selling_price,
     )
 
 

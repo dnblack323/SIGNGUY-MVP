@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-STARTER_DEFAULT_VERSION = "1.2.0"
+STARTER_DEFAULT_VERSION = "1.2.1"
 
 CATEGORY_IDS = [
     "banners", "rigid_signs", "cut_vinyl", "digital_print",
@@ -509,6 +509,8 @@ CATEGORY_DEFAULTS: dict[str, dict[str, Any]] = {
         markup=2.30, target_margin=40.0, waste_percent=10.0,
         default_material="print_adhesive_vinyl",
         extras={
+            "item_minimum": 20.00,
+            "order_minimum": 40.00,
             "file_prep_fee": 20.00,
             # EC9 Phase 9E-1 additions (EC09 controlling document, Digital Print section)
             "min_billable_area_sqft": 1.0,

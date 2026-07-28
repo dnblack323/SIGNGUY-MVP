@@ -130,6 +130,18 @@ def build_calculated_snapshot(
         "calculation_warnings": calc_result.get("calculation_warnings") or [],
         "breakdown": calc_result.get("breakdown") or [],
         "detail_sections": calc_result.get("detail_sections") or [],
+        # EC9 Phase 9I-I - Digital Print item/order minimum evidence. These
+        # fields are additive and only present when a calculator returns them.
+        "minimum_policy": calc_result.get("minimum_policy"),
+        "minimum_scope": calc_result.get("minimum_scope"),
+        "pre_minimum_selling_price": calc_result.get("pre_minimum_selling_price"),
+        "item_minimum": calc_result.get("item_minimum"),
+        "order_minimum": calc_result.get("order_minimum"),
+        "item_minimum_total": calc_result.get("item_minimum_total"),
+        "order_minimum_total": calc_result.get("order_minimum_total"),
+        "minimum_charge_applied": bool(calc_result.get("minimum_charge_applied", False)),
+        "minimum_adjustment": calc_result.get("minimum_adjustment"),
+        "minimum_applied_reason": calc_result.get("minimum_applied_reason"),
         "saved_item_id": saved_item_id,
         "material_profile_id": material_profile_id,
         "pricing_component_ids": pricing_component_ids or [],

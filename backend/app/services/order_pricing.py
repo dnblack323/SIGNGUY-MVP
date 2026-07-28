@@ -11,11 +11,13 @@ module; they never compute cost/price themselves.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from decimal import Decimal, ROUND_HALF_UP
+from typing import Any, Iterable, Optional
 
 from ..core.db import db
 from ..core.money import dollars_to_cents
 from ..core.time_utils import utc_now
+from .commerce_totals import compute_document_totals
 from .pricing import calculate_pricing
 from .pricing_components import list_components
 from .pricing_materials import get_profile
@@ -25,6 +27,114 @@ from .pricing_snapshot import build_calculated_snapshot, build_manual_snapshot
 
 class PricingTransferError(ValueError):
     """Raised when a calculator result cannot safely become a line-item price."""
+
+
+DIGITAL_PRINT_DOCUMENT_MINIMUM_POLICY = "digital_print_document_order_minimum"
+
+
+def _int_cents(value: Any) -> int:
+    if value is None:
+        return 0
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _snapshot_dollars_to_cents(snapshot: dict[str, Any], key: str) -> Optional[int]:
+    value = snapshot.get(key)
+    if value is None:
+        return None
+    try:
+        return dollars_to_cents(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _unit_cents_from_calculator_total(total_cents: int, quantity: int, category: Optional[str]) -> int:
+    if category != "digital_print":
+        return int(total_cents)
+    qty = max(1, int(quantity or 1))
+    return int((Decimal(total_cents) / Decimal(qty)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def build_digital_print_document_minimum(items: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """Build one read-only Digital Print document-minimum adjustment.
+
+    The line calculator enforces only the per-item floor. This helper operates
+    on already-stored Quote/Order line amounts and frozen line snapshot
+    evidence, so clients cannot submit the adjustment and historical line
+    snapshots are not reread from live pricing settings.
+    """
+    eligible: list[dict[str, Any]] = []
+    order_minimum_candidates: list[int] = []
+    eligible_subtotal_cents = 0
+
+    for item in items or []:
+        if item.get("category") != "digital_print":
+            continue
+        line_subtotal_cents = _int_cents(item.get("line_subtotal_cents"))
+        snapshot = dict(item.get("pricing_snapshot") or {})
+        order_minimum_cents = _snapshot_dollars_to_cents(snapshot, "order_minimum")
+        item_minimum_total_cents = _snapshot_dollars_to_cents(snapshot, "item_minimum_total")
+
+        eligible_subtotal_cents += line_subtotal_cents
+        if order_minimum_cents is not None:
+            order_minimum_candidates.append(order_minimum_cents)
+
+        eligible.append({
+            "line_item_id": item.get("id"),
+            "category": item.get("category"),
+            "quantity": _int_cents(item.get("quantity")) or 1,
+            "unit_price_cents": _int_cents(item.get("unit_price_cents")),
+            "line_subtotal_cents": line_subtotal_cents,
+            "selected_price_source": item.get("selected_price_source") or "manual",
+            "pricing_status": item.get("pricing_status") or "manual",
+            "item_minimum_total_cents": item_minimum_total_cents,
+            "order_minimum_cents": order_minimum_cents,
+            "minimum_policy": snapshot.get("minimum_policy"),
+            "minimum_scope": snapshot.get("minimum_scope"),
+        })
+
+    order_minimum_cents = max(order_minimum_candidates) if order_minimum_candidates else 0
+    adjustment_cents = max(0, order_minimum_cents - eligible_subtotal_cents) if order_minimum_cents else 0
+    return {
+        "policy": DIGITAL_PRINT_DOCUMENT_MINIMUM_POLICY,
+        "scope": "quote_or_order_document",
+        "category": "digital_print",
+        "eligible_line_items": eligible,
+        "eligible_line_item_ids": [row["line_item_id"] for row in eligible if row.get("line_item_id")],
+        "eligible_subtotal_cents": eligible_subtotal_cents,
+        "order_minimum_cents": order_minimum_cents,
+        "order_minimum_adjustment_cents": adjustment_cents,
+        "adjustment_applied": adjustment_cents > 0,
+        "adjustment_count": 1 if adjustment_cents > 0 else 0,
+    }
+
+
+def compute_document_totals_with_pricing_adjustments(items: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """Return commerce totals plus backend-authoritative document adjustments."""
+    item_list = list(items or [])
+    line_totals = compute_document_totals(item_list)
+    digital_print_minimum = build_digital_print_document_minimum(item_list)
+    adjustment_cents = int(digital_print_minimum.get("order_minimum_adjustment_cents") or 0)
+    adjusted_subtotal = int(line_totals["subtotal_cents"]) + adjustment_cents
+    adjusted_total = int(line_totals["total_cents"]) + adjustment_cents
+    digital_print_minimum["document_subtotal_before_adjustment_cents"] = int(line_totals["subtotal_cents"])
+    digital_print_minimum["document_subtotal_after_adjustment_cents"] = adjusted_subtotal
+    digital_print_minimum["document_total_after_adjustment_cents"] = adjusted_total
+    return {
+        "subtotal_cents": adjusted_subtotal,
+        "discount_cents": int(line_totals["discount_cents"]),
+        "tax_cents": int(line_totals["tax_cents"]),
+        "total_cents": adjusted_total,
+        "item_count": int(line_totals["item_count"]),
+        "line_subtotal_cents": int(line_totals["subtotal_cents"]),
+        "line_total_cents": int(line_totals["total_cents"]),
+        "document_pricing_adjustment_cents": adjustment_cents,
+        "digital_print_order_minimum_adjustment_cents": adjustment_cents,
+        "digital_print_minimum": digital_print_minimum,
+    }
 
 
 async def resolve_references(
@@ -109,9 +219,11 @@ def build_item_pricing_fields(
     pre-Phase-9F manual-only path — `unit_price_cents` is taken as-is and the
     snapshot is `build_manual_snapshot(..., source="user_entered")`.
     """
+    calculated_total_cents: Optional[int] = None
     suggested_price_cents: Optional[int] = None
     if calc_result is not None and calc_result.get("selling_price") is not None:
-        suggested_price_cents = dollars_to_cents(str(calc_result["selling_price"]))
+        calculated_total_cents = dollars_to_cents(str(calc_result["selling_price"]))
+        suggested_price_cents = _unit_cents_from_calculator_total(calculated_total_cents, quantity, category)
 
     if calc_result is None:
         source = "manual"
@@ -133,6 +245,12 @@ def build_item_pricing_fields(
         if selected_price_source == "manual":
             source = "manual"
             unit_price_cents = int(manual_price_cents if manual_price_cents is not None else fallback_unit_price_cents)
+            if (
+                suggested_price_cents is not None
+                and unit_price_cents != int(suggested_price_cents)
+                and not str(manual_override_reason or "").strip()
+            ):
+                raise PricingTransferError("Override reason required for manual price change")
         else:
             if suggested_price_cents is None:
                 raise PricingTransferError("Calculated pricing result is not transferable")
@@ -148,7 +266,14 @@ def build_item_pricing_fields(
             saved_item_id=saved_item_id, material_profile_id=material_profile_id,
             pricing_component_ids=pricing_component_ids,
         )
-        true_cost_cents_per_unit = dollars_to_cents(str(calc_result.get("true_cost") or 0))
+        if category == "digital_print" and calculated_total_cents is not None:
+            snapshot["calculated_line_price_cents"] = calculated_total_cents
+            snapshot["calculated_line_price_dollars"] = float((Decimal(calculated_total_cents) / Decimal(100)).quantize(Decimal("0.01")))
+            snapshot["calculated_unit_price_cents"] = suggested_price_cents
+            snapshot["calculated_unit_price_dollars"] = float((Decimal(suggested_price_cents or 0) / Decimal(100)).quantize(Decimal("0.01")))
+            snapshot["transfer_unit_price_cents"] = unit_price_cents
+        true_cost_total_cents = dollars_to_cents(str(calc_result.get("true_cost") or 0))
+        true_cost_cents_per_unit = _unit_cents_from_calculator_total(true_cost_total_cents, quantity, category)
         estimated_cost_cents = true_cost_cents_per_unit * max(1, int(quantity))
         line_revenue_cents = unit_price_cents * max(1, int(quantity))
         estimated_profit_cents = line_revenue_cents - estimated_cost_cents

@@ -307,7 +307,10 @@ export default function LineItemDialog({
         if (!silent) toast.error("Calculated pricing is unavailable for these inputs");
         return;
       }
-      const cents = Math.round(sellingPrice * 100);
+      const calculatedLineCents = Math.round(sellingPrice * 100);
+      const cents = category === "digital_print"
+        ? Math.round(calculatedLineCents / Math.max(1, Number(quantity) || 1))
+        : calculatedLineCents;
       let comparisonData = null;
       if (category === "banners") {
         comparisonData = (await api.post("/pricing/method-comparison", {
@@ -317,7 +320,7 @@ export default function LineItemDialog({
         })).data;
       }
       calcResultKeyRef.current = calculationKey;
-      setCalc({ ...data, calculated_unit_price_cents: cents });
+      setCalc({ ...data, calculated_unit_price_cents: cents, calculated_line_price_cents: calculatedLineCents });
       setComparison(comparisonData);
       setSelectedComparisonMethod(
         comparisonData?.selected_method_id || primaryMethodId || data.selected_method_id || data.canonical_method_id || data.pricing_method_used || "",

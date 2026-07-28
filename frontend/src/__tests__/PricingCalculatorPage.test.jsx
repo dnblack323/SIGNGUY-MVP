@@ -112,6 +112,46 @@ function pricingResult(category = "banners") {
     };
   }
 
+  if (category === "digital_print") {
+    return {
+      category,
+      selling_price: 20,
+      canonical_method_id: "per_sqft",
+      selected_method_id: "per_sqft",
+      pricing_method_used: "per_sqft",
+      minimum_policy: "digital_print_item_minimum_document_order_minimum",
+      minimum_scope: "digital_print_line_item",
+      pre_minimum_selling_price: 16.45,
+      item_minimum: 20,
+      order_minimum: 40,
+      item_minimum_total: 20,
+      order_minimum_total: 40,
+      minimum_charge_applied: true,
+      minimum_adjustment: 3.55,
+      minimum_applied_reason: "item_minimum",
+      pricing_method_results: [
+        successfulMethod("per_sqft", 20, true),
+        { method_id: "manual_override", display_name: "manual override", status: "unavailable", available: false, reason: "no manual amount", amount: null },
+      ],
+      method_availability: [
+        { method_id: "per_sqft", available: true },
+        { method_id: "manual_override", available: false, reason: "no manual amount" },
+      ],
+      detail_sections: [{
+        section: "category_specific_details",
+        lines: [
+          { key: "pre_minimum_selling_price", label: "Pre Minimum Selling Price", amount: 16.45 },
+          { key: "item_minimum_total", label: "Item Minimum Total", amount: 20 },
+          { key: "order_minimum_total", label: "Document Order Minimum", amount: 40 },
+          { key: "minimum_adjustment", label: "Item Minimum Adjustment", amount: 3.55 },
+        ],
+      }],
+      breakdown: [{ label: "Digital Print item minimum adjustment", amount: 3.55 }],
+      warnings: ["Digital Print order minimum is evaluated once at Quote or Order document level."],
+      errors: [],
+    };
+  }
+
   return {
     category,
     selling_price: 48,
@@ -319,6 +359,20 @@ test("switches to a normalized non-Banner category without calling Banner compar
   expect(api.post).toHaveBeenCalledWith("/pricing/calculate", expect.objectContaining({ category: "apparel" }));
   const comparisonCalls = api.post.mock.calls.filter(([url]) => url === "/pricing/method-comparison");
   expect(comparisonCalls).toHaveLength(0);
+});
+
+test("displays Digital Print minimum evidence returned by the backend", async () => {
+  renderWithProviders(<PricingCalculatorPage />);
+  fireEvent.change(await screen.findByTestId("calc-category-select"), { target: { value: "digital_print" } });
+  fireEvent.click(screen.getByTestId("calc-run-button"));
+
+  expect(await screen.findByTestId("calc-authoritative-selling-price")).toHaveTextContent("$20.00");
+  expect(screen.getByTestId("calc-detail-sections")).toHaveTextContent("Item Minimum Adjustment");
+  expect(screen.getByTestId("calc-detail-sections")).toHaveTextContent("$3.55");
+  expect(screen.getByTestId("calc-detail-sections")).toHaveTextContent("Document Order Minimum");
+  expect(screen.getByTestId("calc-detail-sections")).toHaveTextContent("$40.00");
+  expect(screen.getByTestId("calc-warnings-banner")).toHaveTextContent("document level");
+  expect(api.post).toHaveBeenCalledWith("/pricing/calculate", expect.objectContaining({ category: "digital_print" }));
 });
 
 test("selects a Banner comparison method deliberately without replacing the authoritative price", async () => {

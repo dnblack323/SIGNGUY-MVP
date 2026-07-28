@@ -24,6 +24,15 @@ from ..services.order_item_rules import default_production_required
 from ..services.pricing_snapshot_records import create_snapshot_record
 
 
+DOCUMENT_PRICING_FIELDS = (
+    "line_subtotal_cents",
+    "line_total_cents",
+    "document_pricing_adjustment_cents",
+    "digital_print_order_minimum_adjustment_cents",
+    "digital_print_minimum",
+)
+
+
 def _is_expired(quote: dict[str, Any]) -> bool:
     exp = quote.get("expires_at")
     if not exp:
@@ -110,7 +119,11 @@ async def convert_quote_to_order(
         status="draft",
         created_by=actor_user_id,
     )
-    await db.orders.insert_one(prepare_for_mongo(order.model_dump()))
+    order_doc = order.model_dump()
+    for field in DOCUMENT_PRICING_FIELDS:
+        if field in quote:
+            order_doc[field] = quote.get(field)
+    await db.orders.insert_one(prepare_for_mongo(order_doc))
 
     # Copy Quote Line Items → Order Items
     cursor = db.quote_line_items.find(
@@ -191,4 +204,4 @@ async def convert_quote_to_order(
             "converted_revision": revision_number,
         }},
     )
-    return serialize_doc(order.model_dump()), False
+    return serialize_doc(order_doc), False
