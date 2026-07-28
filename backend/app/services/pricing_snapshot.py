@@ -23,12 +23,19 @@ All values are additive — old snapshots with only "manual"/"calculator" remain
 from __future__ import annotations
 
 import uuid
-from decimal import Decimal
 from typing import Any, Optional
 
-from ..core.money import dollars_to_cents
 from ..core.time_utils import utc_now
 from .starter_defaults import STARTER_DEFAULT_VERSION
+from pricing_engine.snapshots import (
+    PRICING_ENGINE_RESULT_FIELD,
+    PRICING_SNAPSHOT_SCHEMA_FIELD,
+    PRICING_SNAPSHOT_SCHEMA_VERSION,
+    normalize_calculated_snapshot_fields,
+    normalize_manual_snapshot_fields,
+    selected_final_price_cents,
+    validate_nonnegative_cents,
+)
 
 
 def _now_iso() -> str:
@@ -45,15 +52,18 @@ def build_manual_snapshot(
     source: str = "manual",
 ) -> dict[str, Any]:
     """Build a snapshot for a manually-entered price (no calculator used)."""
+    normalized = normalize_manual_snapshot_fields(unit_price_cents=unit_price_cents)
     return {
         "snapshot_id": str(uuid.uuid4()),
+        **normalized,
         "source": source,
         "pricing_method": "manual",
         "calculator_version": None,
-        "unit_price_cents": int(unit_price_cents),
+        "unit_price_cents": normalized["manual_authoritative_unit_price_cents"],
         "quantity": int(quantity),
         "calculated_unit_price_cents": None,
         "override_unit_price_cents": None,
+        "selected_final_price_cents": normalized["manual_authoritative_unit_price_cents"],
         "override_reason": reason,
         "override_actor_user_id": actor_user_id,
         "override_actor_email": actor_email,
@@ -79,19 +89,25 @@ def build_calculated_snapshot(
 ) -> dict[str, Any]:
     """Build a snapshot for a price derived from the pricing calculator.
 
-    `calc_result` is the dict returned by `services/pricing.calculate_pricing`.
+    `calc_result` is the dict returned by the Phase 9I-L compatibility
+    boundary. It must contain a successful `pricing_engine_result`; legacy
+    dollar fields are preserved for display compatibility but no longer form
+    the authoritative cents boundary.
     `foundation_effective_at` should be the tenant's `pricing_settings.updated_at`
     at calculation time — the "effective date" for the Pricing Foundation
     defaults baked into `defaults_snapshot` below (Phase 9B versioning).
     """
+    normalized = normalize_calculated_snapshot_fields(calc_result)
     calc_unit_dollars = calc_result.get("selling_price")
-    calc_unit_cents = (
-        dollars_to_cents(Decimal(str(calc_unit_dollars)))
-        if calc_unit_dollars is not None
+    calc_unit_cents = normalized["calculated_selling_price_cents"]
+    override_cents = (
+        validate_nonnegative_cents(override_unit_price_cents, field_name="override_unit_price_cents")
+        if override_unit_price_cents is not None
         else None
     )
     return {
         "snapshot_id": str(uuid.uuid4()),
+        **normalized,
         "source": "calculator",
         "pricing_method": calc_result.get("pricing_method_used"),
         "calculator_version": STARTER_DEFAULT_VERSION,
@@ -112,10 +128,14 @@ def build_calculated_snapshot(
         "calculated_unit_price_cents": calc_unit_cents,
         "calculated_unit_price_dollars": calc_unit_dollars,
         "suggested_price_dollars": calc_unit_dollars,
+        "selected_final_price_cents": selected_final_price_cents(
+            calculated_cents=calc_unit_cents,
+            override_cents=override_cents,
+        ),
         "selected_pricing_method": calc_result.get("selected_pricing_method") or calc_result.get("pricing_method_used"),
         "selected_selling_price_dollars": calc_result.get("selling_price"),
         "pricing_method_results": calc_result.get("pricing_method_results") or [],
-        "override_unit_price_cents": override_unit_price_cents,
+        "override_unit_price_cents": override_cents,
         "override_reason": override_reason,
         "override_actor_user_id": actor_user_id,
         "override_actor_email": actor_email,
@@ -169,9 +189,18 @@ def apply_override(
 ) -> dict[str, Any]:
     """Return a new snapshot dict with override applied. Original preserved."""
     updated = dict(snapshot or {})
-    updated["override_unit_price_cents"] = int(override_unit_price_cents)
+    calculated_cents = updated.get("calculated_unit_price_cents") or updated.get("calculated_selling_price_cents")
+    override_cents = validate_nonnegative_cents(override_unit_price_cents, field_name="override_unit_price_cents")
+    updated[PRICING_SNAPSHOT_SCHEMA_FIELD] = updated.get(PRICING_SNAPSHOT_SCHEMA_FIELD) or PRICING_SNAPSHOT_SCHEMA_VERSION
+    updated["override_unit_price_cents"] = override_cents
+    updated["selected_final_price_cents"] = selected_final_price_cents(
+        calculated_cents=calculated_cents,
+        override_cents=override_cents,
+    )
     updated["override_reason"] = reason
     updated["override_actor_user_id"] = actor_user_id
     updated["override_actor_email"] = actor_email
     updated["override_applied_at"] = utc_now().isoformat()
+    if updated.get("source") in {"manual", "user_entered"}:
+        updated.setdefault(PRICING_ENGINE_RESULT_FIELD, None)
     return updated

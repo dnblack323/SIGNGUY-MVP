@@ -17,22 +17,73 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from ..core.db import db
-from ..core.money import dollars_to_cents
 from ..core.time_utils import prepare_for_mongo, utc_now
 from ..models.pricing_snapshot_record import PricingSnapshotRecord
+from pricing_engine import ContractValidationError
+from pricing_engine.snapshots import (
+    PRICING_ENGINE_RESULT_FIELD,
+    PRICING_SNAPSHOT_SCHEMA_FIELD,
+    legacy_dollars_to_cents,
+    read_snapshot_record,
+    validate_nonnegative_cents,
+)
 
 
 def _now_iso() -> str:
     return utc_now().isoformat()
 
 
-def _cents_or_none(v: Any) -> Optional[int]:
+def _legacy_cents_or_none(v: Any, *, field_name: str) -> Optional[int]:
     if v is None:
         return None
     try:
-        return dollars_to_cents(v)
-    except (TypeError, ValueError):
+        return legacy_dollars_to_cents(v, field_name=field_name)
+    except ContractValidationError:
         return None
+
+
+def _required_cents(value: Any, *, field_name: str) -> int:
+    try:
+        return validate_nonnegative_cents(value, field_name=field_name)
+    except ContractValidationError as exc:
+        raise ValueError(str(exc)) from exc
+
+
+def _optional_cents(value: Any, *, field_name: str) -> Optional[int]:
+    if value is None:
+        return None
+    return _required_cents(value, field_name=field_name)
+
+
+def _normalized_cost_breakdown(snap: dict[str, Any]) -> list[dict[str, Any]]:
+    normalized = snap.get("breakdown_amounts_cents")
+    if isinstance(normalized, list) and normalized:
+        return [
+            {"label": row.get("label"), "amount_cents": row.get("amount_cents")}
+            for row in normalized
+            if isinstance(row, dict)
+        ]
+    return [
+        {
+            "label": row.get("label"),
+            "amount_cents": _legacy_cents_or_none(row.get("amount"), field_name="breakdown.amount"),
+        }
+        for row in (snap.get("breakdown") or [])
+        if isinstance(row, dict)
+    ]
+
+
+def _component_amount(snap: dict[str, Any], field: str) -> Optional[int]:
+    for row in snap.get("component_amounts_cents") or []:
+        if isinstance(row, dict) and row.get("field") == field:
+            return row.get("amount_cents")
+    legacy_field = {
+        "labor_cost": "labor_cost_dollars",
+        "design_cost": "design_cost_dollars",
+        "install_cost": "install_cost_dollars",
+        "overhead_cost": "overhead_cost_dollars",
+    }.get(field)
+    return _legacy_cents_or_none(snap.get(legacy_field), field_name=legacy_field or field)
 
 
 async def create_snapshot_record(
@@ -59,6 +110,7 @@ async def create_snapshot_record(
     snapshot back to the source Quote Line Item's snapshot).
     """
     snap = dict(item_doc.get("pricing_snapshot") or {})
+    engine_result = snap.get(PRICING_ENGINE_RESULT_FIELD) if isinstance(snap.get(PRICING_ENGINE_RESULT_FIELD), dict) else None
     material_profile_id = item_doc.get("material_profile_id")
     material_profile_snapshot = snap.get("material_profile_snapshot") or {}
     material_id = material_profile_snapshot.get("material_id") if material_profile_snapshot else None
@@ -93,20 +145,33 @@ async def create_snapshot_record(
         formula_version=snap.get("formula_version"),
         starter_default_version=snap.get("calculator_version"),
         pricing_foundation_effective_at=snap.get("foundation_effective_at"),
-        suggested_price_cents=item_doc.get("suggested_price_cents"),
-        manual_price_cents=item_doc.get("manual_price_cents"),
-        selected_final_price_cents=int(item_doc.get("unit_price_cents") or 0),
+        pricing_snapshot_schema_version=snap.get(PRICING_SNAPSHOT_SCHEMA_FIELD),
+        pricing_engine_result=engine_result,
+        pricing_engine_dto_version=snap.get("pricing_engine_dto_version") or (engine_result or {}).get("dto_version"),
+        pricing_engine_adapter_source=snap.get("pricing_engine_adapter_source") or (engine_result or {}).get("adapter_source_id"),
+        pricing_engine_adapter_execution_path=snap.get("pricing_engine_adapter_execution_path") or (engine_result or {}).get("adapter_execution_path"),
+        pricing_engine_calculation_source=snap.get("pricing_engine_calculation_source") or (engine_result or {}).get("calculation_source"),
+        rounding_policy_version=snap.get("rounding_policy_version") or (engine_result or {}).get("rounding_policy_version"),
+        decimal_rate_evidence=list(snap.get("decimal_rate_evidence") or []),
+        calculated_selling_price_cents=_optional_cents(
+            snap.get("calculated_selling_price_cents") or snap.get("calculated_unit_price_cents"),
+            field_name="calculated_selling_price_cents",
+        ),
+        suggested_price_cents=_optional_cents(item_doc.get("suggested_price_cents"), field_name="suggested_price_cents"),
+        manual_price_cents=_optional_cents(item_doc.get("manual_price_cents"), field_name="manual_price_cents"),
+        selected_final_price_cents=_required_cents(item_doc.get("unit_price_cents"), field_name="unit_price_cents"),
         selected_price_source=item_doc.get("selected_price_source") or "manual",
-        cost_breakdown=[
-            {"label": row.get("label"), "amount_cents": _cents_or_none(row.get("amount")) or 0}
-            for row in (snap.get("breakdown") or [])
-        ],
+        selected_method_amount_cents=_optional_cents(snap.get("selected_method_amount_cents"), field_name="selected_method_amount_cents"),
+        method_amounts_cents=list(snap.get("method_amounts_cents") or []),
+        breakdown_amounts_cents=list(snap.get("breakdown_amounts_cents") or []),
+        component_amounts_cents=list(snap.get("component_amounts_cents") or []),
+        cost_breakdown=_normalized_cost_breakdown(snap),
         labor_breakdown_cents={
-            "labor_cost_cents": _cents_or_none(snap.get("labor_cost_dollars")),
-            "design_cost_cents": _cents_or_none(snap.get("design_cost_dollars")),
-            "install_cost_cents": _cents_or_none(snap.get("install_cost_dollars")),
+            "labor_cost_cents": _component_amount(snap, "labor_cost"),
+            "design_cost_cents": _component_amount(snap, "design_cost"),
+            "install_cost_cents": _component_amount(snap, "install_cost"),
         },
-        overhead_cost_cents=_cents_or_none(snap.get("overhead_cost_dollars")),
+        overhead_cost_cents=_component_amount(snap, "overhead_cost"),
         minimum_applied=bool(snap.get("minimum_charge_applied", False)),
         discount_cents=int(item_doc.get("discount_cents") or 0),
         rush_adjustment_applied=bool(snap.get("rush_applied", False)),
@@ -142,7 +207,8 @@ async def create_snapshot_record(
 
 
 async def get_snapshot_record(tenant_id: str, snapshot_id: str) -> Optional[dict[str, Any]]:
-    return await db.pricing_snapshot_records.find_one({"tenant_id": tenant_id, "id": snapshot_id}, {"_id": 0})
+    doc = await db.pricing_snapshot_records.find_one({"tenant_id": tenant_id, "id": snapshot_id}, {"_id": 0})
+    return read_snapshot_record(doc) if doc else None
 
 
 async def list_snapshot_records(
@@ -153,7 +219,8 @@ async def list_snapshot_records(
         filt["source_type"] = source_type
     if source_id:
         filt["source_id"] = source_id
-    return [d async for d in db.pricing_snapshot_records.find(filt, {"_id": 0}).sort("created_at", 1)]
+    docs = [d async for d in db.pricing_snapshot_records.find(filt, {"_id": 0}).sort("created_at", 1)]
+    return [read_snapshot_record(doc) for doc in docs]
 
 
 def _num_diff(a: Any, b: Any) -> Optional[dict[str, Any]]:

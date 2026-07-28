@@ -42,3 +42,40 @@ must not recalculate or rewrite historical pricing during read-only consumption.
 Any future Webstore, Wrap Lab, customer-portal, or reporting consumer that needs
 fresh pricing must enter through an explicitly authorized pricing workflow and
 must not treat historical snapshots as current transferable prices.
+
+## Cents-First Snapshot Contract (EC9 Phase 9I-N)
+
+New calculated embedded snapshots and immutable `pricing_snapshot_records` now
+dual-write the additive schema version
+`pricing_snapshot_money_contract_9in_v1` in `pricing_snapshot_schema_version`.
+The one canonical normalized calculator field is `pricing_engine_result`.
+
+New calculated snapshot writes must use the Phase 9I-L compatibility envelope:
+`pricing_engine_result.status` must be `success`, and
+`pricing_engine_result.selling_price_cents` must be a non-boolean integer. The
+snapshot writers copy cents from that normalized result instead of deriving
+authoritative cents from legacy dollar floats. Legacy display fields remain
+present during the compatibility window.
+
+Manual snapshots do not fabricate calculator evidence. They store
+`pricing_snapshot_schema_version`, preserve existing manual source/reason/actor
+fields, set `pricing_engine_result` to `None`, and treat validated integer
+`unit_price_cents` as the manual authority.
+
+Legacy readers are deterministic and non-mutating:
+- normalized stored `pricing_engine_result`;
+- then valid stored integer cents;
+- then read-only legacy dollar adaptation using `Decimal(str(value))` and the
+  `pricing_rounding_v1_round_half_up_final_cents` policy.
+
+Reading old embedded snapshots or old immutable records never updates MongoDB,
+changes `updated_at`, writes audit events, re-reads current pricing settings,
+or backfills normalized fields. Contradictory legacy dollar evidence produces a
+compatibility warning while preserving trustworthy integer cents.
+
+Quote and Order create/update/reprice, quote revisions, Quote-to-Order
+conversion, active/superseded snapshot lineage, and Digital Print item/document
+minimum evidence continue to preserve historical pricing evidence without
+recalculation. Phase 9I-N does not implement frontend cents-first consumption,
+the visible Digital Print adjustment row, formula extraction, data migration,
+or historical backfill.

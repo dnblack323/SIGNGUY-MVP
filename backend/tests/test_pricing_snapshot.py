@@ -1,5 +1,18 @@
 """EC3 — Pricing snapshot unit tests."""
 from app.services.pricing_snapshot import apply_override, build_calculated_snapshot, build_manual_snapshot
+from pricing_engine.adapters import build_legacy_line_result
+from pricing_engine.snapshots import PRICING_ENGINE_RESULT_FIELD, PRICING_SNAPSHOT_SCHEMA_VERSION
+
+
+def _with_engine_result(calc: dict) -> dict:
+    return {
+        **calc,
+        PRICING_ENGINE_RESULT_FIELD: build_legacy_line_result(
+            category_id=calc.get("category") or "banners",
+            legacy_result=calc,
+            normalized_input={},
+        ),
+    }
 
 
 def test_manual_snapshot_captures_price_and_actor():
@@ -32,17 +45,19 @@ def test_calculated_snapshot_captures_calculator_result():
         "width_inches": 24,
         "height_inches": 48,
     }
-    snap = build_calculated_snapshot(calc_result=calc, quantity=3)
+    snap = build_calculated_snapshot(calc_result=_with_engine_result(calc), quantity=3)
     assert snap["source"] == "calculator"
+    assert snap["pricing_snapshot_schema_version"] == PRICING_SNAPSHOT_SCHEMA_VERSION
     assert snap["pricing_method"] == "per_sqft"
     assert snap["calculator_version"] is not None
     assert snap["calculated_unit_price_cents"] == 4500
+    assert snap["pricing_engine_result"]["selling_price_cents"] == 4500
     assert snap["quantity"] == 3
 
 
 def test_apply_override_preserves_calculated_value():
-    calc = {"selling_price": 30.00, "pricing_method_used": "per_sqft"}
-    snap = build_calculated_snapshot(calc_result=calc, quantity=1)
+    calc = {"selling_price": 30.00, "pricing_method_used": "per_sqft", "category": "banners"}
+    snap = build_calculated_snapshot(calc_result=_with_engine_result(calc), quantity=1)
     updated = apply_override(
         snap,
         override_unit_price_cents=2500,

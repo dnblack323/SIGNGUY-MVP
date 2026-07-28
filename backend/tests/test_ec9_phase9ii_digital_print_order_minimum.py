@@ -13,6 +13,8 @@ from app.services.order_pricing import compute_document_totals_with_pricing_adju
 from app.services.pricing import calculate_pricing, get_or_init_pricing_settings
 from app.services.pricing_snapshot import build_calculated_snapshot
 from app.services.starter_defaults import build_starter_pack
+from pricing_engine.adapters import build_legacy_line_result
+from pricing_engine.snapshots import PRICING_ENGINE_RESULT_FIELD
 
 
 COUNTED_COLLECTIONS = [
@@ -41,6 +43,17 @@ async def _client_as(user: dict) -> AsyncClient:
 
 def _clear():
     app.dependency_overrides.pop(get_current_user, None)
+
+
+def _with_engine_result(result: dict) -> dict:
+    return {
+        **result,
+        PRICING_ENGINE_RESULT_FIELD: build_legacy_line_result(
+            category_id=result.get("category") or "digital_print",
+            legacy_result=result,
+            normalized_input={},
+        ),
+    }
 
 
 async def _seed_customer(tenant_id: str) -> str:
@@ -187,7 +200,7 @@ def test_standalone_quantity_two_uses_item_floor_without_order_floor():
 )
 def test_document_minimum_helper_uses_stored_line_amounts_and_applies_once(width, height, expected_line_total, expected_adjustment):
     result = _calc(_settings_for_minimums(), quantity=1, width=width, height=height)
-    snapshot = build_calculated_snapshot(calc_result=result, quantity=1)
+    snapshot = build_calculated_snapshot(calc_result=_with_engine_result(result), quantity=1)
     item = {
         "id": f"line-{width}-{height}",
         "category": "digital_print",
@@ -215,7 +228,7 @@ def test_document_minimum_helper_counts_multiple_digital_print_lines_once():
     one = {
         "id": "dp-1", "category": "digital_print", "quantity": 1, "unit_price_cents": 2000,
         "line_subtotal_cents": 2000, "line_total_cents": 2000,
-        "pricing_snapshot": build_calculated_snapshot(calc_result=_calc(_settings_for_minimums()), quantity=1),
+        "pricing_snapshot": build_calculated_snapshot(calc_result=_with_engine_result(_calc(_settings_for_minimums())), quantity=1),
     }
     two = {**one, "id": "dp-2"}
 
@@ -229,7 +242,7 @@ def test_document_minimum_helper_excludes_non_digital_print_amounts():
     dp = {
         "id": "dp", "category": "digital_print", "quantity": 1, "unit_price_cents": 2000,
         "line_subtotal_cents": 2000, "line_total_cents": 2000,
-        "pricing_snapshot": build_calculated_snapshot(calc_result=_calc(_settings_for_minimums()), quantity=1),
+        "pricing_snapshot": build_calculated_snapshot(calc_result=_with_engine_result(_calc(_settings_for_minimums())), quantity=1),
     }
     banner = {
         "id": "banner", "category": "banners", "quantity": 1, "unit_price_cents": 10000,
@@ -624,7 +637,7 @@ async def test_legacy_quote_and_order_records_without_minimum_fields_remain_read
 def test_digital_print_minimum_snapshot_fields_are_line_level_context_only():
     result = _calc(_settings_for_minimums(), quantity=1)
 
-    snapshot = build_calculated_snapshot(calc_result=result, quantity=1)
+    snapshot = build_calculated_snapshot(calc_result=_with_engine_result(result), quantity=1)
 
     assert snapshot["selected_selling_price_dollars"] == 20.0
     assert snapshot["minimum_policy"] == "digital_print_item_minimum_document_order_minimum"

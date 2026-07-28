@@ -18,7 +18,7 @@ from ..core.db import db
 from ..core.money import dollars_to_cents
 from ..core.time_utils import utc_now
 from .commerce_totals import compute_document_totals
-from .pricing import calculate_pricing
+from .pricing_engine_adapter import PRICING_ENGINE_RESULT_FIELD, calculate_pricing_with_cents_first_envelope
 from .pricing_components import list_components
 from .pricing_materials import get_profile
 from .pricing_saved_items import get_saved_item
@@ -186,7 +186,7 @@ async def calculate_for_references(
         tenant_id=tenant_id, material_profile_id=material_profile_id,
         pricing_component_ids=pricing_component_ids, saved_item_id=saved_item_id,
     )
-    result = calculate_pricing(
+    result = calculate_pricing_with_cents_first_envelope(
         settings=settings, category=category, width_inches=width_inches, height_inches=height_inches,
         quantity=quantity, category_inputs=category_inputs, material_profile=material_profile,
         pricing_components=pricing_components, saved_item=saved_item, manual_selling_price=manual_selling_price,
@@ -221,8 +221,12 @@ def build_item_pricing_fields(
     """
     calculated_total_cents: Optional[int] = None
     suggested_price_cents: Optional[int] = None
-    if calc_result is not None and calc_result.get("selling_price") is not None:
-        calculated_total_cents = dollars_to_cents(str(calc_result["selling_price"]))
+    engine_result = calc_result.get(PRICING_ENGINE_RESULT_FIELD) if calc_result is not None else None
+    if calc_result is not None and calc_result.get("selling_price") is not None and isinstance(engine_result, dict):
+        engine_cents = engine_result.get("selling_price_cents")
+        if isinstance(engine_cents, bool) or not isinstance(engine_cents, int) or engine_cents < 0:
+            raise PricingTransferError("Calculated pricing result is not transferable")
+        calculated_total_cents = int(engine_cents)
         suggested_price_cents = _unit_cents_from_calculator_total(calculated_total_cents, quantity, category)
 
     if calc_result is None:
@@ -272,7 +276,7 @@ def build_item_pricing_fields(
             snapshot["calculated_unit_price_cents"] = suggested_price_cents
             snapshot["calculated_unit_price_dollars"] = float((Decimal(suggested_price_cents or 0) / Decimal(100)).quantize(Decimal("0.01")))
             snapshot["transfer_unit_price_cents"] = unit_price_cents
-        true_cost_total_cents = dollars_to_cents(str(calc_result.get("true_cost") or 0))
+        true_cost_total_cents = int((engine_result or {}).get("true_cost_cents") or 0)
         true_cost_cents_per_unit = _unit_cents_from_calculator_total(true_cost_total_cents, quantity, category)
         estimated_cost_cents = true_cost_cents_per_unit * max(1, int(quantity))
         line_revenue_cents = unit_price_cents * max(1, int(quantity))

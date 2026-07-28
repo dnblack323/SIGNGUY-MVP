@@ -62,12 +62,25 @@ class PricingSnapshotRecord(BaseDoc):
     formula_version: Optional[str] = None
     starter_default_version: Optional[str] = None
     pricing_foundation_effective_at: Optional[str] = None
+    pricing_snapshot_schema_version: Optional[str] = None
+    pricing_engine_result: Optional[dict[str, Any]] = None
+    pricing_engine_dto_version: Optional[str] = None
+    pricing_engine_adapter_source: Optional[str] = None
+    pricing_engine_adapter_execution_path: Optional[str] = None
+    pricing_engine_calculation_source: Optional[str] = None
+    rounding_policy_version: Optional[str] = None
+    decimal_rate_evidence: list[dict[str, Any]] = Field(default_factory=list)
 
     # Price + cost breakdown — integer cents (EC1 Money Policy)
+    calculated_selling_price_cents: Optional[int] = None
     suggested_price_cents: Optional[int] = None
     manual_price_cents: Optional[int] = None
     selected_final_price_cents: int = 0
     selected_price_source: str = "manual"  # "suggested" | "manual"
+    selected_method_amount_cents: Optional[int] = None
+    method_amounts_cents: list[dict[str, Any]] = Field(default_factory=list)
+    breakdown_amounts_cents: list[dict[str, Any]] = Field(default_factory=list)
+    component_amounts_cents: list[dict[str, Any]] = Field(default_factory=list)
     cost_breakdown: list[dict[str, Any]] = Field(default_factory=list)
     labor_breakdown_cents: dict[str, Any] = Field(default_factory=dict)
     overhead_cost_cents: Optional[int] = None

@@ -20,6 +20,19 @@ from app.services.pricing_method_registry import (
 from app.services.pricing_snapshot import build_calculated_snapshot
 from app.services.pricing_saved_items import BUSINESS_CARD_STARTER_ITEMS
 from app.services.starter_defaults import CATEGORY_IDS, build_starter_pack
+from pricing_engine.adapters import build_legacy_line_result
+from pricing_engine.snapshots import PRICING_ENGINE_RESULT_FIELD
+
+
+def _with_engine_result(result: dict) -> dict:
+    return {
+        **result,
+        PRICING_ENGINE_RESULT_FIELD: build_legacy_line_result(
+            category_id=result.get("category") or "custom",
+            legacy_result=result,
+            normalized_input={},
+        ),
+    }
 
 
 def test_registry_contains_all_and_only_registered_category_ids():
@@ -225,6 +238,6 @@ def test_banner_and_snapshot_outputs_remain_unchanged_by_registry_imports():
     assert result["selling_price"] == 192.00
     assert result["width_inches"] == 96.0
     assert result["height_inches"] == 36.0
-    snapshot = build_calculated_snapshot(calc_result=result, quantity=1)
+    snapshot = build_calculated_snapshot(calc_result=_with_engine_result(result), quantity=1)
     assert snapshot["selected_pricing_method"] == "square_foot_plus_addons"
     assert snapshot["pricing_method_results"] == result["pricing_method_results"]

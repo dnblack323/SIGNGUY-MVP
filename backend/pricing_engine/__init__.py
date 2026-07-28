@@ -36,6 +36,14 @@ from .contracts import (
     validate_category_id,
 )
 from .money import ROUNDING_MODE, ROUNDING_POLICY_ID, MoneyCents, RoundingEvidence, decimal_dollars_to_cents
+from .snapshots import (
+    LEGACY_SNAPSHOT_READER_ID,
+    PRICING_ENGINE_RESULT_FIELD,
+    PRICING_SNAPSHOT_SCHEMA_FIELD,
+    PRICING_SNAPSHOT_SCHEMA_VERSION,
+    read_embedded_snapshot,
+    read_snapshot_record,
+)
 from .validation import ContractValidationError
 
 __all__ = [
@@ -63,11 +71,15 @@ __all__ = [
     "DocumentCalculationInput",
     "DocumentCalculationResult",
     "LineCalculationResult",
+    "LEGACY_SNAPSHOT_READER_ID",
     "Margin",
     "Markup",
     "MoneyCents",
     "PercentDecimal",
     "PortableConfigExport",
+    "PRICING_ENGINE_RESULT_FIELD",
+    "PRICING_SNAPSHOT_SCHEMA_FIELD",
+    "PRICING_SNAPSHOT_SCHEMA_VERSION",
     "Quantity",
     "QuantityUnit",
     "RoundingEvidence",
@@ -78,5 +90,7 @@ __all__ = [
     "WasteFactor",
     "WasteFactorUnit",
     "decimal_dollars_to_cents",
+    "read_embedded_snapshot",
+    "read_snapshot_record",
     "validate_category_id",
 ]

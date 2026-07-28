@@ -1,9 +1,9 @@
 # EC9 Phase 9I Calculator Extraction And Money Normalization Implementation Plan
 
-**Status:** PHASE 9I-M SAVED-CALCULATION MONEY CONTRACT IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-N NOT STARTED
+**Status:** PHASE 9I-N PRICING SNAPSHOT MONEY CONTRACT IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-O NOT STARTED
 **Date:** 2026-07-27
 **Repository gate verified:** `main` at `7334cb24867102013350bde3ea4c8b84a59c4ff1`
-**Planning document with implementation records:** Phase 9I-J, Phase 9I-K, Phase 9I-L, and Phase 9I-M implementation results are recorded below. Phase 9I remains open.
+**Planning document with implementation records:** Phase 9I-J, Phase 9I-K, Phase 9I-L, Phase 9I-M, and Phase 9I-N implementation results are recorded below. Phase 9I remains open.
 
 ## 1. Accepted Audit Conclusion
 
@@ -399,10 +399,11 @@ Implementation record:
 - All nine shared Phase 9I-K fixture categories save exact expected normalized cents and recalculate through the fresh compatibility path.
 - Verification passed: Phase 9I-M focused tests `7 passed, 6 warnings`; Phase 9I-G saved-calculation regressions `15 passed, 6 warnings`; Phase 9I-H direct consumer regressions `5 passed, 6 warnings`; Phase 9I-L adapter tests `16 passed, 6 warnings`; Phase 9I-K fixture tests `29 passed`; Phase 9I-J contract tests `23 passed`; money-policy and existing Phase 9I contract regressions `32 passed`; category-output and Banner regressions `33 passed`; pricing-router/category compatibility regressions `40 passed, 6 warnings`; backend compile/import validation passed; `git diff --check` passed with CRLF warnings only.
 - No calculator formula service, frontend file, snapshot model/service/documentation, Quote/Order orchestration, Webstore behavior, Wrap Lab behavior, data migration, backfill, pure line engine, pure document engine, standalone adapter, portable configuration, or licensing work changed.
-- Full all-adapter parity is not complete. Phase 9I remains open. Phase 9I-N is next and has not started.
+- Full all-adapter parity is not complete. Phase 9I remains open; this 9I-M record is superseded by the 9I-N implementation record below.
 
 ### Phase 9I-N - Snapshot schema normalization and legacy readers
 
+- Status: implemented and verified on 2026-07-28.
 - Scope: Add snapshot schema version, cents-first authoritative fields, Decimal-string rate evidence, and legacy reader helpers.
 - Likely files: `backend/pricing_engine/snapshots.py`, `backend/app/services/pricing_snapshot.py`, `backend/app/services/pricing_snapshot_records.py`, `backend/app/models/pricing_snapshot_record.py`, `backend/tests/test_ec9_phase9in_snapshot_normalization.py`, `docs/architecture/pricing_snapshots.md`.
 - Dependencies: 9I-L/M.
@@ -419,6 +420,23 @@ Implementation record:
 - Review gate: historical stability review.
 - Commit safety: yes.
 - Rollback: readers ignore new fields.
+
+Implementation record:
+
+- Pure helper location: `backend/pricing_engine/snapshots.py`.
+- Snapshot schema version: `pricing_snapshot_money_contract_9in_v1`.
+- Canonical normalized field: `pricing_engine_result`.
+- Embedded snapshot writers: `backend/app/services/pricing_snapshot.py` now dual-writes `pricing_snapshot_schema_version`, normalized engine evidence, authoritative cents, normalized method/breakdown/component cents, Decimal-string evidence, and preserved legacy fields.
+- Immutable snapshot records: `backend/app/services/pricing_snapshot_records.py` and `backend/app/models/pricing_snapshot_record.py` now store matching schema/version fields, one copied `pricing_engine_result`, normalized cents evidence, and legacy-compatible fields while preserving append-only pricing evidence.
+- Quote/Order calculated line-item paths now enter through the Phase 9I-L cents-first compatibility boundary in `backend/app/services/order_pricing.py`; formulas remain in the existing legacy SaaS calculator path.
+- Manual snapshots store validated integer cents and no fake calculator envelope.
+- Legacy reader authority order: stored successful `pricing_engine_result`; then valid integer cents; then read-only Decimal/ROUND_HALF_UP adaptation from legacy dollar fields using `pricing_rounding_v1_round_half_up_final_cents`.
+- Legacy reads do not update MongoDB, `updated_at`, embedded line items, audit records, or historical snapshot records.
+- All nine Phase 9I-K fixture categories were verified for normalized embedded snapshots and immutable records using shared fixture expected cents.
+- Quote/Order create, update/reprice, quote revision, Quote-to-Order conversion, active/superseded lineage, and Digital Print minimum evidence remain intact.
+- Verification passed: Phase 9I-N focused tests `8 passed, 6 warnings`; Phase 9I-M saved-calculation regressions `7 passed, 6 warnings`; Phase 9I-L adapter tests `16 passed, 6 warnings`; Phase 9I-K fixture tests `29 passed`; Phase 9I-J contract tests `23 passed`; money-policy and Phase 9I contract regressions `32 passed`; category-output and Banner regressions `33 passed`; Quote/Order and Digital Print regressions `66 passed, 6 warnings`; Orders/Quotes/Work Orders regressions `22 passed, 6 warnings`; snapshot/advisory regressions `22 passed, 6 warnings`; backend compile/import validation passed; `git diff --check` passed with CRLF warnings only.
+- No calculator formula service, saved-calculation service/model, frontend file, historical backfill, data migration, Webstore behavior, Wrap Lab behavior, pure line engine, pure document engine, standalone adapter, portable configuration, or licensing work changed.
+- Full all-adapter parity is incomplete. Phase 9I remains open. Phase 9I-O is next and has not started.
 
 ### Phase 9I-O - Pure line-level calculator extraction
 
@@ -780,8 +798,10 @@ Phase 9I-L is implemented and verified.
 
 Phase 9I-M is implemented and verified.
 
-No calculator formula changes, data migration, destructive migration, frontend changes, licensing work, pure line engine implementation, pure document engine implementation, standalone adapter implementation, Quote/Order snapshot normalization, or Phase 9I-N work are included in Phase 9I-M.
+Phase 9I-N is implemented and verified.
+
+No calculator formula changes, data migration, destructive migration, frontend changes, licensing work, pure line engine implementation, pure document engine implementation, standalone adapter implementation, or Phase 9I-O work are included in Phase 9I-N.
 
 Phase 9I remains open.
 
-Phase 9I-N is the next implementation slice under this plan and has not started.
+Phase 9I-O is the next implementation slice under this plan and has not started.

@@ -1,6 +1,8 @@
 from app.services.pricing import calculate_pricing
 from app.services.pricing_snapshot import build_calculated_snapshot
 from app.services.starter_defaults import build_starter_pack
+from pricing_engine.adapters import build_legacy_line_result
+from pricing_engine.snapshots import PRICING_ENGINE_RESULT_FIELD
 
 
 def _settings():
@@ -22,6 +24,17 @@ def _banner(width, height, inputs=None, quantity=1, manual=None):
         manual_selling_price=manual,
         category_inputs=inputs or {},
     )
+
+
+def _with_engine_result(result: dict) -> dict:
+    return {
+        **result,
+        PRICING_ENGINE_RESULT_FIELD: build_legacy_line_result(
+            category_id=result.get("category") or "custom",
+            legacy_result=result,
+            normalized_input={},
+        ),
+    }
 
 
 def _method_amount(result, method):
@@ -105,7 +118,7 @@ def test_banner_snapshot_preserves_method_results_and_normalized_dimensions():
         36,
         {"dimension_unit": "ft", "entered_width": 8, "entered_height": 3, "selected_pricing_method": "target_margin"},
     )
-    snapshot = build_calculated_snapshot(calc_result=result, quantity=1)
+    snapshot = build_calculated_snapshot(calc_result=_with_engine_result(result), quantity=1)
 
     assert snapshot["width_inches"] == 96.0
     assert snapshot["height_inches"] == 36.0
