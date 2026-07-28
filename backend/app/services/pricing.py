@@ -10,14 +10,9 @@ from typing import Any, Optional
 
 from ..core.db import db
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
+from pricing_engine.line_engine import calculate_line
+
 from .starter_defaults import build_starter_pack, CATEGORY_IDS, MATERIALS, STARTER_DEFAULT_VERSION
-from .pricing_flat_sqft import FLAT_SQFT_CATEGORIES, calculate_flat_sqft_pricing
-from .pricing_apparel import calculate_apparel_pricing
-from .pricing_promotional import calculate_promotional_pricing
-from .pricing_vehicle_graphics import calculate_vehicle_graphics_pricing
-from .pricing_services import calculate_services_pricing
-from .pricing_custom import calculate_custom_pricing
-from .pricing_method_outputs import normalize_category_method_outputs
 
 
 def _now_iso() -> str:
@@ -164,57 +159,21 @@ def calculate_pricing(
     optional resolved `saved_item` (a `PricingSavedItem`, e.g. a preloaded
     Business Card tier item) rather than by `width_inches`/`height_inches`.
     """
-    if category not in CATEGORY_IDS:
-        raise ValueError(f"Unknown category: {category}")
-
-    shop = settings.get("shop_defaults") or {}
-    cats = settings.get("category_defaults") or {}
-    materials = settings.get("materials") or {}
-    cat = cats.get(category) or {}
-
-    if category in FLAT_SQFT_CATEGORIES:
-        return normalize_category_method_outputs(calculate_flat_sqft_pricing(
-            category=category, shop=shop, cat=cat, materials_legacy=materials,
-            material_profile=material_profile, pricing_components=pricing_components or [],
-            width_inches=width_inches, height_inches=height_inches, quantity=quantity,
-            material_key=material_key, design_needed=design_needed, install_needed=install_needed,
-            manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
-        ))
-
-    if category == "apparel":
-        return normalize_category_method_outputs(calculate_apparel_pricing(
-            shop=shop, cat=cat, pricing_components=pricing_components or [], quantity=quantity,
-            manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
-        ))
-
-    if category == "promotional":
-        return normalize_category_method_outputs(calculate_promotional_pricing(
-            shop=shop, cat=cat, pricing_components=pricing_components or [], quantity=quantity,
-            manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
-            saved_item=saved_item,
-        ))
-
-    if category == "vehicle_graphics":
-        return normalize_category_method_outputs(calculate_vehicle_graphics_pricing(
-            shop=shop, cat=cat, pricing_components=pricing_components or [], quantity=quantity,
-            manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
-        ))
-
-    if category == "services":
-        return normalize_category_method_outputs(calculate_services_pricing(
-            shop=shop, cat=cat, pricing_components=pricing_components or [], quantity=quantity,
-            manual_selling_price=manual_selling_price, category_inputs=category_inputs or {},
-            material_profile=material_profile,
-        ))
-
-    if category == "custom":
-        return normalize_category_method_outputs(calculate_custom_pricing(
-            cat=cat, quantity=quantity, manual_selling_price=manual_selling_price,
-            category_inputs=category_inputs or {},
-        ))
-
-    # Unreachable: every id in CATEGORY_IDS is dispatched above.
-    raise ValueError(f"Unhandled category: {category}")
+    return calculate_line(
+        settings=settings,
+        category=category,
+        width_inches=width_inches,
+        height_inches=height_inches,
+        quantity=quantity,
+        material_key=material_key,
+        design_needed=design_needed,
+        install_needed=install_needed,
+        manual_selling_price=manual_selling_price,
+        category_inputs=category_inputs or {},
+        material_profile=material_profile,
+        pricing_components=pricing_components,
+        saved_item=saved_item,
+    )
 
 
 # ---------------------------------------------------------------------------

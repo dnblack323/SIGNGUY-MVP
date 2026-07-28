@@ -1,9 +1,9 @@
 # EC9 Phase 9I Calculator Extraction And Money Normalization Implementation Plan
 
-**Status:** PHASE 9I-N PRICING SNAPSHOT MONEY CONTRACT IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-O NOT STARTED
+**Status:** PHASE 9I-O PURE LINE CALCULATOR EXTRACTION IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-P NOT STARTED
 **Date:** 2026-07-27
 **Repository gate verified:** `main` at `7334cb24867102013350bde3ea4c8b84a59c4ff1`
-**Planning document with implementation records:** Phase 9I-J, Phase 9I-K, Phase 9I-L, Phase 9I-M, and Phase 9I-N implementation results are recorded below. Phase 9I remains open.
+**Planning document with implementation records:** Phase 9I-J, Phase 9I-K, Phase 9I-L, Phase 9I-M, Phase 9I-N, and Phase 9I-O implementation results are recorded below. Phase 9I remains open.
 
 ## 1. Accepted Audit Conclusion
 
@@ -435,25 +435,24 @@ Implementation record:
 - All nine Phase 9I-K fixture categories were verified for normalized embedded snapshots and immutable records using shared fixture expected cents.
 - Quote/Order create, update/reprice, quote revision, Quote-to-Order conversion, active/superseded lineage, and Digital Print minimum evidence remain intact.
 - Verification passed: Phase 9I-N focused tests `8 passed, 6 warnings`; Phase 9I-M saved-calculation regressions `7 passed, 6 warnings`; Phase 9I-L adapter tests `16 passed, 6 warnings`; Phase 9I-K fixture tests `29 passed`; Phase 9I-J contract tests `23 passed`; money-policy and Phase 9I contract regressions `32 passed`; category-output and Banner regressions `33 passed`; Quote/Order and Digital Print regressions `66 passed, 6 warnings`; Orders/Quotes/Work Orders regressions `22 passed, 6 warnings`; snapshot/advisory regressions `22 passed, 6 warnings`; backend compile/import validation passed; `git diff --check` passed with CRLF warnings only.
-- No calculator formula service, saved-calculation service/model, frontend file, historical backfill, data migration, Webstore behavior, Wrap Lab behavior, pure line engine, pure document engine, standalone adapter, portable configuration, or licensing work changed.
-- Full all-adapter parity is incomplete. Phase 9I remains open. Phase 9I-O is next and has not started.
+- No calculator formula service, saved-calculation service/model, frontend file, historical backfill, data migration, Webstore behavior, Wrap Lab behavior, pure document engine, standalone adapter, portable configuration, or licensing work changed.
+- Full all-adapter parity is incomplete. Phase 9I remains open. Phase 9I-O is implemented and verified; Phase 9I-P is next and has not started.
 
 ### Phase 9I-O - Pure line-level calculator extraction
 
-- Scope: Move or wrap formula dispatch into `backend/pricing_engine/line_engine.py` with no SaaS imports.
-- Likely files: `backend/pricing_engine/line_engine.py`, `backend/pricing_engine/categories/*.py`, `backend/pricing_engine/config.py`, `backend/app/services/pricing.py`, `backend/tests/test_ec9_phase9io_line_engine_parity.py`.
+- Status: implemented and verified on 2026-07-28.
+- Scope: Move formula dispatch into `backend/pricing_engine/line_engine.py` with no SaaS imports, and relocate deterministic line formula modules under `backend/pricing_engine/categories/`.
+- Implemented files: `backend/pricing_engine/line_engine.py`, `backend/pricing_engine/categories/*.py`, `backend/pricing_engine/config.py`, `backend/pricing_engine/method_outputs.py`, `backend/pricing_engine/method_registry.py`, `backend/pricing_engine/pricing_contracts.py`, `backend/pricing_engine/saved_items.py`, app-service compatibility wrappers, and `backend/tests/test_ec9_phase9io_line_engine_parity.py`.
 - Dependencies: 9I-J through 9I-N.
-- Unchanged: formulas, owner-approved defaults, minimums, markups, rounding results.
+- Unchanged: formulas, owner-approved defaults, minimums, markups, rounding results, Digital Print document-level minimum orchestration, frontend behavior, saved-calculation schemas, snapshot schemas, and historical data.
 - Data migration: none.
-- Legacy compatibility: SaaS adapter still emits old response envelope where needed.
-- Feature strategy: route through adapter while comparing old and new engines.
-- Unit tests: all category formulas from fixture suite.
-- Integration tests: `/pricing/calculate`, Quote Item, Order Item parity.
-- Parity fixtures: complete line-level cases for all nine categories.
-- Security/tenant tests: engine package import scan proves no auth/Mongo/FastAPI imports.
-- Snapshot tests: new line results build normalized snapshot evidence.
-- Exit criteria: current SaaS line calculations are produced by pure engine.
-- Review gate: protected formula parity review.
+- Legacy compatibility: `app.services.pricing.calculate_pricing()` is a rollback wrapper over `pricing_engine.line_engine.calculate_line()`, and the SaaS adapter still emits the old response envelope plus the additive `pricing_engine_result`.
+- Promotional saved-item boundary: tenant-scoped saved-item CRUD and lookup remain in the SaaS layer; the pure engine receives only already-resolved saved-item dictionaries and uses `pricing_engine.saved_items.resolve_quantity_tier_price()` for deterministic exact-tier lookup.
+- Starter/configuration boundary: static starter defaults are exposed through `pricing_engine.config`; tenant settings are still loaded and merged only by the SaaS layer.
+- Unit/integration tests: `backend/tests/test_ec9_phase9io_line_engine_parity.py` verifies pure import isolation, all-nine fixture parity, SaaS delegation, `/pricing/calculate`, saved-calculation compatibility, embedded/immutable snapshot compatibility, Promotional tier/missing-tier behavior, Digital Print line-minimum evidence, and malformed-money rejection.
+- Verification passed: Phase 9I-O focused tests `14 passed, 6 warnings`; Phase 9I-N `8 passed, 6 warnings`; Phase 9I-M `7 passed, 6 warnings`; Phase 9I-L `16 passed, 6 warnings`; Phase 9I-K `29 passed`; Phase 9I-J `23 passed`; money-policy and Phase 9I contract regressions `32 passed`; category-output and Banner regressions `33 passed`; Quote/Order and Digital Print regressions `66 passed, 6 warnings`; snapshot/advisory regressions `22 passed, 6 warnings`; Orders/Quotes/Work Orders regressions `22 passed, 6 warnings`; pricing saved-items/materials/components regressions `10 passed, 6 warnings`; pricing method configuration regressions `18 passed, 6 warnings`.
+- Exit criteria: current SaaS line calculations are produced by the pure line engine, all nine category fixture cents remain exact, and import isolation proves no SaaS app startup.
+- Review gate: protected formula parity review remains required before closing all of Phase 9I.
 - Commit safety: yes, if adapter fallback remains possible.
 - Rollback: switch SaaS adapter back to legacy dispatcher.
 
@@ -804,4 +803,4 @@ No calculator formula changes, data migration, destructive migration, frontend c
 
 Phase 9I remains open.
 
-Phase 9I-O is the next implementation slice under this plan and has not started.
+Phase 9I-O is implemented and verified. Phase 9I-P is the next implementation slice under this plan and has not started.
