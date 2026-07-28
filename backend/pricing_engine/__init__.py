@@ -35,6 +35,7 @@ from .contracts import (
     WasteFactorUnit,
     validate_category_id,
 )
+from .document_engine import calculate_document
 from .line_engine import calculate_line
 from .money import ROUNDING_MODE, ROUNDING_POLICY_ID, MoneyCents, RoundingEvidence, decimal_dollars_to_cents
 from .snapshots import (
@@ -86,6 +87,7 @@ __all__ = [
     "RoundingEvidence",
     "SavedCalculation",
     "SnapshotEvidence",
+    "calculate_document",
     "calculate_line",
     "TimeAmount",
     "TimeUnit",

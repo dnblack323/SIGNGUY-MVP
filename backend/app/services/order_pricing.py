@@ -14,10 +14,10 @@ from __future__ import annotations
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Iterable, Optional
 
+from pricing_engine import document_engine
+
 from ..core.db import db
-from ..core.money import dollars_to_cents
 from ..core.time_utils import utc_now
-from .commerce_totals import compute_document_totals
 from .pricing_engine_adapter import PRICING_ENGINE_RESULT_FIELD, calculate_pricing_with_cents_first_envelope
 from .pricing_components import list_components
 from .pricing_materials import get_profile
@@ -29,26 +29,7 @@ class PricingTransferError(ValueError):
     """Raised when a calculator result cannot safely become a line-item price."""
 
 
-DIGITAL_PRINT_DOCUMENT_MINIMUM_POLICY = "digital_print_document_order_minimum"
-
-
-def _int_cents(value: Any) -> int:
-    if value is None:
-        return 0
-    try:
-        return max(0, int(value))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _snapshot_dollars_to_cents(snapshot: dict[str, Any], key: str) -> Optional[int]:
-    value = snapshot.get(key)
-    if value is None:
-        return None
-    try:
-        return dollars_to_cents(str(value))
-    except (TypeError, ValueError):
-        return None
+DIGITAL_PRINT_DOCUMENT_MINIMUM_POLICY = document_engine.DIGITAL_PRINT_DOCUMENT_MINIMUM_POLICY
 
 
 def _unit_cents_from_calculator_total(total_cents: int, quantity: int, category: Optional[str]) -> int:
@@ -59,82 +40,15 @@ def _unit_cents_from_calculator_total(total_cents: int, quantity: int, category:
 
 
 def build_digital_print_document_minimum(items: Iterable[dict[str, Any]]) -> dict[str, Any]:
-    """Build one read-only Digital Print document-minimum adjustment.
+    """Compatibility wrapper around the pure document-minimum evidence."""
 
-    The line calculator enforces only the per-item floor. This helper operates
-    on already-stored Quote/Order line amounts and frozen line snapshot
-    evidence, so clients cannot submit the adjustment and historical line
-    snapshots are not reread from live pricing settings.
-    """
-    eligible: list[dict[str, Any]] = []
-    order_minimum_candidates: list[int] = []
-    eligible_subtotal_cents = 0
-
-    for item in items or []:
-        if item.get("category") != "digital_print":
-            continue
-        line_subtotal_cents = _int_cents(item.get("line_subtotal_cents"))
-        snapshot = dict(item.get("pricing_snapshot") or {})
-        order_minimum_cents = _snapshot_dollars_to_cents(snapshot, "order_minimum")
-        item_minimum_total_cents = _snapshot_dollars_to_cents(snapshot, "item_minimum_total")
-
-        eligible_subtotal_cents += line_subtotal_cents
-        if order_minimum_cents is not None:
-            order_minimum_candidates.append(order_minimum_cents)
-
-        eligible.append({
-            "line_item_id": item.get("id"),
-            "category": item.get("category"),
-            "quantity": _int_cents(item.get("quantity")) or 1,
-            "unit_price_cents": _int_cents(item.get("unit_price_cents")),
-            "line_subtotal_cents": line_subtotal_cents,
-            "selected_price_source": item.get("selected_price_source") or "manual",
-            "pricing_status": item.get("pricing_status") or "manual",
-            "item_minimum_total_cents": item_minimum_total_cents,
-            "order_minimum_cents": order_minimum_cents,
-            "minimum_policy": snapshot.get("minimum_policy"),
-            "minimum_scope": snapshot.get("minimum_scope"),
-        })
-
-    order_minimum_cents = max(order_minimum_candidates) if order_minimum_candidates else 0
-    adjustment_cents = max(0, order_minimum_cents - eligible_subtotal_cents) if order_minimum_cents else 0
-    return {
-        "policy": DIGITAL_PRINT_DOCUMENT_MINIMUM_POLICY,
-        "scope": "quote_or_order_document",
-        "category": "digital_print",
-        "eligible_line_items": eligible,
-        "eligible_line_item_ids": [row["line_item_id"] for row in eligible if row.get("line_item_id")],
-        "eligible_subtotal_cents": eligible_subtotal_cents,
-        "order_minimum_cents": order_minimum_cents,
-        "order_minimum_adjustment_cents": adjustment_cents,
-        "adjustment_applied": adjustment_cents > 0,
-        "adjustment_count": 1 if adjustment_cents > 0 else 0,
-    }
+    return document_engine.build_digital_print_document_minimum(items)
 
 
 def compute_document_totals_with_pricing_adjustments(items: Iterable[dict[str, Any]]) -> dict[str, Any]:
     """Return commerce totals plus backend-authoritative document adjustments."""
-    item_list = list(items or [])
-    line_totals = compute_document_totals(item_list)
-    digital_print_minimum = build_digital_print_document_minimum(item_list)
-    adjustment_cents = int(digital_print_minimum.get("order_minimum_adjustment_cents") or 0)
-    adjusted_subtotal = int(line_totals["subtotal_cents"]) + adjustment_cents
-    adjusted_total = int(line_totals["total_cents"]) + adjustment_cents
-    digital_print_minimum["document_subtotal_before_adjustment_cents"] = int(line_totals["subtotal_cents"])
-    digital_print_minimum["document_subtotal_after_adjustment_cents"] = adjusted_subtotal
-    digital_print_minimum["document_total_after_adjustment_cents"] = adjusted_total
-    return {
-        "subtotal_cents": adjusted_subtotal,
-        "discount_cents": int(line_totals["discount_cents"]),
-        "tax_cents": int(line_totals["tax_cents"]),
-        "total_cents": adjusted_total,
-        "item_count": int(line_totals["item_count"]),
-        "line_subtotal_cents": int(line_totals["subtotal_cents"]),
-        "line_total_cents": int(line_totals["total_cents"]),
-        "document_pricing_adjustment_cents": adjustment_cents,
-        "digital_print_order_minimum_adjustment_cents": adjustment_cents,
-        "digital_print_minimum": digital_print_minimum,
-    }
+
+    return document_engine.calculate_document(items)
 
 
 async def resolve_references(
