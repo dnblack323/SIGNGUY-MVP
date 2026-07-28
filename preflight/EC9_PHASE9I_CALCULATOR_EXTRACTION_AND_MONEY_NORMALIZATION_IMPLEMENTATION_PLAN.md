@@ -1,6 +1,6 @@
 # EC9 Phase 9I Calculator Extraction And Money Normalization Implementation Plan
 
-**Status:** IMPLEMENTATION PLAN REVIEWED AND ACCEPTED - IMPLEMENTATION NOT STARTED; PHASE 9I REMAINS OPEN
+**Status:** PHASE 9I-J IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-K NOT STARTED
 **Date:** 2026-07-27
 **Repository gate verified:** `main` at `7334cb24867102013350bde3ea4c8b84a59c4ff1`
 **Planning task only:** No calculator, schema, model, frontend, migration, test, or runtime implementation is included in this document change.
@@ -234,6 +234,7 @@ Use an additive strangler migration. Each phase can be reviewed and committed in
 
 ### Phase 9I-J - Contract and type foundation
 
+- Status: implemented and verified on 2026-07-28.
 - Scope: Add pure contract primitives and validation helpers without changing existing calculators.
 - Likely files: new `backend/pricing_engine/__init__.py`, `backend/pricing_engine/contracts.py`, `backend/pricing_engine/money.py`, `backend/pricing_engine/validation.py`, `backend/tests/test_ec9_phase9ij_engine_contracts.py`.
 - Dependencies: Accepted owner decisions in this plan.
@@ -250,6 +251,33 @@ Use an additive strangler migration. Each phase can be reviewed and committed in
 - Review gate: read-only review of contracts and no behavior changes.
 - Commit safety: yes.
 - Rollback: remove unused package/files.
+
+Implemented files:
+
+- `backend/pricing_engine/__init__.py`
+- `backend/pricing_engine/contracts.py`
+- `backend/pricing_engine/money.py`
+- `backend/pricing_engine/validation.py`
+- `backend/tests/test_ec9_phase9ij_engine_contracts.py`
+
+Implemented contracts and validation foundation:
+
+- Integer-cent `MoneyCents` with nonnegative and signed-adjustment construction paths.
+- Decimal-string `CurrencyRateDecimal`, `PercentDecimal`, `Quantity`, `Dimension`, `Area`, `TimeAmount`, `WasteFactor`, and `Markup` contracts.
+- Integer `BasisPoints` and `Margin` contracts.
+- Explicit dimension, area, time, quantity, currency-rate, and waste-factor unit identifiers.
+- Exact nine-category `CategoryId` contract.
+- Contract/schema, engine, formula, category-configuration, and rounding-policy metadata.
+- Base calculation, category-configuration, line-result, document, snapshot, saved-calculation, portable-config, and calculation-evidence envelopes.
+- Pure validation helpers that reject booleans as cents, binary floats at authoritative Decimal boundaries, non-finite values, malformed Decimal strings, unsupported units/categories/versions, excess scale/precision, and negative values where not allowed.
+- Named rounding policy `pricing_rounding_v1_round_half_up_final_cents` using `ROUND_HALF_UP` at the final-cents boundary.
+
+Verification:
+
+- Phase 9I-J focused tests: `23 passed`.
+- Focused money-policy and existing Phase 9I contract regressions: `32 passed`.
+- Backend compile/import validation: passed.
+- No calculator formula, production service, route, frontend, persistence model, migration, snapshot record, Quote, Order, Webstore, Wrap Lab, Record Numbering, Control Center, Platform Administration, or licensing behavior changed.
 
 ### Phase 9I-K - Versioned parity fixture framework
 
@@ -677,12 +705,12 @@ Documentation-only verification required before review:
 - `git status --short --branch`
 - Confirm dirty tree contains only this plan and tracking documents.
 
-## 17. Implementation Not Started
+## 17. Implementation Boundary
 
-This reviewed and accepted document records the implementation plan only.
+Phase 9I-J is implemented and verified.
 
-No calculator changes, source-code changes, schema changes, database model changes, frontend changes, migrations, or tests are implemented by this planning task.
+No calculator formula changes, production integration, data migration, schema/model migration, frontend changes, licensing work, or parity-fixture framework are implemented by Phase 9I-J.
 
 Phase 9I remains open.
 
-Phase 9I-J is the first implementation slice under this plan and has not started.
+Phase 9I-K is the next implementation slice under this plan and has not started.
