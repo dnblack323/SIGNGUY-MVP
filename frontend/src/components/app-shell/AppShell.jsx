@@ -9,8 +9,6 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  PanelLeftClose,
-  PanelLeftOpen,
   Plus,
   Search,
   ShieldAlert,
@@ -30,13 +28,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import AssistantLauncher from "@/components/assistant/AssistantLauncher";
 import WorkspaceDock from "@/components/workspaces/WorkspaceDock";
 import { WorkspaceProvider, useWorkspace } from "@/context/WorkspaceContext";
 import { cn } from "@/lib/utils";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   activeModuleForPath,
   filterNavItemsByPermissions,
@@ -67,6 +65,7 @@ const COMMANDS = {
 };
 
 const QUICK_ACCESS_KEYS = ["dockNew", "newCustomer", "newQuote", "newOrder", "pricing", "task", "calendar", "assistant"];
+const SIDEBAR_LEAVE_DELAY_MS = 180;
 
 const RIBBON_BY_AREA = {
   "shop-operations": ["newCustomer", "newQuote", "newOrder", "pricing", "calendar"],
@@ -155,6 +154,7 @@ function PrimaryAreaButton({ area, active, collapsed, onSelect }) {
       aria-current={active ? "page" : undefined}
       data-active={active ? "true" : "false"}
       onClick={() => onSelect(area)}
+      title={area.label}
       className={cn(
         "h-10 rounded-lg flex items-center gap-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80",
         collapsed ? "w-10 justify-center px-0" : "w-full px-3",
@@ -166,16 +166,10 @@ function PrimaryAreaButton({ area, active, collapsed, onSelect }) {
     </button>
   );
 
-  if (!collapsed) return button;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent side="right">{area.label}</TooltipContent>
-    </Tooltip>
-  );
+  return button;
 }
 
-function SidebarInner({ collapsed, setCollapsed, selectedAreaKey, onSelectArea, onNavigate, mobile = false }) {
+function SidebarInner({ collapsed, selectedAreaKey, onSelectArea, onNavigate, mobile = false }) {
   const { tenant, user, logout } = useAuth();
   const { confirmBeforeAbandon } = useWorkspace();
   return (
@@ -201,26 +195,7 @@ function SidebarInner({ collapsed, setCollapsed, selectedAreaKey, onSelectArea, 
           </div>
         </div>
 
-        {!mobile && (
-          <div className={cn("px-2 py-2", collapsed && "flex justify-center")}>
-            <Button
-              type="button"
-              size="sm"
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              data-testid="sidebar-collapse-toggle"
-              onClick={() => setCollapsed((value) => !value)}
-              className={cn(
-                "h-9 border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 hover:text-white",
-                collapsed ? "w-10 px-0" : "w-full justify-start gap-2",
-              )}
-            >
-              {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-              {!collapsed && <span>Collapse</span>}
-            </Button>
-          </div>
-        )}
-
-        <nav className="flex-1 px-2 py-2 space-y-1 overflow-hidden" data-testid="primary-sidebar-nav">
+        <nav className="flex-1 px-2 py-2 space-y-1 overflow-y-auto overflow-x-hidden" data-testid="primary-sidebar-nav">
           {PRIMARY_NAV_AREAS.map((area) => (
             <PrimaryAreaButton
               key={area.key}
@@ -236,7 +211,17 @@ function SidebarInner({ collapsed, setCollapsed, selectedAreaKey, onSelectArea, 
         </nav>
 
         <div className="border-t border-white/10 px-2 py-2 space-y-2" data-testid="sidebar-bottom-controls">
-          {(!collapsed || mobile) && (
+          {collapsed && !mobile ? (
+            <Button
+              type="button"
+              size="icon"
+              aria-label="Global search"
+              className="mx-auto size-9 bg-transparent text-slate-300 hover:bg-white/10 hover:text-white"
+              data-testid="sidebar-global-search"
+            >
+              <Search className="size-4" />
+            </Button>
+          ) : (
             <label className="relative block" data-testid="sidebar-global-search">
               <span className="sr-only">Global search</span>
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
@@ -415,8 +400,11 @@ export default function AppShell() {
 
 function AppShellFrame() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [desktopSidebarExpanded, setDesktopSidebarExpanded] = useState(false);
   const [selectedAreaKey, setSelectedAreaKey] = useState(null);
+  const leaveTimerRef = useRef(null);
+  const sidebarFocusWithinRef = useRef(false);
+  const desktopSidebarRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { devBypass, permissions, user } = useAuth();
@@ -434,6 +422,27 @@ function AppShellFrame() {
     if (target) navigate(target.to);
   };
 
+  const clearLeaveTimer = () => {
+    if (!leaveTimerRef.current) return;
+    window.clearTimeout(leaveTimerRef.current);
+    leaveTimerRef.current = null;
+  };
+
+  const expandDesktopSidebar = () => {
+    clearLeaveTimer();
+    setDesktopSidebarExpanded(true);
+  };
+
+  const collapseDesktopSidebarSoon = () => {
+    clearLeaveTimer();
+    leaveTimerRef.current = window.setTimeout(() => {
+      if (!sidebarFocusWithinRef.current) setDesktopSidebarExpanded(false);
+      leaveTimerRef.current = null;
+    }, SIDEBAR_LEAVE_DELAY_MS);
+  };
+
+  useEffect(() => () => clearLeaveTimer(), []);
+
   return (
     <div className="min-h-dvh overflow-x-hidden bg-slate-100 text-foreground" data-testid="authenticated-app-shell">
       {devBypass && (
@@ -442,22 +451,45 @@ function AppShellFrame() {
           <span><span className="font-semibold">Auth bypass ON</span> · you're browsing as Dev Shop owner. Set <span className="mono">AUTH_DEV_BYPASS=false</span> before deploying.</span>
         </div>
       )}
-      <div className={cn("grid grid-cols-1", sidebarCollapsed ? "lg:grid-cols-[76px_1fr]" : "lg:grid-cols-[260px_1fr]")}>
-        <aside className="hidden lg:flex flex-col border-r border-slate-900 bg-slate-950 h-dvh sticky top-0 z-20">
+      <div className="min-h-dvh" data-testid="app-shell-layout">
+        <aside
+          ref={desktopSidebarRef}
+          className={cn(
+            "fixed left-0 z-40 hidden flex-col border-r border-slate-900 bg-slate-950 shadow-2xl transition-[width] duration-150 ease-out lg:flex",
+            desktopSidebarExpanded ? "w-[260px]" : "w-[76px]",
+          )}
+          style={{
+            top: devBypass ? "32px" : "0",
+            height: devBypass ? "calc(100dvh - 32px)" : "100dvh",
+          }}
+          data-testid="desktop-sidebar-shell"
+          data-expanded={desktopSidebarExpanded ? "true" : "false"}
+          onMouseEnter={expandDesktopSidebar}
+          onMouseLeave={collapseDesktopSidebarSoon}
+          onFocusCapture={() => {
+            sidebarFocusWithinRef.current = true;
+            expandDesktopSidebar();
+          }}
+          onBlurCapture={(event) => {
+            if (desktopSidebarRef.current?.contains(event.relatedTarget)) return;
+            sidebarFocusWithinRef.current = false;
+            collapseDesktopSidebarSoon();
+          }}
+        >
           <SidebarInner
-            collapsed={sidebarCollapsed}
-            setCollapsed={setSidebarCollapsed}
+            collapsed={!desktopSidebarExpanded}
             selectedAreaKey={selectedArea.key}
             onSelectArea={selectArea}
           />
         </aside>
 
-        <div className="min-w-0">
+        <div className="min-w-0 lg:pl-[76px]" data-testid="app-shell-main-region">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetContent side="left" className="w-[280px] border-slate-900 bg-slate-950 p-0">
+              <SheetTitle className="sr-only">Application navigation</SheetTitle>
+              <SheetDescription className="sr-only">Mobile navigation drawer for SignGuy AI work areas and account controls.</SheetDescription>
               <SidebarInner
                 collapsed={false}
-                setCollapsed={setSidebarCollapsed}
                 selectedAreaKey={selectedArea.key}
                 onSelectArea={selectArea}
                 onNavigate={() => setMobileOpen(false)}
@@ -476,7 +508,7 @@ function AppShellFrame() {
             <Outlet />
           </main>
           <div className="h-16 md:h-14" data-testid="workspace-dock-reserved-space" aria-hidden="true" />
-          <WorkspaceDock sidebarCollapsed={sidebarCollapsed} />
+          <WorkspaceDock sidebarCollapsed />
           <AssistantLauncher />
         </div>
       </div>

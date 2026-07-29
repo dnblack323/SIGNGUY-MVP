@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import AppShell from "@/components/app-shell/AppShell";
@@ -117,6 +117,14 @@ async function renderShellReady(initialPath = "/") {
   await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument());
 }
 
+function waitMs(ms) {
+  return act(async () => {
+    await new Promise((resolve) => {
+      window.setTimeout(resolve, ms);
+    });
+  });
+}
+
 test("clicking a main-area sidebar item opens that area's overview route", async () => {
   const user = userEvent.setup();
   await renderShellReady("/customers");
@@ -134,6 +142,75 @@ test("desktop shell does not render the obsolete long module flyout", async () =
   expect(screen.getByTestId("module-tab-row")).toBeInTheDocument();
   expect(screen.queryByTestId("flyout-shop-operations")).not.toBeInTheDocument();
   expect(screen.queryByTestId("category-nav-more")).not.toBeInTheDocument();
+});
+
+test("desktop sidebar defaults to compact fixed rail and expands on hover", async () => {
+  await renderShellReady("/orders");
+
+  const sidebar = screen.getByTestId("desktop-sidebar-shell");
+  expect(sidebar).toHaveAttribute("data-expanded", "false");
+  expect(sidebar).toHaveClass("fixed");
+  expect(screen.getByTestId("app-shell-main-region")).toHaveClass("lg:pl-[76px]");
+  expect(screen.queryByTestId("sidebar-collapse-toggle")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("sidebar-tenant-name")).not.toBeInTheDocument();
+
+  fireEvent.mouseEnter(sidebar);
+
+  expect(sidebar).toHaveAttribute("data-expanded", "true");
+  expect(screen.getByTestId("sidebar-tenant-name")).toHaveTextContent("Donnell Black's Shop");
+});
+
+test("desktop sidebar uses a leave delay and then collapses without resetting page scroll", async () => {
+  window.scrollTo = jest.fn();
+  await renderShellReady("/orders");
+  const sidebar = screen.getByTestId("desktop-sidebar-shell");
+
+  fireEvent.mouseEnter(sidebar);
+  fireEvent.mouseLeave(sidebar);
+  expect(sidebar).toHaveAttribute("data-expanded", "true");
+
+  await waitMs(100);
+  expect(sidebar).toHaveAttribute("data-expanded", "true");
+
+  await waitMs(140);
+
+  expect(sidebar).toHaveAttribute("data-expanded", "false");
+  expect(screen.getByTestId("current-path")).toHaveTextContent("/orders");
+  expect(window.scrollTo).not.toHaveBeenCalled();
+});
+
+test("keyboard focus keeps the fixed sidebar expanded until focus leaves", async () => {
+  await renderShellReady("/orders");
+  const sidebar = screen.getByTestId("desktop-sidebar-shell");
+  const navButton = screen.getByTestId("primary-nav-shop-operations");
+
+  fireEvent.focus(navButton);
+  expect(sidebar).toHaveAttribute("data-expanded", "true");
+  fireEvent.mouseLeave(sidebar);
+  await waitMs(220);
+  expect(sidebar).toHaveAttribute("data-expanded", "true");
+
+  fireEvent.blur(navButton, { relatedTarget: null });
+  await waitMs(220);
+
+  expect(sidebar).toHaveAttribute("data-expanded", "false");
+});
+
+test("sidebar top, bottom, internal scrolling, tabs, ribbon, and dock stay in fixed layout", async () => {
+  await renderShellReady("/orders");
+
+  const sidebar = screen.getByTestId("desktop-sidebar-shell");
+  const nav = screen.getByTestId("primary-sidebar-nav");
+  const bottomControls = screen.getByTestId("sidebar-bottom-controls");
+
+  expect(sidebar).toHaveStyle({ height: "100dvh" });
+  expect(nav).toHaveClass("overflow-y-auto");
+  expect(within(bottomControls).getByTestId("sidebar-global-search")).toBeInTheDocument();
+  expect(within(bottomControls).getByTestId("notification-bell")).toBeInTheDocument();
+  expect(within(bottomControls).getByTestId("sidebar-user-menu")).toBeInTheDocument();
+  expect(screen.getByTestId("module-tab-row")).toBeInTheDocument();
+  expect(screen.getByTestId("contextual-ribbon")).toBeInTheDocument();
+  expect(screen.getByTestId("workspace-dock")).toHaveClass("lg:left-[76px]");
 });
 
 test("active area module row is visible and module tabs navigate to existing routes", async () => {
@@ -186,6 +263,7 @@ test("authenticated shell renders after Google login state is present", async ()
 
   expect(screen.getByTestId("authenticated-app-shell")).toBeInTheDocument();
   expect(screen.getByTestId("overview-route")).toBeInTheDocument();
+  fireEvent.mouseEnter(screen.getByTestId("desktop-sidebar-shell"));
   expect(screen.getByTestId("sidebar-tenant-name")).toHaveTextContent("Donnell Black's Shop");
 });
 
@@ -196,4 +274,14 @@ test("existing feature routes still render inside the corrected shell", async ()
   expect(screen.getByTestId("design-image-route")).toBeInTheDocument();
   expect(screen.getByTestId("module-tab-row")).toHaveAttribute("data-area-key", "design-studio");
   expect(screen.getByTestId("contextual-ribbon")).toHaveAttribute("data-module-key", "design-image");
+});
+
+test("mobile drawer remains the explicit navigation behavior", async () => {
+  const user = userEvent.setup();
+  await renderShellReady("/orders");
+
+  await user.click(screen.getByTestId("sidebar-open-mobile"));
+
+  expect(screen.getAllByTestId("app-shell-sidebar").length).toBeGreaterThan(1);
+  expect(screen.getByTestId("module-tab-row")).toHaveAttribute("data-area-key", "shop-operations");
 });
