@@ -1,9 +1,9 @@
 # EC9 Phase 9I Calculator Extraction And Money Normalization Implementation Plan
 
-**Status:** PHASE 9I-U FINAL EXTRACTION PARITY VERIFICATION IMPLEMENTED AND VERIFIED - PHASE 9I REMAINS OPEN; PHASE 9I-V NOT STARTED
+**Status:** PHASE 9I-V LICENSING READINESS GATE IMPLEMENTED - READY FOR REVIEW
 **Date:** 2026-07-27
 **Repository gate verified:** `main` at `7334cb24867102013350bde3ea4c8b84a59c4ff1`
-**Planning document with implementation records:** Phase 9I-J, Phase 9I-K, Phase 9I-L, Phase 9I-M, Phase 9I-N, Phase 9I-O, Phase 9I-P, Phase 9I-Q, Phase 9I-R, Phase 9I-S, Phase 9I-T, and Phase 9I-U implementation results are recorded below. Phase 9I remains open.
+**Planning document with implementation records:** Phase 9I-J, Phase 9I-K, Phase 9I-L, Phase 9I-M, Phase 9I-N, Phase 9I-O, Phase 9I-P, Phase 9I-Q, Phase 9I-R, Phase 9I-S, Phase 9I-T, Phase 9I-U, and Phase 9I-V implementation results are recorded below. Phase 9I remains open until the Phase 9I-V review gate passes.
 
 ## 1. Accepted Audit Conclusion
 
@@ -602,7 +602,7 @@ Phase 9I-T implementation record:
 - Digital Print item and document minimums come from portable configuration and existing calculator evidence; the harness contains no hardcoded `$20`, `$40`, `2000`, or `4000` minimum values.
 - Verification passed: Phase 9I-T tests `24 passed`; Phase 9I-S tests `5 passed, 6 warnings` with `PYTHONPATH=backend` for subprocess package resolution; Phase 9I-J/K `52 passed`; Phase 9I-O/P `28 passed, 6 warnings`; Phase 9I-Q/R `13 passed, 6 warnings`; Phase 9I-L/M/N `31 passed, 6 warnings`; pricing saved-items/materials/components `10 passed, 6 warnings`; pricing method configuration/contracts `36 passed, 6 warnings`; Quote/Order and Digital Print regressions `66 passed, 6 warnings`; snapshot/advisory regressions `22 passed, 6 warnings`; Orders/Quotes/Work Orders regressions `22 passed, 6 warnings`; money policy `14 passed`; backend compile/import validation passed; `git diff --check` passed.
 - Preserved follow-ups: visible `Digital Print order minimum adjustment` row remains complete from Phase 9I-R; identifier-only Quote/Order item update/delete tenant-authorization audit remains open; EC7 inventory duplicate-key setup evidence remains open/informational.
-- Full Phase 9I remains open. Phase 9I-U final all-category parity and extraction verification is implemented and verified. Phase 9I-V licensing readiness is next and has not started.
+- Full Phase 9I remains open. Phase 9I-U final all-category parity and extraction verification is implemented and verified. Phase 9I-V licensing readiness is implemented for review.
 
 ### Phase 9I-U - Final all-category parity and extraction verification
 
@@ -635,7 +635,7 @@ Phase 9I-U implementation record:
 - No production runtime, frontend, formula/default/minimum/markup/price, discount, tax, rounding, migration, backfill, historical rewrite, live import/apply/save, desktop app, installer, packaging, publishing, updates, licensing, or Phase 9I-V work changed.
 - Verification passed: Phase 9I-U focused tests `5 passed`; Phase 9I-J/K `52 passed`; Phase 9I-L/M/N `31 passed, 6 warnings`; Phase 9I-O/P `28 passed, 6 warnings`; Phase 9I-Q/R `13 passed, 6 warnings`; Phase 9I-S/T `29 passed, 6 warnings`; pricing saved-items/materials/components `10 passed, 6 warnings`; pricing method configuration/contracts `36 passed, 6 warnings`; Quote/Order and Digital Print regressions `66 passed, 6 warnings`; snapshot/advisory regressions `22 passed, 6 warnings`; Orders/Quotes/Work Orders regressions `22 passed, 6 warnings`; money policy `14 passed`; backend compile/import validation passed; `git diff --check` passed with CRLF conversion warnings only.
 - Preserved follow-ups: visible `Digital Print order minimum adjustment` row remains complete from Phase 9I-R; identifier-only Quote/Order item update/delete tenant-authorization audit remains open; EC7 inventory duplicate-key setup evidence remains open/informational.
-- Full Phase 9I remains open. Phase 9I-V licensing readiness gate is next and has not started.
+- Full Phase 9I remains open. Phase 9I-V licensing readiness gate is implemented for review.
 
 ### Phase 9I-V - Licensing readiness gate after extraction passes
 
@@ -655,6 +655,17 @@ Phase 9I-U implementation record:
 - Review gate: owner review.
 - Commit safety: yes.
 - Rollback: documentation-only.
+
+Phase 9I-V implementation record:
+
+- Added architecture documentation at `/app/docs/architecture/pricing_engine_extraction.md`.
+- Added readiness evidence at `/app/evidence/EC9_PHASE9I_LICENSING_READINESS_REPORT.md`.
+- Recorded that all nine categories have verified parity across the pure line engine, SaaS runtime/configuration adapter, legacy cents-first compatibility adapter, and standalone portable adapter harness.
+- Recorded that future licensing remains outside pricing formulas, outside portable configuration payloads, and outside this phase.
+- Recorded that Phase 9I-V implements no license checks, activation keys, device registration, licensing vendor integration, Stripe automation, desktop framework, installer, code signing, updater, download portal, production portable apply/save, R2, Render deployment, auth replacement, Emergent cleanup, runtime code, frontend code, migration, formula, default, minimum, markup, rounding, Quote, Order, saved-calculation, Webstore, or Wrap Lab behavior.
+- Preserved follow-ups: Digital Print visible order-minimum row complete from Phase 9I-R; identifier-only Quote/Order item update/delete tenant-authorization audit open; EC7 duplicate-key evidence open/informational; Cloudflare R2 unimplemented; hosted staging deployment files unimplemented; historical Emergent cleanup separate.
+- Verification passed: Phase 9I-U final extraction verification `5 passed`; Phase 9I-S/T/runtime-independence verification `30 passed, 6 warnings`; backend compile/import validation passed; `git diff --check` passed with line-ending conversion warnings only.
+- Status: `PHASE 9I-V LICENSING READINESS GATE IMPLEMENTED - READY FOR REVIEW`.
 
 ## 8. Category Migration Matrix
 
@@ -870,4 +881,4 @@ No calculator formula changes, data migration, destructive migration, frontend c
 
 Phase 9I remains open.
 
-Phase 9I-O is implemented and verified. Phase 9I-P is implemented and verified. Phase 9I-Q is implemented and verified. Phase 9I-R is implemented and verified with frontend/API cents-first consumption and visible Digital Print document-minimum evidence rows. Phase 9I-S is implemented and verified with portable configuration export and preview import. Phase 9I-T is implemented and verified with the standalone adapter contract harness. Phase 9I-U is implemented and verified with final all-category engine/SaaS/standalone parity. Phase 9I-V is the next implementation slice under this plan and has not started.
+Phase 9I-O is implemented and verified. Phase 9I-P is implemented and verified. Phase 9I-Q is implemented and verified. Phase 9I-R is implemented and verified with frontend/API cents-first consumption and visible Digital Print document-minimum evidence rows. Phase 9I-S is implemented and verified with portable configuration export and preview import. Phase 9I-T is implemented and verified with the standalone adapter contract harness. Phase 9I-U is implemented and verified with final all-category engine/SaaS/standalone parity. Phase 9I-V is implemented as the documentation-only licensing readiness gate and is ready for review. Phase 9I remains open until the Phase 9I-V review gate passes.
