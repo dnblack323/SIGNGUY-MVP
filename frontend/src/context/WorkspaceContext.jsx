@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
-import { detectWorkspaceTarget, pathFromWorkspace } from "@/lib/workspaceRoutes";
+import { detectWorkspaceTarget, pathFromWorkspace, workspaceKeyFromTarget } from "@/lib/workspaceRoutes";
 
 const WorkspaceContext = createContext(null);
 
@@ -20,11 +20,13 @@ export function WorkspaceProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [limitError, setLimitError] = useState(null);
+  const [pendingOpenTarget, setPendingOpenTarget] = useState(null);
   const [dirtyPrompt, setDirtyPrompt] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
   const lastRegisteredKey = useRef("");
   const scrollPatchTimer = useRef(null);
+  const currentTarget = useMemo(() => detectWorkspaceTarget(location), [location]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -48,6 +50,10 @@ export function WorkspaceProvider({ children }) {
     () => state.open_workspaces.some((workspace) => workspace.dirty),
     [state.open_workspaces],
   );
+  const isCurrentRouteDocked = useMemo(() => {
+    const key = workspaceKeyFromTarget(currentTarget);
+    return !!key && state.open_workspaces.some((workspace) => workspace.workspace_key === key);
+  }, [currentTarget, state.open_workspaces]);
 
   const applyState = useCallback((data) => {
     setState({ ...EMPTY_STATE, ...data });
@@ -69,25 +75,39 @@ export function WorkspaceProvider({ children }) {
     setDirtyPrompt({ workspace: activeWorkspace, action, message });
   }, [activeWorkspace, hasDirtyWorkspace]);
 
-  const registerCurrentRoute = useCallback(async () => {
-    const target = detectWorkspaceTarget(location);
+  const openTarget = useCallback(async (target) => {
     if (!target) return;
-    const registrationKey = `${target.workspace_type}:${target.record_id || "default"}:${target.pathname}:${location.search}`;
-    if (registrationKey === lastRegisteredKey.current) return;
-    lastRegisteredKey.current = registrationKey;
+    const scrollY = Math.max(0, Math.round(window.scrollY || 0));
+    const payload = {
+      ...target,
+      scroll_position: scrollY,
+      view_state: { ...(target.view_state || {}), scroll_y: scrollY },
+    };
     try {
-      const { data } = await api.post("/workspaces/open", target);
+      const { data } = await api.post("/workspaces/open", payload);
       applyState(data);
       setError("");
       setLimitError(null);
+      setPendingOpenTarget(null);
+      return data;
     } catch (err) {
       if (err?.response?.status === 409) {
+        setPendingOpenTarget(payload);
         setLimitError(err.response.data?.detail || { message: "Workspace limit reached" });
       } else {
         setError(err?.response?.data?.detail || "Workspace could not be opened.");
       }
+      return null;
     }
-  }, [applyState, location]);
+  }, [applyState]);
+
+  const registerCurrentRoute = useCallback(async () => {
+    if (!currentTarget) return;
+    const registrationKey = `${currentTarget.workspace_type}:${currentTarget.record_id || "default"}:${currentTarget.pathname}:${location.search}`;
+    if (registrationKey === lastRegisteredKey.current) return;
+    const data = await openTarget(currentTarget);
+    if (data) lastRegisteredKey.current = registrationKey;
+  }, [currentTarget, location.search, openTarget]);
 
   useEffect(() => {
     registerCurrentRoute();
@@ -100,6 +120,27 @@ export function WorkspaceProvider({ children }) {
       if (Number.isFinite(y) && y > 0) window.scrollTo({ top: y, behavior: "instant" });
     }, 50);
   }, [navigate]);
+
+  const openFreshWorkspace = useCallback(() => {
+    confirmBeforeAbandon(() => navigate("/"), "Open a new workspace and leave unsaved local changes?");
+  }, [confirmBeforeAbandon, navigate]);
+
+  const dockCurrentAndNew = useCallback(async () => {
+    const run = async () => {
+      if (currentTarget && !isCurrentRouteDocked) {
+        const data = await openTarget(currentTarget);
+        if (!data) return;
+      }
+      navigate("/");
+    };
+    confirmBeforeAbandon(run, "Dock current work and open a new workspace?");
+  }, [confirmBeforeAbandon, currentTarget, isCurrentRouteDocked, navigate, openTarget]);
+
+  const openWorkspaceTarget = useCallback(async (target) => {
+    const data = await openTarget(target);
+    if (data) navigate(pathFromWorkspace(target));
+    return data;
+  }, [navigate, openTarget]);
 
   const activate = useCallback(async (workspace) => {
     const run = async () => {
@@ -141,6 +182,26 @@ export function WorkspaceProvider({ children }) {
     };
     requestDirtyConfirmation(workspace, run, "Close this workspace and discard unsaved local changes?");
   }, [applyState, navigateToWorkspace, requestDirtyConfirmation]);
+
+  const replaceWorkspaceForPendingOpen = useCallback(async (workspace) => {
+    if (!pendingOpenTarget) return;
+    const run = async () => {
+      try {
+        await api.post(`/workspaces/${workspace.id}/close`);
+        const { data } = await api.post("/workspaces/open", pendingOpenTarget);
+        applyState(data);
+        setLimitError(null);
+        setPendingOpenTarget(null);
+      } catch (err) {
+        if (err?.response?.status === 409) {
+          setLimitError(err.response.data?.detail || { message: "Workspace limit reached" });
+        } else {
+          setError(err?.response?.data?.detail || "Workspace could not be replaced.");
+        }
+      }
+    };
+    requestDirtyConfirmation(workspace, run, "Replace this workspace and discard unsaved local changes?");
+  }, [applyState, pendingOpenTarget, requestDirtyConfirmation]);
 
   const pin = useCallback(async (workspace, pinned) => {
     try {
@@ -223,9 +284,15 @@ export function WorkspaceProvider({ children }) {
     setDirtyPrompt,
     activeWorkspace,
     hasDirtyWorkspace,
+    currentTarget,
+    isCurrentRouteDocked,
     refresh,
     activate,
     close,
+    openFreshWorkspace,
+    dockCurrentAndNew,
+    openWorkspaceTarget,
+    replaceWorkspaceForPendingOpen,
     pin,
     reorder,
     reopenRecent,
@@ -240,9 +307,15 @@ export function WorkspaceProvider({ children }) {
     dirtyPrompt,
     activeWorkspace,
     hasDirtyWorkspace,
+    currentTarget,
+    isCurrentRouteDocked,
     refresh,
     activate,
     close,
+    openFreshWorkspace,
+    dockCurrentAndNew,
+    openWorkspaceTarget,
+    replaceWorkspaceForPendingOpen,
     pin,
     reorder,
     reopenRecent,

@@ -45,7 +45,7 @@ def _open_order_payload(order_id: str, pathname: str | None = None) -> dict:
         "record_id": order_id,
         "pathname": pathname or f"/orders/{order_id}",
         "query_params": {"tab": "items"},
-        "view_state": {"selected_tab": "items"},
+        "view_state": {"selected_tab": "items", "view": "detail"},
         "scroll_position": 120,
     }
 
@@ -73,6 +73,7 @@ async def test_open_workspace_persists_and_duplicate_open_updates_existing(seede
         assert item["record_id"] == order["id"]
         assert item["label"] == "O-000127 - Fayette EMS"
         assert item["active"] is True
+        assert item["view_state"]["view"] == "detail"
 
         response = await client.post("/api/workspaces/open", json={**_open_order_payload(order["id"]), "query_params": {"tab": "summary"}, "scroll_position": 240})
         assert response.status_code == 201, response.text

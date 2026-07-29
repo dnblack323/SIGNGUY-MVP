@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import AppShell from "@/components/app-shell/AppShell";
 import { useAuth } from "@/auth/AuthContext";
 import api from "@/lib/api";
-import { useWorkspaceDirty } from "@/context/WorkspaceContext";
+import { useWorkspace, useWorkspaceDirty } from "@/context/WorkspaceContext";
 
 jest.mock("@/auth/AuthContext", () => ({
   useAuth: jest.fn(),
@@ -71,6 +71,22 @@ const quoteWorkspace = {
   position: 1,
 };
 
+function workspaceAtSlot(index, overrides = {}) {
+  return {
+    ...orderWorkspace,
+    id: `workspace-${index}`,
+    workspace_key: `order:order-${index}`,
+    record_id: `order-${index}`,
+    label: `O-00012${index} - Job ${index}`,
+    pathname: `/orders/order-${index}`,
+    active: index === 1,
+    dirty: false,
+    pinned: false,
+    position: index - 1,
+    ...overrides,
+  };
+}
+
 function LocationProbe() {
   const location = useLocation();
   return <div data-testid="current-location">{location.pathname}{location.search}</div>;
@@ -79,6 +95,25 @@ function LocationProbe() {
 function Page({ name, dirty = false }) {
   useWorkspaceDirty(dirty);
   return <div data-testid={`${name}-page`}>{name}</div>;
+}
+
+function ContextRecordAction() {
+  const { openWorkspaceTarget } = useWorkspace();
+  return (
+    <button
+      type="button"
+      onClick={() => openWorkspaceTarget({
+        workspace_type: "work_order",
+        record_id: "work-order-1",
+        label: "Work Order 1001",
+        pathname: "/work-orders/work-order-1",
+        query_params: {},
+        view_state: { selected_tab: "summary" },
+      })}
+    >
+      Open in New Workspace
+    </button>
+  );
 }
 
 function renderShell(initialPath = "/orders/order-1?tab=items") {
@@ -101,6 +136,8 @@ function renderShell(initialPath = "/orders/order-1?tab=items") {
           <Route path="/quotes/:id" element={<><LocationProbe /><Page name="quote-detail" /></>} />
           <Route path="/pricing-calculator" element={<><LocationProbe /><Page name="pricing-calculator" /></>} />
           <Route path="/customers/:id" element={<><LocationProbe /><Page name="customer-detail" dirty /></>} />
+          <Route path="/work-orders/board" element={<><LocationProbe /><ContextRecordAction /></>} />
+          <Route path="/work-orders/:id" element={<><LocationProbe /><Page name="work-order-detail" /></>} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -174,6 +211,64 @@ test("pinning, reordering, closing, and recent reopen use the backend dock APIs"
   expect(api.post).toHaveBeenCalledWith("/workspaces/recent/recent-quote/reopen");
 });
 
+test("dock tabs render occupied slot numbers, full tooltips, and the plus workspace control", async () => {
+  const dockState = { ...emptyDock, open_workspaces: [orderWorkspace, quoteWorkspace] };
+  api.get.mockResolvedValue({ data: dockState });
+  api.post.mockResolvedValue({ data: dockState });
+  const user = userEvent.setup();
+  renderShell("/orders/order-1?tab=items");
+
+  const tabs = await screen.findAllByTestId("workspace-tab");
+  expect(within(tabs[0]).getByText("1")).toBeInTheDocument();
+  expect(within(tabs[1]).getByText("2")).toBeInTheDocument();
+  expect(within(tabs[0]).getByLabelText("Workspace 1: O-000127 - Fayette EMS")).toHaveAttribute(
+    "title",
+    expect.stringContaining("Slot 1 - O-000127 - Fayette EMS"),
+  );
+
+  await user.click(screen.getByTestId("workspace-new-button"));
+  expect(screen.getByTestId("current-location")).toHaveTextContent("/");
+});
+
+test("quick access Dock & New uses the workspace open contract before navigating to a fresh workspace", async () => {
+  api.post.mockResolvedValue({ data: emptyDock });
+  const user = userEvent.setup();
+  renderShell("/orders/order-1?tab=items");
+
+  await user.click(await screen.findByTestId("qat-command-dockNew"));
+
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith("/workspaces/open", expect.objectContaining({
+    workspace_type: "order",
+    record_id: "order-1",
+    pathname: "/orders/order-1",
+    query_params: { tab: "items" },
+    view_state: expect.objectContaining({ selected_tab: "items" }),
+  })));
+  await waitFor(() => expect(screen.getByTestId("current-location")).toHaveTextContent("/"));
+});
+
+test("quick access Dock & New changes to New Workspace when the current route is already docked", async () => {
+  api.post.mockResolvedValue({ data: { ...emptyDock, open_workspaces: [orderWorkspace] } });
+  renderShell("/orders/order-1?tab=items");
+
+  expect(await screen.findByLabelText("New Workspace")).toBeInTheDocument();
+});
+
+test("eligible record context action opens the record in a new workspace without replacing the current page first", async () => {
+  api.post.mockResolvedValue({ data: { ...emptyDock, open_workspaces: [workspaceAtSlot(1, { workspace_type: "work_order", workspace_key: "work_order:work-order-1", record_id: "work-order-1", pathname: "/work-orders/work-order-1", label: "WO-1001 - Install" })] } });
+  const user = userEvent.setup();
+  renderShell("/work-orders/board");
+
+  await user.click(await screen.findByText("Open in New Workspace"));
+
+  expect(api.post).toHaveBeenCalledWith("/workspaces/open", expect.objectContaining({
+    workspace_type: "work_order",
+    record_id: "work-order-1",
+    pathname: "/work-orders/work-order-1",
+  }));
+  await waitFor(() => expect(screen.getByTestId("current-location")).toHaveTextContent("/work-orders/work-order-1"));
+});
+
 test("dirty workspaces warn before close and can be cancelled", async () => {
   const dirtyCustomer = {
     ...orderWorkspace,
@@ -202,15 +297,42 @@ test("opening a ninth workspace displays the limit workflow", async () => {
   api.post.mockRejectedValueOnce({
     response: {
       status: 409,
-      data: { detail: { message: "Workspace limit reached", limit: 8, open_workspaces: [orderWorkspace] } },
+      data: {
+        detail: {
+          message: "Workspace limit reached",
+          limit: 8,
+          open_workspaces: Array.from({ length: 8 }, (_, i) => workspaceAtSlot(i + 1, { dirty: i === 0 })),
+        },
+      },
     },
   });
   const user = userEvent.setup();
   renderShell("/pricing-calculator");
 
   expect(await screen.findByTestId("workspace-limit-dialog")).toBeInTheDocument();
-  expect(screen.getByText(/Close an unpinned workspace/)).toBeInTheDocument();
+  expect(screen.getByText(/Choose one occupied slot/)).toBeInTheDocument();
+  expect(screen.getByText(/Slot 1: O-000121 - Job 1/)).toBeInTheDocument();
+  expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
   await user.click(screen.getByText("Cancel"));
+});
+
+test("limit chooser can cancel a dirty replacement without closing or reopening", async () => {
+  const eightOpen = Array.from({ length: 8 }, (_, i) => workspaceAtSlot(i + 1, { dirty: i === 0 }));
+  api.post.mockRejectedValueOnce({
+    response: {
+      status: 409,
+      data: { detail: { message: "Workspace limit reached", limit: 8, open_workspaces: eightOpen } },
+    },
+  });
+  const user = userEvent.setup();
+  renderShell("/pricing-calculator");
+
+  await user.click(await screen.findByText(/Slot 1: O-000121 - Job 1/));
+  const dirtyDialog = await screen.findByTestId("workspace-dirty-dialog");
+  expect(dirtyDialog).toBeInTheDocument();
+  await user.click(within(dirtyDialog).getByText("Cancel"));
+
+  expect(api.post).not.toHaveBeenCalledWith("/workspaces/workspace-1/close");
 });
 
 test("mobile Open Work drawer exposes open and recent work", async () => {

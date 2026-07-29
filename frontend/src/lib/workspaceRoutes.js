@@ -31,16 +31,34 @@ export function pathFromWorkspace(workspace) {
   return `${workspace?.pathname || "/"}${query ? `?${query}` : ""}`;
 }
 
+export function workspaceKeyFromTarget(target) {
+  if (!target) return "";
+  if (target.record_id) return `${target.workspace_type}:${target.record_id}`;
+  if (target.workspace_type === "pricing_calculator") return "pricing_calculator:default";
+  return `${target.workspace_type}:${target.pathname}:${target.query_params?.id || ""}`;
+}
+
+function viewStateFromQuery(queryParams = {}) {
+  return {
+    ...(queryParams.tab ? { selected_tab: queryParams.tab, active_tab: queryParams.tab } : {}),
+    ...(queryParams.view ? { view: queryParams.view } : {}),
+    ...(queryParams.filter ? { filter: queryParams.filter } : {}),
+    ...(queryParams.sort ? { sort: queryParams.sort } : {}),
+    ...(queryParams.category ? { category: queryParams.category } : {}),
+  };
+}
+
 export function detectWorkspaceTarget(location) {
   const pathname = location?.pathname || "/";
+  const queryParams = queryParamsFromSearch(location.search);
   if (pathname === "/pricing-calculator") {
     return {
       workspace_type: "pricing_calculator",
       record_id: null,
       label: "Pricing Calculator",
       pathname,
-      query_params: queryParamsFromSearch(location.search),
-      view_state: {},
+      query_params: queryParams,
+      view_state: viewStateFromQuery(queryParams),
     };
   }
 
@@ -52,8 +70,8 @@ export function detectWorkspaceTarget(location) {
       workspace_type: pattern.type,
       record_id: decodeURIComponent(recordId),
       pathname,
-      query_params: queryParamsFromSearch(location.search),
-      view_state: {},
+      query_params: queryParams,
+      view_state: viewStateFromQuery(queryParams),
     };
   }
 

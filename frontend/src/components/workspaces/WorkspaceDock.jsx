@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Pin,
   PinOff,
+  Plus,
   RefreshCw,
   RotateCcw,
   X,
@@ -28,6 +29,15 @@ function errorText(error) {
   if (!error) return "";
   if (typeof error === "string") return error;
   return error.message || "Workspace Dock action could not be completed.";
+}
+
+function workspaceTooltip(workspace, slotNumber) {
+  const bits = [`Slot ${slotNumber}`, workspace.label];
+  if (workspace.record_number) bits.push(`Record ${workspace.record_number}`);
+  if (workspace.record_id) bits.push(`ID ${workspace.record_id}`);
+  bits.push(workspace.pathname);
+  if (workspace.dirty) bits.push("Unsaved changes");
+  return bits.filter(Boolean).join(" - ");
 }
 
 function WorkspaceTab({ workspace, index, all, compact = false }) {
@@ -60,9 +70,19 @@ function WorkspaceTab({ workspace, index, all, compact = false }) {
         type="button"
         onClick={() => activate(workspace)}
         className="flex min-w-0 flex-1 items-center gap-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
-        title={workspace.label}
+        title={workspaceTooltip(workspace, index + 1)}
         aria-current={workspace.active ? "page" : undefined}
+        aria-label={`Workspace ${index + 1}: ${workspace.label}`}
       >
+        <span
+          className={cn(
+            "grid size-5 shrink-0 place-items-center rounded border text-[11px] font-semibold",
+            workspace.active ? "border-cyan-500 bg-cyan-50 text-cyan-700" : "border-slate-300 bg-white text-slate-500",
+          )}
+          aria-hidden="true"
+        >
+          {index + 1}
+        </span>
         {workspace.pinned && <Pin className="size-3 shrink-0 text-cyan-600" aria-hidden="true" />}
         {workspace.dirty && <span className="size-1.5 shrink-0 rounded-full bg-amber-500" aria-label="Unsaved changes" />}
         <span className="truncate">{workspace.label}</span>
@@ -88,7 +108,14 @@ function WorkspaceTab({ workspace, index, all, compact = false }) {
             </Button>
           </>
         )}
-        <Button type="button" size="icon" variant="ghost" className="size-6" aria-label="Close workspace" onClick={() => close(workspace)}>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-6 opacity-80 transition-opacity group-hover:opacity-100 focus:opacity-100"
+          aria-label="Close workspace"
+          onClick={() => close(workspace)}
+        >
           <X className="size-3" />
         </Button>
       </div>
@@ -147,29 +174,35 @@ function DirtyDialog() {
 }
 
 function LimitDialog() {
-  const { limitError, setLimitError, open_workspaces, close } = useWorkspace();
-  const unpinned = open_workspaces.filter((workspace) => !workspace.pinned);
+  const { limitError, setLimitError, open_workspaces, replaceWorkspaceForPendingOpen } = useWorkspace();
+  const displayedWorkspaces = Array.isArray(limitError?.open_workspaces) && limitError.open_workspaces.length
+    ? limitError.open_workspaces
+    : open_workspaces;
   return (
     <AlertDialog open={Boolean(limitError)} onOpenChange={(open) => !open && setLimitError(null)}>
       <AlertDialogContent data-testid="workspace-limit-dialog">
         <AlertDialogHeader>
           <AlertDialogTitle>Workspace limit reached</AlertDialogTitle>
           <AlertDialogDescription>
-            {errorText(limitError)} Close an unpinned workspace before opening another one.
+            {errorText(limitError)} Choose one occupied slot to close before opening the requested workspace.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="max-h-52 space-y-1 overflow-y-auto">
-          {unpinned.map((workspace) => (
+          {displayedWorkspaces.map((workspace, index) => (
             <button
               key={workspace.id}
               type="button"
               className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:bg-slate-50"
               onClick={() => {
-                setLimitError(null);
-                close(workspace);
+                replaceWorkspaceForPendingOpen(workspace);
               }}
             >
-              <span className="truncate">{workspace.label}</span>
+              <span className="min-w-0">
+                <span className="block truncate font-medium">Slot {index + 1}: {workspace.label}</span>
+                <span className="block text-xs text-slate-500">
+                  {workspace.dirty ? "Unsaved changes" : "No unsaved changes"}{workspace.pinned ? " - pinned" : ""}
+                </span>
+              </span>
               <X className="size-4" />
             </button>
           ))}
@@ -221,7 +254,7 @@ function MobileOpenWork() {
 }
 
 export default function WorkspaceDock({ sidebarCollapsed }) {
-  const { open_workspaces, loading, error, refresh } = useWorkspace();
+  const { open_workspaces, loading, error, refresh, openFreshWorkspace } = useWorkspace();
   const leftOffset = sidebarCollapsed ? "lg:left-[76px]" : "lg:left-[260px]";
   return (
     <TooltipProvider delayDuration={200}>
@@ -252,9 +285,25 @@ export default function WorkspaceDock({ sidebarCollapsed }) {
                     <WorkspaceTab workspace={workspace} index={index} all={open_workspaces} />
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="top">{workspace.label}</TooltipContent>
+                <TooltipContent side="top">{workspaceTooltip(workspace, index + 1)}</TooltipContent>
               </Tooltip>
             ))}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  className="size-8 shrink-0 rounded-md"
+                  aria-label="New workspace"
+                  data-testid="workspace-new-button"
+                  onClick={openFreshWorkspace}
+                >
+                  <Plus className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Open a fresh workspace</TooltipContent>
+            </Tooltip>
           </div>
           <div className="relative shrink-0">
             <details className="group" data-testid="workspace-recent-menu">

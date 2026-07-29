@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import api, { extractError } from "@/lib/api";
 import { useAuth } from "@/auth/AuthContext";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import PageHeader from "@/components/layout/PageHeader";
 import StatusPill from "@/components/common/StatusPill";
 import { Badge } from "@/components/ui/badge";
@@ -373,8 +374,20 @@ function Summary({ label, value = 0, icon: Icon, tone = "text-muted-foreground" 
 }
 
 function BoardRow({ row, canWrite, isManager, selected, onSelect, onAction }) {
+  const { openWorkspaceTarget } = useWorkspace();
   const canSelect = isManager && row.current_stage_id;
   const allowed = row.allowed_actions || [];
+  const openWorkOrderWorkspace = () => {
+    if (!row.work_order_id) return;
+    openWorkspaceTarget({
+      workspace_type: "work_order",
+      record_id: row.work_order_id,
+      label: row.work_order_number ? `Work Order ${row.work_order_number}` : "Work Order",
+      pathname: `/work-orders/${row.work_order_id}`,
+      query_params: {},
+      view_state: { selected_tab: "summary" },
+    });
+  };
   return (
     <TableRow data-testid={`board-card-${row.work_order_id}-${row.order_item_id || "manual"}`}>
       <TableCell>
@@ -438,6 +451,7 @@ function BoardRow({ row, canWrite, isManager, selected, onSelect, onAction }) {
               {allowed.includes("complete") && <DropdownMenuItem onClick={() => onAction(row, "complete")}>Complete</DropdownMenuItem>}
               <DropdownMenuSeparator />
               {allowed.includes("add_note") && <DropdownMenuItem onClick={() => onAction(row, "add_note")}>Add Note</DropdownMenuItem>}
+              {row.work_order_id && <DropdownMenuItem onClick={openWorkOrderWorkspace}>Open in New Workspace</DropdownMenuItem>}
               {isManager && allowed.filter((a) => MANAGER_ACTIONS.has(a)).map((action) => (
                 <DropdownMenuItem key={action} onClick={() => onAction(row, action)}>{titleize(action)}</DropdownMenuItem>
               ))}

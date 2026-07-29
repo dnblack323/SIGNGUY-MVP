@@ -51,10 +51,14 @@ Rules:
 - Only one workspace is displayed at a time.
 - Workspaces never overlap, split, drag, or resize.
 - Desktop uses the bottom tab row.
+- Desktop workspace tabs render as compact occupied numbered slots from 1-8, not permanent long titles.
 - Mobile uses an Open Work drawer/switcher.
 - Maximum open workspaces: 8.
 - Recent work references retained per tenant/user: 20.
 - Dock state persists to the authenticated account and is scoped by both tenant and user.
+- `Dock & New` in the Quick Access Toolbar docks the current eligible work, then opens the neutral dashboard workspace. If the current route is already docked, its visible label becomes `New Workspace` and no duplicate workspace is created.
+- The `+` button beside the dock opens the neutral dashboard workspace.
+- Eligible record context menus may call the same workspace service through `Open in New Workspace`; they must not replace or destroy the currently active workspace first.
 - Workspace metadata must not store sensitive form contents.
 - Workspace persistence must not modify underlying Orders, Quotes, Customers, Work Orders, Invoices, pricing snapshots, saved calculations, artwork, or proof records.
 
@@ -85,6 +89,7 @@ Required shell/dock coverage includes:
 - Supported record/work routes auto-open or activate a workspace.
 - Lists, dashboards, settings, Help, and ordinary navigation routes do not open workspaces.
 - Dock activate, close, pin, reorder, recent reopen, limit, dirty-warning, reload, and mobile Open Work behavior.
+- `Dock & New`, `New Workspace`, the dock `+` button, numbered slots/tooltips, context `Open in New Workspace`, and the eight-slot replacement chooser.
 - Authenticated routes continue rendering inside the corrected shell.
 
 ## Workspace Dock Visual QA
@@ -106,3 +111,17 @@ Result:
 - Dirty-close warning displayed and could be cancelled or continued.
 - Ninth workspace attempt showed the eight-workspace limit workflow without evicting existing work.
 - Mobile Open Work drawer rendered after relocating the dock trigger away from the Assistant launcher.
+
+## Workspace Dock Completion Pass
+
+Completed on 2026-07-29 on branch `CODEX-ux1-workspace-dock-completion`.
+
+Additional verified behavior:
+
+- Bottom dock slots now render as compact occupied numbers and keep long titles in accessible tooltips.
+- Workspace tooltips include slot number, full label, record number/ID where available, route, and dirty status.
+- Route query state now contributes allowlisted tab/filter/sort/view/category metadata for restoration.
+- The Quick Access Toolbar includes `Dock & New`; it changes to `New Workspace` when the current route is already docked.
+- The dock includes a compact `+` action for opening a fresh neutral workspace.
+- The eight-workspace chooser lists the eight occupied slots from the backend limit response, identifies dirty/pinned state, and requires the existing dirty confirmation before replacement.
+- Production board row actions expose `Open in New Workspace` for eligible Work Order records through the shared workspace service.

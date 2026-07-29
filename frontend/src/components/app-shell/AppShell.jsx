@@ -11,6 +11,7 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
   Search,
   ShieldAlert,
   ShoppingBag,
@@ -55,9 +56,17 @@ const COMMANDS = {
   calendar: { key: "calendar", label: "Calendar", icon: CalendarDays, to: "/shop-schedule", permission: "schedule:read" },
   assistant: { key: "assistant", label: "Assistant", icon: Bot, to: "/studio/assistant", permission: "ai_assistant:use" },
   help: { key: "help", label: "Help", icon: CircleHelp, to: "/help", permission: "help:read" },
+  dockNew: {
+    key: "dockNew",
+    label: "Dock & New",
+    dockedLabel: "New Workspace",
+    icon: Plus,
+    workspaceAction: "dockAndNew",
+    tooltip: "Dock current work and open a new workspace",
+  },
 };
 
-const QUICK_ACCESS_KEYS = ["newCustomer", "newQuote", "newOrder", "pricing", "task", "calendar", "assistant"];
+const QUICK_ACCESS_KEYS = ["dockNew", "newCustomer", "newQuote", "newOrder", "pricing", "task", "calendar", "assistant"];
 
 const RIBBON_BY_AREA = {
   "shop-operations": ["newCustomer", "newQuote", "newOrder", "pricing", "calendar"],
@@ -89,8 +98,34 @@ function allowedCommand(command, permissions) {
 }
 
 function CommandButton({ command, permissions, compact = false, testPrefix = "shell-command" }) {
+  const workspace = useWorkspace();
   if (!allowedCommand(command, permissions)) return null;
   const Icon = command.icon;
+  const label = command.workspaceAction === "dockAndNew" && workspace.isCurrentRouteDocked
+    ? command.dockedLabel
+    : command.label;
+  if (command.workspaceAction === "dockAndNew") {
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={cn(
+          "h-11 shrink-0 rounded-md px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-950",
+          compact && "h-10 px-2",
+        )}
+        data-testid={`${testPrefix}-${command.key}`}
+        aria-label={label}
+        title={command.tooltip}
+        onClick={workspace.dockCurrentAndNew}
+      >
+        <span className="flex flex-col items-center gap-0.5">
+          <Icon className="size-4" aria-hidden="true" />
+          <span className={cn("leading-tight", compact && "hidden xl:inline")}>{label}</span>
+        </span>
+      </Button>
+    );
+  }
   return (
     <Button
       asChild
@@ -102,9 +137,9 @@ function CommandButton({ command, permissions, compact = false, testPrefix = "sh
       )}
       data-testid={`${testPrefix}-${command.key}`}
     >
-      <Link to={command.to} aria-label={command.label} className="flex flex-col items-center gap-0.5">
+      <Link to={command.to} aria-label={label} className="flex flex-col items-center gap-0.5">
         <Icon className="size-4" aria-hidden="true" />
-        <span className={cn("leading-tight", compact && "hidden xl:inline")}>{command.label}</span>
+        <span className={cn("leading-tight", compact && "hidden xl:inline")}>{label}</span>
       </Link>
     </Button>
   );

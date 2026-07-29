@@ -73,6 +73,7 @@ ALLOWED_VIEW_STATE_KEYS = {
     "filters",
     "sort",
     "scroll_y",
+    "view",
     "category",
     "mode",
 }
