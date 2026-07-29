@@ -1,9 +1,9 @@
 # EC9 Phase 9I Calculator Extraction And Money Normalization Implementation Plan
 
-**Status:** PHASE 9I-V LICENSING READINESS GATE IMPLEMENTED - READY FOR REVIEW
+**Status:** PHASE 9I-V OWNER ACCEPTED - PHASE 9I CALCULATOR EXTRACTION AND MONEY NORMALIZATION COMPLETE / CLOSED
 **Date:** 2026-07-27
 **Repository gate verified:** `main` at `7334cb24867102013350bde3ea4c8b84a59c4ff1`
-**Planning document with implementation records:** Phase 9I-J, Phase 9I-K, Phase 9I-L, Phase 9I-M, Phase 9I-N, Phase 9I-O, Phase 9I-P, Phase 9I-Q, Phase 9I-R, Phase 9I-S, Phase 9I-T, Phase 9I-U, and Phase 9I-V implementation results are recorded below. Phase 9I remains open until the Phase 9I-V review gate passes.
+**Planning document with implementation records:** Phase 9I-J, Phase 9I-K, Phase 9I-L, Phase 9I-M, Phase 9I-N, Phase 9I-O, Phase 9I-P, Phase 9I-Q, Phase 9I-R, Phase 9I-S, Phase 9I-T, Phase 9I-U, and Phase 9I-V implementation results are recorded below. Phase 9I-V was owner accepted on 2026-07-28; Phase 9I calculator extraction and money normalization is complete / closed.
 
 ## 1. Accepted Audit Conclusion
 
@@ -665,7 +665,8 @@ Phase 9I-V implementation record:
 - Recorded that Phase 9I-V implements no license checks, activation keys, device registration, licensing vendor integration, Stripe automation, desktop framework, installer, code signing, updater, download portal, production portable apply/save, R2, Render deployment, auth replacement, Emergent cleanup, runtime code, frontend code, migration, formula, default, minimum, markup, rounding, Quote, Order, saved-calculation, Webstore, or Wrap Lab behavior.
 - Preserved follow-ups: Digital Print visible order-minimum row complete from Phase 9I-R; identifier-only Quote/Order item update/delete tenant-authorization audit open; EC7 duplicate-key evidence open/informational; Cloudflare R2 unimplemented; hosted staging deployment files unimplemented; historical Emergent cleanup separate.
 - Verification passed: Phase 9I-U final extraction verification `5 passed`; Phase 9I-S/T/runtime-independence verification `30 passed, 6 warnings`; backend compile/import validation passed; `git diff --check` passed with line-ending conversion warnings only.
-- Status: `PHASE 9I-V LICENSING READINESS GATE IMPLEMENTED - READY FOR REVIEW`.
+- Owner acceptance: 2026-07-28. Status: `PHASE 9I-V OWNER ACCEPTED - PHASE 9I CALCULATOR EXTRACTION AND MONEY NORMALIZATION COMPLETE / CLOSED`.
+- No Phase 9I-W is created by this closure. Desktop productization, standalone licensing, packaging, publishing, R2, hosted deployment, auth replacement, and historical Emergent cleanup remain future owner-approved work outside Phase 9I.
 
 ## 8. Category Migration Matrix
 
@@ -879,6 +880,6 @@ Phase 9I-N is implemented and verified.
 
 No calculator formula changes, data migration, destructive migration, frontend changes, licensing work, pure line engine implementation, pure document engine implementation, standalone adapter implementation, or Phase 9I-O work are included in Phase 9I-N.
 
-Phase 9I remains open.
+Phase 9I-V is owner accepted. Phase 9I calculator extraction and money normalization is complete / closed. No Phase 9I-W is defined or created.
 
-Phase 9I-O is implemented and verified. Phase 9I-P is implemented and verified. Phase 9I-Q is implemented and verified. Phase 9I-R is implemented and verified with frontend/API cents-first consumption and visible Digital Print document-minimum evidence rows. Phase 9I-S is implemented and verified with portable configuration export and preview import. Phase 9I-T is implemented and verified with the standalone adapter contract harness. Phase 9I-U is implemented and verified with final all-category engine/SaaS/standalone parity. Phase 9I-V is implemented as the documentation-only licensing readiness gate and is ready for review. Phase 9I remains open until the Phase 9I-V review gate passes.
+Phase 9I-O is implemented and verified. Phase 9I-P is implemented and verified. Phase 9I-Q is implemented and verified. Phase 9I-R is implemented and verified with frontend/API cents-first consumption and visible Digital Print document-minimum evidence rows. Phase 9I-S is implemented and verified with portable configuration export and preview import. Phase 9I-T is implemented and verified with the standalone adapter contract harness. Phase 9I-U is implemented and verified with final all-category engine/SaaS/standalone parity. Phase 9I-V is owner accepted. Phase 9I calculator extraction and money normalization is complete / closed. No Phase 9I-W is defined or created.
