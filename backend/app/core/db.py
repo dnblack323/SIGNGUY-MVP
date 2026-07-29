@@ -93,6 +93,29 @@ async def ensure_indexes() -> None:
     await db.workspace_docks.create_index([("tenant_id", 1), ("user_id", 1), ("open_workspaces.workspace_key", 1)])
     await db.workspace_docks.create_index([("tenant_id", 1), ("user_id", 1), ("recent_workspaces.last_opened_at", -1)])
 
+    # ---- Complete tenant Report Builder - definitions, exports, schedules ----
+    await db.report_definitions.create_index("id", unique=True)
+    await db.report_definitions.create_index([("tenant_id", 1), ("owner_user_id", 1), ("updated_at", -1)])
+    await db.report_definitions.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.report_definitions.create_index([("tenant_id", 1), ("standard_report_key", 1), ("status", 1)])
+    await db.report_definitions.create_index([("tenant_id", 1), ("custom_dataset", 1), ("status", 1)])
+    await db.report_definitions.create_index([("tenant_id", 1), ("shared_user_ids", 1), ("status", 1)])
+    await db.report_definitions.create_index([("tenant_id", 1), ("shared_role_keys", 1), ("status", 1)])
+
+    await db.report_exports.create_index("id", unique=True)
+    await db.report_exports.create_index([("tenant_id", 1), ("requested_by_user_id", 1), ("created_at", -1)])
+    await db.report_exports.create_index([("tenant_id", 1), ("report_definition_id", 1), ("created_at", -1)])
+    await db.report_exports.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
+
+    await db.report_schedules.create_index("id", unique=True)
+    await db.report_schedules.create_index([("tenant_id", 1), ("report_definition_id", 1), ("status", 1)])
+    await db.report_schedules.create_index([("tenant_id", 1), ("owner_user_id", 1), ("status", 1)])
+    await db.report_schedules.create_index([("tenant_id", 1), ("next_run_at", 1), ("status", 1)])
+
+    await db.report_schedule_runs.create_index("id", unique=True)
+    await db.report_schedule_runs.create_index([("tenant_id", 1), ("schedule_id", 1), ("created_at", -1)])
+    await db.report_schedule_runs.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
+
     # ---- EC2 — Shared Platform Services indexes ----
     # settings
     await db.settings.create_index([("tenant_id", 1), ("namespace", 1), ("key", 1)], unique=True)

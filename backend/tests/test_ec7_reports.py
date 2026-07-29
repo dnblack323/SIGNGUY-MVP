@@ -71,8 +71,9 @@ async def test_list_reports_and_datasets(rpt_ctx):
         assert exp["date_basis"] == "expense_date"
         assert exp["calc_basis"] == "expenses"
         assert isinstance(exp["limitations"], list) and exp["limitations"]
-        # Custom datasets appear
-        assert {ds["key"] for ds in r["custom_datasets"]} == {"expenses", "purchase_orders", "invoices"}
+        # Custom datasets appear; later report-builder phases may add more
+        # approved datasets, but these EC7 foundations must remain present.
+        assert {"expenses", "purchase_orders", "invoices"}.issubset({ds["key"] for ds in r["custom_datasets"]})
 
 
 @pytest.mark.asyncio

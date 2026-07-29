@@ -1,0 +1,446 @@
+--- PAGE 1 ---
+SIGNGUY AI  |  REPORT CATALOG & CUSTOM REPORT BUILDER SPEC 
+Internal Product Specification 
+SignGuy AI Report Catalog 
+Report Categories, Standard Reports, Builder Rules, and Export Structure 
+Purpose: Create one reporting system that can analyze data across the entire SignGuy AI platform without creating 
+duplicate report engines in Operations, Business Management, Webstores, Wrap Lab, or Team tools. 
+Permanent Location in App: Business Management → Reports 
+Operational modules may open filtered report shortcuts, but they all use the same shared Reports engine and the same report 
+definitions. 
+1. Reports Navigation Structure 
+Report Area Purpose 
+Overview High-level business and shop performance dashboard. 
+Financial Reports Revenue, billing, payments, profitability, taxes, and cash-related 
+reporting. 
+Operations Reports Orders, production, approvals, documents, and service delivery 
+performance. 
+Customer & Sales Reports Customers, quotes, conversion, repeat business, and account 
+performance. 
+Webstore Reports Store sales, owner payouts, products, fundraising, and platform 
+performance. 
+Materials & Purchasing Reports Inventory, vendor spending, purchase orders, material usage, 
+and waste. 
+Team & Labor Reports Hours, payroll, labor efficiency, workload, attendance, and 
+scheduling. 
+Wrap Lab Reports Wrap project performance, install labor, vehicle mix, material 
+use, and service quality. 
+Custom Reports Build, save, share, and reuse reports across any approved data 
+source. 
+Scheduled Reports Automated recurring delivery of saved reports. 
+Exports Central location for CSV, Excel, PDF, accounting, tax, payroll, 
+and data exports. 
+2. Standard Report Page Components 
+ Date range selector: today, this week, last week, month-to-date, quarter-to-date, year-to-date, custom dates, and 
+comparison period. 
+ Saved filters: customer, service/category, order type, salesperson, employee, location, store, production stage, payment 
+status, vendor, and custom tags. 
+ Summary cards: the most important totals, changes from the comparison period, and exception counts. 
+ Charts: only when they help detect a trend, bottleneck, or comparison. Tables remain available for actual numbers.
+
+--- PAGE 2 ---
+SIGNGUY AI  |  REPORT CATALOG & CUSTOM REPORT BUILDER SPEC 
+Internal Product Specification 
+ Drill-down: clicking a total opens the matching Orders, Customers, Invoices, Webstores, Purchase Orders, or Time Entries. 
+ Actions: save report, duplicate, export, schedule, share with role-based permissions, and add to dashboard. 
+3. Overview 
+The first Reports page. It answers: “How is the shop doing right now?” 
+Executive Summary 
+ Revenue collected 
+ Sales booked 
+ Open quote value 
+ Open order value 
+ Outstanding invoice balance 
+ Estimated gross profit 
+ Orders due soon 
+ Production workload 
+ Low-stock alerts 
+Trend Snapshot 
+ Revenue trend by week/month 
+ Order count trend 
+ Average order value trend 
+ Quote conversion trend 
+ Labor and material cost trend 
+Action Required 
+ Overdue invoices 
+ Quotes needing follow-up 
+ Orders at risk of being late 
+ Proofs waiting for approval 
+ Purchases or stock issues that could delay work 
+4. Financial Reports 
+The money side of the business. Includes customer billing, cash collection, profitability, tax-ready summaries, and business 
+performance. 
+Sales & Revenue 
+ Sales by day, week, month, quarter, and year 
+ Sales by product/service category 
+ Sales by customer 
+ Sales by employee or salesperson 
+ Average order value 
+ Deposit versus final payment mix 
+ Revenue by source: direct shop work, webstores, wraps, repeat customers 
+Billing & Payments 
+ Open invoices
+
+--- PAGE 3 ---
+SIGNGUY AI  |  REPORT CATALOG & CUSTOM REPORT BUILDER SPEC 
+Internal Product Specification 
+ Overdue invoices 
+ Invoice aging: current, 1–30, 31–60, 61–90, 90+ days 
+ Payments collected 
+ Payment method mix 
+ Deposits due and deposits received 
+ Refunds, credits, write-offs, and failed payments 
+ Customer balance detail 
+Profitability 
+ Estimated versus actual revenue 
+ Estimated versus actual labor cost 
+ Estimated versus actual material cost 
+ Gross profit and gross margin by order 
+ Profitability by service category 
+ Profitability by customer 
+ Most and least profitable products or job types 
+ Rework and warranty cost impact 
+Taxes & Accounting 
+ Taxable sales 
+ Tax collected 
+ Tax owed by jurisdiction when supported 
+ Sales tax exception items 
+ Export-ready transaction detail 
+ Monthly income/expense category summaries 
+ Accounting integration reconciliation status 
+Cash & Forecasting 
+ Expected payments from open invoices 
+ Expected deposits from approved quotes 
+ Upcoming webstore payouts or fees 
+ Projected revenue from scheduled work 
+ Short-term cash collection forecast 
+5. Operations Reports 
+Measures the flow of customer work from quote through production, approvals, installation, completion, and follow-up. 
+Orders 
+ Orders by status 
+ Open order value 
+ Orders due today/this week 
+ Late orders 
+ Orders by type, customer, source, or owner 
+ Order aging 
+ Canceled and reopened orders
+
+--- PAGE 4 ---
+SIGNGUY AI  |  REPORT CATALOG & CUSTOM REPORT BUILDER SPEC 
+Internal Product Specification 
+Production 
+ Production board workload by stage 
+ Time in each production stage 
+ Bottlenecks by stage or department 
+ Scheduled versus completed production 
+ Rework counts and reasons 
+ Jobs waiting on materials, artwork, approval, customer response, or install scheduling 
+Artwork & Approvals 
+ Proofs sent 
+ Proofs awaiting approval 
+ Approval turnaround time 
+ Revision cycles per order 
+ Approval delays by customer or job type 
+ Rejected proof reasons 
+ Signed document completion rates 
+Scheduling & Installs 
+ Scheduled installs 
+ Install completion rate 
+ Install duration estimates versus actuals 
+ No-show, reschedule, and cancellation tracking 
+ Crew workload 
+ Upcoming delivery, pickup, and install commitments 
+Documents & Compliance 
+ Missing required documents 
+ Unsigned contracts or acknowledgments 
+ Documents expiring or due for renewal 
+ Document completion by order type 
+ Customer packet delivery status 
+6. Customer & Sales Reports 
+Shows which customers are buying, how opportunities are converting, and where follow-up is required. 
+Customer Performance 
+ New versus returning customers 
+ Customer lifetime value 
+ Top customers by revenue, profit, and order count 
+ Customer purchase frequency 
+ Inactive customers 
+ Customer segmentation by industry, type, or tag 
+Quotes & Conversion 
+ Quotes created, sent, viewed, approved, declined, expired 
+ Quote-to-order conversion rate 
+ Conversion by salesperson, source, category, and customer type
+
+--- PAGE 5 ---
+SIGNGUY AI  |  REPORT CATALOG & CUSTOM REPORT BUILDER SPEC 
+Internal Product Specification 
+ Average quote value 
+ Lost quote reasons 
+ Quotes needing follow-up 
+Sales Pipeline 
+ Pipeline by stage 
+ Forecast value by close date 
+ Follow-up activity 
+ Lead source performance 
+ Sales cycle length 
+ Opportunities with no recent activity 
+Retention & Follow-Up 
+ Repeat order rate 
+ Post-install or post-purchase follow-up status 
+ Customers due for reactivation 
+ Upsell/cross-sell opportunities 
+ Review request status 
+7. Webstore Reports 
+Covers every store as a business channel while keeping store-owner payout and platform data cleanly separated. 
+Store Performance 
+ Sales by store 
+ Orders by store 
+ Average order value 
+ Store conversion when traffic data exists 
+ Open and closing-soon stores 
+ Store goal progress for fundraisers 
+ Store performance by type: B2B, Fundraiser, Event, Promotional, Employee, General 
+Products & Catalog 
+ Best-selling products 
+ Variant performance 
+ Low-performing products 
+ Revenue and margin by product 
+ Product demand by size/color/style 
+ Out-of-stock or unavailable option impact 
+Payouts & Fees 
+ Owner share totals 
+ Platform fee totals 
+ Stripe/payment processing fee totals when available 
+ Payout status 
+ Unpaid or failed payout issues 
+ Store-level margin summary
+
+--- PAGE 6 ---
+SIGNGUY AI  |  REPORT CATALOG & CUSTOM REPORT BUILDER SPEC 
+Internal Product Specification 
+Event & Fundraiser 
+ Fundraiser goal progress 
+ Donation totals 
+ Event deadline status 
+ Pickup/delivery status 
+ Late order volume 
+ Participant/team/group sales ranking when enabled 
+8. Materials & Purchasing Reports 
+Tracks stock, vendor spending, purchasing commitments, material consumption, and waste. 
+Inventory 
+ On-hand quantity 
+ Low stock and out-of-stock items 
+ Inventory value 
+ Usage trends 
+ Material movement history 
+ Reorder suggestions 
+ Expired, damaged, discontinued, or obsolete stock 
+Purchasing 
+ Purchase orders by status 
+ Open purchases 
+ Vendor lead time 
+ Expected delivery dates 
+ Received versus ordered quantities 
+ Purchase price variance 
+ Purchases by vendor and material category 
+Material Usage & Waste 
+ Material usage by order 
+ Usage by product/service category 
+ Waste by material, employee, machine, or job type 
+ Waste cost 
+ Roll/sheet utilization 
+ Material cost versus quoted material allowance 
+Vendor Performance 
+ Vendor spend 
+ Price changes 
+ On-time delivery rate 
+ Order issue rate 
+ Most-used vendors 
+ Alternative vendor comparison
+
+--- PAGE 7 ---
+SIGNGUY AI  |  REPORT CATALOG & CUSTOM REPORT BUILDER SPEC 
+Internal Product Specification 
+9. Team & Labor Reports 
+Connects time, payroll, scheduling, attendance, and labor performance without turning every employee into a surveillance experiment. 
+Payroll & Time 
+ Hours by employee 
+ Hours by department or production stage 
+ Payroll totals by pay period 
+ Advances, payments, carryover, and adjustments 
+ Clock-in/out exceptions 
+ Missing time entries 
+ Export-ready timesheets 
+Labor Efficiency 
+ Estimated versus actual labor hours by order 
+ Labor cost versus quoted allowance 
+ Hours by order type 
+ Hours by production stage 
+ Labor utilization 
+ Overtime trends 
+ Rework labor impact 
+Scheduling & Capacity 
+ Scheduled hours versus available hours 
+ Employee workload 
+ Install crew capacity 
+ Upcoming staffing gaps 
+ Time-off impact 
+ Schedule adherence 
+Attendance & Team Activity 
+ Late/missed clock-in patterns 
+ Absence or time-off tracking 
+ Task completion 
+ Training/checklist completion when enabled 
+ Employee announcements acknowledgement when enabled 
+10. Wrap Lab Reports 
+Wrap-specific performance reporting for the Wrap Lab workspace and standalone product. 
+Project Performance 
+ Wrap projects by status 
+ Revenue and profit by vehicle type 
+ Design-to-install turnaround time 
+ Install scheduling status 
+ Project completion rate 
+ Deposit and final payment status
+
+--- PAGE 8 ---
+SIGNGUY AI  |  REPORT CATALOG & CUSTOM REPORT BUILDER SPEC 
+Internal Product Specification 
+Labor & Materials 
+ Estimated versus actual install hours 
+ Material use by wrap project 
+ Waste by vehicle size/type 
+ Laminate/print/vinyl usage 
+ Install crew time 
+ Material cost versus estimate 
+Artwork & Approval 
+ Mockup/proof turnaround time 
+ Revision cycles 
+ Customer approval delays 
+ Brand asset completeness 
+ Pre-install document/signoff status 
+Quality, Warranty & Aftercare 
+ Post-install follow-up completion 
+ Warranty claims 
+ Issue type and root cause 
+ Rework cost 
+ Customer care packet delivery 
+ Recurring issue patterns by material, vehicle, or install type 
+11. Custom Reports 
+Custom Reports is the build-anything workspace. It is not a second reporting system; it uses the same approved data, filters, totals, and 
+drill-down behavior as all standard reports. 
+Core Builder Flow 
+ Choose a primary data source. 
+ Choose columns and calculated fields. 
+ Add filters and date range rules. 
+ Group, sort, subtotal, and compare data. 
+ Choose table, chart, summary-card, or combined layout. 
+ Save as a private report, shared team report, or role-restricted report. 
+ Schedule delivery or export on demand. 
+Approved Data Sources 
+Data Source Example Fields Available 
+Customers Customer type, tags, industry, location, lifetime value, order 
+count, balances, first/last purchase dates. 
+Quotes Quote status, value, sent date, approval date, expiration date, 
+conversion outcome, source, salesperson. 
+Orders & Order Items Order status, category, dates, customer, price, costs, profit, 
+production stage, install/pickup details. 
+Invoices & Payments Invoice status, balance, due date, payment date, method,
+
+--- PAGE 9 ---
+SIGNGUY AI  |  REPORT CATALOG & CUSTOM REPORT BUILDER SPEC 
+Internal Product Specification 
+Data Source Example Fields Available 
+deposits, refunds, write-offs, aging bucket. 
+Production & Work Orders Stage, assigned team, due date, time in stage, hold reason, 
+completion date, rework reason. 
+Artwork, Proofs & Approvals Proof status, sent/approved dates, revision count, signed 
+document status, approval turnaround time. 
+Webstores & Store Orders Store type, store owner, sales, orders, product, payout status, 
+fee totals, fundraiser progress. 
+Inventory & Purchases Material, vendor, quantity, cost, reorder level, purchase order 
+status, stock movement, waste. 
+Team, Time & Payroll Employee, hours, pay period, labor stage, schedule, 
+adjustments, attendance exceptions, payroll total. 
+Wrap Lab Projects Vehicle type, project phase, install hours, material use, 
+proof/approval status, warranty/aftercare data. 
+Builder Controls 
+Control What It Does 
+Filters Date ranges, statuses, customer tags, categories, users, 
+employees, vendors, stores, locations, payment states, 
+production stages, and custom fields. 
+Grouping By day/week/month, customer, category, employee, 
+salesperson, vendor, store, job type, product, vehicle type, or 
+custom tag. 
+Calculations Count, sum, average, min/max, percentage, margin, variance, 
+ratio, aging, and formula-based calculated fields. 
+Comparisons Previous period, previous year, budget/target, estimated versus 
+actual, and selected benchmark when available. 
+Visuals Summary cards, table, line chart, bar chart, stacked bar, 
+pie/donut only for small category comparisons, and trend 
+indicators. 
+Permissions Private, shared with selected users, role-based, finance-
+restricted, manager-only, or platform admin-only. 
+Output On-screen, CSV, Excel, PDF, print layout, scheduled email, 
+dashboard card, or saved operational shortcut. 
+12. Scheduled Reports 
+ Daily: overdue invoices, orders due soon, production bottleneck report, low-stock report, open approvals. 
+ Weekly: sales summary, quote follow-up list, production plan, labor summary, webstore order/export list. 
+ Pay-period: payroll/timesheet package, attendance exceptions, labor cost by order or department. 
+ Monthly: financial summary, profit/margin summary, sales by category, customer retention, materials/vendor spend, wrap 
+performance, webstore payouts.
+
+--- PAGE 10 ---
+SIGNGUY AI  |  REPORT CATALOG & CUSTOM REPORT BUILDER SPEC 
+Internal Product Specification 
+ Event-triggered: store closing report, fundraiser goal reached report, invoice overdue escalation, large-order approval delay, 
+material below reorder threshold. 
+13. Exports 
+Export Type Use 
+CSV / Excel Detailed data analysis, accounting uploads, tax preparation, 
+payroll import/export, and owner-supplied spreadsheets. 
+PDF Printable management summaries, customer-facing summaries 
+when appropriate, install packets, production summaries, and 
+archived monthly reports. 
+Print Layout Shop-friendly printouts for meetings, production huddles, payroll 
+review, and owner review. 
+Accounting Export Transaction detail and summaries formatted for approved 
+accounting integrations or reconciliation workflows. 
+Payroll Export Pay-period hours, adjustments, advances, payments, carryover, 
+and employee totals. 
+Tax Export Taxable sales, tax collected, exception items, and jurisdiction-
+based summaries where supported. 
+14. Architecture Rules to Protect 
+ One reporting engine only. Operations, Webstores, Wrap Lab, Materials, Payroll, and Team pages may provide filtered 
+shortcuts, but they never create separate report builders. 
+ Reports must preserve source-of-truth links. Every total should drill into the underlying records when the user has 
+permission. 
+ Role permissions apply to both viewing and exporting. Payroll, cost, margin, and platform-level data must be protected. 
+ Every saved report stores its data source, fields, filters, groupings, calculation definitions, visualization, owner, 
+permissions, and schedule as one report definition. 
+ Custom calculated fields must be clearly labeled and must not overwrite stored financial or operational values. 
+ Use estimated versus actual comparisons wherever the app has both values, especially labor, materials, production 
+duration, and profitability. 
+ Keep default reports opinionated and practical. The builder is for flexibility, not an excuse to make every user invent basic 
+shop reports from scratch. 
+15. Initial Launch Priority 
+Build the first set before expanding into every possible report. Otherwise the report catalog will become a museum of empty screens. 
+Phase Scope 
+Phase 1: Must Launch Overview; Sales & Revenue; Billing & Payments; Orders; 
+Production; Quotes & Conversion; Inventory; Payroll & Time; 
+Basic Webstore Performance; Custom Reports with 
+tables/filters/export. 
+Phase 2: Strong Business Intelligence Profitability; Material Usage & Waste; Customer Retention; 
+Scheduling & Capacity; Wrap Lab Performance; Scheduled
+
+--- PAGE 11 ---
+SIGNGUY AI  |  REPORT CATALOG & CUSTOM REPORT BUILDER SPEC 
+Internal Product Specification 
+Phase Scope 
+Reports; dashboard cards. 
+Phase 3: Advanced Analysis Forecasting; vendor performance; advanced comparisons; chart 
+builder; calculated fields; role-sharing; automated exception 
+reports; platform-wide analytics for SignGuy AI admin. 
+16. Final Naming Recommendation 
+Navigation: Business Management → Reports 
+Primary tabs inside Reports: Overview | Financial | Operations | Customers & Sales | Webstores | Materials & Purchasing 
+| Team & Labor | Wrap Lab | Custom | Scheduled | Exports 
+Build action: Build a Report
