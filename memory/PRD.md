@@ -307,12 +307,12 @@ Old master plan **Appendix A.4** and `/app/docs/commercial/REVISED_COMMERCIAL_SO
 - `/app/memory/AGENT_INSTRUCTIONS.md` (permanent LOCKED technical rules — unaffected by the new pack)
 - `/app/memory/progress_register.md`
 
-## Report Builder Complete Reporting System (2026-07-29) - Implemented For Review
+## Report Builder Complete Reporting System (2026-07-29) - Review Corrections Applied
 
 Owner-authorized complete Report Builder work is implemented on branch `CODEX-reports-complete-reporting-system`. The controlling specification is the 11-page PDF `SIGNGUY AI | REPORT CATALOG & CUSTOM REPORT BUILDER SPEC`, preserved at `/app/specs_pack/source/SIGNGUY_AI_REPORT_CATALOG_AND_CUSTOM_REPORT_BUILDER_SPEC.pdf` with extracted text at `/app/specs_pack/extracted/SIGNGUY_AI_REPORT_CATALOG_AND_CUSTOM_REPORT_BUILDER_SPEC.txt`.
 
-Implemented scope: backend standard report catalog expansion over authoritative stored source records; Custom Report Builder allowlisted datasets/fields/filters/grouping/sorting; saved/shared report definitions; archive/restore; duplicate; fresh runs; export history; schedules and manual schedule run history; CSV, XLSX, PDF, print, and specialized CSV export contracts; tenant-scoped indexes; and a Reports workspace UI under `Business & Finance -> Reports`.
+Implemented scope: backend reporting foundations, selected standard report contracts over authoritative stored source records, Custom Report Builder allowlisted datasets/fields/filters/grouping/sorting, saved/shared report definitions, archive/restore, duplicate, fresh runs, export history, schedules and manual schedule run history, generic CSV/XLSX/PDF/print export contracts, tenant-scoped indexes, and a Reports workspace UI under `Business & Finance -> Reports`.
 
 Owner decisions applied: `Business Management -> Reports` from the PDF is superseded by `Business & Finance -> Reports`; official Webstore types are `B2B`, `Fundraiser`, `Event`, `Promotional`, and `General`, with non-official legacy values grouped as `other_or_legacy`.
 
-Remaining source-contract blockers are explicitly not complete: Dashboard widget publishing, detailed Webstore payout reports, deep Wrap Lab workflow analytics, payroll tax filing exports, and production automated report delivery. Evidence: `/app/evidence/REPORT_BUILDER_COMPLETE_REPORTING_SYSTEM_EVIDENCE.md`.
+Requirement inventory correction: 207 PDF rows reviewed; 34 are `IMPLEMENTED AND VERIFIED`, 173 are `BLOCKED — NOT COMPLETE`, and no other status values remain in the standard report inventory. Remaining blockers are explicitly not complete: Dashboard widget publishing, calculated fields, comparison periods, definition versioning, complete audit history, automated retry/delivery/timezone execution, detailed Webstore payout reports, deep Wrap Lab workflow analytics, specialized accounting/payroll/tax exports, and production automated report delivery. Evidence: `/app/evidence/REPORT_BUILDER_COMPLETE_REPORTING_SYSTEM_EVIDENCE.md`.

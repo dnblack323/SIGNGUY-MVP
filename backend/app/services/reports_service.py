@@ -109,6 +109,22 @@ def _source_link(entity_type: str, entity_id: Any, route: str | None = None) -> 
     }
 
 
+def _validate_filter_values(filters: dict[str, Any] | None) -> None:
+    for key, value in (filters or {}).items():
+        if value in (None, ""):
+            continue
+        if isinstance(value, (dict, list, tuple, set)):
+            raise ValueError(f"invalid_filter_value:{key}")
+
+
+def _columns_with_drill_down(columns: list[dict[str, Any]], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not any(row.get("drill_down") for row in rows):
+        return columns
+    if any(col.get("key") == "drill_down" for col in columns):
+        return columns
+    return [*columns, {"key": "drill_down", "label": "Drill-down"}]
+
+
 async def _customer_map(tenant_id: str) -> dict[str, dict[str, Any]]:
     return {
         c["id"]: c
@@ -1604,14 +1620,16 @@ async def run_report(*, key: str, tenant_id: str, filters: dict,
         raise ValueError("unknown_report")
     if r["perm"].value not in user_perms:
         raise PermissionError("permission_denied")
+    _validate_filter_values(filters)
     rows = await r["run"](tenant_id=tenant_id, filters=filters or {})
     total = len(rows)
     limited = rows[:max(int(preview_limit), 0)]
+    columns = _columns_with_drill_down(r["columns"], limited)
     return {
         "key": key, "title": r["title"], "category": r["category"],
         "data_source": r["data_source"], "date_basis": r["date_basis"],
         "calc_basis": r["calc_basis"], "limitations": r["limitations"],
-        "columns": r["columns"], "rows": limited, "row_count": total,
+        "columns": columns, "rows": limited, "row_count": total,
         "preview_limit": preview_limit, "truncated": total > preview_limit,
         "filters": filters or {},
     }
@@ -1867,6 +1885,7 @@ async def run_custom_report(*, dataset_key: str, tenant_id: str, user_perms: set
     for f in (filters or {}).keys():
         if f not in allowed_filters:
             raise ValueError(f"invalid_filter:{f}")
+    _validate_filter_values(filters)
     if group_by:
         allowed_group = set(ds["group_by"])
         if not all(g in allowed_group for g in group_by):

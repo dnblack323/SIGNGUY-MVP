@@ -89,6 +89,30 @@ function formatCell(col, val) {
   return String(val);
 }
 
+function DrillDownCell({ value }) {
+  const links = Array.isArray(value) ? value : [];
+  if (!links.length) return "-";
+  return (
+    <div className="flex flex-wrap gap-1">
+      {links.map((link, index) => (
+        link.route ? (
+          <a
+            key={`${link.entity_type}-${link.entity_id}-${index}`}
+            href={link.route}
+            className="rounded border px-2 py-1 text-xs text-primary hover:bg-primary/10"
+          >
+            {link.entity_type}
+          </a>
+        ) : (
+          <span key={`${link.entity_type}-${link.entity_id}-${index}`} className="rounded border px-2 py-1 text-xs text-muted-foreground">
+            {link.entity_type}
+          </span>
+        )
+      ))}
+    </div>
+  );
+}
+
 function ResultTable({ result }) {
   const columns = result?.columns || (result?.fields || []).map((field) => ({ key: field, label: field, money: field.endsWith("_cents") }));
   const rows = result?.rows || [];
@@ -103,7 +127,11 @@ function ResultTable({ result }) {
             <TableRow><TableCell colSpan={columns.length || 1} className="py-8 text-center text-sm text-muted-foreground">No rows for this report and filter set.</TableCell></TableRow>
           ) : rows.map((row, index) => (
             <TableRow key={index}>
-              {columns.map((col) => <TableCell key={col.key} className={col.money ? "text-right" : ""}>{formatCell(col, row[col.key])}</TableCell>)}
+              {columns.map((col) => (
+                <TableCell key={col.key} className={col.money ? "text-right" : ""}>
+                  {col.key === "drill_down" ? <DrillDownCell value={row[col.key]} /> : formatCell(col, row[col.key])}
+                </TableCell>
+              ))}
             </TableRow>
           ))}
         </TableBody>

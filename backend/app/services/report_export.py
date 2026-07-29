@@ -109,9 +109,12 @@ def build_export(*, result: dict[str, Any], export_format: str) -> tuple[bytes, 
     rows = result.get("rows") or []
     safe_key = (result.get("key") or result.get("dataset") or "report").replace(".", "_")
 
-    if export_format in {"csv", "accounting_csv", "payroll_csv", "tax_csv"}:
+    if export_format == "csv":
         text = csv_export.build_csv(columns=columns, rows=rows, max_rows=25000)
         return text.encode("utf-8-sig"), "text/csv; charset=utf-8", f"{safe_key}_{export_format}.csv"
+
+    if export_format in {"accounting_csv", "payroll_csv", "tax_csv"}:
+        raise ValueError("specialized_export_not_implemented")
 
     if export_format == "xlsx":
         return (

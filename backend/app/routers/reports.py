@@ -29,6 +29,11 @@ from ..services.report_export import build_export
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
+SUPPORTED_EXPORT_FORMATS = {"csv", "xlsx", "pdf", "print"}
+SPECIALIZED_EXPORT_FORMATS = {"accounting_csv", "payroll_csv", "tax_csv"}
+VALID_DEFINITION_VISIBILITIES = {"private", "shared_users", "shared_roles"}
+VALID_SCHEDULE_CADENCES = {"daily", "weekly", "monthly", "pay_period", "event_triggered"}
+
 
 def _perms_for_user(user: dict) -> set[str]:
     return set(permissions_for_role(user.get("role", "staff")))
@@ -61,12 +66,29 @@ async def _load_definition(definition_id: str, user: dict, *, include_archived: 
     return doc
 
 
-def _assert_owner_or_report_writer(doc: dict[str, Any], user: dict) -> None:
+def _assert_definition_owner(doc: dict[str, Any], user: dict) -> None:
     if doc.get("owner_user_id") == user["id"]:
         return
-    if Perm.REPORT_WRITE.value in _perms_for_user(user):
-        return
     raise HTTPException(status_code=403, detail="permission_denied")
+
+
+def _validate_supported_export_format(export_format: str) -> None:
+    if export_format in SUPPORTED_EXPORT_FORMATS:
+        return
+    if export_format in SPECIALIZED_EXPORT_FORMATS:
+        raise HTTPException(status_code=400, detail="specialized_export_not_implemented")
+    raise HTTPException(status_code=400, detail="unsupported_export_format")
+
+
+def _reject_unsupported_builder_features(*, calculated_fields: list[dict[str, Any]] | None = None,
+                                         comparisons: list[str] | None = None,
+                                         dashboard_widget: dict[str, Any] | None = None) -> None:
+    if calculated_fields:
+        raise HTTPException(status_code=400, detail="calculated_fields_not_implemented")
+    if comparisons:
+        raise HTTPException(status_code=400, detail="comparisons_not_implemented")
+    if dashboard_widget:
+        raise HTTPException(status_code=400, detail="dashboard_widget_publish_not_implemented")
 
 
 async def _run_definition(doc: dict[str, Any], user: dict, override_filters: dict[str, Any] | None = None, *, limit: int = 500) -> dict[str, Any]:
@@ -105,6 +127,7 @@ async def _record_export(
     standard_report_key: str | None = None,
     custom_dataset: str | None = None,
 ) -> tuple[bytes, str, str, dict[str, Any]]:
+    _validate_supported_export_format(export_format)
     content, content_type, filename = build_export(result=result, export_format=export_format)
     model = ReportExport(
         tenant_id=user["tenant_id"],
@@ -170,6 +193,8 @@ class SaveReportIn(BaseModel):
     filters: dict[str, Any] = Field(default_factory=dict)
     group_by: list[str] = Field(default_factory=list)
     sort: list[dict[str, Any]] = Field(default_factory=list)
+    calculated_fields: list[dict[str, Any]] = Field(default_factory=list)
+    comparisons: list[str] = Field(default_factory=list)
     layout: dict[str, Any] = Field(default_factory=dict)
     export_defaults: dict[str, Any] = Field(default_factory=dict)
     dashboard_widget: Optional[dict[str, Any]] = None
@@ -273,6 +298,13 @@ async def list_saved_reports(user: dict = Depends(require_permission(Perm.REPORT
 async def create_saved_report(payload: SaveReportIn, user: dict = Depends(require_permission(Perm.REPORT_WRITE))) -> dict:
     if payload.source_kind not in {"standard", "custom"}:
         raise HTTPException(status_code=400, detail="invalid_source_kind")
+    if payload.visibility not in VALID_DEFINITION_VISIBILITIES:
+        raise HTTPException(status_code=400, detail="invalid_visibility")
+    _reject_unsupported_builder_features(
+        calculated_fields=payload.calculated_fields,
+        comparisons=payload.comparisons,
+        dashboard_widget=payload.dashboard_widget,
+    )
     if payload.source_kind == "standard":
         if not payload.standard_report_key:
             raise HTTPException(status_code=400, detail="missing_standard_report_key")
@@ -309,6 +341,8 @@ async def create_saved_report(payload: SaveReportIn, user: dict = Depends(requir
         filters=payload.filters,
         group_by=payload.group_by,
         sort=payload.sort,
+        calculated_fields=[],
+        comparisons=[],
         layout=payload.layout,
         export_defaults=payload.export_defaults,
         dashboard_widget=payload.dashboard_widget,
@@ -340,8 +374,12 @@ async def get_saved_report(definition_id: str, user: dict = Depends(require_perm
 @router.patch("/saved/{definition_id}")
 async def update_saved_report(definition_id: str, payload: UpdateReportIn, user: dict = Depends(require_permission(Perm.REPORT_WRITE))) -> dict:
     doc = await _load_definition(definition_id, user, include_archived=True)
-    _assert_owner_or_report_writer(doc, user)
+    _assert_definition_owner(doc, user)
     update = {k: v for k, v in payload.model_dump(exclude_unset=True).items()}
+    if "visibility" in update and update["visibility"] not in VALID_DEFINITION_VISIBILITIES:
+        raise HTTPException(status_code=400, detail="invalid_visibility")
+    if update.get("dashboard_widget"):
+        raise HTTPException(status_code=400, detail="dashboard_widget_publish_not_implemented")
     if not update:
         return {"saved_report": serialize_doc(doc)}
     update["updated_at"] = utc_now().isoformat()
@@ -376,7 +414,7 @@ async def duplicate_saved_report(definition_id: str, user: dict = Depends(requir
 @router.post("/saved/{definition_id}/archive")
 async def archive_saved_report(definition_id: str, user: dict = Depends(require_permission(Perm.REPORT_WRITE))) -> dict:
     doc = await _load_definition(definition_id, user, include_archived=True)
-    _assert_owner_or_report_writer(doc, user)
+    _assert_definition_owner(doc, user)
     await db.report_definitions.update_one(
         {"id": definition_id, "tenant_id": user["tenant_id"]},
         {"$set": {"status": "archived", "archived_at": utc_now().isoformat(), "updated_at": utc_now().isoformat()}},
@@ -387,7 +425,7 @@ async def archive_saved_report(definition_id: str, user: dict = Depends(require_
 @router.post("/saved/{definition_id}/restore")
 async def restore_saved_report(definition_id: str, user: dict = Depends(require_permission(Perm.REPORT_WRITE))) -> dict:
     doc = await _load_definition(definition_id, user, include_archived=True)
-    _assert_owner_or_report_writer(doc, user)
+    _assert_definition_owner(doc, user)
     await db.report_definitions.update_one(
         {"id": definition_id, "tenant_id": user["tenant_id"]},
         {"$set": {"status": "active", "archived_at": None, "updated_at": utc_now().isoformat()}},
@@ -426,6 +464,10 @@ async def list_schedules(user: dict = Depends(require_permission(Perm.REPORT_REA
 
 @router.post("/schedules")
 async def create_schedule(payload: ScheduleIn, user: dict = Depends(require_permission(Perm.REPORT_WRITE))) -> dict:
+    if payload.cadence not in VALID_SCHEDULE_CADENCES:
+        raise HTTPException(status_code=400, detail="invalid_schedule_cadence")
+    for fmt in payload.delivery_formats:
+        _validate_supported_export_format(fmt)
     await _load_definition(payload.report_definition_id, user)
     model = ReportSchedule(
         tenant_id=user["tenant_id"],
@@ -450,6 +492,12 @@ async def run_schedule(schedule_id: str, user: dict = Depends(require_permission
     schedule = await db.report_schedules.find_one({"id": schedule_id, "tenant_id": user["tenant_id"], "status": {"$ne": "archived"}}, {"_id": 0})
     if not schedule:
         raise HTTPException(status_code=404, detail="schedule_not_found")
+    existing_run = await db.report_schedule_runs.find_one(
+        {"tenant_id": user["tenant_id"], "schedule_id": schedule_id, "status": "running"},
+        {"_id": 0, "id": 1},
+    )
+    if existing_run:
+        raise HTTPException(status_code=409, detail="schedule_run_already_running")
     definition = await _load_definition(schedule["report_definition_id"], user)
     started = utc_now().isoformat()
     run = ReportScheduleRun(

@@ -108,8 +108,8 @@ function mockCommonApis() {
           key: "overview.executive_summary",
           title: "Executive Summary",
           category: "overview",
-          columns: catalog.reports[0].columns,
-          rows: [{ metric: "Revenue collected", value_cents: 250000 }],
+          columns: [...catalog.reports[0].columns, { key: "drill_down", label: "Drill-down" }],
+          rows: [{ metric: "Revenue collected", value_cents: 250000, drill_down: [{ entity_type: "payments", entity_id: "confirmed", route: "/payments" }] }],
           row_count: 1,
           filters: {},
         },
@@ -171,6 +171,7 @@ test("renders the PDF-governed report catalog and runs a standard report", async
 
   expect(await screen.findByText("Revenue collected")).toBeInTheDocument();
   expect(screen.getByText("$2,500.00")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "payments" })).toHaveAttribute("href", "/payments");
   expect(screen.getByText(/Dashboard widget publishing/)).toBeInTheDocument();
 });
 
