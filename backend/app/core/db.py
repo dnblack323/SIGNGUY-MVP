@@ -888,10 +888,27 @@ async def ensure_indexes() -> None:
     await db.webstore_product_templates.create_index("id", unique=True)
     await db.webstore_product_templates.create_index([("tenant_id", 1), ("active", 1), ("product_category", 1)])
     await db.webstore_product_templates.create_index([("tenant_id", 1), ("template_name", 1)])
+    await db.webstore_product_templates.create_index([("scope", 1), ("status", 1), ("product_category", 1)])
+    await db.webstore_product_templates.create_index([("tenant_id", 1), ("scope", 1), ("status", 1), ("template_name", 1)])
 
     await db.webstore_products.create_index("id", unique=True)
     await db.webstore_products.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
     await db.webstore_products.create_index([("tenant_id", 1), ("webstore_id", 1), ("public", 1)])
+    await db.webstore_products.create_index([("tenant_id", 1), ("webstore_id", 1), ("category_id", 1), ("status", 1)])
+    await db.webstore_products.create_index([("tenant_id", 1), ("webstore_id", 1), ("name", 1)])
+    await db.webstore_products.create_index(
+        [("tenant_id", 1), ("webstore_id", 1), ("stage4a_idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"stage4a_idempotency_key": {"$type": "string"}},
+    )
+
+    await db.webstore_product_categories.create_index("id", unique=True)
+    await db.webstore_product_categories.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1), ("name", 1)])
+    await db.webstore_product_categories.create_index(
+        [("tenant_id", 1), ("webstore_id", 1), ("normalized_name", 1), ("status", 1)],
+        unique=True,
+        partialFilterExpression={"status": "active"},
+    )
 
     await db.webstore_questionnaire_submissions.create_index("id", unique=True)
     await db.webstore_questionnaire_submissions.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
@@ -932,10 +949,12 @@ async def ensure_indexes() -> None:
 
     await db.webstore_artwork_files.create_index("id", unique=True)
     await db.webstore_artwork_files.create_index([("tenant_id", 1), ("webstore_id", 1), ("artwork_status", 1)])
+    await db.webstore_artwork_files.create_index([("tenant_id", 1), ("webstore_id", 1), ("product_id", 1)])
 
     await db.webstore_mockups.create_index("id", unique=True)
     await db.webstore_mockups.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
     await db.webstore_mockups.create_index([("tenant_id", 1), ("product_id", 1)])
+    await db.webstore_mockups.create_index([("tenant_id", 1), ("webstore_id", 1), ("product_id", 1)])
 
     await db.webstore_launch_packets.create_index("id", unique=True)
     await db.webstore_launch_packets.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])

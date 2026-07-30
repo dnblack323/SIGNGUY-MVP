@@ -58,6 +58,19 @@ async def branding_asset(slug: str, file_id: str) -> Response:
         _raise_branding(e)
 
 
+@router.get("/{slug}/product-images/{product_id}/{slot}")
+async def product_image(slug: str, product_id: str, slot: str) -> Response:
+    try:
+        doc, data, content_type = await svc.public_product_image(slug, product_id, slot)
+        return Response(
+            content=data,
+            media_type=content_type,
+            headers={"Content-Disposition": f'inline; filename="{doc.get("file_name", "product-image")}"'},
+        )
+    except WebstoreError as e:
+        _raise(e)
+
+
 @router.post("/{slug}/buyer-orders", status_code=201)
 async def create_buyer_order(slug: str, payload: BuyerOrderIn) -> dict:
     try:

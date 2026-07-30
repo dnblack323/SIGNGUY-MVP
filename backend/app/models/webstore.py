@@ -67,6 +67,9 @@ WebstoreStatus = Literal[
 WebstoreOwnerStatus = Literal["active", "disabled", "archived"]
 WebstoreType = Literal["b2b", "fundraiser", "event", "promotional", "employee", "general"]
 WebstoreProductStatus = Literal["draft", "active", "inactive", "archived"]
+WebstoreTemplateScope = Literal["tenant", "platform"]
+WebstoreTemplateStatus = Literal["draft", "active", "archived"]
+WebstoreCategoryStatus = Literal["active", "archived"]
 QuestionnaireStatus = Literal["draft", "submitted", "returned_for_changes", "reviewed", "superseded", "pending"]
 WebstoreSetupState = Literal[
     "not_started",
@@ -196,7 +199,18 @@ class WebstoreProductTemplate(BaseDoc):
     template_name: str
     product_category: str
     product_type: str
+    scope: WebstoreTemplateScope = "tenant"
+    status: WebstoreTemplateStatus = "active"
+    default_title: Optional[str] = None
+    default_short_description: Optional[str] = None
     default_description: Optional[str] = None
+    suggested_category_name: Optional[str] = None
+    production_method: Optional[str] = None
+    supplier_source_info: Optional[str] = None
+    default_production_notes: Optional[str] = None
+    default_customer_images: dict[str, Any] = Field(default_factory=dict)
+    default_artwork_associations: list[dict[str, Any]] = Field(default_factory=list)
+    default_mockup_associations: list[dict[str, Any]] = Field(default_factory=list)
     best_store_types: list[str] = Field(default_factory=list)
     default_variants: list[dict[str, Any]] = Field(default_factory=list)
     mockup_supported: bool = True
@@ -207,16 +221,27 @@ class WebstoreProductTemplate(BaseDoc):
     internal_notes: Optional[str] = None
     editable_by_shop: bool = True
     active: bool = True
+    revision: StrictInt = Field(default=1, ge=1)
+    created_by_user_id: Optional[str] = None
+    updated_by_user_id: Optional[str] = None
 
 
 class WebstoreProduct(BaseDoc):
     tenant_id: str
     webstore_id: str
     source_template_id: Optional[str] = None
+    source_template_revision: Optional[StrictInt] = Field(default=None, ge=1)
     name: str
+    short_description: Optional[str] = None
+    full_description: Optional[str] = None
     description: Optional[str] = None
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
     category: Optional[str] = None
     product_type: Optional[str] = None
+    production_method: Optional[str] = None
+    supplier_source_info: Optional[str] = None
+    fulfillment_notes: Optional[str] = None
     sku: Optional[str] = None
     production_cost_cents: StrictInt = Field(default=0, ge=0)
     selling_price_cents: StrictInt = Field(ge=0)
@@ -225,11 +250,29 @@ class WebstoreProduct(BaseDoc):
     variants: list[dict[str, Any]] = Field(default_factory=list)
     personalization_enabled: bool = False
     image_file_ids: list[str] = Field(default_factory=list)
+    customer_images: dict[str, Any] = Field(default_factory=dict)
+    artwork_associations: list[dict[str, Any]] = Field(default_factory=list)
+    mockup_associations: list[dict[str, Any]] = Field(default_factory=list)
     mockup_ids: list[str] = Field(default_factory=list)
     production_notes: Optional[str] = None
     public: bool = False
     featured: bool = False
     status: WebstoreProductStatus = "draft"
+    revision: StrictInt = Field(default=1, ge=1)
+    created_by_user_id: Optional[str] = None
+    updated_by_user_id: Optional[str] = None
+
+
+class WebstoreProductCategory(BaseDoc):
+    tenant_id: str
+    webstore_id: str
+    name: str
+    normalized_name: str
+    description: Optional[str] = None
+    status: WebstoreCategoryStatus = "active"
+    revision: StrictInt = Field(default=1, ge=1)
+    created_by_user_id: Optional[str] = None
+    updated_by_user_id: Optional[str] = None
 
 
 class WebstoreQuestionnaireSubmission(BaseDoc):
@@ -375,14 +418,17 @@ class WebstoreBrandingPublishedVersion(BaseDoc):
 class WebstoreArtworkFile(BaseDoc):
     tenant_id: str
     webstore_id: str
+    product_id: Optional[str] = None
     uploaded_by_actor_type: str = "staff"
     uploaded_by_id: Optional[str] = None
+    file_id: Optional[str] = None
     original_file_id: Optional[str] = None
     original_url: Optional[str] = None
     cleaned_file_id: Optional[str] = None
     cleaned_url: Optional[str] = None
     file_name: Optional[str] = None
     file_type: Optional[str] = None
+    purpose: Optional[str] = None
     artwork_status: ArtworkStatus = "uploaded"
     background_removed: bool = False
     transparent_png_created: bool = False
@@ -400,6 +446,9 @@ class WebstoreMockup(BaseDoc):
     artwork_id: Optional[str] = None
     mockup_file_id: Optional[str] = None
     generation_source: str = "manual"
+    purpose: Optional[str] = None
+    alt_text: Optional[str] = None
+    staff_note: Optional[str] = None
     status: MockupStatus = "draft"
     shop_approved: bool = False
     owner_visible: bool = False

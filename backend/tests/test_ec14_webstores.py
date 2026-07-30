@@ -87,10 +87,37 @@ async def _build_launchable_store(client: AsyncClient, suffix: str) -> dict:
 
     product_resp = await client.post(
         f"/api/webstores/{store['id']}/products",
-        json={"source_template_id": template["id"], "status": "active", "public": True, "featured": True},
+        json={"source_template_id": template["id"]},
     )
     assert product_resp.status_code == 201, product_resp.text
     product = product_resp.json()
+    await db.webstore_products.update_one(
+        {"tenant_id": product["tenant_id"], "webstore_id": store["id"], "id": product["id"]},
+        {
+            "$set": {
+                "status": "active",
+                "public": True,
+                "featured": True,
+                "selling_price_cents": template["suggested_selling_price_cents"],
+                "production_cost_cents": template["suggested_production_cost_cents"],
+                "store_owner_share_cents": template["suggested_store_owner_share_cents"],
+                "platform_fee_basis_points": template["platform_fee_basis_points"],
+                "variants": template["default_variants"],
+            }
+        },
+    )
+    product.update(
+        {
+            "status": "active",
+            "public": True,
+            "featured": True,
+            "selling_price_cents": template["suggested_selling_price_cents"],
+            "production_cost_cents": template["suggested_production_cost_cents"],
+            "store_owner_share_cents": template["suggested_store_owner_share_cents"],
+            "platform_fee_basis_points": template["platform_fee_basis_points"],
+            "variants": template["default_variants"],
+        }
+    )
 
     packet_resp = await client.post(f"/api/webstores/{store['id']}/launch-packets", json={"promotion_copy": "Order by Friday"})
     assert packet_resp.status_code == 201, packet_resp.text

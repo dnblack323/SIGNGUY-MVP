@@ -1031,7 +1031,10 @@ def _safe_file_record(doc: dict, *, staff: bool = False) -> dict:
     }
     if staff:
         allowed.add("uploaded_by_id")
-    return {k: v for k, v in doc.items() if k in allowed}
+    result = {k: v for k, v in doc.items() if k in allowed}
+    if staff and doc.get("status") == "active" and doc.get("safe_preview_available") and doc.get("inline_preview_allowed"):
+        result["preview_url"] = f"/api/webstores/{doc['webstore_id']}/setup-files/{doc['id']}/preview"
+    return result
 
 
 def _svg_is_safe(data: bytes) -> bool:
@@ -1169,6 +1172,27 @@ async def download_setup_file(tenant_id: str, webstore_id: str, file_id: str) ->
     if not doc:
         raise WebstoreSetupError("setup_file_not_found", "Setup file not found", 404)
     data, content_type = storage.get_bytes(doc["storage_key"])
+    return serialize_doc(doc), data, doc.get("detected_content_type") or content_type
+
+
+async def preview_setup_file(user: dict, webstore_id: str, file_id: str) -> tuple[dict, bytes, str]:
+    _require_staff_perm(user, Perm.WEBSTORE_READ)
+    await _get_store(user["tenant_id"], webstore_id)
+    doc = await db.webstore_setup_files.find_one(
+        {"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "id": file_id, "status": "active"},
+        {"_id": 0},
+    )
+    if not doc:
+        raise WebstoreSetupError("setup_file_not_found", "Setup file not found", 404)
+    if not doc.get("safe_preview_available") or not doc.get("inline_preview_allowed") or doc.get("private_download_only"):
+        raise WebstoreSetupError("setup_file_preview_unavailable", "This setup file is not safe for inline preview", 400)
+    ext = str(doc.get("extension") or "").lower()
+    if ext in DOWNLOAD_ONLY_EXTENSIONS or ext not in SAFE_EXTENSIONS:
+        raise WebstoreSetupError("setup_file_preview_unavailable", "This setup file is not safe for inline preview", 400)
+    try:
+        data, content_type = storage.get_bytes(doc["storage_key"])
+    except FileNotFoundError:
+        raise WebstoreSetupError("setup_file_not_found", "Setup file not found", 404)
     return serialize_doc(doc), data, doc.get("detected_content_type") or content_type
 
 

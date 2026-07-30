@@ -23,6 +23,8 @@ import {
   listWebstoreSetupFiles,
   listWebstores,
   listProductTemplates,
+  listWebstoreArtwork,
+  listWebstoreMockups,
   applyWebstoreAnswers,
   previewWebstoreAnswerApplication,
   resendWebstoreInvitation,
@@ -31,10 +33,22 @@ import {
   sendLaunchPacket,
   setWebstoreStatus,
   uploadWebstoreSetupFile,
+  updateProductTemplate,
   updateWebstore,
   saveWebstoreBrandingDraft,
   requestWebstoreBrandingReview,
   publishWebstoreBranding,
+  updateWebstoreProduct,
+  archiveProductTemplate,
+  archiveWebstoreProduct,
+  archiveWebstoreProductCategory,
+  restoreProductTemplate,
+  restoreWebstoreProduct,
+  restoreWebstoreProductCategory,
+  createProductTemplate,
+  createWebstoreProductCategory,
+  listWebstoreProductCategories,
+  updateWebstoreProductCategory,
 } from "@/lib/webstores";
 import { useAuth } from "@/auth/AuthContext";
 
@@ -60,6 +74,8 @@ jest.mock("@/lib/webstores", () => ({
   listWebstoreSetupFiles: jest.fn(),
   listWebstores: jest.fn(),
   listProductTemplates: jest.fn(),
+  listWebstoreArtwork: jest.fn(),
+  listWebstoreMockups: jest.fn(),
   applyWebstoreAnswers: jest.fn(),
   previewWebstoreAnswerApplication: jest.fn(),
   resendWebstoreInvitation: jest.fn(),
@@ -68,10 +84,22 @@ jest.mock("@/lib/webstores", () => ({
   sendLaunchPacket: jest.fn(),
   setWebstoreStatus: jest.fn(),
   uploadWebstoreSetupFile: jest.fn(),
+  updateProductTemplate: jest.fn(),
   updateWebstore: jest.fn(),
   saveWebstoreBrandingDraft: jest.fn(),
   requestWebstoreBrandingReview: jest.fn(),
   publishWebstoreBranding: jest.fn(),
+  updateWebstoreProduct: jest.fn(),
+  archiveProductTemplate: jest.fn(),
+  archiveWebstoreProduct: jest.fn(),
+  archiveWebstoreProductCategory: jest.fn(),
+  restoreProductTemplate: jest.fn(),
+  restoreWebstoreProduct: jest.fn(),
+  restoreWebstoreProductCategory: jest.fn(),
+  createProductTemplate: jest.fn(),
+  createWebstoreProductCategory: jest.fn(),
+  listWebstoreProductCategories: jest.fn(),
+  updateWebstoreProductCategory: jest.fn(),
 }));
 
 jest.mock("@/auth/AuthContext", () => ({
@@ -123,9 +151,23 @@ beforeEach(() => {
   revokeWebstoreAssignment.mockResolvedValue({});
   reverseWebstoreAnswerApplication.mockResolvedValue({});
   uploadWebstoreSetupFile.mockResolvedValue({});
+  updateProductTemplate.mockResolvedValue({});
   sendLaunchPacket.mockResolvedValue({});
   setWebstoreStatus.mockResolvedValue({});
   updateWebstore.mockResolvedValue({});
+  updateWebstoreProduct.mockResolvedValue({});
+  archiveProductTemplate.mockResolvedValue({});
+  archiveWebstoreProduct.mockResolvedValue({});
+  archiveWebstoreProductCategory.mockResolvedValue({});
+  restoreProductTemplate.mockResolvedValue({});
+  restoreWebstoreProduct.mockResolvedValue({});
+  restoreWebstoreProductCategory.mockResolvedValue({});
+  createProductTemplate.mockResolvedValue({});
+  createWebstoreProductCategory.mockResolvedValue({});
+  listWebstoreProductCategories.mockResolvedValue({ items: [], legacy_categories: [] });
+  listWebstoreArtwork.mockResolvedValue([]);
+  listWebstoreMockups.mockResolvedValue([]);
+  updateWebstoreProductCategory.mockResolvedValue({});
   getWebstoreBranding.mockResolvedValue({
     webstore: { id: "ws-1", name: "Team Store", store_type: "general" },
     branding: {

@@ -83,12 +83,82 @@ export async function uploadWebstoreSetupFile(id, formData) {
 }
 
 export async function listProductTemplates() {
-  const r = await api.get("/webstores/product-templates/list", { params: { active: true } });
+  const r = await api.get("/webstores/product-templates/list");
   return r.data.items || [];
+}
+
+export async function createProductTemplate(payload) {
+  const r = await api.post("/webstores/product-templates", payload);
+  return r.data;
+}
+
+export async function updateProductTemplate(templateId, payload) {
+  const r = await api.patch(`/webstores/product-templates/${templateId}`, payload);
+  return r.data;
+}
+
+export async function archiveProductTemplate(templateId, payload) {
+  const r = await api.post(`/webstores/product-templates/${templateId}/archive`, payload);
+  return r.data;
+}
+
+export async function restoreProductTemplate(templateId, payload) {
+  const r = await api.post(`/webstores/product-templates/${templateId}/restore`, payload);
+  return r.data;
 }
 
 export async function createProductFromTemplate(webstoreId, payload) {
   const r = await api.post(`/webstores/${webstoreId}/products`, payload);
+  return r.data;
+}
+
+export async function updateWebstoreProduct(webstoreId, productId, payload) {
+  const r = await api.patch(`/webstores/${webstoreId}/products/${productId}`, payload);
+  return r.data;
+}
+
+export async function archiveWebstoreProduct(webstoreId, productId, payload) {
+  const r = await api.post(`/webstores/${webstoreId}/products/${productId}/archive`, payload);
+  return r.data;
+}
+
+export async function restoreWebstoreProduct(webstoreId, productId, payload) {
+  const r = await api.post(`/webstores/${webstoreId}/products/${productId}/restore`, payload);
+  return r.data;
+}
+
+export async function listWebstoreProductCategories(webstoreId, params = {}) {
+  const r = await api.get(`/webstores/${webstoreId}/product-categories`, { params });
+  return r.data;
+}
+
+export async function listWebstoreArtwork(webstoreId, params = {}) {
+  const r = await api.get(`/webstores/${webstoreId}/artwork`, { params });
+  return r.data.items || [];
+}
+
+export async function listWebstoreMockups(webstoreId, params = {}) {
+  const r = await api.get(`/webstores/${webstoreId}/mockups`, { params });
+  return r.data.items || [];
+}
+
+export async function createWebstoreProductCategory(webstoreId, payload) {
+  const r = await api.post(`/webstores/${webstoreId}/product-categories`, payload);
+  return r.data;
+}
+
+export async function updateWebstoreProductCategory(webstoreId, categoryId, payload) {
+  const r = await api.patch(`/webstores/${webstoreId}/product-categories/${categoryId}`, payload);
+  return r.data;
+}
+
+export async function archiveWebstoreProductCategory(webstoreId, categoryId, payload) {
+  const r = await api.post(`/webstores/${webstoreId}/product-categories/${categoryId}/archive`, payload);
+  return r.data;
+}
+
+export async function restoreWebstoreProductCategory(webstoreId, categoryId, payload) {
+  const r = await api.post(`/webstores/${webstoreId}/product-categories/${categoryId}/restore`, payload);
   return r.data;
 }
 

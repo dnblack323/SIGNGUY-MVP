@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from ..deps import get_current_user
 from ..services import webstore_setup as setup_svc
@@ -78,11 +78,26 @@ class StatusIn(BaseModel):
     reason: Optional[str] = None
 
 
+class LifecycleRevisionIn(BaseModel):
+    expected_revision: StrictInt = Field(ge=1)
+
+
 class TemplateIn(BaseModel):
     template_name: str
     product_category: str
     product_type: str
+    scope: str = "tenant"
+    status: str = "active"
+    default_title: Optional[str] = None
+    default_short_description: Optional[str] = None
     default_description: Optional[str] = None
+    suggested_category_name: Optional[str] = None
+    production_method: Optional[str] = None
+    supplier_source_info: Optional[str] = None
+    default_production_notes: Optional[str] = None
+    default_customer_images: dict[str, Any] = Field(default_factory=dict)
+    default_artwork_associations: list[dict[str, Any]] = Field(default_factory=list)
+    default_mockup_associations: list[dict[str, Any]] = Field(default_factory=list)
     best_store_types: list[str] = Field(default_factory=list)
     default_variants: list[dict[str, Any]] = Field(default_factory=list)
     mockup_supported: bool = True
@@ -92,14 +107,52 @@ class TemplateIn(BaseModel):
     platform_fee_basis_points: StrictInt = Field(default=150, ge=0, le=10000)
     internal_notes: Optional[str] = None
     active: bool = True
+    webstore_id: Optional[str] = None
+
+
+class TemplatePatchIn(BaseModel):
+    expected_revision: StrictInt = Field(ge=1)
+    template_name: Optional[str] = None
+    product_category: Optional[str] = None
+    product_type: Optional[str] = None
+    status: Optional[str] = None
+    default_title: Optional[str] = None
+    default_short_description: Optional[str] = None
+    default_description: Optional[str] = None
+    suggested_category_name: Optional[str] = None
+    production_method: Optional[str] = None
+    supplier_source_info: Optional[str] = None
+    default_production_notes: Optional[str] = None
+    default_customer_images: Optional[dict[str, Any]] = None
+    default_artwork_associations: Optional[list[dict[str, Any]]] = None
+    default_mockup_associations: Optional[list[dict[str, Any]]] = None
+    best_store_types: Optional[list[str]] = None
+    default_variants: Optional[list[dict[str, Any]]] = None
+    mockup_supported: Optional[bool] = None
+    suggested_production_cost_cents: Optional[StrictInt] = Field(default=None, ge=0)
+    suggested_selling_price_cents: Optional[StrictInt] = Field(default=None, ge=0)
+    suggested_store_owner_share_cents: Optional[StrictInt] = Field(default=None, ge=0)
+    platform_fee_basis_points: Optional[StrictInt] = Field(default=None, ge=0, le=10000)
+    internal_notes: Optional[str] = None
+    webstore_id: Optional[str] = None
 
 
 class ProductIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     source_template_id: Optional[str] = None
+    idempotency_key: Optional[str] = None
     name: Optional[str] = None
+    short_description: Optional[str] = None
+    full_description: Optional[str] = None
     description: Optional[str] = None
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
     category: Optional[str] = None
     product_type: Optional[str] = None
+    production_method: Optional[str] = None
+    supplier_source_info: Optional[str] = None
+    fulfillment_notes: Optional[str] = None
     sku: Optional[str] = None
     production_cost_cents: Optional[StrictInt] = Field(default=None, ge=0)
     selling_price_cents: Optional[StrictInt] = Field(default=None, ge=0)
@@ -108,17 +161,65 @@ class ProductIn(BaseModel):
     variants: Optional[list[dict[str, Any]]] = None
     personalization_enabled: bool = False
     image_file_ids: list[str] = Field(default_factory=list)
+    customer_images: dict[str, Any] = Field(default_factory=dict)
+    artwork_associations: list[dict[str, Any]] = Field(default_factory=list)
+    mockup_associations: list[dict[str, Any]] = Field(default_factory=list)
     production_notes: Optional[str] = None
     public: bool = False
     featured: bool = False
     status: str = "draft"
 
 
+class ProductPatchIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    expected_revision: StrictInt = Field(ge=1)
+    name: Optional[str] = None
+    short_description: Optional[str] = None
+    full_description: Optional[str] = None
+    description: Optional[str] = None
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
+    category: Optional[str] = None
+    product_type: Optional[str] = None
+    production_method: Optional[str] = None
+    supplier_source_info: Optional[str] = None
+    fulfillment_notes: Optional[str] = None
+    sku: Optional[str] = None
+    production_cost_cents: Optional[StrictInt] = Field(default=None, ge=0)
+    selling_price_cents: Optional[StrictInt] = Field(default=None, ge=0)
+    store_owner_share_cents: Optional[StrictInt] = Field(default=None, ge=0)
+    platform_fee_basis_points: Optional[StrictInt] = Field(default=None, ge=0, le=10000)
+    personalization_enabled: Optional[bool] = None
+    customer_images: Optional[dict[str, Any]] = None
+    artwork_associations: Optional[list[dict[str, Any]]] = None
+    mockup_associations: Optional[list[dict[str, Any]]] = None
+    production_notes: Optional[str] = None
+    public: Optional[bool] = None
+    featured: Optional[bool] = None
+    status: Optional[str] = None
+
+
+class CategoryIn(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class CategoryPatchIn(BaseModel):
+    expected_revision: StrictInt = Field(ge=1)
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+
+
 class ArtworkIn(BaseModel):
+    product_id: Optional[str] = None
+    file_id: Optional[str] = None
     original_file_id: Optional[str] = None
     original_url: Optional[str] = None
     file_name: Optional[str] = None
     file_type: Optional[str] = None
+    purpose: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -127,6 +228,9 @@ class MockupIn(BaseModel):
     artwork_id: Optional[str] = None
     mockup_file_id: Optional[str] = None
     generation_source: str = "manual"
+    purpose: Optional[str] = None
+    alt_text: Optional[str] = None
+    staff_note: Optional[str] = None
     status: str = "generated"
     shop_approved: bool = False
     owner_visible: bool = False
@@ -449,6 +553,19 @@ async def download_setup_file(webstore_id: str, file_id: str, user: dict = Depen
         _raise_setup(e)
 
 
+@router.get("/{webstore_id}/setup-files/{file_id}/preview")
+async def preview_setup_file(webstore_id: str, file_id: str, user: dict = Depends(get_current_user)) -> Response:
+    try:
+        doc, data, content_type = await setup_svc.preview_setup_file(user, webstore_id, file_id)
+        return Response(
+            content=data,
+            media_type=content_type,
+            headers={"Content-Disposition": f'inline; filename="{doc.get("file_name", "setup-file")}"'},
+        )
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
 @router.get("/{webstore_id}/branding")
 async def get_branding(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
     try:
@@ -492,15 +609,85 @@ async def remove_setup_file(webstore_id: str, file_id: str, payload: RemoveFileI
 @router.post("/{webstore_id}/products", status_code=201)
 async def create_product(webstore_id: str, payload: ProductIn, user: dict = Depends(get_current_user)) -> dict:
     try:
-        return await svc.create_product(user, webstore_id, payload.model_dump(exclude_none=True))
+        return await svc.create_product(user, webstore_id, payload.model_dump(exclude_none=True, exclude_unset=True))
     except WebstoreError as e:
         _raise(e)
 
 
 @router.get("/{webstore_id}/products")
-async def list_products(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
+async def list_products(
+    webstore_id: str,
+    status: Optional[str] = Query(None),
+    category_id: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+) -> dict:
     try:
-        return await svc.list_products(user, webstore_id=webstore_id)
+        return await svc.list_products(user, webstore_id=webstore_id, status=status, category_id=category_id, q=q)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.patch("/{webstore_id}/products/{product_id}")
+async def update_product(webstore_id: str, product_id: str, payload: ProductPatchIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.update_product(user, webstore_id, product_id, payload.model_dump(exclude_unset=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/products/{product_id}/archive")
+async def archive_product(webstore_id: str, product_id: str, payload: LifecycleRevisionIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.archive_product(user, webstore_id, product_id, payload.expected_revision)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/products/{product_id}/restore")
+async def restore_product(webstore_id: str, product_id: str, payload: LifecycleRevisionIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.restore_product(user, webstore_id, product_id, payload.expected_revision)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.get("/{webstore_id}/product-categories")
+async def list_categories(webstore_id: str, status: Optional[str] = Query(None), user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.list_categories(user, webstore_id, status=status)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/product-categories", status_code=201)
+async def create_category(webstore_id: str, payload: CategoryIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.create_category(user, webstore_id, payload.model_dump(exclude_none=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.patch("/{webstore_id}/product-categories/{category_id}")
+async def update_category(webstore_id: str, category_id: str, payload: CategoryPatchIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.update_category(user, webstore_id, category_id, payload.model_dump(exclude_unset=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/product-categories/{category_id}/archive")
+async def archive_category(webstore_id: str, category_id: str, payload: LifecycleRevisionIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.archive_category(user, webstore_id, category_id, payload.expected_revision)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/product-categories/{category_id}/restore")
+async def restore_category(webstore_id: str, category_id: str, payload: LifecycleRevisionIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.restore_category(user, webstore_id, category_id, payload.expected_revision)
     except WebstoreError as e:
         _raise(e)
 
@@ -513,10 +700,26 @@ async def create_artwork(webstore_id: str, payload: ArtworkIn, user: dict = Depe
         _raise(e)
 
 
+@router.get("/{webstore_id}/artwork")
+async def list_artwork(webstore_id: str, product_id: Optional[str] = Query(None), user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.list_artwork(user, webstore_id, product_id=product_id)
+    except WebstoreError as e:
+        _raise(e)
+
+
 @router.post("/{webstore_id}/mockups", status_code=201)
 async def create_mockup(webstore_id: str, payload: MockupIn, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.create_mockup(user, webstore_id, payload.model_dump(exclude_none=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.get("/{webstore_id}/mockups")
+async def list_mockups(webstore_id: str, product_id: Optional[str] = Query(None), user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.list_mockups(user, webstore_id, product_id=product_id)
     except WebstoreError as e:
         _raise(e)
 
@@ -578,9 +781,14 @@ async def create_owner(payload: OwnerIn, user: dict = Depends(get_current_user))
 
 
 @router.get("/product-templates/list")
-async def list_templates(active: Optional[bool] = Query(None), user: dict = Depends(get_current_user)) -> dict:
+async def list_templates(
+    active: Optional[bool] = Query(None),
+    scope: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+) -> dict:
     try:
-        return await svc.list_templates(user, active=active)
+        return await svc.list_templates(user, active=active, scope=scope, status=status)
     except WebstoreError as e:
         _raise(e)
 
@@ -589,5 +797,29 @@ async def list_templates(active: Optional[bool] = Query(None), user: dict = Depe
 async def create_template(payload: TemplateIn, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.create_template(user, payload.model_dump(exclude_none=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.patch("/product-templates/{template_id}")
+async def update_template(template_id: str, payload: TemplatePatchIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.update_template(user, template_id, payload.model_dump(exclude_unset=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/product-templates/{template_id}/archive")
+async def archive_template(template_id: str, payload: LifecycleRevisionIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.archive_template(user, template_id, payload.expected_revision)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/product-templates/{template_id}/restore")
+async def restore_template(template_id: str, payload: LifecycleRevisionIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.restore_template(user, template_id, payload.expected_revision)
     except WebstoreError as e:
         _raise(e)

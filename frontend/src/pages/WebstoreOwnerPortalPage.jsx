@@ -141,11 +141,27 @@ export default function WebstoreOwnerPortalPage() {
         <CardHeader><CardTitle className="text-base">Products</CardTitle></CardHeader>
         <CardContent className="rounded border divide-y p-0">
           {(data.products || []).map((p) => (
-            <div key={p.id} className="p-3 flex items-center justify-between gap-3 text-sm">
-              <div><div className="font-medium">{p.name}</div><div className="text-xs text-muted-foreground">{p.description || p.product_type}</div></div>
+            <div key={p.id} className="p-3 grid gap-3 md:grid-cols-[96px_1fr_auto] text-sm">
+              <div className="aspect-square overflow-hidden rounded border bg-slate-50">
+                {p.images?.[0]?.url ? (
+                  <img src={p.images[0].url} alt={p.images[0].alt_text || p.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No image</div>
+                )}
+              </div>
+              <div>
+                <div className="font-medium">{p.name}</div>
+                <div className="text-xs text-muted-foreground">{p.description || p.product_type}</div>
+                {(p.mockups || []).length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {p.mockups.map((mockup) => <Badge key={mockup.id} variant="outline">{mockup.alt_text || mockup.purpose || "Mockup"}</Badge>)}
+                  </div>
+                )}
+              </div>
               <span className="font-medium">{centsToDollarsString(p.selling_price_cents)}</span>
             </div>
           ))}
+          {(data.products || []).length === 0 && <div className="p-3 text-sm text-muted-foreground">No product previews are available yet.</div>}
         </CardContent>
       </Card>
       {data.launch_packet && (
