@@ -81,6 +81,8 @@ class OrderItem(BaseDoc):
     # EC10 Phase 10A — reserved reference to a future Decision Room (EC10
     # Phase 10D). Not implemented/enforced yet; reference only.
     decision_room_id: Optional[str] = None
+    source_type: Optional[str] = None
+    source_id: Optional[str] = None
 
 
 class Order(BaseDoc):
@@ -92,6 +94,8 @@ class Order(BaseDoc):
     quote_id: Optional[str] = None
     source_quote_id: Optional[str] = None
     source_quote_revision: Optional[int] = None
+    source_type: Optional[str] = None
+    source_id: Optional[str] = None
 
     job_name: str
     title: Optional[str] = None                 # explicit title (EC3)

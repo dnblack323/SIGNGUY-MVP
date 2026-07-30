@@ -189,10 +189,20 @@ async def ensure_indexes() -> None:
     await db.orders.create_index([("tenant_id", 1), ("customer_id", 1), ("created_at", -1)])
     await db.orders.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
     await db.orders.create_index([("tenant_id", 1), ("source_quote_id", 1)])
+    await db.orders.create_index(
+        [("tenant_id", 1), ("source_type", 1), ("source_id", 1)],
+        unique=True,
+        partialFilterExpression={"source_type": {"$type": "string"}, "source_id": {"$type": "string"}},
+    )
     # order_items
     await db.order_items.create_index("id", unique=True)
     await db.order_items.create_index([("tenant_id", 1), ("order_id", 1), ("position", 1)])
     await db.order_items.create_index([("tenant_id", 1), ("production_required", 1)])
+    await db.order_items.create_index(
+        [("tenant_id", 1), ("source_type", 1), ("source_id", 1), ("position", 1)],
+        unique=True,
+        partialFilterExpression={"source_type": {"$type": "string"}, "source_id": {"$type": "string"}},
+    )
 
     # ---- EC4 — Payments indexes ----
     await db.payments.create_index("id", unique=True)

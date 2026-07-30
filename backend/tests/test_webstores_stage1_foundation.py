@@ -6,8 +6,9 @@ import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from pymongo.errors import DuplicateKeyError
 
-from app.core.db import db
+from app.core.db import db, ensure_indexes
 from app.core.portal_security import create_portal_token
 from app.deps import get_current_user
 from app.services.entitlements import _upsert_entitlement_for_tests
@@ -36,6 +37,7 @@ async def _portal_client(token: str) -> AsyncClient:
 
 @pytest.fixture
 async def stage1_ctx():
+    await ensure_indexes()
     suffix = uuid.uuid4().hex[:8]
     tenant_id = f"t-webstore-stage1-{suffix}"
     other_tenant_id = f"t-webstore-stage1-other-{suffix}"
@@ -218,11 +220,72 @@ async def test_verified_payment_processing_is_idempotent_and_creates_canonical_g
     assert await db.payments.count_documents({"tenant_id": stage1_ctx["tenant_id"], "id": payment_id}) == 1
     assert await db.webstore_payment_events.count_documents({"provider": "stripe", "provider_event_id": event["provider_event_id"]}) == 1
 
+    order_doc = await db.orders.find_one({"tenant_id": stage1_ctx["tenant_id"], "id": order_id}, {"_id": 0})
+    item_doc = await db.order_items.find_one({"tenant_id": stage1_ctx["tenant_id"], "order_id": order_id}, {"_id": 0})
+    payment_doc = await db.payments.find_one({"tenant_id": stage1_ctx["tenant_id"], "id": payment_id}, {"_id": 0})
+    assert order_doc["source_type"] == "webstore_purchase_intent"
+    assert order_doc["source_id"] == intent["id"]
+    assert item_doc["source_type"] == "webstore_purchase_intent"
+    assert item_doc["source_id"] == intent["id"]
+    assert payment_doc["invoice_id"] == f"webstore_purchase_intent:{intent['id']}"
+    assert payment_doc["idempotency_key"] == f"webstore-payment:{event['provider']}:{event['provider_payment_id']}"
+
+    duplicate_order = {
+        **order_doc,
+        "id": f"duplicate-order-{uuid.uuid4().hex}",
+        "number": 999_001,
+    }
+    with pytest.raises(DuplicateKeyError):
+        await db.orders.insert_one(duplicate_order)
+
+    duplicate_item = {
+        **item_doc,
+        "id": f"duplicate-item-{uuid.uuid4().hex}",
+        "order_id": f"other-order-{uuid.uuid4().hex}",
+    }
+    with pytest.raises(DuplicateKeyError):
+        await db.order_items.insert_one(duplicate_item)
+
+    duplicate_payment = {
+        **payment_doc,
+        "id": f"duplicate-payment-{uuid.uuid4().hex}",
+        "number": 999_002,
+        "stripe_payment_intent_id": f"pi_duplicate_{uuid.uuid4().hex}",
+    }
+    with pytest.raises(DuplicateKeyError):
+        await db.payments.insert_one(duplicate_payment)
+
     different_event_same_payment = await process_verified_payment_event({**event, "provider_event_id": f"evt_{uuid.uuid4().hex}"})
     assert different_event_same_payment["already_processed"] is True
     assert different_event_same_payment["order_id"] == order_id
     assert await db.orders.count_documents({"tenant_id": stage1_ctx["tenant_id"], "id": order_id}) == 1
     assert await db.payments.count_documents({"tenant_id": stage1_ctx["tenant_id"], "id": payment_id}) == 1
+
+
+@pytest.mark.asyncio
+async def test_canonical_commerce_source_indexes_are_unique(stage1_ctx):
+    order_indexes = await db.orders.index_information()
+    item_indexes = await db.order_items.index_information()
+    payment_indexes = await db.payments.index_information()
+
+    assert any(
+        spec.get("unique") is True
+        and spec.get("key") == [("tenant_id", 1), ("source_type", 1), ("source_id", 1)]
+        and spec.get("partialFilterExpression") == {"source_type": {"$type": "string"}, "source_id": {"$type": "string"}}
+        for spec in order_indexes.values()
+    )
+    assert any(
+        spec.get("unique") is True
+        and spec.get("key") == [("tenant_id", 1), ("source_type", 1), ("source_id", 1), ("position", 1)]
+        and spec.get("partialFilterExpression") == {"source_type": {"$type": "string"}, "source_id": {"$type": "string"}}
+        for spec in item_indexes.values()
+    )
+    assert any(
+        spec.get("unique") is True
+        and spec.get("key") == [("tenant_id", 1), ("invoice_id", 1), ("idempotency_key", 1)]
+        and spec.get("partialFilterExpression") == {"idempotency_key": {"$type": "string"}}
+        for spec in payment_indexes.values()
+    )
 
 
 @pytest.mark.asyncio

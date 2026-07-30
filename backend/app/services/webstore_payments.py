@@ -108,6 +108,8 @@ async def _create_order_graph(intent: dict, customer: dict, *, provider_event_id
         balance_cents=0,
         status="confirmed",
         created_by="webstore-payment",
+        source_type="webstore_purchase_intent",
+        source_id=intent["id"],
     ).model_dump()
     await db.orders.insert_one(prepare_for_mongo(order))
     items: list[dict] = []
@@ -130,6 +132,8 @@ async def _create_order_graph(intent: dict, customer: dict, *, provider_event_id
                 "line_item": line,
             },
             production_required=True,
+            source_type="webstore_purchase_intent",
+            source_id=intent["id"],
         ).model_dump()
         await db.order_items.insert_one(prepare_for_mongo(item))
         items.append(serialize_doc(item))
