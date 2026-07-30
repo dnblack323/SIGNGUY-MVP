@@ -20,6 +20,68 @@ export async function createWebstore(payload) {
   return r.data;
 }
 
+export async function getWebstoreSetupProgress(id) {
+  const r = await api.get(`/webstores/${id}/setup-progress`);
+  return r.data;
+}
+
+export async function listWebstoreAssignments(id) {
+  const r = await api.get(`/webstores/${id}/assignments`);
+  return r.data.items || [];
+}
+
+export async function createWebstoreAssignment(id, payload) {
+  const r = await api.post(`/webstores/${id}/assignments`, payload);
+  return r.data;
+}
+
+export async function resendWebstoreInvitation(id, assignmentId) {
+  const r = await api.post(`/webstores/${id}/assignments/${assignmentId}/resend`);
+  return r.data;
+}
+
+export async function revokeWebstoreAssignment(id, assignmentId, reason) {
+  const r = await api.post(`/webstores/${id}/assignments/${assignmentId}/revoke`, { reason });
+  return r.data;
+}
+
+export async function getWebstoreQuestionnaire(id) {
+  const r = await api.get(`/webstores/${id}/questionnaire`);
+  return r.data;
+}
+
+export async function getWebstoreQuestionnaireResponse(id) {
+  const r = await api.get(`/webstores/${id}/questionnaire-response`);
+  return r.data;
+}
+
+export async function previewWebstoreAnswerApplication(id, payload) {
+  const r = await api.post(`/webstores/${id}/questionnaire/apply-preview`, payload);
+  return r.data;
+}
+
+export async function applyWebstoreAnswers(id, payload) {
+  const r = await api.post(`/webstores/${id}/questionnaire/apply`, payload);
+  return r.data;
+}
+
+export async function reverseWebstoreAnswerApplication(id, applicationId, payload) {
+  const r = await api.post(`/webstores/${id}/answer-applications/${applicationId}/reverse`, payload);
+  return r.data;
+}
+
+export async function listWebstoreSetupFiles(id) {
+  const r = await api.get(`/webstores/${id}/setup-files`);
+  return r.data.items || [];
+}
+
+export async function uploadWebstoreSetupFile(id, formData) {
+  const r = await api.post(`/webstores/${id}/setup-files`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return r.data;
+}
+
 export async function listProductTemplates() {
   const r = await api.get("/webstores/product-templates/list", { params: { active: true } });
   return r.data.items || [];

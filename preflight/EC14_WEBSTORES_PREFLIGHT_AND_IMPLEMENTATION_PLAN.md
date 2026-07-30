@@ -307,3 +307,33 @@ Owner decisions recorded for this correction:
 - Official Webstore types are `B2B`, `Fundraiser`, `Event`, `Promotional`, `Employee`, and `General`.
 
 Stage 1 adds server-side purchase-intent totals, computed payment readiness that remains false until a real provider is connected, Store Owner and Store Manager scope enforcement, lifecycle transition validation, explicit public/portal response allowlists, checkout placeholder disabling, and replay-safe verified-payment foundations. Later storefront, Stripe, donation, payout, branding, setup wizard, AI, and catalog expansion work remains deferred.
+
+## Stage 2 Setup and Owner Intake
+
+Status: IMPLEMENTED FOR REVIEW on `feature/webstores-stage-2-setup`.
+
+Stage 2 is limited to Webstore setup workflow and owner intake. It preserves Stage 1 commerce safety and does not create checkout, donations, Stripe webhooks, payouts, storefront redesign, product catalog buildout, AI actions, or Launch Packet expansion.
+
+Implemented Stage 2 contracts:
+
+- Keeps Webstore lifecycle/status separate from setup workflow state.
+- Adds setup workflow states: `not_started`, `invitation_pending`, `questionnaire_in_progress`, `questionnaire_submitted`, `staff_review`, `changes_requested`, `setup_in_progress`, `blocked`, and `setup_complete`.
+- Creates Store Owner and Store Manager assignments scoped by tenant and Webstore.
+- Requires one primary Store Owner assignment per Webstore and records explicit primary-owner change confirmation/reason.
+- Uses hashed 48-hour invitation tokens only; raw tokens are returned only when generated or regenerated.
+- Invitation acceptance is one-time, expires, and links to a portal identity without granting staff permissions.
+- Resending an invitation supersedes prior pending tokens.
+- Adds tenant-scoped questionnaire templates, bound template snapshots, draft save, submit, return-for-changes, and immutable submitted answer snapshots.
+- Adds setup-file upload/download using application-owned object storage, file size/type/content validation, version replacement, and allowlisted owner/staff responses with storage keys hidden.
+- Adds safe answer-application preview/apply/reversal contracts that reject locked financial, payment, fee, Stripe, and launch-readiness fields.
+- Computes setup progress from assignments, invitations, questionnaire state, reviewed responses, and setup files.
+- Maintains public, Store Owner, and Store Manager response allowlists and tenant boundaries.
+
+Deferred after Stage 2:
+
+- Real Stripe Checkout, webhooks, Connect, payouts, refunds, disputes, and donation transactions.
+- Storefront branding editor and storefront redesign.
+- Product catalog buildout and catalog AI.
+- Launch Packet expansion.
+- Stage 3 and later Webstore phases.
+- EC4 invoice/payment changes and unrelated EC9 work.

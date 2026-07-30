@@ -273,6 +273,11 @@ def _portal_store(store: dict) -> dict:
         "terms_fee_acknowledged",
         "owner_approved_at",
         "launch_packet_id",
+        "setup_state",
+        "setup_profile",
+        "target_launch_at",
+        "event_start_at",
+        "event_location",
     }
     result = {k: v for k, v in store.items() if k in allowed}
     result["checkout_enabled"] = bool(result.get("checkout_enabled")) and PUBLIC_CHECKOUT_ENABLED
@@ -380,6 +385,13 @@ async def list_owners(user: dict) -> dict:
 
 async def create_webstore(user: dict, fields: dict[str, Any]) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_WRITE)
+    if fields.get("idempotency_key"):
+        existing = await db.webstores.find_one(
+            {"tenant_id": user["tenant_id"], "creation_idempotency_key": fields["idempotency_key"]},
+            {"_id": 0},
+        )
+        if existing:
+            return serialize_doc(existing)
     owner = await _get_owner(user["tenant_id"], fields["owner_id"])
     slug = _slug(fields.get("slug") or fields.get("name") or owner["name"])
     tenant = await db.tenants.find_one({"id": user["tenant_id"]}, {"_id": 0, "name": 1, "slug": 1})
@@ -402,6 +414,12 @@ async def create_webstore(user: dict, fields: dict[str, Any]) -> dict:
         stripe_onboarding_required=bool(fields.get("stripe_onboarding_required", False)),
         stripe_payment_ready=False,
         deadline_at=fields.get("deadline_at"),
+        target_launch_at=fields.get("target_launch_at"),
+        event_start_at=fields.get("event_start_at"),
+        event_location=fields.get("event_location"),
+        setup_profile=fields.get("setup_profile") or {},
+        setup_requirements=fields.get("setup_requirements") or {},
+        creation_idempotency_key=fields.get("idempotency_key"),
         public_url=f"/p/webstores/{public_slug}",
     ).model_dump()
     try:
@@ -419,6 +437,21 @@ async def create_webstore(user: dict, fields: dict[str, Any]) -> dict:
         entity_id=store["id"],
         summary="Webstore created",
     )
+    from .webstore_setup import WebstoreSetupError, initialize_store_setup
+
+    try:
+        await initialize_store_setup(user, store, owner, fields)
+    except WebstoreSetupError as exc:
+        await db.webstores.delete_one({"tenant_id": user["tenant_id"], "id": store["id"]})
+        await db.webstore_access_assignments.delete_many({"tenant_id": user["tenant_id"], "webstore_id": store["id"]})
+        await db.webstore_invitations.delete_many({"tenant_id": user["tenant_id"], "webstore_id": store["id"]})
+        await db.webstore_questionnaire_submissions.delete_many({"tenant_id": user["tenant_id"], "webstore_id": store["id"]})
+        await db.webstore_setup_files.delete_many({"tenant_id": user["tenant_id"], "webstore_id": store["id"]})
+        await db.webstore_answer_applications.delete_many({"tenant_id": user["tenant_id"], "webstore_id": store["id"]})
+        raise WebstoreError(exc.code, exc.detail, exc.status_code) from exc
+    updated = await db.webstores.find_one({"tenant_id": user["tenant_id"], "id": store["id"]}, {"_id": 0})
+    if updated:
+        store = serialize_doc(updated)
     return serialize_doc(store)  # type: ignore[return-value]
 
 
@@ -460,6 +493,44 @@ async def update_webstore(user: dict, webstore_id: str, updates: dict[str, Any])
         allowed["description"] = _clean_optional_text(allowed["description"])
     if "store_type" in allowed:
         allowed["store_type"] = _normalize_store_type(allowed["store_type"])
+        if allowed["store_type"] != store_before.get("store_type"):
+            owner_activity_count = sum(
+                [
+                    await db.webstore_access_assignments.count_documents({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}),
+                    await db.webstore_invitations.count_documents({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}),
+                    await db.webstore_questionnaire_submissions.count_documents({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}),
+                    await db.webstore_setup_files.count_documents({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}),
+                ]
+            )
+            if owner_activity_count:
+                _require_staff_perm(user, Perm.WEBSTORE_MANAGE)
+                if not updates.get("confirm_type_change") or not updates.get("impact_review_acknowledged") or not updates.get("type_change_reason"):
+                    raise WebstoreError(
+                        "webstore_type_change_confirmation_required",
+                        "Changing Webstore type after owner/setup activity requires confirmation, impact review, and a reason.",
+                        409,
+                    )
+                inactive_keys: set[str] = set()
+                async for submission in db.webstore_questionnaire_submissions.find({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}, {"_id": 0, "answers": 1, "submitted_snapshot": 1}):
+                    inactive_keys.update((submission.get("answers") or {}).keys())
+                    inactive_keys.update(((submission.get("submitted_snapshot") or {}).get("answers") or {}).keys())
+                if inactive_keys:
+                    await db.webstore_questionnaire_submissions.update_many(
+                        {"tenant_id": user["tenant_id"], "webstore_id": webstore_id},
+                        {"$addToSet": {"inactive_answer_paths": {"$each": sorted(inactive_keys)}}, "$set": {"updated_at": _now_iso()}},
+                    )
+                history_entry = {
+                    "from": store_before.get("store_type"),
+                    "to": allowed["store_type"],
+                    "reason": updates.get("type_change_reason"),
+                    "actor_user_id": user.get("id"),
+                    "actor_email": user.get("email"),
+                    "changed_at": _now_iso(),
+                }
+                await db.webstores.update_one(
+                    {"tenant_id": user["tenant_id"], "id": webstore_id},
+                    {"$push": {"setup_profile.type_change_history": history_entry}},
+                )
     if "name" in allowed and allowed["name"] != store_before.get("name"):
         public_slug = await _generate_public_slug(
             tenant_id=user["tenant_id"],
@@ -484,6 +555,19 @@ async def update_webstore(user: dict, webstore_id: str, updates: dict[str, Any])
         summary="Webstore updated",
         metadata={"fields": sorted(allowed)},
     )
+    if "store_type" in allowed and allowed["store_type"] != store_before.get("store_type"):
+        await _audit(
+            tenant_id=user["tenant_id"],
+            webstore_id=webstore_id,
+            actor_type="staff",
+            actor_id=user["id"],
+            actor_email=user.get("email"),
+            action="webstore.type_changed",
+            entity_type="webstore",
+            entity_id=webstore_id,
+            summary=f"Webstore type changed from {store_before.get('store_type')} to {allowed['store_type']}",
+            metadata={"from": store_before.get("store_type"), "to": allowed["store_type"], "reason": updates.get("type_change_reason")},
+        )
     return store or {}
 
 
@@ -1230,6 +1314,22 @@ async def _owner_portal_store(identity: dict, webstore_id: str) -> dict:
     if identity.get("portal_type") not in {"webstore_owner", "webstore_manager"}:
         raise WebstoreError("webstore_portal_required", "Webstore portal access required", 403)
     store = await _get_store(identity["tenant_id"], webstore_id)
+    assignment = await db.webstore_access_assignments.find_one(
+        {
+            "tenant_id": identity["tenant_id"],
+            "webstore_id": webstore_id,
+            "portal_identity_id": identity.get("id"),
+            "status": "active",
+        },
+        {"_id": 0},
+    )
+    if assignment:
+        return store
+    assignment_count = await db.webstore_access_assignments.count_documents(
+        {"tenant_id": identity["tenant_id"], "portal_identity_id": identity.get("id")}
+    )
+    if assignment_count:
+        raise WebstoreError("webstore_assignment_scope_forbidden", "Webstore portal access is limited to assigned Webstores", 403)
     owner_id = identity.get("webstore_owner_id")
     if owner_id and store.get("owner_id") != owner_id:
         raise WebstoreError("webstore_scope_forbidden", "Webstore portal access is owner-scoped", 403)
@@ -1247,6 +1347,20 @@ async def _owner_portal_store(identity: dict, webstore_id: str) -> dict:
 async def owner_portal_list(identity: dict) -> dict:
     if identity.get("portal_type") not in {"webstore_owner", "webstore_manager"} or not identity.get("webstore_owner_id"):
         raise WebstoreError("webstore_portal_required", "Webstore portal access required", 403)
+    assignment_records = [
+        doc
+        async for doc in db.webstore_access_assignments.find(
+            {"tenant_id": identity["tenant_id"], "portal_identity_id": identity.get("id")},
+            {"_id": 0, "webstore_id": 1, "status": 1},
+        )
+    ]
+    if assignment_records:
+        assignments = [doc["webstore_id"] for doc in assignment_records if doc.get("status") == "active"]
+        return await stores_repo.list(
+            tenant_id=identity["tenant_id"],
+            filters={"id": {"$in": assignments}},
+            sort=[("updated_at", -1)],
+        )
     filters = {"owner_id": identity["webstore_owner_id"]}
     if identity.get("portal_type") == "webstore_manager":
         if not identity.get("webstore_id"):

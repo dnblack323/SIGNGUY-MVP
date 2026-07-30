@@ -8,16 +8,28 @@ import WebstoresPage from "@/pages/WebstoresPage";
 import axios from "axios";
 import {
   createWebstore,
+  createWebstoreAssignment,
   createWebstoreOwner,
   createProductFromTemplate,
+  getWebstoreQuestionnaire,
+  getWebstoreQuestionnaireResponse,
   generateLaunchPacket,
   getLaunchReadiness,
+  getWebstoreSetupProgress,
   getWebstore,
   getWebstoreReports,
+  listWebstoreAssignments,
+  listWebstoreSetupFiles,
   listWebstores,
   listProductTemplates,
+  applyWebstoreAnswers,
+  previewWebstoreAnswerApplication,
+  resendWebstoreInvitation,
+  revokeWebstoreAssignment,
+  reverseWebstoreAnswerApplication,
   sendLaunchPacket,
   setWebstoreStatus,
+  uploadWebstoreSetupFile,
   updateWebstore,
 } from "@/lib/webstores";
 import { useAuth } from "@/auth/AuthContext";
@@ -29,16 +41,28 @@ jest.mock("axios", () => ({
 
 jest.mock("@/lib/webstores", () => ({
   createWebstore: jest.fn(),
+  createWebstoreAssignment: jest.fn(),
   createWebstoreOwner: jest.fn(),
   createProductFromTemplate: jest.fn(),
+  getWebstoreQuestionnaire: jest.fn(),
+  getWebstoreQuestionnaireResponse: jest.fn(),
   generateLaunchPacket: jest.fn(),
   getLaunchReadiness: jest.fn(),
+  getWebstoreSetupProgress: jest.fn(),
   getWebstore: jest.fn(),
   getWebstoreReports: jest.fn(),
+  listWebstoreAssignments: jest.fn(),
+  listWebstoreSetupFiles: jest.fn(),
   listWebstores: jest.fn(),
   listProductTemplates: jest.fn(),
+  applyWebstoreAnswers: jest.fn(),
+  previewWebstoreAnswerApplication: jest.fn(),
+  resendWebstoreInvitation: jest.fn(),
+  revokeWebstoreAssignment: jest.fn(),
+  reverseWebstoreAnswerApplication: jest.fn(),
   sendLaunchPacket: jest.fn(),
   setWebstoreStatus: jest.fn(),
+  uploadWebstoreSetupFile: jest.fn(),
   updateWebstore: jest.fn(),
 }));
 
@@ -70,13 +94,26 @@ beforeEach(() => {
   window.HTMLElement.prototype.scrollIntoView = window.HTMLElement.prototype.scrollIntoView || (() => {});
   useAuth.mockReturnValue({ hasPerm: () => true });
   createWebstore.mockResolvedValue({ id: "ws-new" });
+  createWebstoreAssignment.mockResolvedValue({});
   createWebstoreOwner.mockResolvedValue({ id: "owner-new" });
   createProductFromTemplate.mockResolvedValue({});
+  getWebstoreQuestionnaire.mockResolvedValue({ templates: [] });
+  getWebstoreQuestionnaireResponse.mockResolvedValue({ submission: null });
   generateLaunchPacket.mockResolvedValue({});
+  getWebstoreSetupProgress.mockResolvedValue({ setup_state: "not_started", steps: [] });
+  listWebstoreAssignments.mockResolvedValue([]);
+  listWebstoreSetupFiles.mockResolvedValue([]);
+  applyWebstoreAnswers.mockResolvedValue({});
+  previewWebstoreAnswerApplication.mockResolvedValue({ proposed_changes: [], rejected_changes: [] });
+  resendWebstoreInvitation.mockResolvedValue({});
+  revokeWebstoreAssignment.mockResolvedValue({});
+  reverseWebstoreAnswerApplication.mockResolvedValue({});
+  uploadWebstoreSetupFile.mockResolvedValue({});
   sendLaunchPacket.mockResolvedValue({});
   setWebstoreStatus.mockResolvedValue({});
   updateWebstore.mockResolvedValue({});
   listWebstores.mockResolvedValue({ items: [] });
+  listProductTemplates.mockResolvedValue([]);
 });
 
 test("public storefront saves a purchase intent and keeps checkout unavailable", async () => {
@@ -173,5 +210,65 @@ test("authenticated Webstores creation supports the six official store types", a
     name: "Employee Store",
     slug: undefined,
     store_type: "employee",
+    target_launch_at: undefined,
+    deadline_at: undefined,
+    manager_emails: [],
+    additional_owner_emails: [],
+    idempotency_key: "webstore-create-owner@example.com-employee store",
+    send_owner_invitation: true,
   }));
+});
+
+test("webstore detail shows setup intake, assignments, files, and answer preview", async () => {
+  getWebstore.mockResolvedValue({
+    webstore: {
+      id: "ws-2",
+      name: "Setup Store",
+      slug: "setup-store",
+      public_slug: "setup-public",
+      public_url: "/p/webstores/setup-public",
+      store_type: "event",
+      status: "draft",
+      setup_state: "staff_review",
+      terms_fee_acknowledged: false,
+    },
+    launch_packets: [],
+    products: [],
+  });
+  getLaunchReadiness.mockResolvedValue({ ready: false, checks: { payment_ready: false }, payment_unavailable_reason: "Real verified provider checkout is not connected yet." });
+  getWebstoreReports.mockResolvedValue({ order_count: 0, gross_sales_cents: 0, ledger_totals_cents: {} });
+  getWebstoreSetupProgress.mockResolvedValue({
+    setup_state: "staff_review",
+    steps: [{ key: "questionnaire", label: "Owner intake questionnaire", status: "review" }],
+  });
+  listWebstoreAssignments.mockResolvedValue([
+    { id: "assign-1", email: "owner@example.com", role: "owner", status: "active", is_primary_owner: true },
+    { id: "assign-2", email: "manager@example.com", role: "manager", status: "invited", is_primary_owner: false },
+  ]);
+  listWebstoreSetupFiles.mockResolvedValue([{ id: "file-1", file_name: "logo.png", category: "logo", version: 1, private_download_only: false }]);
+  getWebstoreQuestionnaire.mockResolvedValue({ templates: [{ id: "tpl-1", sections: [] }] });
+  getWebstoreQuestionnaireResponse.mockResolvedValue({
+    submission: { id: "sub-1", status: "submitted", submitted_snapshot: { answers: { store_name: "New Name" } } },
+  });
+  previewWebstoreAnswerApplication.mockResolvedValue({
+    proposed_changes: [{ answer_key: "store_name", target: "name", label: "Store name", from: "Setup Store", to: "New Name" }],
+    rejected_changes: [],
+  });
+
+  const user = userEvent.setup();
+  renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-2", path: "/webstores/:id" });
+
+  expect(await screen.findByText("Setup Store")).toBeInTheDocument();
+  expect(screen.getByTestId("webstore-setup-state")).toHaveTextContent("staff_review");
+  expect(await screen.findByText("owner@example.com")).toBeInTheDocument();
+  expect(await screen.findByTestId("webstore-assignment-resend-assign-2")).toBeInTheDocument();
+  expect(await screen.findByTestId("webstore-assignment-revoke-assign-2")).toBeInTheDocument();
+  expect(await screen.findByText("logo.png")).toBeInTheDocument();
+  await user.click(screen.getByTestId("webstore-select-answer-store_name"));
+  await user.click(screen.getByRole("button", { name: /Preview apply/ }));
+  await waitFor(() => expect(previewWebstoreAnswerApplication).toHaveBeenCalledWith("ws-2", expect.objectContaining({
+    selected_answer_keys: ["store_name"],
+    proposed_values: expect.objectContaining({ store_name: "New Name" }),
+  })));
+  expect(await screen.findByTestId("webstore-answer-preview")).toHaveTextContent("Store name");
 });

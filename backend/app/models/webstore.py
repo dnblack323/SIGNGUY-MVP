@@ -67,7 +67,24 @@ WebstoreStatus = Literal[
 WebstoreOwnerStatus = Literal["active", "disabled", "archived"]
 WebstoreType = Literal["b2b", "fundraiser", "event", "promotional", "employee", "general"]
 WebstoreProductStatus = Literal["draft", "active", "inactive", "archived"]
-QuestionnaireStatus = Literal["pending", "submitted", "reviewed"]
+QuestionnaireStatus = Literal["draft", "submitted", "returned_for_changes", "reviewed", "superseded", "pending"]
+WebstoreSetupState = Literal[
+    "not_started",
+    "invitation_pending",
+    "questionnaire_in_progress",
+    "questionnaire_submitted",
+    "staff_review",
+    "changes_requested",
+    "setup_in_progress",
+    "blocked",
+    "setup_complete",
+]
+WebstoreAssignmentRole = Literal["owner", "manager"]
+WebstoreAssignmentStatus = Literal["invited", "active", "revoked", "expired", "replaced"]
+WebstoreInvitationStatus = Literal["pending", "sent", "send_failed", "accepted", "revoked", "expired", "superseded"]
+WebstoreQuestionnaireTemplateStatus = Literal["active", "inactive", "retired"]
+WebstoreSetupFileStatus = Literal["active", "replaced", "removed"]
+WebstoreAnswerApplicationStatus = Literal["applied", "reversed"]
 ArtworkStatus = Literal[
     "uploaded",
     "cleanup_pending",
@@ -157,6 +174,14 @@ class Webstore(BaseDoc):
     launched_at: Optional[str] = None
     closed_at: Optional[str] = None
     archived_at: Optional[str] = None
+    setup_state: WebstoreSetupState = "not_started"
+    setup_profile: dict[str, Any] = Field(default_factory=dict)
+    setup_requirements: dict[str, Any] = Field(default_factory=dict)
+    target_launch_at: Optional[str] = None
+    event_start_at: Optional[str] = None
+    event_location: Optional[str] = None
+    primary_owner_assignment_id: Optional[str] = None
+    creation_idempotency_key: Optional[str] = None
 
 
 class WebstoreProductTemplate(BaseDoc):
@@ -204,12 +229,108 @@ class WebstoreQuestionnaireSubmission(BaseDoc):
     tenant_id: str
     webstore_id: str
     owner_id: str
+    portal_identity_id: Optional[str] = None
+    template_ids: list[str] = Field(default_factory=list)
+    template_version_ids: list[str] = Field(default_factory=list)
+    template_snapshot: dict[str, Any] = Field(default_factory=dict)
     answers: dict[str, Any] = Field(default_factory=dict)
     known_products: list[dict[str, Any]] = Field(default_factory=list)
     open_to_suggestions: bool = True
     missing_info_flags: list[str] = Field(default_factory=list)
     status: QuestionnaireStatus = "pending"
+    submitted_snapshot: dict[str, Any] = Field(default_factory=dict)
+    inactive_answer_paths: list[str] = Field(default_factory=list)
+    returned_reason: Optional[str] = None
     submitted_at: Optional[str] = None
+    reviewed_at: Optional[str] = None
+
+
+class WebstoreAccessAssignment(BaseDoc):
+    tenant_id: str
+    webstore_id: str
+    owner_id: str
+    role: WebstoreAssignmentRole
+    email: str
+    name: Optional[str] = None
+    portal_identity_id: Optional[str] = None
+    is_primary_owner: bool = False
+    status: WebstoreAssignmentStatus = "invited"
+    invitation_id: Optional[str] = None
+    invited_at: Optional[str] = None
+    accepted_at: Optional[str] = None
+    revoked_at: Optional[str] = None
+    expired_at: Optional[str] = None
+    replaced_at: Optional[str] = None
+    replaced_by_assignment_id: Optional[str] = None
+
+
+class WebstoreInvitation(BaseDoc):
+    tenant_id: str
+    webstore_id: str
+    assignment_id: str
+    role: WebstoreAssignmentRole
+    email: str
+    name: Optional[str] = None
+    token_hash: str
+    status: WebstoreInvitationStatus = "pending"
+    expires_at: str
+    sent_at: Optional[str] = None
+    accepted_at: Optional[str] = None
+    revoked_at: Optional[str] = None
+    superseded_at: Optional[str] = None
+    delivery_message_id: Optional[str] = None
+    delivery_error: Optional[str] = None
+    created_by_user_id: Optional[str] = None
+
+
+class WebstoreQuestionnaireTemplate(BaseDoc):
+    tenant_id: str
+    scope: str = "tenant"
+    store_type: str = "general"
+    version: StrictInt = Field(default=1, ge=1)
+    title: str
+    sections: list[dict[str, Any]] = Field(default_factory=list)
+    status: WebstoreQuestionnaireTemplateStatus = "active"
+    source_template_id: Optional[str] = None
+
+
+class WebstoreSetupFile(BaseDoc):
+    tenant_id: str
+    webstore_id: str
+    category: str
+    file_name: str
+    extension: str
+    content_type: str
+    detected_content_type: str
+    size_bytes: StrictInt = Field(ge=0)
+    storage_key: str
+    uploaded_by_actor_type: str
+    uploaded_by_id: Optional[str] = None
+    status: WebstoreSetupFileStatus = "active"
+    version: StrictInt = Field(default=1, ge=1)
+    replaces_file_id: Optional[str] = None
+    replaced_by_file_id: Optional[str] = None
+    safe_preview_available: bool = False
+    inline_preview_allowed: bool = False
+    private_download_only: bool = True
+    svg_sanitized: bool = False
+    notes: Optional[str] = None
+
+
+class WebstoreAnswerApplication(BaseDoc):
+    tenant_id: str
+    webstore_id: str
+    submission_id: str
+    idempotency_key: str
+    status: WebstoreAnswerApplicationStatus = "applied"
+    actor_user_id: Optional[str] = None
+    actor_email: Optional[str] = None
+    reason: str
+    proposed_changes: list[dict[str, Any]] = Field(default_factory=list)
+    applied_changes: list[dict[str, Any]] = Field(default_factory=list)
+    rejected_changes: list[dict[str, Any]] = Field(default_factory=list)
+    reversal_of_application_id: Optional[str] = None
+    reversed_at: Optional[str] = None
 
 
 class WebstoreArtworkFile(BaseDoc):
