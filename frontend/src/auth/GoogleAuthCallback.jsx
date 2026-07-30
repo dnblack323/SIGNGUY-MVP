@@ -4,10 +4,9 @@ import api from "@/lib/api";
 import { useAuth } from "@/auth/AuthContext";
 
 /**
- * Lands here when the URL fragment contains `#session_id=...` after the
- * user completes Google Sign-In via the configured Google Auth provider.
- * Exchanges the one-time session_id for our own app JWT, then continues
- * into the dashboard exactly like a normal email/password login.
+ * Lands here when Google redirects back with `?code=...&state=...`.
+ * Exchanges the one-time authorization code for our own app JWT, then
+ * continues into the dashboard exactly like a normal email/password login.
  */
 export default function GoogleAuthCallback() {
   const hasProcessed = useRef(false);
@@ -21,15 +20,22 @@ export default function GoogleAuthCallback() {
 
     (async () => {
       try {
-        const sessionId = new URLSearchParams(window.location.hash.slice(1)).get("session_id");
-        if (!sessionId) throw new Error("Missing session_id");
-        const { data } = await api.post("/auth/google/session", { session_id: sessionId });
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get("code");
+        const state = params.get("state");
+        if (!code || !state) throw new Error("Missing Google authorization response");
+        const redirectUri = `${window.location.origin}/auth/google/callback`;
+        const { data } = await api.post("/auth/google/callback", {
+          code,
+          state,
+          redirect_uri: redirectUri,
+        });
         localStorage.setItem("signguy.token", data.access_token);
-        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        window.history.replaceState(null, "", window.location.pathname);
         await refresh();
         navigate("/", { replace: true });
       } catch {
-        setErrorMsg("Google sign-in failed. Redirecting back to login…");
+        setErrorMsg("Google sign-in failed. Redirecting back to login...");
         setTimeout(() => navigate("/login", { replace: true }), 1800);
       }
     })();

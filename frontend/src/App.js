@@ -1,5 +1,5 @@
 import "@/App.css";
-import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/auth/AuthContext";
 import RequireAuth from "@/auth/RequireAuth";
 import GoogleAuthCallback from "@/auth/GoogleAuthCallback";
@@ -94,16 +94,10 @@ function LoggedInHome() {
 }
 
 function AppRoutes() {
-  const location = useLocation();
-  // Google Sign-In lands back on whatever page we redirected to, with
-  // `#session_id=...` appended. Detected synchronously during render (not
-  // in an effect) so it's handled before any route/auth-guard decision.
-  if (location.hash?.includes("session_id=")) {
-    return <GoogleAuthCallback />;
-  }
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/auth/google/callback" element={<GoogleAuthCallback />} />
       <Route path="/register" element={<RegisterTenantPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />

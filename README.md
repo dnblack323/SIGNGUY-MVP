@@ -8,13 +8,13 @@ employee portals, and a Pricing Foundation with per-category pricing calculators
 
 - **Backend**: FastAPI (Python 3.11), MongoDB (Motor async driver)
 - **Frontend**: React 18 (Create React App + CRACO), Tailwind CSS, shadcn/ui, TanStack Query
-- **Process management**: supervisor (dev/preview environment)
+- **Container runtime**: repository-owned Docker Compose with nginx routing
 
 ## Prerequisites
 
 - Node.js **20.x** and Yarn **1.22.x** (Yarn Classic — this repo is NOT set up for Yarn Berry/npm)
 - Python **3.11**
-- A running MongoDB instance
+- A running MongoDB instance, or Docker Compose
 
 ## Local setup
 
@@ -38,7 +38,9 @@ Required backend environment variables (`backend/.env`, never committed):
 | `JWT_SECRET` | Secret for signing access tokens |
 | `ENV` | `development` or `production` — gates all `/api/*/dev-*` routes and dev-only response fields |
 | `AUTH_DEV_BYPASS` | `true` only in development — enables `/api/auth/dev-login` |
-| `EMERGENT_LLM_KEY` | Universal key used by AI and object-storage integrations when those optional features are enabled |
+| `AI_PROVIDER_API_KEY` | Optional AI provider key when `AI_ENABLED=true` |
+| `GOOGLE_AUTH_ENABLED` | Enables direct app-owned Google OAuth |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Backend-only Google OAuth credentials |
 | `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, `SENDGRID_FROM_NAME` | Transactional email |
 | `STRIPE_API_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WRITES_ENABLED` | Payments |
 
@@ -52,11 +54,24 @@ yarn install --frozen-lockfile   # reproducible install from the committed yarn.
 yarn start                       # dev server on :3000
 ```
 
-Required frontend environment variable (`frontend/.env`, never committed):
+Optional frontend environment variable (`frontend/.env`, never committed):
 
 | Variable | Purpose |
 | --- | --- |
-| `REACT_APP_BACKEND_URL` | Base URL the frontend uses to reach the backend's `/api/*` routes |
+| `REACT_APP_API_BASE_URL` | API base path. Defaults to same-origin `/api`. |
+| `SIGNGUY_DEV_API_TARGET` | Optional CRA dev-server proxy target for same-origin `/api`; defaults to `http://localhost:8001`. |
+
+### Docker Compose
+
+The repository includes an independent local stack:
+
+```bash
+docker compose up --build
+```
+
+The web app is served at `http://localhost:3000`. nginx serves the React build
+and proxies `/api/*` to the backend service. MongoDB data and object storage are
+kept in Docker volumes.
 
 ### Production build
 
@@ -93,6 +108,9 @@ require identifying the shop explicitly:
 
 - `POST /api/auth/login` — body: `{ "tenant_slug", "email", "password" }`
 - `POST /api/auth/request-password-reset` — body: `{ "tenant_slug", "email" }`
+- Google sign-in uses app-owned direct OAuth. The backend creates a short-lived,
+  one-time state value, validates replay/expiration on callback, exchanges the
+  authorization code directly with Google, and issues the normal app JWT.
 - Google sign-in links to an existing account only when the email is unambiguous
   across shops; if it exists in more than one shop, the user is asked to sign in with
   their shop slug + email + password instead.

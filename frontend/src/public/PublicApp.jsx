@@ -9,8 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import DecisionRoomCustomerView from "@/components/decisionRoom/DecisionRoomCustomerView";
 import PublicWebstorePage from "@/pages/PublicWebstorePage";
+import { API_BASE } from "@/lib/apiBase";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = API_BASE;
 
 function useTokenIntrospect(t) {
   const [data, setData] = useState(null);

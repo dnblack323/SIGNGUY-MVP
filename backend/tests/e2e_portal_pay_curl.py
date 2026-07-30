@@ -19,10 +19,9 @@ sys.path.insert(0, "/app/backend")
 
 import requests
 from dotenv import load_dotenv
-load_dotenv("/app/frontend/.env")
 load_dotenv("/app/backend/.env")
 
-BASE = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
+BASE = os.environ.get("SIGNGUY_API_BASE_URL", "http://localhost:8001").rstrip("/")
 
 def _step(name, ok, detail=""):
     tag = "PASS" if ok else "FAIL"

@@ -14,15 +14,13 @@ export function AuthProvider({ children }) {
   const refresh = useCallback(async () => {
     try {
       setError(null);
-      // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-      // If we're returning from the Google Sign-In redirect, GoogleAuthCallback
-      // owns the exchange (and will call refresh() again once done) — skip the
-      // normal check here to avoid a race that flashes the login page.
-      if (window.location.hash?.includes("session_id=")) {
+      // If we're returning from Google OAuth, GoogleAuthCallback owns the
+      // exchange and will call refresh() again once done.
+      if (window.location.pathname === "/auth/google/callback") {
         setLoading(false);
         return;
       }
-      // Check backend dev bypass status
+
       let bypass = false;
       try {
         const { data: cfg } = await api.get("/auth/dev-config");
@@ -32,7 +30,6 @@ export function AuthProvider({ children }) {
 
       let token = localStorage.getItem("signguy.token");
 
-      // Auto-login via dev bypass if there's no token
       if (!token && bypass) {
         try {
           const { data } = await api.post("/auth/dev-login");
@@ -80,8 +77,6 @@ export function AuthProvider({ children }) {
     try { await api.post("/auth/logout"); } catch { /* ignore */ }
     localStorage.removeItem("signguy.token");
     setUser(null); setTenant(null); setPermissions([]);
-    // In dev bypass mode, /login page will just auto-relogin \u2014 so stay on /login and let the user
-    // pick a real account, or refresh to re-enter Dev Shop.
     window.location.href = "/login";
   }, []);
 

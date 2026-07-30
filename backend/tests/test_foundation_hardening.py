@@ -9,7 +9,8 @@ routes by design.
 """
 from __future__ import annotations
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 import pytest
 from httpx import ASGITransport, AsyncClient
 from server import app
@@ -121,6 +122,24 @@ class _FakeResp:
         return self._payload
 
 
+class _FakeGoogleClient:
+    def __init__(self, *args, token_payload=None, profile_payload=None, **kwargs):
+        self.token_payload = token_payload or {"access_token": "google-access-token"}
+        self.profile_payload = profile_payload or {}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def post(self, *args, **kwargs):
+        return _FakeResp(200, self.token_payload)
+
+    async def get(self, *args, **kwargs):
+        return _FakeResp(200, self.profile_payload)
+
+
 @pytest.mark.asyncio
 async def test_google_link_rejects_ambiguous_email_across_tenants():
     from app.routers import auth as auth_module
@@ -132,33 +151,68 @@ async def test_google_link_rejects_ambiguous_email_across_tenants():
         await _register_tenant(c, s1, shared_email)
         await _register_tenant(c, s2, shared_email)
 
-        fake_profile = {"id": f"google-{uuid.uuid4().hex[:8]}", "email": shared_email, "name": "Dup"}
+        fake_profile = {"sub": f"google-{uuid.uuid4().hex[:8]}", "email": shared_email, "name": "Dup"}
         with (
             patch.object(auth_module._settings, "google_auth_enabled", True),
-            patch.object(auth_module._settings, "google_auth_session_data_url", "https://google-auth.test/session-data"),
-            patch("httpx.AsyncClient.get", new=AsyncMock(return_value=_FakeResp(200, fake_profile))),
+            patch.object(auth_module._settings, "google_oauth_client_id", "client-id"),
+            patch.object(auth_module._settings, "google_oauth_client_secret", "client-secret"),
+            patch.object(auth_module._settings, "cors_origins", ["http://test"]),
+            patch.object(auth_module.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGoogleClient(profile_payload=fake_profile)),
         ):
-            r = await c.post("/api/auth/google/session", json={"session_id": "fake-session-id"})
+            start = await c.post("/api/auth/google/start", json={"redirect_uri": "http://test/auth/google/callback"})
+            assert start.status_code == 200, start.text
+            state = parse_qs(urlparse(start.json()["authorization_url"]).query)["state"][0]
+            r = await c.post(
+                "/api/auth/google/callback",
+                json={"code": "google-code", "state": state, "redirect_uri": "http://test/auth/google/callback"},
+            )
         assert r.status_code == 409
 
 
 @pytest.mark.asyncio
-async def test_google_link_succeeds_for_unambiguous_email():
+async def test_google_oauth_callback_succeeds_once_for_unambiguous_email():
     from app.routers import auth as auth_module
 
     email = f"gok-{uuid.uuid4().hex[:6]}@example.com"
     async with await _anon_client() as c:
         slug = f"g-ok-shop-{uuid.uuid4().hex[:6]}"
         await _register_tenant(c, slug, email)
-        fake_profile = {"id": f"google-{uuid.uuid4().hex[:8]}", "email": email, "name": "OK"}
+        fake_profile = {"sub": f"google-{uuid.uuid4().hex[:8]}", "email": email, "name": "OK"}
         with (
             patch.object(auth_module._settings, "google_auth_enabled", True),
-            patch.object(auth_module._settings, "google_auth_session_data_url", "https://google-auth.test/session-data"),
-            patch("httpx.AsyncClient.get", new=AsyncMock(return_value=_FakeResp(200, fake_profile))),
+            patch.object(auth_module._settings, "google_oauth_client_id", "client-id"),
+            patch.object(auth_module._settings, "google_oauth_client_secret", "client-secret"),
+            patch.object(auth_module._settings, "cors_origins", ["http://test"]),
+            patch.object(auth_module.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGoogleClient(profile_payload=fake_profile)),
         ):
-            r = await c.post("/api/auth/google/session", json={"session_id": "fake-session-id"})
+            start = await c.post("/api/auth/google/start", json={"redirect_uri": "http://test/auth/google/callback"})
+            assert start.status_code == 200, start.text
+            parsed = urlparse(start.json()["authorization_url"])
+            query = parse_qs(parsed.query)
+            assert parsed.netloc == "accounts.google.com"
+            assert query["client_id"] == ["client-id"]
+            assert query["redirect_uri"] == ["http://test/auth/google/callback"]
+            assert query["response_type"] == ["code"]
+            assert query["code_challenge_method"] == ["S256"]
+            state = query["state"][0]
+            r = await c.post(
+                "/api/auth/google/callback",
+                json={"code": "google-code", "state": state, "redirect_uri": "http://test/auth/google/callback"},
+            )
+            replay = await c.post(
+                "/api/auth/google/callback",
+                json={"code": "google-code", "state": state, "redirect_uri": "http://test/auth/google/callback"},
+            )
         assert r.status_code == 200
         assert r.json()["tenant"]["slug"] == slug
+        assert replay.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_google_session_broker_endpoint_is_retired():
+    async with await _anon_client() as c:
+        r = await c.post("/api/auth/google/session", json={"session_id": "legacy-session"})
+    assert r.status_code == 410
 
 
 # ---------- Vendor materials route shadowing fix ----------

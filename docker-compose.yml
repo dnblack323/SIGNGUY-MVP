@@ -1,0 +1,55 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      DB_NAME: signguy_mvp
+      ENV: development
+      DEPLOYMENT_CONTEXT: local
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      JWT_SECRET: change-this-in-production
+      AUTH_DEV_BYPASS: "true"
+      DEV_LOGIN_EMAIL: thesigntistslab@gmail.com
+      DEV_LOGIN_FULL_NAME: The Signtists Lab
+      DEV_LOGIN_PLATFORM_CREATOR: "true"
+      STORAGE_BACKEND: filesystem
+      OBJECT_STORAGE_PATH: /data/object_storage
+    volumes:
+      - object_storage:/data/object_storage
+    expose:
+      - "8001"
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        REACT_APP_API_BASE_URL: /api
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  mongo_data:
+  object_storage:

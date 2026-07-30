@@ -11,7 +11,7 @@ The application refuses to start in production when:
 5. `STRIPE_WEBHOOK_ENABLED=true` and `STRIPE_WEBHOOK_SECRET` is missing.
 6. `AI_ENABLED=true` and `AI_PROVIDER_API_KEY` is missing.
 7. `STORAGE_BACKEND` is unsupported, or `OBJECT_STORAGE_PATH` is missing in production.
-8. `GOOGLE_AUTH_ENABLED=true` and `GOOGLE_AUTH_SESSION_DATA_URL` is missing.
+8. `GOOGLE_AUTH_ENABLED=true` and either `GOOGLE_OAUTH_CLIENT_ID` or `GOOGLE_OAUTH_CLIENT_SECRET` is missing.
 9. `SMS_ENABLED=true` and both `SMS_PROVIDER_KEY` + `SMS_PROVIDER_SECRET` are missing.
 10. Hosted deployment context is not running with `ENV=production`, or production CORS uses a wildcard.
 
@@ -48,6 +48,6 @@ Before setting `ENV=production`:
 - [ ] Set `SENDGRID_WEBHOOK_SECRET` if enabling the delivery-event webhook.
 - [ ] Set `STRIPE_API_KEY` (live) and `STRIPE_WEBHOOK_SECRET` when enabling Stripe writes/webhook.
 - [ ] Set `AI_PROVIDER_API_KEY` when enabling AI generation.
-- [ ] Set `GOOGLE_AUTH_SESSION_DATA_URL` when enabling Google sign-in.
+- [ ] Set `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` when enabling Google sign-in.
 - [ ] Set `SMS_PROVIDER_KEY` + `SMS_PROVIDER_SECRET` when enabling SMS.
 - [ ] Confirm `/api/auth/dev-*` returns 404 in the deployed environment.

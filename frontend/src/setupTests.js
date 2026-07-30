@@ -1,8 +1,8 @@
 import "@testing-library/jest-dom";
 import { TextEncoder, TextDecoder } from "util";
 
-// Provide a stable REACT_APP_BACKEND_URL for tests (lib/api reads this at import).
-process.env.REACT_APP_BACKEND_URL = "http://localhost";
+// Keep API calls same-origin in tests unless a test overrides this.
+process.env.REACT_APP_API_BASE_URL = "/api";
 
 // jsdom 16 (bundled with react-scripts 5) does not expose TextEncoder/Decoder
 // on `globalThis`, which react-router 7 requires at module-load time.

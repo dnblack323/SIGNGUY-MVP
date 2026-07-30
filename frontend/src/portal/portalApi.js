@@ -1,7 +1,7 @@
 import axios from "axios";
+import { API_BASE } from "@/lib/apiBase";
 
-const BACKEND = process.env.REACT_APP_BACKEND_URL;
-export const API = `${BACKEND}/api`;
+export const API = API_BASE;
 
 const portalApi = axios.create({ baseURL: API });
 

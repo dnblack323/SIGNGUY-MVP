@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { centsToDollarsString } from "@/lib/format";
 import { toast } from "sonner";
+import { API_BASE } from "@/lib/apiBase";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = API_BASE;
 
 export default function PublicWebstorePage() {
   const { slug } = useParams();

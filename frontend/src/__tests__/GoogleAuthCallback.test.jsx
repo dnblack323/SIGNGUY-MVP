@@ -25,12 +25,12 @@ jest.mock("react-router-dom", () => {
 beforeEach(() => {
   jest.clearAllMocks();
   localStorage.clear();
-  window.history.replaceState(null, "", "/#session_id=google-session-123");
+  window.history.replaceState(null, "", "/auth/google/callback?code=google-code-123&state=google-state-123");
 });
 
-test("clears Google session hash before refreshing auth state", async () => {
+test("clears Google OAuth query before refreshing auth state", async () => {
   const refresh = jest.fn(async () => {
-    expect(window.location.hash).toBe("");
+    expect(window.location.search).toBe("");
   });
   useAuth.mockReturnValue({ refresh });
   api.post.mockResolvedValue({ data: { access_token: "app-token" } });
@@ -41,7 +41,11 @@ test("clears Google session hash before refreshing auth state", async () => {
     </MemoryRouter>,
   );
 
-  await waitFor(() => expect(api.post).toHaveBeenCalledWith("/auth/google/session", { session_id: "google-session-123" }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith("/auth/google/callback", {
+    code: "google-code-123",
+    state: "google-state-123",
+    redirect_uri: "http://localhost/auth/google/callback",
+  }));
   await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
 
   expect(localStorage.getItem("signguy.token")).toBe("app-token");

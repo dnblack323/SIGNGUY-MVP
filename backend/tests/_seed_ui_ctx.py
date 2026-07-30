@@ -2,12 +2,12 @@
 import os, sys, uuid, json, asyncio
 sys.path.insert(0, "/app/backend")
 from dotenv import load_dotenv
-load_dotenv("/app/frontend/.env"); load_dotenv("/app/backend/.env")
+load_dotenv("/app/backend/.env")
 import requests
 from pymongo import MongoClient
 from app.core.portal_security import create_portal_token
 
-BASE = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
+BASE = os.environ.get("SIGNGUY_API_BASE_URL", "http://localhost:8001").rstrip("/")
 r = requests.post(f"{BASE}/api/auth/dev-login", timeout=15).json()
 staff_token = r["access_token"]; tenant = r["user"]["tenant_id"]
 SH = {"Authorization": f"Bearer {staff_token}"}

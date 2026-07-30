@@ -150,11 +150,13 @@ def collect_violations(settings: Settings) -> list[GuardViolation]:
                 message="OBJECT_STORAGE_PATH is required in production.",
             )
         )
-    if settings.google_auth_enabled and not settings.google_auth_session_data_url:
+    if settings.google_auth_enabled and not (
+        settings.google_oauth_client_id and settings.google_oauth_client_secret
+    ):
         violations.append(
             GuardViolation(
                 code="google_auth_config_missing",
-                message="GOOGLE_AUTH_SESSION_DATA_URL is required when GOOGLE_AUTH_ENABLED=true.",
+                message="GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET are required when GOOGLE_AUTH_ENABLED=true.",
             )
         )
     if settings.sms_enabled and not (settings.sms_provider_key and settings.sms_provider_secret):

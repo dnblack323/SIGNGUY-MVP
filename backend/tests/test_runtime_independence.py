@@ -6,6 +6,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 SCANNED_PATHS = [
+    ROOT / ".env.example",
+    ROOT / "README.md",
+    ROOT / "auth_testing.md",
+    ROOT / "docker-compose.yml",
+    ROOT / "nginx",
     ROOT / "backend" / "app",
     ROOT / "backend" / "scripts",
     ROOT / "backend" / "requirements.txt",
@@ -23,6 +28,11 @@ BLOCKED_TERMS = (
     "integrations.emergent",
     "@emergentbase",
     "EMERGENT_LLM_KEY",
+    "GOOGLE_AUTH_SESSION_DATA_URL",
+    "REACT_APP_GOOGLE_AUTH_URL",
+    "REACT_APP_BACKEND_URL",
+    "preview.emergentagent",
+    "production-launch",
     "sk_test_emergent",
 )
 

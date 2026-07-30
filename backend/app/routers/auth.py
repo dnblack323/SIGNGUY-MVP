@@ -1,13 +1,19 @@
 ﻿"""Auth: register-tenant (bootstrap), login, logout, me, password reset, Google sign-in."""
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import re
+import secrets
 from datetime import timedelta
 from typing import Literal, Optional
+from urllib.parse import urlencode, urlparse
 from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from pymongo import ReturnDocument
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from ..core.config import get_settings
@@ -143,6 +149,25 @@ class GoogleSessionIn(BaseModel):
     session_id: str = Field(min_length=1)
 
 
+class GoogleStartIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    redirect_uri: str = Field(min_length=1, max_length=500)
+
+
+class GoogleStartOut(BaseModel):
+    authorization_url: str
+    expires_in_seconds: int
+
+
+class GoogleCallbackIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=1, max_length=4096)
+    state: str = Field(min_length=16, max_length=512)
+    redirect_uri: str = Field(min_length=1, max_length=500)
+
+
 def _slugify(text: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     return slug or "shop"
@@ -158,30 +183,30 @@ async def _unique_tenant_slug(base: str) -> str:
     return f"{slug}-{uuid4().hex[:6]}"
 
 
-@router.post("/google/session", response_model=TokenOut)
-async def google_session(payload: GoogleSessionIn) -> TokenOut:
-    """Exchange a configured Google Auth `session_id` for our own JWT.
+def _hash_oauth_value(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
-    This bridges Google Sign-In into the existing tenant/user/JWT system
-    (same TokenOut shape as /login and /register-tenant) instead of adding
-    a second, cookie-based session mechanism â€” Google is only used here to
-    verify identity (email/name), the app's own JWT remains the single
-    source of truth for authenticated requests.
-    """
-    if not _settings.google_auth_enabled or not _settings.google_auth_session_data_url:
-        raise HTTPException(status_code=503, detail="Google sign-in is not configured")
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            resp = await client.get(
-                _settings.google_auth_session_data_url,
-                headers={"X-Session-ID": payload.session_id},
-            )
-        except httpx.HTTPError:
-            raise HTTPException(status_code=502, detail="Could not reach Google sign-in service")
-    if resp.status_code != 200:
-        raise HTTPException(status_code=401, detail="Invalid or expired Google sign-in session")
-    profile = resp.json()
-    google_id = profile.get("id")
+
+def _pkce_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def _allowed_redirect_uri(redirect_uri: str) -> str:
+    parsed = urlparse(redirect_uri)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="Invalid Google redirect URI")
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    allowed = set(_settings.cors_origins or [])
+    if _settings.env == "development":
+        allowed.update({"http://localhost:3000", "http://127.0.0.1:3000"})
+    if origin not in allowed:
+        raise HTTPException(status_code=400, detail="Google redirect URI origin is not allowed")
+    return redirect_uri
+
+
+async def _issue_google_token(profile: dict) -> TokenOut:
+    google_id = profile.get("sub") or profile.get("id")
     email = (profile.get("email") or "").lower()
     name = profile.get("name") or email.split("@")[0]
     if not google_id or not email:
@@ -189,12 +214,8 @@ async def google_session(payload: GoogleSessionIn) -> TokenOut:
 
     doc = await db.users.find_one({"google_id": google_id})
     if not doc:
-        # Link to an existing password-based account with the same email â€”
-        # but only when the email is unambiguous. Email is unique per-tenant,
-        # not globally, so if more than one tenant has this email we must
-        # not silently guess which shop to link (would risk logging the
-        # user into the wrong shop). Ask them to use email+password+shop
-        # sign-in instead, where the shop is explicit.
+        # Link to an existing password-based account with the same email, but
+        # only when the email is unambiguous across tenants.
         matches = await db.users.find({"email": email}).to_list(length=2)
         if len(matches) > 1:
             raise HTTPException(
@@ -219,15 +240,13 @@ async def google_session(payload: GoogleSessionIn) -> TokenOut:
             {"id": doc["id"], "tenant_id": doc["tenant_id"]},
             {"$set": {"last_login_at": utc_now().isoformat()}},
         )
-        u = serialize_external_user(doc)
         return TokenOut(
             access_token=create_access_token(subject=doc["id"], tenant_id=doc["tenant_id"]),
-            user=u,
+            user=serialize_external_user(doc),
             tenant=serialize_doc(tenant),
             permissions=permissions_for_role(doc.get("role", "staff")),
         )
 
-    # First-ever sign-in for this Google identity â€” auto-create a new tenant + owner.
     tenant = Tenant(name=f"{name}'s Shop", slug=await _unique_tenant_slug(name or email))
     user = User(
         tenant_id=tenant.id,
@@ -248,13 +267,119 @@ async def google_session(payload: GoogleSessionIn) -> TokenOut:
         entity_id=tenant.id,
         summary=f"Tenant '{tenant.name}' created via Google sign-in",
     )
-    user_out = serialize_external_user(user.model_dump())
     return TokenOut(
         access_token=create_access_token(subject=user.id, tenant_id=tenant.id),
-        user=user_out,
+        user=serialize_external_user(user.model_dump()),
         tenant=serialize_doc(tenant.model_dump()),
         permissions=permissions_for_role(user.role),
     )
+
+
+@router.post("/google/start", response_model=GoogleStartOut)
+async def google_start(payload: GoogleStartIn) -> GoogleStartOut:
+    """Create a short-lived app-owned Google OAuth state and auth URL."""
+    if not _settings.google_auth_enabled or not (
+        _settings.google_oauth_client_id and _settings.google_oauth_client_secret
+    ):
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured")
+
+    redirect_uri = _allowed_redirect_uri(payload.redirect_uri)
+    state = secrets.token_urlsafe(32)
+    code_verifier = secrets.token_urlsafe(64)
+    now = utc_now()
+    expires_at = now + timedelta(seconds=_settings.google_oauth_state_ttl_seconds)
+    await db.google_oauth_states.insert_one({
+        "id": str(uuid4()),
+        "state_hash": _hash_oauth_value(state),
+        "code_verifier": code_verifier,
+        "redirect_uri": redirect_uri,
+        "created_at": now,
+        "updated_at": now,
+        "expires_at": expires_at,
+        "used_at": None,
+    })
+    query = urlencode({
+        "client_id": _settings.google_oauth_client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "code_challenge": _pkce_challenge(code_verifier),
+        "code_challenge_method": "S256",
+        "access_type": "offline",
+        "prompt": "select_account",
+    })
+    return GoogleStartOut(
+        authorization_url=f"{_settings.google_oauth_auth_url}?{query}",
+        expires_in_seconds=_settings.google_oauth_state_ttl_seconds,
+    )
+
+
+@router.post("/google/callback", response_model=TokenOut)
+async def google_callback(payload: GoogleCallbackIn) -> TokenOut:
+    """Exchange Google's one-time authorization code for the app JWT."""
+    if not _settings.google_auth_enabled or not (
+        _settings.google_oauth_client_id and _settings.google_oauth_client_secret
+    ):
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured")
+
+    redirect_uri = _allowed_redirect_uri(payload.redirect_uri)
+    state_hash = _hash_oauth_value(payload.state)
+    now = utc_now()
+    state_doc = await db.google_oauth_states.find_one_and_update(
+        {
+            "state_hash": state_hash,
+            "used_at": None,
+            "expires_at": {"$gt": now},
+            "redirect_uri": redirect_uri,
+        },
+        {"$set": {"used_at": now, "updated_at": now}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not state_doc or not hmac.compare_digest(state_doc.get("state_hash", ""), state_hash):
+        raise HTTPException(status_code=401, detail="Invalid or expired Google sign-in state")
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            token_resp = await client.post(
+                _settings.google_oauth_token_url,
+                data={
+                    "client_id": _settings.google_oauth_client_id,
+                    "client_secret": _settings.google_oauth_client_secret,
+                    "code": payload.code,
+                    "code_verifier": state_doc["code_verifier"],
+                    "grant_type": "authorization_code",
+                    "redirect_uri": redirect_uri,
+                },
+                headers={"Accept": "application/json"},
+            )
+        except httpx.HTTPError:
+            raise HTTPException(status_code=502, detail="Could not reach Google token service")
+        if token_resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid or expired Google authorization code")
+        access_token = token_resp.json().get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=502, detail="Google sign-in did not return an access token")
+        try:
+            profile_resp = await client.get(
+                _settings.google_oauth_userinfo_url,
+                headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
+            )
+        except httpx.HTTPError:
+            raise HTTPException(status_code=502, detail="Could not reach Google profile service")
+    if profile_resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Could not verify Google profile")
+    return await _issue_google_token(profile_resp.json())
+
+
+@router.post("/google/session", response_model=TokenOut)
+async def google_session(payload: GoogleSessionIn) -> TokenOut:
+    """Retired external session broker endpoint.
+
+    Kept as an explicit fail-closed response so old frontends cannot bridge
+    through a third-party session-data service.
+    """
+    raise HTTPException(status_code=410, detail="Google session broker sign-in has been retired")
 
 
 @router.post("/logout", status_code=204, response_class=Response)

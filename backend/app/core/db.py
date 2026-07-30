@@ -34,6 +34,10 @@ async def ensure_indexes() -> None:
         await db.password_reset_tokens.drop_index("token_1")
     await db.password_reset_tokens.create_index("token_hash", unique=True)
     await db.password_reset_tokens.create_index("expires_at")
+    await db.google_oauth_states.create_index("id", unique=True)
+    await db.google_oauth_states.create_index("state_hash", unique=True)
+    await db.google_oauth_states.create_index("expires_at", expireAfterSeconds=0)
+    await db.google_oauth_states.create_index([("used_at", 1), ("expires_at", 1)])
 
     # Sequence counters
     await db.counters.create_index([("tenant_id", 1), ("name", 1)], unique=True)

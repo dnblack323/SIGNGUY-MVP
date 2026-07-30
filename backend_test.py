@@ -15,10 +15,11 @@ Tests all critical flows:
 import requests
 import sys
 import io
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 
-BASE_URL = "https://markup-phase-10c.preview.emergentagent.com/api"
+BASE_URL = os.environ.get("SIGNGUY_API_BASE_URL", "http://localhost:8001/api")
 
 class SignGuyTester:
     def __init__(self):

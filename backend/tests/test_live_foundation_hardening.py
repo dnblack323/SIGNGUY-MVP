@@ -1,4 +1,4 @@
-"""Live E2E checks against the running server (via REACT_APP_BACKEND_URL) for
+"""Live E2E checks against the running server (via SIGNGUY_API_BASE_URL) for
 Foundation Hardening: tenant-scoped login, password reset flow with dev token,
 vendor materials route fix, and quiz apply/skip lifecycle. Uses requests
 against the real deployed backend (not in-process ASGI)."""
@@ -7,9 +7,9 @@ import uuid
 import requests
 import pytest
 
-BASE_URL_ENV = os.environ.get("REACT_APP_BACKEND_URL")
+BASE_URL_ENV = os.environ.get("SIGNGUY_API_BASE_URL")
 if not BASE_URL_ENV:
-    pytest.skip("REACT_APP_BACKEND_URL is required for live foundation hardening tests", allow_module_level=True)
+    pytest.skip("SIGNGUY_API_BASE_URL is required for live foundation hardening tests", allow_module_level=True)
 
 BASE_URL = BASE_URL_ENV.rstrip("/")
 

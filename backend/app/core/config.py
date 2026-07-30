@@ -73,7 +73,21 @@ class Settings:
         # AI provider. Only required when AI generation is enabled.
         self.ai_enabled: bool = os.environ.get("AI_ENABLED", "false").lower() == "true"
         self.google_auth_enabled: bool = os.environ.get("GOOGLE_AUTH_ENABLED", "false").lower() == "true"
-        self.google_auth_session_data_url: str | None = os.environ.get("GOOGLE_AUTH_SESSION_DATA_URL") or None
+        self.google_oauth_client_id: str | None = os.environ.get("GOOGLE_OAUTH_CLIENT_ID") or None
+        self.google_oauth_client_secret: str | None = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET") or None
+        self.google_oauth_auth_url: str = os.environ.get(
+            "GOOGLE_OAUTH_AUTH_URL",
+            "https://accounts.google.com/o/oauth2/v2/auth",
+        )
+        self.google_oauth_token_url: str = os.environ.get(
+            "GOOGLE_OAUTH_TOKEN_URL",
+            "https://oauth2.googleapis.com/token",
+        )
+        self.google_oauth_userinfo_url: str = os.environ.get(
+            "GOOGLE_OAUTH_USERINFO_URL",
+            "https://openidconnect.googleapis.com/v1/userinfo",
+        )
+        self.google_oauth_state_ttl_seconds: int = int(os.environ.get("GOOGLE_OAUTH_STATE_TTL_SECONDS", "600"))
 
         # EC18 - OpenAI Realtime voice for the paid Business Assistant.
         # The permanent API key is backend-only. Browser clients receive only

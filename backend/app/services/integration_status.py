@@ -64,8 +64,13 @@ def integration_status() -> dict[str, Any]:
             _report(
                 "google_auth",
                 enabled=s.google_auth_enabled,
-                configured=bool(s.google_auth_session_data_url),
-                missing=(["GOOGLE_AUTH_SESSION_DATA_URL"] if (s.google_auth_enabled and not s.google_auth_session_data_url) else []),
+                configured=bool(s.google_oauth_client_id and s.google_oauth_client_secret),
+                missing=[
+                    k for k, v in (
+                        ("GOOGLE_OAUTH_CLIENT_ID", s.google_oauth_client_id),
+                        ("GOOGLE_OAUTH_CLIENT_SECRET", s.google_oauth_client_secret),
+                    ) if s.google_auth_enabled and not v
+                ],
             ),
             _report(
                 "sms_provider",

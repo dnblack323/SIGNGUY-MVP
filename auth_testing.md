@@ -1,79 +1,56 @@
-# Emergent Google Auth — Testing Playbook (Main App Staff Login)
+# Google OAuth Testing Playbook
 
-## Step 1: Create Test User & Session (Mongo)
-```
-mongosh --eval "
-use('<DB_NAME from backend/.env>');
-var userId = 'test-user-' + Date.now();
-var sessionToken = 'test_session_' + Date.now();
-db.users.insertOne({
-  user_id: userId,
-  email: 'test.user.' + Date.now() + '@example.com',
-  name: 'Test User',
-  picture: 'https://via.placeholder.com/150',
-  created_at: new Date()
-});
-db.oauth_sessions.insertOne({
-  user_id: userId,
-  session_token: sessionToken,
-  expires_at: new Date(Date.now() + 7*24*60*60*1000),
-  created_at: new Date()
-});
-print('Session token: ' + sessionToken);
-print('User ID: ' + userId);
-"
+SignGuy AI owns the Google OAuth flow directly. The frontend never receives a
+Google client secret and no external session-data broker is used.
+
+## Local Development Without Google
+
+For local preview, use the development bypass only:
+
+```env
+ENV=development
+AUTH_DEV_BYPASS=true
+DEV_LOGIN_EMAIL=thesigntistslab@gmail.com
+DEV_LOGIN_PLATFORM_CREATOR=true
 ```
 
-## Step 2: Test Backend API
-```
-curl -X GET "https://your-app.com/api/auth/me" -H "Authorization: Bearer YOUR_SESSION_TOKEN"
-curl -X GET "https://your-app.com/api/customers" -H "Authorization: Bearer YOUR_SESSION_TOKEN"
-```
+The bypass is rejected in production by startup guards.
 
-## Step 3: Browser Testing
-```javascript
-await page.context.add_cookies([{
-    "name": "session_token",
-    "value": "YOUR_SESSION_TOKEN",
-    "domain": "your-app.com",
-    "path": "/",
-    "httpOnly": true,
-    "secure": true,
-    "sameSite": "None"
-}]);
-await page.goto("https://your-app.com");
+## Direct Google OAuth
+
+Configure the backend only:
+
+```env
+GOOGLE_AUTH_ENABLED=true
+GOOGLE_OAUTH_CLIENT_ID=replace-with-google-client-id
+GOOGLE_OAUTH_CLIENT_SECRET=replace-with-google-client-secret
 ```
 
-## Quick Debug
-```
-mongosh --eval "
-use('<DB_NAME>');
-db.users.find().limit(2).pretty();
-db.oauth_sessions.find().limit(2).pretty();
-"
+Use this redirect URI in the Google Cloud OAuth client:
+
+```text
+http://localhost:3000/auth/google/callback
 ```
 
-## Checklist
-- [ ] User document has `user_id` field (custom UUID, MongoDB's `_id` is separate)
-- [ ] Session `user_id` matches user's `user_id` exactly
-- [ ] All queries use `{"_id": 0}` projection to exclude MongoDB's `_id`
-- [ ] Backend queries use `user_id` (not `_id` or `id`)
-- [ ] API returns user data with `user_id` field (not 401/404)
-- [ ] Browser loads dashboard (not login page)
+Production deployments must register their own production origin with the same
+path. The frontend starts login through:
 
-## Success Indicators
-- `/api/auth/me` returns user data
-- Dashboard loads without redirect
-- CRUD operations work
+```text
+POST /api/auth/google/start
+```
 
-## Failure Indicators
-- "User not found" errors
-- 401 Unauthorized responses
-- Redirect to login page
+The backend stores a short-lived, one-time state record and returns the Google
+authorization URL. Google returns `code` and `state` to:
 
-## Test Identity Tracking
-After setup, record in `/app/memory/test_credentials.md`:
-- Allowed Google test accounts (email)
-- Linked app users (tenant_id, user_id, role)
-- RBAC roles/permissions mapped to each test account
-- No app-managed passwords are stored for Google Auth flows.
+```text
+/auth/google/callback
+```
+
+The frontend then exchanges them through:
+
+```text
+POST /api/auth/google/callback
+```
+
+The backend validates the state, consumes it once, exchanges the authorization
+code with Google, reads the Google profile, and issues the normal SignGuy AI JWT.

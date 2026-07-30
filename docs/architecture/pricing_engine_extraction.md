@@ -114,7 +114,7 @@ Preserved follow-ups:
 - EC7 inventory duplicate-key setup evidence remains open/informational.
 - Cloudflare R2 remains unimplemented.
 - Hosted staging deployment files remain unimplemented.
-- Historical Emergent cleanup remains a separate checkpoint.
+- Historical Emergent cleanup completed separately; Phase 9I-V remains limited to pricing extraction and licensing-readiness evidence.
 
 ## Readiness Conclusion
 

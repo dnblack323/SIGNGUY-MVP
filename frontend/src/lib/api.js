@@ -1,11 +1,7 @@
 import axios from "axios";
+import { API_BASE } from "@/lib/apiBase";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === "development" ? "http://localhost:8001" : "");
-if (!BACKEND_URL) {
-  // Surface build/deploy misconfiguration without logging any credential value.
-  console.error("REACT_APP_BACKEND_URL is not configured.");
-}
-export const API = `${BACKEND_URL}/api`;
+export const API = API_BASE;
 
 const api = axios.create({ baseURL: API, timeout: 30000 });
 

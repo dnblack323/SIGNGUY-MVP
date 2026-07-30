@@ -39,7 +39,8 @@ class FakeSettings:
     storage_backend: str = "filesystem"
     object_storage_path: str | None = "/var/lib/signguy/object-storage"
     google_auth_enabled: bool = False
-    google_auth_session_data_url: str | None = None
+    google_oauth_client_id: str | None = None
+    google_oauth_client_secret: str | None = None
     sms_enabled: bool = False
     sms_provider_key: str | None = None
     sms_provider_secret: str | None = None
@@ -135,6 +136,12 @@ def test_production_sms_requires_credentials_when_enabled():
     s = _prod(sms_enabled=True, sms_provider_key=None, sms_provider_secret=None)
     vs = collect_violations(s)
     assert any(v.code == "sms_provider_credentials_missing" for v in vs)
+
+
+def test_production_google_auth_requires_app_owned_oauth_credentials():
+    s = _prod(google_auth_enabled=True, google_oauth_client_id=None, google_oauth_client_secret=None)
+    vs = collect_violations(s)
+    assert any(v.code == "google_auth_config_missing" for v in vs)
 
 
 def test_disabled_integrations_dont_require_credentials():

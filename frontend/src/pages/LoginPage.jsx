@@ -5,19 +5,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/auth/AuthContext";
-import { extractError } from "@/lib/api";
+import api, { extractError } from "@/lib/api";
 import { Loader2, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
-function handleGoogleLogin() {
-  const authUrl = process.env.REACT_APP_GOOGLE_AUTH_URL;
-  if (!authUrl) {
+async function handleGoogleLogin() {
+  try {
+    const redirectUri = `${window.location.origin}/auth/google/callback`;
+    const { data } = await api.post("/auth/google/start", { redirect_uri: redirectUri });
+    if (!data?.authorization_url) throw new Error("Missing authorization URL");
+    window.location.href = data.authorization_url;
+  } catch {
     toast.error("Google sign-in is not configured for this environment.");
-    return;
   }
-  const redirectUrl = window.location.origin + "/";
-  const separator = authUrl.includes("?") ? "&" : "?";
-  window.location.href = `${authUrl}${separator}redirect=${encodeURIComponent(redirectUrl)}`;
 }
 
 export default function LoginPage() {

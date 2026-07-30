@@ -5,7 +5,7 @@ Calculator, canonical Material Pricing Profiles, Pricing Components, Saved
 Items, Quote/Order line-item pricing resolution, Quote->Order conversion
 (no recalculation), recalculate-preview accept/reject, Pricing Snapshot
 explain/compare, and the Advisory "always unavailable, never mutates price"
-contract. Hits the real deployed server via REACT_APP_BACKEND_URL (not
+contract. Hits the real deployed server via SIGNGUY_API_BASE_URL (not
 in-process ASGI) using the AUTH_DEV_BYPASS dev-login.
 """
 import os
@@ -14,9 +14,9 @@ import uuid
 import pytest
 import requests
 
-BASE_URL_ENV = os.environ.get("REACT_APP_BACKEND_URL")
+BASE_URL_ENV = os.environ.get("SIGNGUY_API_BASE_URL")
 if not BASE_URL_ENV:
-    pytest.skip("REACT_APP_BACKEND_URL is required for live checkpoint E2E tests", allow_module_level=True)
+    pytest.skip("SIGNGUY_API_BASE_URL is required for live checkpoint E2E tests", allow_module_level=True)
 
 BASE_URL = BASE_URL_ENV.rstrip("/")
 API = f"{BASE_URL}/api"

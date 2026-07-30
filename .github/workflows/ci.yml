@@ -71,5 +71,5 @@ jobs:
         env:
           CI: "true"
           GENERATE_SOURCEMAP: "false"
-          REACT_APP_BACKEND_URL: "https://placeholder.invalid"
+          REACT_APP_API_BASE_URL: "/api"
         run: yarn build

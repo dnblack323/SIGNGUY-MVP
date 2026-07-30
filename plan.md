@@ -35,7 +35,7 @@
 
 **Implementation steps (as delivered)**
 - ✅ Implemented atomic sequence generator using Mongo `find_one_and_update($inc)` + upsert.
-- ✅ Implemented Emergent object storage adapter using platform integration.
+- ✅ Implemented repository-owned filesystem object storage adapter with tenant-scoped paths.
 - ✅ POC script: `backend/scripts/poc_core.py`
   - Concurrency test for counters (0 duplicates, per-tenant isolation).
   - Upload + download integrity verification.

@@ -10,9 +10,9 @@ import uuid
 import pytest
 import requests
 
-BASE_URL_ENV = os.environ.get("REACT_APP_BACKEND_URL")
+BASE_URL_ENV = os.environ.get("SIGNGUY_API_BASE_URL")
 if not BASE_URL_ENV:
-    pytest.skip("REACT_APP_BACKEND_URL is required for live API spot-checks", allow_module_level=True)
+    pytest.skip("SIGNGUY_API_BASE_URL is required for live API spot-checks", allow_module_level=True)
 
 BASE_URL = BASE_URL_ENV.rstrip("/")
 API = f"{BASE_URL}/api"
