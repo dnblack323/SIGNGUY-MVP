@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { centsToDollarsString } from "@/lib/format";
 import { toast } from "sonner";
 import { API_BASE } from "@/lib/apiBase";
+import { WebstoreBrandingPreview } from "@/components/webstores/WebstoreBranding";
 
 const API = API_BASE;
 
@@ -34,15 +35,24 @@ export default function PublicWebstorePage() {
   if (err) return <div className="min-h-screen grid place-items-center p-6 text-sm text-rose-700" data-testid="public-webstore-error">{err}</div>;
   if (!data) return <div className="min-h-screen grid place-items-center p-6 text-sm text-muted-foreground">Loading...</div>;
   if (done) return <div className="min-h-screen grid place-items-center p-6"><Card><CardHeader><CardTitle>Purchase request saved</CardTitle></CardHeader><CardContent>Checkout is not connected yet. Reference: <span className="font-mono">{done.id}</span></CardContent></Card></div>;
+  const publishedBranding = data.webstore.branding || {};
+  const hasPublishedBranding = Object.keys(publishedBranding).length > 0;
   return (
     <div className="min-h-screen bg-slate-50" data-testid="public-webstore-page">
-      <header className="bg-white border-b">
-        <div className="max-w-5xl mx-auto px-4 py-5">
-          <h1 className="text-3xl font-semibold">{data.webstore.name}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{data.webstore.description || "Select products and save a purchase request."}</p>
+      {hasPublishedBranding ? (
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          <WebstoreBrandingPreview branding={publishedBranding} webstore={data.webstore} products={data.products || []} />
           <p className="text-xs text-amber-700 mt-2" data-testid="webstore-checkout-disabled">{data.webstore.checkout_unavailable_reason || "Checkout is not connected yet."}</p>
         </div>
-      </header>
+      ) : (
+        <header className="bg-white border-b">
+          <div className="max-w-5xl mx-auto px-4 py-5">
+            <h1 className="text-3xl font-semibold">{data.webstore.name}</h1>
+            <p className="text-sm text-muted-foreground mt-1">{data.webstore.description || "Select products and save a purchase request."}</p>
+            <p className="text-xs text-amber-700 mt-2" data-testid="webstore-checkout-disabled">{data.webstore.checkout_unavailable_reason || "Checkout is not connected yet."}</p>
+          </div>
+        </header>
+      )}
       <main className="max-w-5xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {(data.products || []).map((p) => (

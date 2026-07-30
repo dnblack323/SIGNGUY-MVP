@@ -32,6 +32,7 @@ from ..models.webstore import (
 )
 from ..repositories.webstores import WebstoreRepository
 from .activity import record_activity_with_audit
+from . import webstore_branding as branding_svc
 from .entitlements import has_entitlement
 from .portal_identity import create_portal_identity
 from .sequence import next_number, next_record_number
@@ -237,7 +238,7 @@ def _public_product(product: dict) -> dict:
     return {k: v for k, v in product.items() if k in allowed}
 
 
-def _public_store(store: dict) -> dict:
+def _public_store(store: dict, published_branding: Optional[dict[str, Any]] = None) -> dict:
     allowed = {
         "id",
         "name",
@@ -246,12 +247,12 @@ def _public_store(store: dict) -> dict:
         "store_type",
         "status",
         "description",
-        "branding",
         "deadline_at",
         "public_url",
         "checkout_enabled",
     }
     result = {k: v for k, v in store.items() if k in allowed}
+    result["branding"] = published_branding or {}
     result["checkout_enabled"] = bool(result.get("checkout_enabled")) and PUBLIC_CHECKOUT_ENABLED
     result["checkout_unavailable_reason"] = "Real Webstore checkout is not connected yet." if not PUBLIC_CHECKOUT_ENABLED else None
     return result
@@ -975,7 +976,8 @@ async def _storefront_by_slug(slug: str) -> dict:
             {"_id": 0},
         ).sort([("featured", -1), ("name", 1)])
     ]
-    return {"webstore": _public_store(serialize_doc(store)), "products": products}
+    published_branding = await branding_svc.published_branding_for_store(store)
+    return {"webstore": _public_store(serialize_doc(store), published_branding), "products": products}
 
 
 async def public_storefront(slug: str) -> dict:

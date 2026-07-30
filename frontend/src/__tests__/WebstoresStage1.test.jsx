@@ -18,6 +18,7 @@ import {
   getWebstoreSetupProgress,
   getWebstore,
   getWebstoreReports,
+  getWebstoreBranding,
   listWebstoreAssignments,
   listWebstoreSetupFiles,
   listWebstores,
@@ -31,6 +32,9 @@ import {
   setWebstoreStatus,
   uploadWebstoreSetupFile,
   updateWebstore,
+  saveWebstoreBrandingDraft,
+  requestWebstoreBrandingReview,
+  publishWebstoreBranding,
 } from "@/lib/webstores";
 import { useAuth } from "@/auth/AuthContext";
 
@@ -51,6 +55,7 @@ jest.mock("@/lib/webstores", () => ({
   getWebstoreSetupProgress: jest.fn(),
   getWebstore: jest.fn(),
   getWebstoreReports: jest.fn(),
+  getWebstoreBranding: jest.fn(),
   listWebstoreAssignments: jest.fn(),
   listWebstoreSetupFiles: jest.fn(),
   listWebstores: jest.fn(),
@@ -64,6 +69,9 @@ jest.mock("@/lib/webstores", () => ({
   setWebstoreStatus: jest.fn(),
   uploadWebstoreSetupFile: jest.fn(),
   updateWebstore: jest.fn(),
+  saveWebstoreBrandingDraft: jest.fn(),
+  requestWebstoreBrandingReview: jest.fn(),
+  publishWebstoreBranding: jest.fn(),
 }));
 
 jest.mock("@/auth/AuthContext", () => ({
@@ -74,6 +82,12 @@ jest.mock("@/lib/api", () => ({
   __esModule: true,
   default: {},
   extractError: (error) => error?.response?.data?.detail || error?.message || "Request failed",
+}));
+
+jest.mock("@/portal/portalApi", () => ({
+  __esModule: true,
+  default: { get: jest.fn(), post: jest.fn(), patch: jest.fn() },
+  portalExtractError: (error) => error?.response?.data?.detail || error?.message || "Portal request failed",
 }));
 
 jest.mock("@/components/ai/AIContextualActions", () => () => <div data-testid="ai-actions" />);
@@ -112,6 +126,29 @@ beforeEach(() => {
   sendLaunchPacket.mockResolvedValue({});
   setWebstoreStatus.mockResolvedValue({});
   updateWebstore.mockResolvedValue({});
+  getWebstoreBranding.mockResolvedValue({
+    webstore: { id: "ws-1", name: "Team Store", store_type: "general" },
+    branding: {
+      status: "draft",
+      draft: {
+        brand_basics: { display_name: "Team Store" },
+        colors_fonts: {},
+        header: { show_header: true, display_mode: "name" },
+        hero: { show_hero: true },
+        store_information: { show_section: true },
+        store_type_content: { general_welcome: "Welcome shoppers." },
+        catalog_introduction: { show_catalog_area: true },
+        footer: { show_footer: true },
+      },
+      validation: { errors: [], warnings: [] },
+    },
+    permissions: { can_save_draft: true, can_request_review: true, can_publish: true, can_control_whole_sections: true },
+    history: [],
+    activity: [],
+  });
+  saveWebstoreBrandingDraft.mockResolvedValue({});
+  requestWebstoreBrandingReview.mockResolvedValue({});
+  publishWebstoreBranding.mockResolvedValue({});
   listWebstores.mockResolvedValue({ items: [] });
   listProductTemplates.mockResolvedValue([]);
 });

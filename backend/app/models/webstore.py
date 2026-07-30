@@ -85,6 +85,13 @@ WebstoreInvitationStatus = Literal["pending", "sent", "send_failed", "accepted",
 WebstoreQuestionnaireTemplateStatus = Literal["active", "inactive", "retired"]
 WebstoreSetupFileStatus = Literal["active", "replaced", "removed"]
 WebstoreAnswerApplicationStatus = Literal["applied", "reversed"]
+WebstoreBrandingStatus = Literal[
+    "draft",
+    "waiting_owner_approval",
+    "changes_requested",
+    "owner_approved",
+    "published",
+]
 ArtworkStatus = Literal[
     "uploaded",
     "cleanup_pending",
@@ -331,6 +338,38 @@ class WebstoreAnswerApplication(BaseDoc):
     rejected_changes: list[dict[str, Any]] = Field(default_factory=list)
     reversal_of_application_id: Optional[str] = None
     reversed_at: Optional[str] = None
+
+
+class WebstoreBrandingRecord(BaseDoc):
+    tenant_id: str
+    webstore_id: str
+    status: WebstoreBrandingStatus = "draft"
+    draft: dict[str, Any] = Field(default_factory=dict)
+    draft_hash: Optional[str] = None
+    submitted_snapshot: Optional[dict[str, Any]] = None
+    submitted_hash: Optional[str] = None
+    submitted_at: Optional[str] = None
+    submitted_by_actor_type: Optional[str] = None
+    submitted_by_id: Optional[str] = None
+    submitted_by_email: Optional[str] = None
+    owner_decision: dict[str, Any] = Field(default_factory=dict)
+    feedback_note: Optional[str] = None
+    published_branding: Optional[dict[str, Any]] = None
+    published_hash: Optional[str] = None
+    published_version_id: Optional[str] = None
+    published_at: Optional[str] = None
+
+
+class WebstoreBrandingPublishedVersion(BaseDoc):
+    tenant_id: str
+    webstore_id: str
+    version: StrictInt = Field(ge=1)
+    branding: dict[str, Any] = Field(default_factory=dict)
+    content_hash: str
+    published_by_user_id: str
+    published_by_email: Optional[str] = None
+    submitted_at: Optional[str] = None
+    owner_approved_at: Optional[str] = None
 
 
 class WebstoreArtworkFile(BaseDoc):

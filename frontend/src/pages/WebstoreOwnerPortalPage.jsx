@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import WebstoreBrandingEditor from "@/components/webstores/WebstoreBranding";
 import { centsToDollarsString } from "@/lib/format";
 import { toast } from "sonner";
 
@@ -128,6 +129,12 @@ export default function WebstoreOwnerPortalPage() {
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Branding</CardTitle></CardHeader>
+        <CardContent>
+          <WebstoreBrandingEditor webstoreId={webstoreId} portal products={data.products || []} />
         </CardContent>
       </Card>
       <Card>

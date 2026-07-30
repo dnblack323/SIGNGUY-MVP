@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field, StrictInt
 
 from ..deps import get_current_user
 from ..services import webstore_setup as setup_svc
+from ..services import webstore_branding as branding_svc
 from ..services import webstores as svc
+from ..services.webstore_branding import WebstoreBrandingError
 from ..services.webstore_setup import WebstoreSetupError
 from ..services.webstores import WebstoreError
 
@@ -20,6 +22,10 @@ def _raise(e: WebstoreError) -> None:
 
 
 def _raise_setup(e: WebstoreSetupError) -> None:
+    raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+
+def _raise_branding(e: WebstoreBrandingError) -> None:
     raise HTTPException(status_code=e.status_code, detail=e.detail)
 
 
@@ -163,6 +169,14 @@ class PrimaryOwnerIn(BaseModel):
     assignment_id: str
     confirm: bool
     reason: str
+
+
+class BrandingDraftIn(BaseModel):
+    content: dict[str, Any] = Field(default_factory=dict)
+
+
+class BrandingReviewIn(BaseModel):
+    note: Optional[str] = None
 
 
 class QuestionnaireTemplateIn(BaseModel):
@@ -433,6 +447,38 @@ async def download_setup_file(webstore_id: str, file_id: str, user: dict = Depen
         )
     except WebstoreSetupError as e:
         _raise_setup(e)
+
+
+@router.get("/{webstore_id}/branding")
+async def get_branding(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await branding_svc.get_staff_branding(user, webstore_id)
+    except WebstoreBrandingError as e:
+        _raise_branding(e)
+
+
+@router.patch("/{webstore_id}/branding/draft")
+async def save_branding_draft(webstore_id: str, payload: BrandingDraftIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await branding_svc.save_staff_draft(user, webstore_id, payload.content)
+    except WebstoreBrandingError as e:
+        _raise_branding(e)
+
+
+@router.post("/{webstore_id}/branding/request-review")
+async def request_branding_review(webstore_id: str, payload: BrandingReviewIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await branding_svc.request_review(user, webstore_id, note=payload.note)
+    except WebstoreBrandingError as e:
+        _raise_branding(e)
+
+
+@router.post("/{webstore_id}/branding/publish")
+async def publish_branding(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await branding_svc.publish(user, webstore_id)
+    except WebstoreBrandingError as e:
+        _raise_branding(e)
 
 
 @router.post("/{webstore_id}/setup-files/{file_id}/remove")

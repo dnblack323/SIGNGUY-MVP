@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field
 
 from ..deps_portal import get_current_portal_identity
 from ..services import webstore_setup as setup_svc
+from ..services import webstore_branding as branding_svc
 from ..services import webstores as svc
+from ..services.webstore_branding import WebstoreBrandingError
 from ..services.webstore_setup import WebstoreSetupError
 from ..services.webstores import WebstoreError
 
@@ -20,6 +22,10 @@ def _raise(e: WebstoreError) -> None:
 
 
 def _raise_setup(e: WebstoreSetupError) -> None:
+    raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+
+def _raise_branding(e: WebstoreBrandingError) -> None:
     raise HTTPException(status_code=e.status_code, detail=e.detail)
 
 
@@ -37,6 +43,14 @@ class QuestionnaireIn(BaseModel):
     known_products: list[dict[str, Any]] = Field(default_factory=list)
     open_to_suggestions: bool = True
     missing_info_flags: list[str] = Field(default_factory=list)
+
+
+class BrandingDraftIn(BaseModel):
+    content: dict[str, Any] = Field(default_factory=dict)
+
+
+class BrandingReviewIn(BaseModel):
+    note: str | None = None
 
 
 class InvitationAcceptIn(BaseModel):
@@ -114,6 +128,46 @@ async def setup_progress(webstore_id: str, identity: dict = Depends(_webstore_id
         return await setup_svc.setup_progress_for_portal(identity, webstore_id)
     except WebstoreSetupError as e:
         _raise_setup(e)
+
+
+@router.get("/{webstore_id}/branding")
+async def get_branding(webstore_id: str, identity: dict = Depends(_webstore_identity)) -> dict:
+    try:
+        return await branding_svc.get_portal_branding(identity, webstore_id)
+    except WebstoreBrandingError as e:
+        _raise_branding(e)
+
+
+@router.patch("/{webstore_id}/branding/draft")
+async def save_branding_draft(webstore_id: str, payload: BrandingDraftIn, identity: dict = Depends(_webstore_identity)) -> dict:
+    try:
+        return await branding_svc.save_portal_draft(identity, webstore_id, payload.content)
+    except WebstoreBrandingError as e:
+        _raise_branding(e)
+
+
+@router.post("/{webstore_id}/branding/request-review")
+async def request_branding_review(webstore_id: str, payload: BrandingReviewIn, identity: dict = Depends(_webstore_identity)) -> dict:
+    try:
+        return await branding_svc.request_review(identity, webstore_id, portal=True, note=payload.note)
+    except WebstoreBrandingError as e:
+        _raise_branding(e)
+
+
+@router.post("/{webstore_id}/branding/approve")
+async def approve_branding(webstore_id: str, payload: BrandingReviewIn, identity: dict = Depends(_webstore_identity)) -> dict:
+    try:
+        return await branding_svc.owner_approve(identity, webstore_id, note=payload.note)
+    except WebstoreBrandingError as e:
+        _raise_branding(e)
+
+
+@router.post("/{webstore_id}/branding/request-changes")
+async def request_branding_changes(webstore_id: str, payload: BrandingReviewIn, identity: dict = Depends(_webstore_identity)) -> dict:
+    try:
+        return await branding_svc.owner_request_changes(identity, webstore_id, note=payload.note or "")
+    except WebstoreBrandingError as e:
+        _raise_branding(e)
 
 
 @router.get("/{webstore_id}/setup-files")

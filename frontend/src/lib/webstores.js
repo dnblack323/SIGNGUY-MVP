@@ -121,3 +121,23 @@ export async function getWebstoreReports(webstoreId) {
   const r = await api.get(`/webstores/${webstoreId}/reports`);
   return r.data;
 }
+
+export async function getWebstoreBranding(webstoreId) {
+  const r = await api.get(`/webstores/${webstoreId}/branding`);
+  return r.data;
+}
+
+export async function saveWebstoreBrandingDraft(webstoreId, content) {
+  const r = await api.patch(`/webstores/${webstoreId}/branding/draft`, { content });
+  return r.data;
+}
+
+export async function requestWebstoreBrandingReview(webstoreId, note = "") {
+  const r = await api.post(`/webstores/${webstoreId}/branding/request-review`, { note });
+  return r.data;
+}
+
+export async function publishWebstoreBranding(webstoreId) {
+  const r = await api.post(`/webstores/${webstoreId}/branding/publish`);
+  return r.data;
+}

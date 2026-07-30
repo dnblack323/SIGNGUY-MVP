@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, ExternalLink, FileUp, PackagePlus, Send, ShieldCheck, UserPlus } from "lucide-react";
+import { CheckCircle2, ExternalLink, FileUp, PackagePlus, Palette, Send, ShieldCheck, UserPlus } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import WebstoreBrandingEditor from "@/components/webstores/WebstoreBranding";
 import { centsToDollarsString } from "@/lib/format";
 import { extractError } from "@/lib/api";
 import {
@@ -170,6 +172,16 @@ export default function WebstoreDetailPage() {
         )}
       />
 
+      <Tabs defaultValue="overview" className="space-y-4" data-testid="webstore-detail-tabs">
+        <TabsList className="flex h-auto flex-wrap justify-start">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="setup">Store Setup</TabsTrigger>
+          <TabsTrigger value="branding"><Palette className="size-4 mr-1" />Branding</TabsTrigger>
+          <TabsTrigger value="preview">Preview</TabsTrigger>
+          <TabsTrigger value="approval">Approval</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-4">
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <Card>
           <CardHeader><CardTitle className="text-base">Setup Progress</CardTitle></CardHeader>
@@ -355,6 +367,29 @@ export default function WebstoreDetailPage() {
           <div><div className="text-muted-foreground">Owner share</div><div className="text-lg font-semibold">{centsToDollarsString(reports.data?.ledger_totals_cents?.store_owner_share)}</div></div>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="setup" className="space-y-4">
+          <Card>
+            <CardHeader><CardTitle className="text-base">Store Setup</CardTitle></CardHeader>
+            <CardContent className="text-sm text-muted-foreground">
+              Setup intake, assignments, files, and launch gates remain on the Overview tab while Stage 3 adds Branding.
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="branding" className="space-y-4">
+          <WebstoreBrandingEditor webstoreId={id} products={detail.data?.products || []} />
+        </TabsContent>
+
+        <TabsContent value="preview" className="space-y-4">
+          <WebstoreBrandingEditor webstoreId={id} products={detail.data?.products || []} />
+        </TabsContent>
+
+        <TabsContent value="approval" className="space-y-4">
+          <WebstoreBrandingEditor webstoreId={id} products={detail.data?.products || []} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

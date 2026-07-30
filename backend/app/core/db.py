@@ -992,6 +992,13 @@ async def ensure_indexes() -> None:
     await db.webstore_ai_usage_events.create_index("id", unique=True)
     await db.webstore_ai_usage_events.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
 
+    await db.webstore_branding_records.create_index("id", unique=True)
+    await db.webstore_branding_records.create_index([("tenant_id", 1), ("webstore_id", 1)], unique=True)
+    await db.webstore_branding_records.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.webstore_branding_versions.create_index("id", unique=True)
+    await db.webstore_branding_versions.create_index([("tenant_id", 1), ("webstore_id", 1), ("version", 1)], unique=True)
+    await db.webstore_branding_versions.create_index([("tenant_id", 1), ("webstore_id", 1), ("created_at", -1)])
+
     await db.webstore_stripe_connect_records.create_index("id", unique=True)
     await db.webstore_stripe_connect_records.create_index([("tenant_id", 1), ("webstore_id", 1), ("record_type", 1)])
     await db.webstore_stripe_connect_records.create_index(

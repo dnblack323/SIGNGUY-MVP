@@ -3,16 +3,22 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from ..services import webstores as svc
+from ..services import webstore_branding as branding_svc
+from ..services.webstore_branding import WebstoreBrandingError
 from ..services.webstores import WebstoreError
 
 router = APIRouter(prefix="/public/webstores", tags=["public-webstores"])
 
 
 def _raise(e: WebstoreError) -> None:
+    raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+
+def _raise_branding(e: WebstoreBrandingError) -> None:
     raise HTTPException(status_code=e.status_code, detail=e.detail)
 
 
@@ -37,6 +43,19 @@ async def storefront(slug: str) -> dict:
         return await svc.public_storefront(slug)
     except WebstoreError as e:
         _raise(e)
+
+
+@router.get("/{slug}/branding-assets/{file_id}")
+async def branding_asset(slug: str, file_id: str) -> Response:
+    try:
+        doc, data, content_type = await branding_svc.public_branding_asset(slug, file_id)
+        return Response(
+            content=data,
+            media_type=content_type,
+            headers={"Content-Disposition": f'inline; filename="{doc.get("file_name", "branding-asset")}"'},
+        )
+    except WebstoreBrandingError as e:
+        _raise_branding(e)
 
 
 @router.post("/{slug}/buyer-orders", status_code=201)
