@@ -860,6 +860,11 @@ async def ensure_indexes() -> None:
 
     await db.webstores.create_index("id", unique=True)
     await db.webstores.create_index([("tenant_id", 1), ("slug", 1)], unique=True)
+    await db.webstores.create_index(
+        "public_slug",
+        unique=True,
+        partialFilterExpression={"public_slug": {"$type": "string"}},
+    )
     await db.webstores.create_index([("tenant_id", 1), ("owner_id", 1)])
     await db.webstores.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
     await db.webstores.create_index([("tenant_id", 1), ("launched_at", -1)])
@@ -897,6 +902,31 @@ async def ensure_indexes() -> None:
         [("tenant_id", 1), ("webstore_id", 1), ("idempotency_key", 1)],
         unique=True,
         partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+
+    await db.webstore_purchase_intents.create_index("id", unique=True)
+    await db.webstore_purchase_intents.create_index([("tenant_id", 1), ("webstore_id", 1), ("created_at", -1)])
+    await db.webstore_purchase_intents.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.webstore_purchase_intents.create_index(
+        [("tenant_id", 1), ("webstore_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.webstore_purchase_intents.create_index(
+        [("tenant_id", 1), ("provider", 1), ("provider_payment_id", 1)],
+        unique=True,
+        partialFilterExpression={"provider_payment_id": {"$type": "string"}},
+    )
+    await db.webstore_payment_events.create_index("id", unique=True)
+    await db.webstore_payment_events.create_index(
+        [("provider", 1), ("provider_event_id", 1)],
+        unique=True,
+        partialFilterExpression={"provider_event_id": {"$type": "string"}},
+    )
+    await db.webstore_payment_events.create_index(
+        [("tenant_id", 1), ("purchase_intent_id", 1), ("provider", 1), ("provider_payment_id", 1)],
+        unique=True,
+        partialFilterExpression={"provider_payment_id": {"$type": "string"}},
     )
 
     await db.webstore_ledger_entries.create_index("id", unique=True)

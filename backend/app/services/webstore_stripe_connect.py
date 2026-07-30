@@ -37,7 +37,7 @@ async def create_local_checkout_record(
         amount_cents=amount_cents,
         currency=currency,
         idempotency_key=idempotency_key,
-        checkout_url=f"/p/webstores/checkout/{buyer_order_id}",
+        checkout_url=None,
         metadata={"buyer_order_id": buyer_order_id, **(metadata or {})},
     ).model_dump()
     await db.webstore_stripe_connect_records.insert_one(prepare_for_mongo(record))

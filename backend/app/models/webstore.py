@@ -7,6 +7,40 @@ from pydantic import Field, StrictInt
 
 from .base import BaseDoc
 
+WEBSTORE_TYPES = ("b2b", "fundraiser", "event", "promotional", "employee", "general")
+WEBSTORE_TYPE_LABELS = {
+    "b2b": "B2B",
+    "fundraiser": "Fundraiser",
+    "event": "Event",
+    "promotional": "Promotional",
+    "employee": "Employee",
+    "general": "General",
+}
+
+WEBSTORE_LIFECYCLE_STATES = (
+    "draft",
+    "questionnaire_sent",
+    "waiting_on_store_owner",
+    "questionnaire_submitted",
+    "ai_setup_ready",
+    "ai_product_suggestions_ready",
+    "artwork_needs_review",
+    "mockups_generated",
+    "mockups_approved",
+    "products_selected",
+    "store_packet_generated",
+    "sent_for_approval",
+    "changes_requested",
+    "approved",
+    "live",
+    "closing_soon",
+    "closed",
+    "in_production",
+    "completed",
+    "relaunch_ready",
+    "archived",
+)
+
 WebstoreStatus = Literal[
     "draft",
     "questionnaire_sent",
@@ -57,6 +91,15 @@ BuyerOrderStatus = Literal[
     "refunded",
     "canceled",
 ]
+PurchaseIntentStatus = Literal[
+    "pending_payment",
+    "payment_processing",
+    "paid_order_created",
+    "payment_failed",
+    "expired",
+    "canceled",
+]
+PaymentEventStatus = Literal["processing", "processed", "failed", "duplicate"]
 LedgerEntryType = Literal[
     "buyer_payment",
     "product_subtotal",
@@ -95,6 +138,7 @@ class Webstore(BaseDoc):
     owner_id: str
     name: str
     slug: str
+    public_slug: str
     store_type: WebstoreType = "general"
     status: WebstoreStatus = "draft"
     description: Optional[str] = None
@@ -239,6 +283,52 @@ class WebstoreBuyerOrder(BaseDoc):
     idempotency_key: Optional[str] = None
     bridged_order_id: Optional[str] = None
     bridge_status: str = "not_started"
+
+
+class WebstorePurchaseIntent(BaseDoc):
+    tenant_id: str
+    webstore_id: str
+    public_slug: str
+    buyer_name: str
+    buyer_email: str
+    buyer_phone: Optional[str] = None
+    line_items: list[dict[str, Any]] = Field(default_factory=list)
+    product_subtotal_cents: StrictInt = Field(default=0, ge=0)
+    donation_cents: StrictInt = Field(default=0, ge=0)
+    shipping_cents: StrictInt = Field(default=0, ge=0)
+    tax_cents: StrictInt = Field(default=0, ge=0)
+    discount_cents: StrictInt = Field(default=0, ge=0)
+    fee_cents: StrictInt = Field(default=0, ge=0)
+    total_cents: StrictInt = Field(default=0, ge=0)
+    currency: str = "usd"
+    status: PurchaseIntentStatus = "pending_payment"
+    idempotency_key: Optional[str] = None
+    canonical_customer_id: Optional[str] = None
+    canonical_order_id: Optional[str] = None
+    canonical_payment_id: Optional[str] = None
+    provider: Optional[str] = None
+    provider_payment_id: Optional[str] = None
+    verified_payment_event_id: Optional[str] = None
+    immutable_snapshot: dict[str, Any] = Field(default_factory=dict)
+
+
+class WebstorePaymentEvent(BaseDoc):
+    tenant_id: str
+    webstore_id: str
+    purchase_intent_id: str
+    provider: str
+    provider_event_id: str
+    provider_payment_id: str
+    amount_cents: StrictInt = Field(ge=0)
+    currency: str = "usd"
+    status: PaymentEventStatus = "processing"
+    canonical_customer_id: Optional[str] = None
+    canonical_order_id: Optional[str] = None
+    canonical_payment_id: Optional[str] = None
+    failure_code: Optional[str] = None
+    failure_reason: Optional[str] = None
+    processed_at: Optional[str] = None
+    raw_event_snapshot: dict[str, Any] = Field(default_factory=dict)
 
 
 class WebstoreLedgerEntry(BaseDoc):

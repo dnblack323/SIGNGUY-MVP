@@ -235,7 +235,7 @@ async def list_reports(user: dict = Depends(require_permission(Perm.REPORT_READ)
             "pages": 11,
             "location": "Business & Finance -> Reports",
         },
-        "official_webstore_types": ["B2B", "Fundraiser", "Event", "Promotional", "General"],
+        "official_webstore_types": ["B2B", "Fundraiser", "Event", "Promotional", "Employee", "General"],
         "reports": reports,
         "custom_datasets": datasets,
         "blocked_requirements": reports_service.BLOCKED_REPORT_REQUIREMENTS,

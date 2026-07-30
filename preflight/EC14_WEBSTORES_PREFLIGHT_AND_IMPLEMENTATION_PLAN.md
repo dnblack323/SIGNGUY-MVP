@@ -292,3 +292,18 @@ Tests and documentation:
 ## Stop Confirmation
 
 This document is planning/preflight only. No EC14 implementation code is introduced by this document.
+
+## Stage 1 Security Foundation Correction
+
+Status: IMPLEMENTED FOR REVIEW on `feature/webstores-phase-6`.
+
+Owner decisions recorded for this correction:
+
+- New public purchases create `webstore_purchase_intents`; new unpaid `webstore_buyer_orders` are stopped.
+- Legacy `webstore_buyer_orders` remain read-only compatibility records and cannot become canonical Orders without verified payment evidence.
+- Public Webstore routing uses a globally unique `public_slug`; the existing tenant-local/internal `slug` is preserved.
+- Donations are disabled during Stage 1.
+- Verified-payment processing is an internal provider-neutral service only. It has no public fake-payment route and no real Stripe Checkout/webhook/Connect/refund/payout implementation.
+- Official Webstore types are `B2B`, `Fundraiser`, `Event`, `Promotional`, `Employee`, and `General`.
+
+Stage 1 adds server-side purchase-intent totals, computed payment readiness that remains false until a real provider is connected, Store Owner and Store Manager scope enforcement, lifecycle transition validation, explicit public/portal response allowlists, checkout placeholder disabling, and replay-safe verified-payment foundations. Later storefront, Stripe, donation, payout, branding, setup wizard, AI, and catalog expansion work remains deferred.

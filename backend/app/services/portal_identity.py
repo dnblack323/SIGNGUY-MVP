@@ -64,6 +64,8 @@ async def create_portal_identity(
     elif portal_type == "webstore_manager":
         if not webstore_owner_id:
             raise ValueError("webstore_owner_id_required")
+        if not webstore_id:
+            raise ValueError("webstore_id_required")
         perms = list(WEBSTORE_MANAGER_PORTAL_PERMS)
         permissions_preset = "webstore_manager_ops"
     else:

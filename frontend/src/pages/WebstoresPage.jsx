@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { extractError } from "@/lib/api";
 import { createWebstore, createWebstoreOwner, listWebstores } from "@/lib/webstores";
 import { useAuth } from "@/auth/AuthContext";
@@ -20,12 +21,21 @@ function statusTone(status) {
   return "outline";
 }
 
+const WEBSTORE_TYPES = [
+  { value: "b2b", label: "B2B" },
+  { value: "fundraiser", label: "Fundraiser" },
+  { value: "event", label: "Event" },
+  { value: "promotional", label: "Promotional" },
+  { value: "employee", label: "Employee" },
+  { value: "general", label: "General" },
+];
+
 export default function WebstoresPage() {
   const { hasPerm } = useAuth();
   const qc = useQueryClient();
   const canRead = hasPerm("webstore:read");
   const canManage = hasPerm("webstore:manage");
-  const [form, setForm] = useState({ ownerName: "", ownerEmail: "", storeName: "", slug: "" });
+  const [form, setForm] = useState({ ownerName: "", ownerEmail: "", storeName: "", slug: "", storeType: "general" });
   const stores = useQuery({ queryKey: ["webstores"], queryFn: () => listWebstores(), enabled: canRead });
   const createFlow = useMutation({
     mutationFn: async () => {
@@ -34,12 +44,12 @@ export default function WebstoresPage() {
         owner_id: owner.id,
         name: form.storeName,
         slug: form.slug || undefined,
-        store_type: "fundraiser",
+        store_type: form.storeType,
       });
     },
     onSuccess: async () => {
       toast.success("Webstore created");
-      setForm({ ownerName: "", ownerEmail: "", storeName: "", slug: "" });
+      setForm({ ownerName: "", ownerEmail: "", storeName: "", slug: "", storeType: "general" });
       await qc.invalidateQueries({ queryKey: ["webstores"] });
     },
     onError: (err) => toast.error(extractError(err)),
@@ -65,10 +75,17 @@ export default function WebstoresPage() {
       {canManage && (
         <Card>
           <CardHeader><CardTitle className="text-base">New Webstore</CardTitle></CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+          <CardContent className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
             <div className="grid gap-1.5"><Label>Owner name</Label><Input value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} data-testid="webstore-owner-name" /></div>
             <div className="grid gap-1.5"><Label>Owner email</Label><Input type="email" value={form.ownerEmail} onChange={(e) => setForm({ ...form, ownerEmail: e.target.value })} data-testid="webstore-owner-email" /></div>
             <div className="grid gap-1.5"><Label>Store name</Label><Input value={form.storeName} onChange={(e) => setForm({ ...form, storeName: e.target.value })} data-testid="webstore-name" /></div>
+            <div className="grid gap-1.5">
+              <Label>Type</Label>
+              <Select value={form.storeType} onValueChange={(storeType) => setForm({ ...form, storeType })}>
+                <SelectTrigger data-testid="webstore-type"><SelectValue /></SelectTrigger>
+                <SelectContent>{WEBSTORE_TYPES.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
             <div className="grid gap-1.5"><Label>Slug</Label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} data-testid="webstore-slug" /></div>
             <Button disabled={createFlow.isPending || !form.ownerName || !form.ownerEmail || !form.storeName} onClick={() => createFlow.mutate()} data-testid="webstore-create">
               <Plus className="size-4 mr-2" />Create

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, Field
 
 from ..services import webstores as svc
 from ..services.webstores import WebstoreError
@@ -28,9 +28,6 @@ class BuyerOrderIn(BaseModel):
     buyer_email: str
     buyer_phone: Optional[str] = None
     line_items: list[BuyerLineIn] = Field(default_factory=list)
-    donation_cents: StrictInt = Field(default=0, ge=0)
-    shipping_cents: StrictInt = Field(default=0, ge=0)
-    tax_cents: StrictInt = Field(default=0, ge=0)
     idempotency_key: Optional[str] = None
 
 
@@ -45,6 +42,14 @@ async def storefront(slug: str) -> dict:
 @router.post("/{slug}/buyer-orders", status_code=201)
 async def create_buyer_order(slug: str, payload: BuyerOrderIn) -> dict:
     try:
-        return await svc.create_buyer_order(slug, payload.model_dump(exclude_none=True))
+        return await svc.create_purchase_intent(slug, payload.model_dump(exclude_none=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{slug}/purchase-intents", status_code=201)
+async def create_purchase_intent(slug: str, payload: BuyerOrderIn) -> dict:
+    try:
+        return await svc.create_purchase_intent(slug, payload.model_dump(exclude_none=True))
     except WebstoreError as e:
         _raise(e)
