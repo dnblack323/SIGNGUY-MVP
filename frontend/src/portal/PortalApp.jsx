@@ -106,6 +106,27 @@ function VerifyPage() {
   );
 }
 
+function WebstoreInvitationAcceptPage() {
+  const nav = useNavigate();
+  const [status, setStatus] = useState("accepting");
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("t");
+    if (!token) { setStatus("missing"); return; }
+    portalApi.post("/portal/webstores/invitations/accept", { token })
+      .then((r) => {
+        localStorage.setItem("sg_portal_token", r.data.token);
+        setStatus("accepted");
+        nav(`/portal/webstores/${r.data.webstore_id}`, { replace: true });
+      })
+      .catch((e) => setStatus(portalExtractError(e, "Invitation could not be accepted")));
+  }, [nav]);
+  return (
+    <div className="min-h-screen grid place-items-center p-6 text-sm" data-testid="portal-webstore-invitation-accept">
+      {status === "accepting" ? "Opening your Webstore setup workspace..." : status}
+    </div>
+  );
+}
+
 function useList(path) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
@@ -176,6 +197,7 @@ export default function PortalApp() {
       <Routes>
         <Route path="login" element={<LoginPage />} />
         <Route path="verify" element={<VerifyPage />} />
+        <Route path="webstores/invitations/accept" element={<WebstoreInvitationAcceptPage />} />
         <Route path="" element={<Guard><Dashboard /></Guard>} />
         <Route path="quotes" element={<Guard><ListPage path="/portal/quotes" title="Quotes" testId="portal-quotes" cols={{title:(q)=>`Q-${q.number} · ${q.status}`, sub:(q)=>q.notes_customer||"", right:(q)=>`$${((q.total_cents||0)/100).toFixed(2)}`}} /></Guard>} />
         <Route path="orders" element={<Guard><ListPage path="/portal/orders" title="Orders" testId="portal-orders" cols={{title:(o)=>`O-${o.number} · ${o.status}`, sub:(o)=>o.job_name||"", right:(o)=>`$${((o.total_cents||0)/100).toFixed(2)}`}} /></Guard>} />

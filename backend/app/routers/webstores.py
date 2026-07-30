@@ -3,17 +3,23 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field, StrictInt
 
 from ..deps import get_current_user
+from ..services import webstore_setup as setup_svc
 from ..services import webstores as svc
+from ..services.webstore_setup import WebstoreSetupError
 from ..services.webstores import WebstoreError
 
 router = APIRouter(prefix="/webstores", tags=["webstores"])
 
 
 def _raise(e: WebstoreError) -> None:
+    raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+
+def _raise_setup(e: WebstoreSetupError) -> None:
     raise HTTPException(status_code=e.status_code, detail=e.detail)
 
 
@@ -36,6 +42,15 @@ class WebstoreIn(BaseModel):
     direct_owner_payout_required: bool = False
     stripe_onboarding_required: bool = False
     deadline_at: Optional[str] = None
+    target_launch_at: Optional[str] = None
+    event_start_at: Optional[str] = None
+    event_location: Optional[str] = None
+    setup_profile: dict[str, Any] = Field(default_factory=dict)
+    setup_requirements: dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: Optional[str] = None
+    send_owner_invitation: bool = True
+    additional_owner_emails: list[str] = Field(default_factory=list)
+    manager_emails: list[str] = Field(default_factory=list)
 
 
 class WebstorePatchIn(BaseModel):
@@ -128,6 +143,53 @@ class PlatformFeeReversalIn(BaseModel):
     refund_basis_amount_cents: StrictInt = Field(gt=0)
 
 
+class AssignmentIn(BaseModel):
+    role: str = "owner"
+    email: str
+    name: Optional[str] = None
+    owner_id: Optional[str] = None
+    is_primary_owner: bool = False
+    send_invitation: bool = True
+
+
+class RevokeAssignmentIn(BaseModel):
+    reason: Optional[str] = None
+
+
+class PrimaryOwnerIn(BaseModel):
+    assignment_id: str
+    confirm: bool
+    reason: str
+
+
+class QuestionnaireTemplateIn(BaseModel):
+    store_type: str = "general"
+    title: Optional[str] = None
+    version: int = 1
+    sections: list[dict[str, Any]] = Field(default_factory=list)
+    status: str = "active"
+
+
+class QuestionnaireReturnIn(BaseModel):
+    reason: str
+
+
+class AnswerApplicationIn(BaseModel):
+    submission_id: str
+    selected_answer_keys: list[str] = Field(default_factory=list)
+    reason: Optional[str] = None
+    idempotency_key: Optional[str] = None
+
+
+class ReverseApplicationIn(BaseModel):
+    reason: str
+    idempotency_key: Optional[str] = None
+
+
+class RemoveFileIn(BaseModel):
+    reason: Optional[str] = None
+
+
 @router.get("")
 async def list_webstores(status: Optional[str] = Query(None), user: dict = Depends(get_current_user)) -> dict:
     try:
@@ -182,6 +244,184 @@ async def reports(webstore_id: str, user: dict = Depends(get_current_user)) -> d
         return await svc.reports(user, webstore_id)
     except WebstoreError as e:
         _raise(e)
+
+
+@router.get("/{webstore_id}/setup-progress")
+async def setup_progress(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.setup_progress_for_staff(user, webstore_id)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.get("/{webstore_id}/assignments")
+async def list_assignments(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.list_assignments(user, webstore_id)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.post("/{webstore_id}/assignments", status_code=201)
+async def create_assignment(webstore_id: str, payload: AssignmentIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.create_assignment(user, webstore_id, payload.model_dump(exclude_none=True), send=payload.send_invitation)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.post("/{webstore_id}/assignments/{assignment_id}/resend")
+async def resend_assignment_invite(webstore_id: str, assignment_id: str, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.resend_invitation(user, webstore_id, assignment_id)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.post("/{webstore_id}/assignments/{assignment_id}/revoke")
+async def revoke_assignment(webstore_id: str, assignment_id: str, payload: RevokeAssignmentIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.revoke_assignment(user, webstore_id, assignment_id, payload.reason)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.post("/{webstore_id}/primary-owner")
+async def change_primary_owner(webstore_id: str, payload: PrimaryOwnerIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.change_primary_owner(user, webstore_id, payload.assignment_id, payload.confirm, payload.reason)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.get("/setup/questionnaire-templates")
+async def list_questionnaire_templates(
+    store_type: Optional[str] = Query(None),
+    active_only: bool = Query(False),
+    user: dict = Depends(get_current_user),
+) -> dict:
+    try:
+        return await setup_svc.list_questionnaire_templates(user, store_type=store_type, active_only=active_only)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.post("/setup/questionnaire-templates", status_code=201)
+async def create_questionnaire_template(payload: QuestionnaireTemplateIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.save_questionnaire_template(user, payload.model_dump())
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.patch("/setup/questionnaire-templates/{template_id}")
+async def update_questionnaire_template(template_id: str, payload: QuestionnaireTemplateIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.save_questionnaire_template(user, payload.model_dump(exclude_unset=True), template_id=template_id)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.get("/{webstore_id}/questionnaire")
+async def bound_questionnaire(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.bind_questionnaire_templates(user, webstore_id)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.get("/{webstore_id}/questionnaire-response")
+async def questionnaire_response(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.latest_questionnaire_response(user, webstore_id)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.post("/{webstore_id}/questionnaire/{submission_id}/return")
+async def return_questionnaire(webstore_id: str, submission_id: str, payload: QuestionnaireReturnIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.return_questionnaire(user, webstore_id, submission_id, payload.reason)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.post("/{webstore_id}/questionnaire/apply-preview")
+async def questionnaire_apply_preview(webstore_id: str, payload: AnswerApplicationIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.answer_application_preview(user, webstore_id, payload.model_dump(exclude_none=True))
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.post("/{webstore_id}/questionnaire/apply")
+async def questionnaire_apply(webstore_id: str, payload: AnswerApplicationIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.apply_questionnaire_answers(user, webstore_id, payload.model_dump(exclude_none=True))
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.post("/{webstore_id}/answer-applications/{application_id}/reverse")
+async def reverse_answer_application(webstore_id: str, application_id: str, payload: ReverseApplicationIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.reverse_answer_application(user, webstore_id, application_id, payload.model_dump(exclude_none=True))
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.get("/{webstore_id}/setup-files")
+async def list_setup_files(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.list_setup_files(user, webstore_id)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.post("/{webstore_id}/setup-files", status_code=201)
+async def upload_setup_file(
+    webstore_id: str,
+    category: str = Form(...),
+    notes: Optional[str] = Form(None),
+    replaces_file_id: Optional[str] = Form(None),
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+) -> dict:
+    try:
+        data = await file.read()
+        return await setup_svc.upload_setup_file(
+            user,
+            webstore_id,
+            filename=file.filename or "upload.bin",
+            content_type=file.content_type or "application/octet-stream",
+            data=data,
+            category=category,
+            notes=notes,
+            replaces_file_id=replaces_file_id,
+        )
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.get("/{webstore_id}/setup-files/{file_id}/download")
+async def download_setup_file(webstore_id: str, file_id: str, user: dict = Depends(get_current_user)) -> Response:
+    try:
+        doc, data, content_type = await setup_svc.download_setup_file(user["tenant_id"], webstore_id, file_id)
+        return Response(
+            content=data,
+            media_type=content_type,
+            headers={"Content-Disposition": f'attachment; filename="{doc.get("file_name", "setup-file")}"'},
+        )
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.post("/{webstore_id}/setup-files/{file_id}/remove")
+async def remove_setup_file(webstore_id: str, file_id: str, payload: RemoveFileIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.remove_setup_file(user, webstore_id, file_id, payload.reason)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
 
 
 @router.post("/{webstore_id}/products", status_code=201)

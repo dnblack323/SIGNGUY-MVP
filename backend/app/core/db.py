@@ -877,6 +877,12 @@ async def ensure_indexes() -> None:
     )
     await db.webstores.create_index([("tenant_id", 1), ("owner_id", 1)])
     await db.webstores.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.webstores.create_index([("tenant_id", 1), ("setup_state", 1), ("updated_at", -1)])
+    await db.webstores.create_index(
+        [("tenant_id", 1), ("creation_idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"creation_idempotency_key": {"$type": "string"}},
+    )
     await db.webstores.create_index([("tenant_id", 1), ("launched_at", -1)])
 
     await db.webstore_product_templates.create_index("id", unique=True)
@@ -889,6 +895,40 @@ async def ensure_indexes() -> None:
 
     await db.webstore_questionnaire_submissions.create_index("id", unique=True)
     await db.webstore_questionnaire_submissions.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
+    await db.webstore_questionnaire_submissions.create_index([("tenant_id", 1), ("webstore_id", 1), ("portal_identity_id", 1), ("status", 1)])
+
+    await db.webstore_access_assignments.create_index("id", unique=True)
+    await db.webstore_access_assignments.create_index([("tenant_id", 1), ("webstore_id", 1), ("role", 1), ("status", 1)])
+    await db.webstore_access_assignments.create_index(
+        [("tenant_id", 1), ("webstore_id", 1), ("email", 1), ("role", 1), ("status", 1)],
+        unique=True,
+        partialFilterExpression={"status": {"$in": ["invited", "active"]}},
+    )
+    await db.webstore_access_assignments.create_index(
+        [("tenant_id", 1), ("webstore_id", 1), ("is_primary_owner", 1)],
+        unique=True,
+        partialFilterExpression={"is_primary_owner": True, "status": {"$in": ["invited", "active"]}},
+    )
+
+    await db.webstore_invitations.create_index("id", unique=True)
+    await db.webstore_invitations.create_index("token_hash", unique=True)
+    await db.webstore_invitations.create_index([("tenant_id", 1), ("webstore_id", 1), ("assignment_id", 1), ("status", 1)])
+    await db.webstore_invitations.create_index([("expires_at", 1), ("status", 1)])
+
+    await db.webstore_questionnaire_templates.create_index("id", unique=True)
+    await db.webstore_questionnaire_templates.create_index([("tenant_id", 1), ("store_type", 1), ("status", 1), ("version", -1)])
+
+    await db.webstore_setup_files.create_index("id", unique=True)
+    await db.webstore_setup_files.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1), ("created_at", -1)])
+    await db.webstore_setup_files.create_index([("tenant_id", 1), ("webstore_id", 1), ("category", 1), ("version", -1)])
+
+    await db.webstore_answer_applications.create_index("id", unique=True)
+    await db.webstore_answer_applications.create_index(
+        [("tenant_id", 1), ("webstore_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.webstore_answer_applications.create_index([("tenant_id", 1), ("webstore_id", 1), ("submission_id", 1)])
 
     await db.webstore_artwork_files.create_index("id", unique=True)
     await db.webstore_artwork_files.create_index([("tenant_id", 1), ("webstore_id", 1), ("artwork_status", 1)])

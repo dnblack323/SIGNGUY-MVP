@@ -35,21 +35,38 @@ export default function WebstoresPage() {
   const qc = useQueryClient();
   const canRead = hasPerm("webstore:read");
   const canManage = hasPerm("webstore:manage");
-  const [form, setForm] = useState({ ownerName: "", ownerEmail: "", storeName: "", slug: "", storeType: "general" });
+  const emptyForm = {
+    ownerName: "",
+    ownerEmail: "",
+    storeName: "",
+    slug: "",
+    storeType: "general",
+    targetLaunchAt: "",
+    deadlineAt: "",
+    managerEmails: "",
+    additionalOwnerEmails: "",
+  };
+  const [form, setForm] = useState(emptyForm);
   const stores = useQuery({ queryKey: ["webstores"], queryFn: () => listWebstores(), enabled: canRead });
   const createFlow = useMutation({
     mutationFn: async () => {
-      const owner = await createWebstoreOwner({ name: form.ownerName, email: form.ownerEmail });
+      const owner = await createWebstoreOwner({ name: form.ownerName, email: form.ownerEmail, create_portal_identity: false });
       return createWebstore({
         owner_id: owner.id,
         name: form.storeName,
         slug: form.slug || undefined,
         store_type: form.storeType,
+        target_launch_at: form.targetLaunchAt || undefined,
+        deadline_at: form.deadlineAt || undefined,
+        manager_emails: form.managerEmails.split(",").map((e) => e.trim()).filter(Boolean),
+        additional_owner_emails: form.additionalOwnerEmails.split(",").map((e) => e.trim()).filter(Boolean),
+        idempotency_key: `webstore-create-${form.ownerEmail}-${form.storeName}`.toLowerCase(),
+        send_owner_invitation: true,
       });
     },
     onSuccess: async () => {
       toast.success("Webstore created");
-      setForm({ ownerName: "", ownerEmail: "", storeName: "", slug: "", storeType: "general" });
+      setForm(emptyForm);
       await qc.invalidateQueries({ queryKey: ["webstores"] });
     },
     onError: (err) => toast.error(extractError(err)),
@@ -75,7 +92,7 @@ export default function WebstoresPage() {
       {canManage && (
         <Card>
           <CardHeader><CardTitle className="text-base">New Webstore</CardTitle></CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+          <CardContent className="grid grid-cols-1 md:grid-cols-4 xl:grid-cols-8 gap-3 items-end">
             <div className="grid gap-1.5"><Label>Owner name</Label><Input value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} data-testid="webstore-owner-name" /></div>
             <div className="grid gap-1.5"><Label>Owner email</Label><Input type="email" value={form.ownerEmail} onChange={(e) => setForm({ ...form, ownerEmail: e.target.value })} data-testid="webstore-owner-email" /></div>
             <div className="grid gap-1.5"><Label>Store name</Label><Input value={form.storeName} onChange={(e) => setForm({ ...form, storeName: e.target.value })} data-testid="webstore-name" /></div>
@@ -87,6 +104,10 @@ export default function WebstoresPage() {
               </Select>
             </div>
             <div className="grid gap-1.5"><Label>Slug</Label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} data-testid="webstore-slug" /></div>
+            <div className="grid gap-1.5"><Label>Target launch</Label><Input type="date" value={form.targetLaunchAt} onChange={(e) => setForm({ ...form, targetLaunchAt: e.target.value })} data-testid="webstore-target-launch" /></div>
+            <div className="grid gap-1.5"><Label>Deadline</Label><Input type="date" value={form.deadlineAt} onChange={(e) => setForm({ ...form, deadlineAt: e.target.value })} data-testid="webstore-deadline" /></div>
+            <div className="grid gap-1.5"><Label>Managers</Label><Input value={form.managerEmails} onChange={(e) => setForm({ ...form, managerEmails: e.target.value })} placeholder="email, email" data-testid="webstore-manager-emails" /></div>
+            <div className="grid gap-1.5"><Label>Additional owners</Label><Input value={form.additionalOwnerEmails} onChange={(e) => setForm({ ...form, additionalOwnerEmails: e.target.value })} placeholder="email, email" data-testid="webstore-additional-owner-emails" /></div>
             <Button disabled={createFlow.isPending || !form.ownerName || !form.ownerEmail || !form.storeName} onClick={() => createFlow.mutate()} data-testid="webstore-create">
               <Plus className="size-4 mr-2" />Create
             </Button>
@@ -99,7 +120,7 @@ export default function WebstoresPage() {
           <Link key={store.id} to={`/webstores/${store.id}`} className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-2 p-3 text-sm hover:bg-slate-50" data-testid={`webstore-row-${store.id}`}>
             <div>
               <div className="font-medium">{store.name}</div>
-              <div className="text-xs text-muted-foreground">/{store.slug} · {store.store_type}</div>
+              <div className="text-xs text-muted-foreground">/{store.slug} - {store.store_type} - setup: {store.setup_state || "not_started"}</div>
             </div>
             <Badge variant={statusTone(store.status)} className="w-fit capitalize">{String(store.status).replace(/_/g, " ")}</Badge>
             <div className="text-xs text-muted-foreground md:text-right">{store.checkout_enabled ? "Checkout on" : "Checkout off"}</div>
