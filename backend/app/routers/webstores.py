@@ -35,7 +35,6 @@ class WebstoreIn(BaseModel):
     branding: dict[str, Any] = Field(default_factory=dict)
     direct_owner_payout_required: bool = False
     stripe_onboarding_required: bool = False
-    stripe_payment_ready: bool = False
     deadline_at: Optional[str] = None
 
 
@@ -43,11 +42,10 @@ class WebstorePatchIn(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     branding: Optional[dict[str, Any]] = None
-    checkout_enabled: Optional[bool] = None
+    store_type: Optional[str] = None
     terms_fee_acknowledged: Optional[bool] = None
     direct_owner_payout_required: Optional[bool] = None
     stripe_onboarding_required: Optional[bool] = None
-    stripe_payment_ready: Optional[bool] = None
     deadline_at: Optional[str] = None
 
 

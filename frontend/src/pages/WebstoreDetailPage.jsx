@@ -85,7 +85,7 @@ export default function WebstoreDetailPage() {
               { label: "Product Content", tool: "product_content_builder", mode: "webstore_product_content" },
               { label: "Product Mockup", tool: "mockup_generator", mode: "product_mockup" },
             ]} />
-            <Button asChild variant="outline" size="sm"><Link to={store.public_url || `/p/webstores/${store.slug}`}><ExternalLink className="size-4 mr-2" />Public</Link></Button>
+            <Button asChild variant="outline" size="sm"><Link to={store.public_url || `/p/webstores/${store.public_slug || store.slug}`}><ExternalLink className="size-4 mr-2" />Public</Link></Button>
           </div>
         )}
       />
@@ -104,9 +104,9 @@ export default function WebstoreDetailPage() {
               <Checkbox checked={!!store.terms_fee_acknowledged} onCheckedChange={(checked) => saveGate.mutate({ terms_fee_acknowledged: !!checked })} id="fee-ack" />
               <Label htmlFor="fee-ack">Terms and fees acknowledged</Label>
             </div>
-            <div className="flex items-center gap-2">
-              <Checkbox checked={!!store.stripe_payment_ready} onCheckedChange={(checked) => saveGate.mutate({ stripe_payment_ready: !!checked })} id="payment-ready" />
-              <Label htmlFor="payment-ready">Payment boundary ready</Label>
+            <div className="rounded border bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="webstore-payment-readiness">
+              <div className="font-medium">Payment readiness: {readiness.data?.checks?.payment_ready ? "Ready" : "Not connected"}</div>
+              <div>{readiness.data?.payment_unavailable_reason || "Real verified provider checkout is not connected yet."}</div>
             </div>
             <Button className="w-full" disabled={!readiness.data?.ready || launch.isPending} onClick={() => launch.mutate()} data-testid="webstore-launch">
               <ShieldCheck className="size-4 mr-2" />Launch

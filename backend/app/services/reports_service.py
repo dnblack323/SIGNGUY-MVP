@@ -31,7 +31,7 @@ from ..core.permissions import Perm
 from . import finance_service, tax_service
 
 
-APPROVED_WEBSTORE_TYPES = {"b2b", "fundraiser", "event", "promotional", "general"}
+APPROVED_WEBSTORE_TYPES = {"b2b", "fundraiser", "event", "promotional", "employee", "general"}
 DEFAULT_LIMIT = 25000
 
 
@@ -1435,7 +1435,7 @@ REPORTS.update({
         "data_source": "webstores+webstore_buyer_orders",
         "date_basis": "created_at",
         "calc_basis": "stored_webstore_order_totals",
-        "limitations": ["Official webstore types are B2B, Fundraiser, Event, Promotional, and General; other legacy values are grouped as other_or_legacy."],
+        "limitations": ["Official Webstore types are B2B, Fundraiser, Event, Promotional, Employee, and General; other legacy values are grouped as other_or_legacy."],
         "columns": [
             {"key": "store_name", "label": "Store"},
             {"key": "store_type", "label": "Type"},

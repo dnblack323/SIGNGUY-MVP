@@ -318,6 +318,7 @@ async def test_webstore_buyer_order_numbers_are_idempotent_and_do_not_affect_can
             "owner_id": f"owner-{suffix}",
             "name": "Record Numbering Store",
             "slug": slug,
+            "public_slug": f"public-{slug}",
             "store_type": "general",
             "status": "live",
             "checkout_enabled": True,
@@ -350,15 +351,15 @@ async def test_webstore_buyer_order_numbers_are_idempotent_and_do_not_affect_can
         "line_items": [{"product_id": product_id, "quantity": 2}],
         "idempotency_key": idempotency_key,
     }
-    first = await create_buyer_order(slug, payload)
-    replay = await create_buyer_order(slug, payload)
+    first = await create_buyer_order(f"public-{slug}", payload)
+    replay = await create_buyer_order(f"public-{slug}", payload)
 
-    assert first["buyer_order"]["number"] == 1
-    assert replay["buyer_order"]["id"] == first["buyer_order"]["id"]
-    assert replay["buyer_order"]["number"] == 1
+    assert first["purchase_intent"]["status"] == "pending_payment"
+    assert replay["purchase_intent"]["id"] == first["purchase_intent"]["id"]
+    assert await db.webstore_buyer_orders.count_documents({"tenant_id": tenant_id}) == 0
     assert await db.record_number_allocations.count_documents(
         {"tenant_id": tenant_id, "record_type": "webstore_order", "idempotency_key": idempotency_key}
-    ) == 1
+    ) == 0
 
     order_number = await next_record_number(tenant_id=tenant_id, record_type="order")
     assert order_number.number == 1

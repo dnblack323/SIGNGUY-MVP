@@ -14,6 +14,8 @@ from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.customer import Customer
 from ..models.order import Order, OrderItem
 from ..models.webstore import (
+    WEBSTORE_LIFECYCLE_STATES,
+    WEBSTORE_TYPES,
     Webstore,
     WebstoreAIUsageEvent,
     WebstoreActivity,
@@ -25,6 +27,7 @@ from ..models.webstore import (
     WebstoreOwner,
     WebstoreProduct,
     WebstoreProductTemplate,
+    WebstorePurchaseIntent,
     WebstoreQuestionnaireSubmission,
 )
 from ..repositories.webstores import WebstoreRepository
@@ -32,12 +35,37 @@ from .activity import record_activity_with_audit
 from .entitlements import has_entitlement
 from .portal_identity import create_portal_identity
 from .sequence import next_number, next_record_number
-from .webstore_stripe_connect import create_local_checkout_record
 
 WEBSTORES_FEATURE_KEY = "webstores"
 LIVE_BLOCKING_STATUSES = {"closed", "archived"}
 PRODUCT_PURCHASABLE_STATUSES = {"active"}
 SLUG_RE = re.compile(r"[^a-z0-9]+")
+PUBLIC_CHECKOUT_ENABLED = False
+VALID_WEBSTORE_TYPES = set(WEBSTORE_TYPES)
+VALID_WEBSTORE_STATUSES = set(WEBSTORE_LIFECYCLE_STATES)
+WEBSTORE_TRANSITIONS: dict[str, set[str]] = {
+    "draft": {"questionnaire_sent", "waiting_on_store_owner", "questionnaire_submitted", "products_selected", "store_packet_generated", "archived"},
+    "questionnaire_sent": {"waiting_on_store_owner", "questionnaire_submitted", "changes_requested", "archived"},
+    "waiting_on_store_owner": {"questionnaire_submitted", "changes_requested", "archived"},
+    "questionnaire_submitted": {"ai_setup_ready", "artwork_needs_review", "products_selected", "store_packet_generated", "archived"},
+    "ai_setup_ready": {"ai_product_suggestions_ready", "artwork_needs_review", "products_selected", "archived"},
+    "ai_product_suggestions_ready": {"artwork_needs_review", "products_selected", "archived"},
+    "artwork_needs_review": {"mockups_generated", "products_selected", "archived"},
+    "mockups_generated": {"mockups_approved", "changes_requested", "products_selected", "archived"},
+    "mockups_approved": {"products_selected", "store_packet_generated", "archived"},
+    "products_selected": {"store_packet_generated", "sent_for_approval", "archived"},
+    "store_packet_generated": {"sent_for_approval", "changes_requested", "archived"},
+    "sent_for_approval": {"approved", "changes_requested", "archived"},
+    "changes_requested": {"questionnaire_submitted", "store_packet_generated", "sent_for_approval", "archived"},
+    "approved": {"live", "archived"},
+    "live": {"closing_soon", "closed", "in_production", "completed", "archived"},
+    "closing_soon": {"closed", "archived"},
+    "closed": {"relaunch_ready", "archived"},
+    "in_production": {"completed", "closed", "archived"},
+    "completed": {"relaunch_ready", "archived"},
+    "relaunch_ready": {"approved", "live", "archived"},
+    "archived": set(),
+}
 
 owners_repo = WebstoreRepository("webstore_owners")
 stores_repo = WebstoreRepository("webstores")
@@ -86,6 +114,63 @@ def _slug(value: str) -> str:
     return text[:80] or "webstore"
 
 
+def _normalize_store_type(value: Any) -> str:
+    key = _slug(str(value or "general")).replace("-", "_")
+    aliases = {"b_2_b": "b2b", "business_to_business": "b2b"}
+    key = aliases.get(key, key)
+    if key not in VALID_WEBSTORE_TYPES:
+        raise WebstoreError("invalid_webstore_type", "Unsupported Webstore type", 400)
+    return key
+
+
+async def _public_slug_available(public_slug: str, *, existing_webstore_id: Optional[str] = None) -> bool:
+    existing = await db.webstores.find_one({"public_slug": public_slug}, {"_id": 0, "id": 1})
+    return not existing or existing.get("id") == existing_webstore_id
+
+
+async def _generate_public_slug(*, tenant_id: str, shop_context: str, store_name: str, internal_slug: str) -> str:
+    base = _slug(f"{shop_context}-{store_name}")[:72] or internal_slug
+    candidate = base
+    if await _public_slug_available(candidate):
+        return candidate
+    seed = _slug(f"{tenant_id}-{internal_slug}")[:72] or internal_slug
+    candidate = seed
+    if await _public_slug_available(candidate):
+        return candidate
+    for suffix in range(2, 1000):
+        candidate = f"{seed[:72]}-{suffix}"
+        if await _public_slug_available(candidate):
+            return candidate
+    raise WebstoreError("public_slug_unavailable", "Unable to allocate a public Webstore slug", 409)
+
+
+async def _ensure_public_slug(store: dict) -> dict:
+    if store.get("public_slug"):
+        return store
+    public_slug = await _generate_public_slug(
+        tenant_id=store["tenant_id"],
+        shop_context=store["tenant_id"],
+        store_name=store.get("name") or store.get("slug") or store["id"],
+        internal_slug=store.get("slug") or store["id"],
+    )
+    await db.webstores.update_one(
+        {"tenant_id": store["tenant_id"], "id": store["id"], "public_slug": {"$exists": False}},
+        {"$set": {"public_slug": public_slug, "public_url": f"/p/webstores/{public_slug}", "updated_at": _now_iso()}},
+    )
+    updated = await db.webstores.find_one({"tenant_id": store["tenant_id"], "id": store["id"]}, {"_id": 0})
+    return serialize_doc(updated or {**store, "public_slug": public_slug, "public_url": f"/p/webstores/{public_slug}"})
+
+
+def _validate_transition(current: str, requested: str) -> None:
+    if requested not in VALID_WEBSTORE_STATUSES:
+        raise WebstoreError("invalid_webstore_status", "Unsupported Webstore lifecycle status", 400)
+    if requested == current:
+        return
+    allowed = WEBSTORE_TRANSITIONS.get(current, set())
+    if requested not in allowed:
+        raise WebstoreError("invalid_webstore_transition", f"Cannot move Webstore from {current} to {requested}", 409)
+
+
 def _require_staff_perm(user: dict, perm: Perm) -> None:
     if perm.value not in set(permissions_for_role(user.get("role", "staff"))):
         raise WebstoreError("permission_denied", f"Missing permission: {perm.value}", 403)
@@ -131,19 +216,25 @@ async def _audit(
 
 
 def _public_product(product: dict) -> dict:
-    return {
-        k: v
-        for k, v in product.items()
-        if k
-        not in {
-            "_id",
-            "tenant_id",
-            "production_cost_cents",
-            "store_owner_share_cents",
-            "platform_fee_basis_points",
-            "production_notes",
-        }
+    allowed = {
+        "id",
+        "webstore_id",
+        "name",
+        "description",
+        "category",
+        "product_type",
+        "sku",
+        "selling_price_cents",
+        "currency",
+        "variants",
+        "personalization_enabled",
+        "image_file_ids",
+        "mockup_ids",
+        "public",
+        "featured",
+        "status",
     }
+    return {k: v for k, v in product.items() if k in allowed}
 
 
 def _public_store(store: dict) -> dict:
@@ -151,6 +242,7 @@ def _public_store(store: dict) -> dict:
         "id",
         "name",
         "slug",
+        "public_slug",
         "store_type",
         "status",
         "description",
@@ -159,7 +251,52 @@ def _public_store(store: dict) -> dict:
         "public_url",
         "checkout_enabled",
     }
-    return {k: v for k, v in store.items() if k in allowed}
+    result = {k: v for k, v in store.items() if k in allowed}
+    result["checkout_enabled"] = bool(result.get("checkout_enabled")) and PUBLIC_CHECKOUT_ENABLED
+    result["checkout_unavailable_reason"] = "Real Webstore checkout is not connected yet." if not PUBLIC_CHECKOUT_ENABLED else None
+    return result
+
+
+def _portal_store(store: dict) -> dict:
+    allowed = {
+        "id",
+        "name",
+        "slug",
+        "public_slug",
+        "store_type",
+        "status",
+        "description",
+        "branding",
+        "deadline_at",
+        "public_url",
+        "checkout_enabled",
+        "terms_fee_acknowledged",
+        "owner_approved_at",
+        "launch_packet_id",
+    }
+    result = {k: v for k, v in store.items() if k in allowed}
+    result["checkout_enabled"] = bool(result.get("checkout_enabled")) and PUBLIC_CHECKOUT_ENABLED
+    result["checkout_unavailable_reason"] = "Real Webstore checkout is not connected yet."
+    return result
+
+
+def _portal_launch_packet(packet: Optional[dict]) -> Optional[dict]:
+    if not packet:
+        return None
+    allowed = {
+        "id",
+        "webstore_id",
+        "status",
+        "snapshot",
+        "pricing_summary",
+        "promotion_copy",
+        "qr_code_url",
+        "share_url",
+        "sent_at",
+        "owner_decision_at",
+        "change_request_reason",
+    }
+    return {k: v for k, v in packet.items() if k in allowed}
 
 
 async def _get_store(tenant_id: str, webstore_id: str) -> dict:
@@ -245,19 +382,27 @@ async def create_webstore(user: dict, fields: dict[str, Any]) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_WRITE)
     owner = await _get_owner(user["tenant_id"], fields["owner_id"])
     slug = _slug(fields.get("slug") or fields.get("name") or owner["name"])
+    tenant = await db.tenants.find_one({"id": user["tenant_id"]}, {"_id": 0, "name": 1, "slug": 1})
+    public_slug = await _generate_public_slug(
+        tenant_id=user["tenant_id"],
+        shop_context=(tenant or {}).get("slug") or (tenant or {}).get("name") or user["tenant_id"],
+        store_name=fields.get("name") or owner["name"],
+        internal_slug=slug,
+    )
     store = Webstore(
         tenant_id=user["tenant_id"],
         owner_id=owner["id"],
         name=_clean_text(fields.get("name"), "name"),
         slug=slug,
-        store_type=fields.get("store_type", "general"),
+        public_slug=public_slug,
+        store_type=_normalize_store_type(fields.get("store_type", "general")),
         description=_clean_optional_text(fields.get("description")),
         branding=fields.get("branding") or {},
         direct_owner_payout_required=bool(fields.get("direct_owner_payout_required", False)),
         stripe_onboarding_required=bool(fields.get("stripe_onboarding_required", False)),
-        stripe_payment_ready=bool(fields.get("stripe_payment_ready", False)),
+        stripe_payment_ready=False,
         deadline_at=fields.get("deadline_at"),
-        public_url=f"/p/webstores/{slug}",
+        public_url=f"/p/webstores/{public_slug}",
     ).model_dump()
     try:
         await db.webstores.insert_one(prepare_for_mongo(store))
@@ -285,7 +430,7 @@ async def list_webstores(user: dict, *, status: Optional[str] = None) -> dict:
 
 async def get_webstore(user: dict, webstore_id: str) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_READ)
-    store = await _get_store(user["tenant_id"], webstore_id)
+    store = await _ensure_public_slug(await _get_store(user["tenant_id"], webstore_id))
     products = await list_products(user, webstore_id=webstore_id)
     packets = await packets_repo.list(tenant_id=user["tenant_id"], filters={"webstore_id": webstore_id}, sort=[("created_at", -1)], limit=10)
     return {"webstore": store, "products": products["items"], "launch_packets": packets["items"]}
@@ -293,7 +438,7 @@ async def get_webstore(user: dict, webstore_id: str) -> dict:
 
 async def update_webstore(user: dict, webstore_id: str, updates: dict[str, Any]) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_WRITE)
-    await _get_store(user["tenant_id"], webstore_id)
+    store_before = await _get_store(user["tenant_id"], webstore_id)
     allowed = {
         k: v
         for k, v in updates.items()
@@ -302,11 +447,10 @@ async def update_webstore(user: dict, webstore_id: str, updates: dict[str, Any])
             "name",
             "description",
             "branding",
-            "checkout_enabled",
+            "store_type",
             "terms_fee_acknowledged",
             "direct_owner_payout_required",
             "stripe_onboarding_required",
-            "stripe_payment_ready",
             "deadline_at",
         }
     }
@@ -314,6 +458,17 @@ async def update_webstore(user: dict, webstore_id: str, updates: dict[str, Any])
         allowed["name"] = _clean_text(allowed["name"], "name")
     if "description" in allowed:
         allowed["description"] = _clean_optional_text(allowed["description"])
+    if "store_type" in allowed:
+        allowed["store_type"] = _normalize_store_type(allowed["store_type"])
+    if "name" in allowed and allowed["name"] != store_before.get("name"):
+        public_slug = await _generate_public_slug(
+            tenant_id=user["tenant_id"],
+            shop_context=user["tenant_id"],
+            store_name=allowed["name"],
+            internal_slug=store_before.get("slug") or store_before["id"],
+        )
+        allowed["public_slug"] = public_slug
+        allowed["public_url"] = f"/p/webstores/{public_slug}"
     if not allowed:
         raise WebstoreError("no_updates", "No supported updates provided", 400)
     store = await stores_repo.update(tenant_id=user["tenant_id"], entity_id=webstore_id, updates=allowed)
@@ -335,6 +490,7 @@ async def update_webstore(user: dict, webstore_id: str, updates: dict[str, Any])
 async def set_webstore_status(user: dict, webstore_id: str, status: str, reason: Optional[str] = None) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_MANAGE if status in {"live", "closed", "archived"} else Perm.WEBSTORE_WRITE)
     store = await _get_store(user["tenant_id"], webstore_id)
+    _validate_transition(store.get("status", "draft"), status)
     if status == "live":
         readiness = await launch_readiness(user, webstore_id)
         if not readiness["ready"]:
@@ -669,6 +825,8 @@ async def owner_approve_launch_packet(identity: dict, webstore_id: str, packet_i
     packet = await packets_repo.get(tenant_id=identity["tenant_id"], entity_id=packet_id)
     if not packet or packet["webstore_id"] != webstore_id:
         raise WebstoreError("launch_packet_not_found", "Launch packet not found", 404)
+    if packet.get("status") != "sent_for_approval":
+        raise WebstoreError("launch_packet_not_sent", "Launch packet must be sent before owner approval", 409)
     now = _now_iso()
     packet = await packets_repo.update(
         tenant_id=identity["tenant_id"],
@@ -696,7 +854,7 @@ async def owner_approve_launch_packet(identity: dict, webstore_id: str, packet_i
 
 async def launch_readiness(user: dict, webstore_id: str) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_READ)
-    store = await _get_store(user["tenant_id"], webstore_id)
+    store = await _ensure_public_slug(await _get_store(user["tenant_id"], webstore_id))
     checks: dict[str, bool] = {}
     checks["entitlement"] = await has_entitlement(tenant_id=user["tenant_id"], feature_key=store.get("entitlement_feature_key") or WEBSTORES_FEATURE_KEY)
     checks["not_closed_or_archived"] = store.get("status") not in LIVE_BLOCKING_STATUSES
@@ -704,22 +862,27 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
         {"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "status": "active", "public": True, "selling_price_cents": {"$gt": 0}}
     )
     checks["active_public_products_with_prices"] = active_count > 0
-    checks["public_branding"] = bool(store.get("name") and store.get("slug"))
+    checks["public_branding"] = bool(store.get("name") and store.get("slug") and store.get("public_slug"))
     checks["launch_packet"] = bool(store.get("launch_packet_id"))
     checks["owner_approved"] = bool(store.get("owner_approved_at"))
     checks["terms_fee_acknowledged"] = bool(store.get("terms_fee_acknowledged"))
-    checks["payment_ready"] = bool(store.get("stripe_payment_ready")) and (
-        not store.get("stripe_onboarding_required") or store.get("direct_owner_payout_required") is False
-    )
+    checks["payment_ready"] = False
     ready = all(checks.values())
-    return {"webstore_id": webstore_id, "ready": ready, "checks": checks}
+    return {
+        "webstore_id": webstore_id,
+        "ready": ready,
+        "checks": checks,
+        "payment_readiness_source": "computed",
+        "payment_unavailable_reason": "Real verified provider checkout is not connected yet.",
+    }
 
 
 async def _storefront_by_slug(slug: str) -> dict:
-    store = await db.webstores.find_one({"slug": slug}, {"_id": 0})
+    store = await db.webstores.find_one({"public_slug": slug}, {"_id": 0})
     if not store:
         raise WebstoreError("webstore_not_found", "Webstore not found", 404)
-    if store.get("status") != "live" or not store.get("checkout_enabled"):
+    store = await _ensure_public_slug(serialize_doc(store))
+    if store.get("status") != "live":
         raise WebstoreError("webstore_not_live", "Webstore is not available", 404)
     products = [
         _public_product(doc)
@@ -735,24 +898,43 @@ async def public_storefront(slug: str) -> dict:
     return await _storefront_by_slug(slug)
 
 
-async def create_buyer_order(slug: str, fields: dict[str, Any]) -> dict:
+UNAUTHORIZED_PUBLIC_MONEY_FIELDS = {
+    "donation_cents",
+    "shipping_cents",
+    "tax_cents",
+    "discount_cents",
+    "fee_cents",
+    "total_cents",
+    "product_subtotal_cents",
+}
+
+
+def _reject_public_money_authority(fields: dict[str, Any]) -> None:
+    supplied = [field for field in UNAUTHORIZED_PUBLIC_MONEY_FIELDS if int(fields.get(field) or 0) != 0]
+    if supplied:
+        raise WebstoreError(
+            "public_money_fields_not_allowed",
+            "Shipping, tax, discounts, donations, fees, and final totals are calculated by the server during verified checkout.",
+            400,
+        )
+
+
+async def create_purchase_intent(slug: str, fields: dict[str, Any]) -> dict:
+    _reject_public_money_authority(fields)
     storefront = await _storefront_by_slug(slug)
     store = storefront["webstore"]
-    full_store = await db.webstores.find_one({"id": store["id"]}, {"_id": 0})
+    full_store = await db.webstores.find_one({"public_slug": slug, "id": store["id"]}, {"_id": 0})
     tenant_id = full_store["tenant_id"]
     if fields.get("idempotency_key"):
-        existing = await db.webstore_buyer_orders.find_one(
+        existing = await db.webstore_purchase_intents.find_one(
             {"tenant_id": tenant_id, "webstore_id": store["id"], "idempotency_key": fields["idempotency_key"]},
             {"_id": 0},
         )
         if existing:
-            return {"buyer_order": serialize_doc(existing), "ledger": await _ledger_for_order(tenant_id, existing["id"])}
+            return {"purchase_intent": serialize_doc(existing), "checkout_available": False, "checkout_unavailable_reason": "Real Webstore checkout is not connected yet."}
     product_map = {p["id"]: p for p in storefront["products"]}
     line_items: list[dict[str, Any]] = []
     subtotal = 0
-    production_cost_total = 0
-    owner_share_total = 0
-    platform_fee_total = 0
     for raw in fields.get("line_items") or []:
         product_id = raw.get("product_id")
         product = product_map.get(product_id)
@@ -765,13 +947,17 @@ async def create_buyer_order(slug: str, fields: dict[str, Any]) -> dict:
         unit = int(full_product["selling_price_cents"])
         line_total = unit * qty
         subtotal += line_total
-        production_cost_total += int(full_product.get("production_cost_cents") or 0) * qty
-        owner_share_total += int(full_product.get("store_owner_share_cents") or 0) * qty
-        fee = int((Decimal(line_total) * Decimal(full_product.get("platform_fee_basis_points", 0)) / Decimal(10000)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-        platform_fee_total += fee
         line_items.append(
             {
                 "product_id": product_id,
+                "product_snapshot": {
+                    "id": product_id,
+                    "name": full_product["name"],
+                    "description": full_product.get("description"),
+                    "category": full_product.get("category"),
+                    "product_type": full_product.get("product_type"),
+                    "sku": full_product.get("sku"),
+                },
                 "name": full_product["name"],
                 "variant": raw.get("variant") or {},
                 "quantity": qty,
@@ -782,81 +968,62 @@ async def create_buyer_order(slug: str, fields: dict[str, Any]) -> dict:
         )
     if not line_items:
         raise WebstoreError("line_items_required", "At least one line item is required", 400)
-    donation = int(fields.get("donation_cents") or 0)
-    shipping = int(fields.get("shipping_cents") or 0)
-    tax = int(fields.get("tax_cents") or 0)
-    if min(donation, shipping, tax) < 0:
-        raise WebstoreError("invalid_cents", "Money values must be non-negative integer cents", 400)
-    total = subtotal + donation + shipping + tax
-    order = WebstoreBuyerOrder(
+    total = subtotal
+    intent = WebstorePurchaseIntent(
         tenant_id=tenant_id,
         webstore_id=store["id"],
+        public_slug=slug,
         buyer_name=_clean_text(fields.get("buyer_name"), "buyer_name"),
         buyer_email=_clean_text(fields.get("buyer_email"), "buyer_email", limit=254).lower(),
         buyer_phone=_clean_optional_text(fields.get("buyer_phone"), limit=40),
         line_items=line_items,
         product_subtotal_cents=subtotal,
-        donation_cents=donation,
-        shipping_cents=shipping,
-        tax_cents=tax,
         total_cents=total,
         idempotency_key=fields.get("idempotency_key"),
+        immutable_snapshot={
+            "webstore": _public_store(full_store),
+            "line_items": line_items,
+            "server_calculated_totals": {
+                "product_subtotal_cents": subtotal,
+                "donation_cents": 0,
+                "shipping_cents": 0,
+                "tax_cents": 0,
+                "discount_cents": 0,
+                "fee_cents": 0,
+                "total_cents": total,
+                "currency": "usd",
+            },
+        },
     ).model_dump()
-    allocation = await next_record_number(
-        tenant_id=tenant_id,
-        record_type="webstore_order",
-        idempotency_key=fields.get("idempotency_key"),
-        issued_to_entity_type="webstore_buyer_order",
-        issued_to_entity_id=order["id"],
-        reason="webstore.buyer_order_created",
-        context={"webstore_id": store["id"], "slug": slug},
-    )
-    order["number"] = allocation.number
     try:
-        await db.webstore_buyer_orders.insert_one(prepare_for_mongo(order))
+        await db.webstore_purchase_intents.insert_one(prepare_for_mongo(intent))
     except DuplicateKeyError:
-        existing = await db.webstore_buyer_orders.find_one(
+        existing = await db.webstore_purchase_intents.find_one(
             {"tenant_id": tenant_id, "webstore_id": store["id"], "idempotency_key": fields.get("idempotency_key")},
             {"_id": 0},
         )
-        return {"buyer_order": serialize_doc(existing), "ledger": await _ledger_for_order(tenant_id, existing["id"])}
-    checkout = await create_local_checkout_record(
-        tenant_id=tenant_id,
-        webstore_id=store["id"],
-        buyer_order_id=order["id"],
-        amount_cents=total,
-        idempotency_key=fields.get("idempotency_key"),
-    )
-    await db.webstore_buyer_orders.update_one(
-        {"tenant_id": tenant_id, "id": order["id"]},
-        {"$set": {"stripe_connect_checkout_id": checkout["id"], "checkout_url": checkout.get("checkout_url"), "updated_at": _now_iso()}},
-    )
-    await _create_ledger_rows(
-        tenant_id=tenant_id,
-        webstore_id=store["id"],
-        buyer_order_id=order["id"],
-        subtotal=subtotal,
-        donation=donation,
-        shipping=shipping,
-        tax=tax,
-        total=total,
-        platform_fee=platform_fee_total,
-        owner_share=owner_share_total,
-        production_cost=production_cost_total,
-    )
+        return {"purchase_intent": serialize_doc(existing), "checkout_available": False, "checkout_unavailable_reason": "Real Webstore checkout is not connected yet."}
     await _audit(
         tenant_id=tenant_id,
         webstore_id=store["id"],
         actor_type="public",
-        actor_email=order["buyer_email"],
-        action="webstore.buyer_order_created",
-        entity_type="webstore_buyer_order",
-        entity_id=order["id"],
-        summary="Webstore buyer order created",
+        actor_email=intent["buyer_email"],
+        action="webstore.purchase_intent_created",
+        entity_type="webstore_purchase_intent",
+        entity_id=intent["id"],
+        summary="Webstore purchase intent created without checkout",
         metadata={"total_cents": total},
     )
-    saved = await db.webstore_buyer_orders.find_one({"tenant_id": tenant_id, "id": order["id"]}, {"_id": 0})
-    return {"buyer_order": serialize_doc(saved), "ledger": await _ledger_for_order(tenant_id, order["id"])}
+    saved = await db.webstore_purchase_intents.find_one({"tenant_id": tenant_id, "id": intent["id"]}, {"_id": 0})
+    return {
+        "purchase_intent": serialize_doc(saved),
+        "checkout_available": False,
+        "checkout_unavailable_reason": "Real Webstore checkout is not connected yet.",
+    }
+
+
+async def create_buyer_order(slug: str, fields: dict[str, Any]) -> dict:
+    return await create_purchase_intent(slug, fields)
 
 
 async def _create_ledger_rows(
@@ -955,6 +1122,12 @@ async def bridge_buyer_order_to_order(user: dict, buyer_order_id: str) -> dict:
     buyer = await buyer_orders_repo.get(tenant_id=user["tenant_id"], entity_id=buyer_order_id)
     if not buyer:
         raise WebstoreError("buyer_order_not_found", "Buyer order not found", 404)
+    if not buyer.get("verified_payment_event_id") or buyer.get("payment_status") != "paid":
+        raise WebstoreError(
+            "verified_payment_required",
+            "Legacy Webstore buyer orders cannot become canonical Orders without verified payment evidence.",
+            409,
+        )
     if buyer.get("bridged_order_id"):
         order = await db.orders.find_one({"tenant_id": user["tenant_id"], "id": buyer["bridged_order_id"]}, {"_id": 0})
         return {"order": serialize_doc(order), "bridge_status": buyer.get("bridge_status", "bridged")}
@@ -1062,15 +1235,26 @@ async def _owner_portal_store(identity: dict, webstore_id: str) -> dict:
         raise WebstoreError("webstore_scope_forbidden", "Webstore portal access is owner-scoped", 403)
     if not owner_id:
         raise WebstoreError("webstore_owner_scope_required", "Webstore owner scope is required", 403)
+    assigned_webstore_id = identity.get("webstore_id")
+    if identity.get("portal_type") == "webstore_manager":
+        if not assigned_webstore_id:
+            raise WebstoreError("webstore_manager_assignment_required", "Webstore manager scope is required", 403)
+        if assigned_webstore_id != webstore_id:
+            raise WebstoreError("webstore_manager_scope_forbidden", "Webstore manager access is limited to the assigned Webstore", 403)
     return store
 
 
 async def owner_portal_list(identity: dict) -> dict:
     if identity.get("portal_type") not in {"webstore_owner", "webstore_manager"} or not identity.get("webstore_owner_id"):
         raise WebstoreError("webstore_portal_required", "Webstore portal access required", 403)
+    filters = {"owner_id": identity["webstore_owner_id"]}
+    if identity.get("portal_type") == "webstore_manager":
+        if not identity.get("webstore_id"):
+            raise WebstoreError("webstore_manager_assignment_required", "Webstore manager scope is required", 403)
+        filters["id"] = identity["webstore_id"]
     return await stores_repo.list(
         tenant_id=identity["tenant_id"],
-        filters={"owner_id": identity["webstore_owner_id"]},
+        filters=filters,
         sort=[("updated_at", -1)],
     )
 
@@ -1084,4 +1268,4 @@ async def owner_portal_detail(identity: dict, webstore_id: str) -> dict:
     packet = None
     if store.get("launch_packet_id"):
         packet = await packets_repo.get(tenant_id=identity["tenant_id"], entity_id=store["launch_packet_id"])
-    return {"webstore": _public_store(store), "products": products, "launch_packet": packet}
+    return {"webstore": _portal_store(store), "products": products, "launch_packet": _portal_launch_packet(packet)}
