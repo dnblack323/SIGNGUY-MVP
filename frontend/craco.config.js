@@ -120,14 +120,20 @@ let webpackConfig = {
 };
 
 webpackConfig.devServer = (devServerConfig) => {
-  devServerConfig.proxy = {
-    ...(devServerConfig.proxy || {}),
-    "/api": {
+  const existingProxy = Array.isArray(devServerConfig.proxy)
+    ? devServerConfig.proxy
+    : devServerConfig.proxy
+      ? [devServerConfig.proxy]
+      : [];
+  devServerConfig.proxy = [
+    ...existingProxy,
+    {
+      context: ["/api"],
       target: process.env.SIGNGUY_DEV_API_TARGET || "http://localhost:8001",
       changeOrigin: true,
       secure: false,
     },
-  };
+  ];
 
   // Add health check endpoints if enabled
   if (config.enableHealthCheck && setupHealthEndpoints && healthPluginInstance) {
