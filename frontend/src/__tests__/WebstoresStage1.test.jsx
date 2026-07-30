@@ -24,6 +24,9 @@ import {
   listProductTemplates,
   applyWebstoreAnswers,
   previewWebstoreAnswerApplication,
+  resendWebstoreInvitation,
+  revokeWebstoreAssignment,
+  reverseWebstoreAnswerApplication,
   sendLaunchPacket,
   setWebstoreStatus,
   uploadWebstoreSetupFile,
@@ -54,6 +57,9 @@ jest.mock("@/lib/webstores", () => ({
   listProductTemplates: jest.fn(),
   applyWebstoreAnswers: jest.fn(),
   previewWebstoreAnswerApplication: jest.fn(),
+  resendWebstoreInvitation: jest.fn(),
+  revokeWebstoreAssignment: jest.fn(),
+  reverseWebstoreAnswerApplication: jest.fn(),
   sendLaunchPacket: jest.fn(),
   setWebstoreStatus: jest.fn(),
   uploadWebstoreSetupFile: jest.fn(),
@@ -99,6 +105,9 @@ beforeEach(() => {
   listWebstoreSetupFiles.mockResolvedValue([]);
   applyWebstoreAnswers.mockResolvedValue({});
   previewWebstoreAnswerApplication.mockResolvedValue({ proposed_changes: [], rejected_changes: [] });
+  resendWebstoreInvitation.mockResolvedValue({});
+  revokeWebstoreAssignment.mockResolvedValue({});
+  reverseWebstoreAnswerApplication.mockResolvedValue({});
   uploadWebstoreSetupFile.mockResolvedValue({});
   sendLaunchPacket.mockResolvedValue({});
   setWebstoreStatus.mockResolvedValue({});
@@ -232,7 +241,10 @@ test("webstore detail shows setup intake, assignments, files, and answer preview
     setup_state: "staff_review",
     steps: [{ key: "questionnaire", label: "Owner intake questionnaire", status: "review" }],
   });
-  listWebstoreAssignments.mockResolvedValue([{ id: "assign-1", email: "owner@example.com", role: "owner", status: "active", is_primary_owner: true }]);
+  listWebstoreAssignments.mockResolvedValue([
+    { id: "assign-1", email: "owner@example.com", role: "owner", status: "active", is_primary_owner: true },
+    { id: "assign-2", email: "manager@example.com", role: "manager", status: "invited", is_primary_owner: false },
+  ]);
   listWebstoreSetupFiles.mockResolvedValue([{ id: "file-1", file_name: "logo.png", category: "logo", version: 1, private_download_only: false }]);
   getWebstoreQuestionnaire.mockResolvedValue({ templates: [{ id: "tpl-1", sections: [] }] });
   getWebstoreQuestionnaireResponse.mockResolvedValue({
@@ -249,6 +261,8 @@ test("webstore detail shows setup intake, assignments, files, and answer preview
   expect(await screen.findByText("Setup Store")).toBeInTheDocument();
   expect(screen.getByTestId("webstore-setup-state")).toHaveTextContent("staff_review");
   expect(await screen.findByText("owner@example.com")).toBeInTheDocument();
+  expect(await screen.findByTestId("webstore-assignment-resend-assign-2")).toBeInTheDocument();
+  expect(await screen.findByTestId("webstore-assignment-revoke-assign-2")).toBeInTheDocument();
   expect(await screen.findByText("logo.png")).toBeInTheDocument();
   await user.click(screen.getByTestId("webstore-select-answer-store_name"));
   await user.click(screen.getByRole("button", { name: /Preview apply/ }));

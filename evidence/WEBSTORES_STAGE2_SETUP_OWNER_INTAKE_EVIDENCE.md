@@ -65,3 +65,4 @@ Branch: `feature/webstores-stage-2-setup`
 - Added required-question validation and idempotent repeat-submit handling.
 - Rejected unsafe SVG content and capped multipart upload reads before accepting file bytes.
 - Added reversal conflict detection so a compensating reversal cannot overwrite newer unrelated edits.
+- Exposed staff UI actions for assignment invitation resend, assignment revoke, explicit answer selection/editing, answer apply, and answer-application reversal.

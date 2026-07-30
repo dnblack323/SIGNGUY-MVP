@@ -28,6 +28,9 @@ import {
   listProductTemplates,
   applyWebstoreAnswers,
   previewWebstoreAnswerApplication,
+  resendWebstoreInvitation,
+  revokeWebstoreAssignment,
+  reverseWebstoreAnswerApplication,
   sendLaunchPacket,
   setWebstoreStatus,
   uploadWebstoreSetupFile,
@@ -46,6 +49,7 @@ export default function WebstoreDetailPage() {
   const [answerPreview, setAnswerPreview] = useState(null);
   const [selectedAnswerKeys, setSelectedAnswerKeys] = useState([]);
   const [proposedValues, setProposedValues] = useState({});
+  const [lastApplication, setLastApplication] = useState(null);
   const detail = useQuery({ queryKey: ["webstore", id], queryFn: () => getWebstore(id), enabled: !!id });
   const templates = useQuery({ queryKey: ["webstore-product-templates"], queryFn: listProductTemplates });
   const readiness = useQuery({ queryKey: ["webstore-readiness", id], queryFn: () => getLaunchReadiness(id), enabled: !!id });
@@ -87,6 +91,16 @@ export default function WebstoreDetailPage() {
     onSuccess: async () => { toast.success("Setup file uploaded"); setSetupFile(null); await refresh(); },
     onError: (err) => toast.error(extractError(err)),
   });
+  const resendInvitation = useMutation({
+    mutationFn: (assignmentId) => resendWebstoreInvitation(id, assignmentId),
+    onSuccess: async () => { toast.success("Invitation regenerated"); await refresh(); },
+    onError: (err) => toast.error(extractError(err)),
+  });
+  const revokeAssignment = useMutation({
+    mutationFn: (assignmentId) => revokeWebstoreAssignment(id, assignmentId, "Revoked during setup review"),
+    onSuccess: async () => { toast.success("Assignment revoked"); await refresh(); },
+    onError: (err) => toast.error(extractError(err)),
+  });
   const previewAnswers = useMutation({
     mutationFn: () => previewWebstoreAnswerApplication(id, {
       submission_id: questionnaireResponse.data?.submission?.id,
@@ -104,7 +118,15 @@ export default function WebstoreDetailPage() {
       reason: "Apply verified Webstore intake answers",
       idempotency_key: `apply-${questionnaireResponse.data?.submission?.id}-${[...selectedAnswerKeys].sort().join("-")}`,
     }),
-    onSuccess: async () => { toast.success("Answers applied"); setAnswerPreview(null); await refresh(); },
+    onSuccess: async (data) => { toast.success("Answers applied"); setLastApplication(data?.application || null); setAnswerPreview(null); await refresh(); },
+    onError: (err) => toast.error(extractError(err)),
+  });
+  const reverseAnswers = useMutation({
+    mutationFn: () => reverseWebstoreAnswerApplication(id, lastApplication.id, {
+      reason: "Reverse setup answer application",
+      idempotency_key: `reverse-${lastApplication.id}`,
+    }),
+    onSuccess: async () => { toast.success("Answer application reversed"); setLastApplication(null); await refresh(); },
     onError: (err) => toast.error(extractError(err)),
   });
   const addProduct = useMutation({
@@ -177,8 +199,14 @@ export default function WebstoreDetailPage() {
             <div className="rounded border divide-y">
               {(assignments.data || []).map((a) => (
                 <div key={a.id} className="p-2 flex items-center justify-between gap-2">
-                  <span>{a.email}</span>
-                  <span className="text-xs text-muted-foreground">{a.role} - {a.status}{a.is_primary_owner ? " - primary" : ""}</span>
+                  <div>
+                    <div>{a.email}</div>
+                    <div className="text-xs text-muted-foreground">{a.role} - {a.status}{a.is_primary_owner ? " - primary" : ""}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" disabled={a.status === "active" || resendInvitation.isPending} onClick={() => resendInvitation.mutate(a.id)} data-testid={`webstore-assignment-resend-${a.id}`}>Resend</Button>
+                    <Button size="sm" variant="outline" disabled={a.is_primary_owner || revokeAssignment.isPending || a.status === "revoked"} onClick={() => revokeAssignment.mutate(a.id)} data-testid={`webstore-assignment-revoke-${a.id}`}>Revoke</Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -244,6 +272,7 @@ export default function WebstoreDetailPage() {
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => previewAnswers.mutate()} disabled={previewAnswers.isPending || selectedAnswerKeys.length === 0}>Preview apply</Button>
                 <Button onClick={() => applyAnswers.mutate()} disabled={!questionnaireResponse.data?.submission?.id || applyAnswers.isPending || selectedAnswerKeys.length === 0}>Apply safe answers</Button>
+                <Button variant="outline" onClick={() => reverseAnswers.mutate()} disabled={!lastApplication || reverseAnswers.isPending}>Reverse last apply</Button>
               </div>
               {answerPreview && (
                 <div className="rounded border p-3" data-testid="webstore-answer-preview">

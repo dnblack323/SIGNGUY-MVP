@@ -65,6 +65,11 @@ export async function applyWebstoreAnswers(id, payload) {
   return r.data;
 }
 
+export async function reverseWebstoreAnswerApplication(id, applicationId, payload) {
+  const r = await api.post(`/webstores/${id}/answer-applications/${applicationId}/reverse`, payload);
+  return r.data;
+}
+
 export async function listWebstoreSetupFiles(id) {
   const r = await api.get(`/webstores/${id}/setup-files`);
   return r.data.items || [];
