@@ -1,6 +1,6 @@
 # Webstores Stage 2 Setup and Owner Intake Evidence
 
-Status: IMPLEMENTED FOR REVIEW
+Status: ACCEPTANCE REVIEW CORRECTION APPLIED
 
 Branch: `feature/webstores-stage-2-setup`
 
@@ -44,11 +44,24 @@ Branch: `feature/webstores-stage-2-setup`
 
 ## Verification
 
-- Focused Stage 2 backend tests: `backend/.venv/Scripts/python.exe -m pytest backend/tests/test_webstores_stage2_setup.py -q` -> `5 passed, 6 warnings`.
+- Focused Stage 2 backend tests: `backend/.venv/Scripts/python.exe -m pytest backend/tests/test_webstores_stage2_setup.py -q` -> `8 passed, 6 warnings`.
 - Existing Stage 1 backend regression: `backend/.venv/Scripts/python.exe -m pytest backend/tests/test_webstores_stage1_foundation.py -q` -> `9 passed, 6 warnings`.
-- Combined Webstore backend regressions: `backend/.venv/Scripts/python.exe -m pytest backend/tests/test_webstores_stage2_setup.py backend/tests/test_webstores_stage1_foundation.py backend/tests/test_ec14_webstores.py -q` -> `16 passed, 6 warnings`.
-- Portal/auth-adjacent backend regressions: `backend/.venv/Scripts/python.exe -m pytest backend/tests/test_ec6_portal_docs.py backend/tests/test_ec6_portal_payment.py backend/tests/test_ec8c_employee_portal.py -q` -> `29 passed, 6 warnings`.
+- Combined Webstore backend regressions: `backend/.venv/Scripts/python.exe -m pytest backend/tests/test_webstores_stage2_setup.py backend/tests/test_webstores_stage1_foundation.py backend/tests/test_ec14_webstores.py -q` -> `19 passed, 6 warnings`.
+- Portal, permissions, numbering, and reporting backend regressions: `backend/.venv/Scripts/python.exe -m pytest backend/tests/test_ec6_portal_docs.py backend/tests/test_ec6_portal_payment.py backend/tests/test_ec8c_employee_portal.py backend/tests/test_permissions_scope.py backend/tests/test_ec2_permissions.py backend/tests/test_record_numbering_checkpoint.py backend/tests/test_report_builder_complete_system.py -q` -> `58 passed, 6 warnings`.
 - Focused Webstore frontend tests: `npm.cmd test -- --runTestsByPath src/__tests__/WebstoresStage1.test.jsx --watchAll=false` -> `1 suite passed, 4 tests passed`.
 - Frontend production build: `npm.cmd run build` -> compiled successfully.
 - Backend compile/import validation: `backend/.venv/Scripts/python.exe -m compileall -q backend/app backend/tests/test_webstores_stage2_setup.py` -> passed.
 - `git diff --check` -> passed with CRLF conversion warnings only.
+
+## Acceptance Review Corrections
+
+- Registered staff questionnaire-template routes before the dynamic `/{webstore_id}` route so they cannot be shadowed by Webstore detail lookup.
+- Added confirmed Webstore type-change controls after owner/setup activity: manage permission, reason, impact-review acknowledgement, confirmation, audit, and preservation of historical answer paths.
+- Kept assignment-scoped portal identities assignment-scoped after revocation so owner-id fallback cannot reopen access.
+- Added incompatible existing portal-identity rejection to avoid role/permission crossover.
+- Removed invitation token hashes from generated/regenerated API responses while preserving raw links only at generation/regeneration.
+- Added invitation created, resent, accepted, setup-file upload/replacement/removal, and answer-reversal audit events.
+- Enforced explicit selected answer keys for preview/apply, supported staff-edited proposed values, rejected manipulated missing keys, and preserved dot-path field updates without overwriting full nested objects.
+- Added required-question validation and idempotent repeat-submit handling.
+- Rejected unsafe SVG content and capped multipart upload reads before accepting file bytes.
+- Added reversal conflict detection so a compensating reversal cannot overwrite newer unrelated edits.

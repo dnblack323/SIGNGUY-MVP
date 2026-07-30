@@ -62,6 +62,9 @@ class WebstorePatchIn(BaseModel):
     direct_owner_payout_required: Optional[bool] = None
     stripe_onboarding_required: Optional[bool] = None
     deadline_at: Optional[str] = None
+    confirm_type_change: Optional[bool] = None
+    type_change_reason: Optional[str] = None
+    impact_review_acknowledged: Optional[bool] = None
 
 
 class StatusIn(BaseModel):
@@ -177,6 +180,7 @@ class QuestionnaireReturnIn(BaseModel):
 class AnswerApplicationIn(BaseModel):
     submission_id: str
     selected_answer_keys: list[str] = Field(default_factory=list)
+    proposed_values: dict[str, Any] = Field(default_factory=dict)
     reason: Optional[str] = None
     idempotency_key: Optional[str] = None
 
@@ -188,6 +192,21 @@ class ReverseApplicationIn(BaseModel):
 
 class RemoveFileIn(BaseModel):
     reason: Optional[str] = None
+
+
+async def _read_upload_limited(file: UploadFile) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    max_bytes = setup_svc.MAX_SETUP_FILE_BYTES
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise WebstoreSetupError("file_too_large", "Setup files must be 50 MB or smaller", 413)
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 @router.get("")
@@ -204,6 +223,34 @@ async def create_webstore(payload: WebstoreIn, user: dict = Depends(get_current_
         return await svc.create_webstore(user, payload.model_dump(exclude_none=True))
     except WebstoreError as e:
         _raise(e)
+
+
+@router.get("/setup/questionnaire-templates")
+async def list_questionnaire_templates(
+    store_type: Optional[str] = Query(None),
+    active_only: bool = Query(False),
+    user: dict = Depends(get_current_user),
+) -> dict:
+    try:
+        return await setup_svc.list_questionnaire_templates(user, store_type=store_type, active_only=active_only)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.post("/setup/questionnaire-templates", status_code=201)
+async def create_questionnaire_template(payload: QuestionnaireTemplateIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.save_questionnaire_template(user, payload.model_dump())
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.patch("/setup/questionnaire-templates/{template_id}")
+async def update_questionnaire_template(template_id: str, payload: QuestionnaireTemplateIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.save_questionnaire_template(user, payload.model_dump(exclude_unset=True), template_id=template_id)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
 
 
 @router.get("/{webstore_id}")
@@ -294,34 +341,6 @@ async def change_primary_owner(webstore_id: str, payload: PrimaryOwnerIn, user: 
         _raise_setup(e)
 
 
-@router.get("/setup/questionnaire-templates")
-async def list_questionnaire_templates(
-    store_type: Optional[str] = Query(None),
-    active_only: bool = Query(False),
-    user: dict = Depends(get_current_user),
-) -> dict:
-    try:
-        return await setup_svc.list_questionnaire_templates(user, store_type=store_type, active_only=active_only)
-    except WebstoreSetupError as e:
-        _raise_setup(e)
-
-
-@router.post("/setup/questionnaire-templates", status_code=201)
-async def create_questionnaire_template(payload: QuestionnaireTemplateIn, user: dict = Depends(get_current_user)) -> dict:
-    try:
-        return await setup_svc.save_questionnaire_template(user, payload.model_dump())
-    except WebstoreSetupError as e:
-        _raise_setup(e)
-
-
-@router.patch("/setup/questionnaire-templates/{template_id}")
-async def update_questionnaire_template(template_id: str, payload: QuestionnaireTemplateIn, user: dict = Depends(get_current_user)) -> dict:
-    try:
-        return await setup_svc.save_questionnaire_template(user, payload.model_dump(exclude_unset=True), template_id=template_id)
-    except WebstoreSetupError as e:
-        _raise_setup(e)
-
-
 @router.get("/{webstore_id}/questionnaire")
 async def bound_questionnaire(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
     try:
@@ -388,7 +407,7 @@ async def upload_setup_file(
     user: dict = Depends(get_current_user),
 ) -> dict:
     try:
-        data = await file.read()
+        data = await _read_upload_limited(file)
         return await setup_svc.upload_setup_file(
             user,
             webstore_id,

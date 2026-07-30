@@ -155,6 +155,13 @@ def _portal_perms_for_role(role: str) -> list[str]:
     return list(WEBSTORE_MANAGER_PORTAL_PERMS if role == "manager" else WEBSTORE_OWNER_PORTAL_PERMS)
 
 
+def _token_response(invitation: dict, raw_token: str) -> dict:
+    response = serialize_doc(invitation)
+    response.pop("token_hash", None)
+    response["invitation_url"] = f"/portal/webstores/invitations/accept?t={raw_token}"
+    return response
+
+
 async def _audit(
     *,
     tenant_id: str,
@@ -238,6 +245,12 @@ async def _link_or_create_identity(*, tenant_id: str, owner_id: str, webstore_id
         "updated_at": _now_iso(),
     }
     if existing:
+        if existing.get("portal_type") != portal_type:
+            raise WebstoreSetupError(
+                "portal_identity_role_conflict",
+                "An existing portal identity for this email uses a different portal role.",
+                409,
+            )
         await db.portal_identities.update_one({"tenant_id": tenant_id, "id": existing["id"]}, {"$set": updates})
         linked = await db.portal_identities.find_one({"tenant_id": tenant_id, "id": existing["id"]}, {"_id": 0})
         return serialize_doc(linked or existing)
@@ -279,6 +292,7 @@ async def _create_invitation(
     send: bool = True,
 ) -> dict:
     raw_token = generate_raw_token()
+    invitation_url = f"/portal/webstores/invitations/accept?t={raw_token}"
     invitation = WebstoreInvitation(
         tenant_id=tenant_id,
         webstore_id=webstore_id,
@@ -291,7 +305,6 @@ async def _create_invitation(
         created_by_user_id=user.get("id"),
     ).model_dump()
     if send:
-        invitation_url = f"/portal/webstores/invitations/accept?t={raw_token}"
         ok, msg_id, error = send_email(
             to_email=email,
             subject="You're invited to a SignGuy Webstore setup workspace",
@@ -314,12 +327,20 @@ async def _create_invitation(
             ok=ok,
             error=error,
         )
-    else:
-        invitation_url = f"/portal/webstores/invitations/accept?t={raw_token}"
     await db.webstore_invitations.insert_one(prepare_for_mongo(invitation))
-    response = serialize_doc(invitation)
-    response["invitation_url"] = invitation_url
-    return response
+    await _audit(
+        tenant_id=tenant_id,
+        webstore_id=webstore_id,
+        actor_type="staff",
+        actor_id=user.get("id"),
+        actor_email=user.get("email"),
+        action="webstore.invitation_created",
+        entity_type="webstore_invitation",
+        entity_id=invitation["id"],
+        summary=f"Webstore {role} invitation created",
+        metadata={"role": role, "status": invitation["status"], "delivery_error": invitation.get("delivery_error")},
+    )
+    return _token_response(invitation, raw_token)
 
 
 async def create_assignment(
@@ -341,6 +362,12 @@ async def create_assignment(
     owner_id = fields.get("owner_id") or store["owner_id"]
     await _get_owner(user["tenant_id"], owner_id)
     existing_identity = await db.portal_identities.find_one({"tenant_id": user["tenant_id"], "email": email, "status": "active"}, {"_id": 0})
+    if existing_identity and existing_identity.get("portal_type") not in {_portal_type_for_role(role)}:
+        raise WebstoreSetupError(
+            "portal_identity_role_conflict",
+            "An existing portal identity for this email uses a different portal role.",
+            409,
+        )
     status = "active" if existing_identity and existing_identity.get("portal_type") == _portal_type_for_role(role) else "invited"
     assignment = WebstoreAccessAssignment(
         tenant_id=user["tenant_id"],
@@ -460,6 +487,18 @@ async def resend_invitation(user: dict, webstore_id: str, assignment_id: str) ->
         {"$set": {"status": "invited", "invitation_id": invite["id"], "invited_at": _now_iso(), "updated_at": _now_iso()}},
     )
     await _refresh_setup_state(user["tenant_id"], webstore_id)
+    await _audit(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        actor_type="staff",
+        actor_id=user.get("id"),
+        actor_email=user.get("email"),
+        action="webstore.invitation_resent",
+        entity_type="webstore_access_assignment",
+        entity_id=assignment_id,
+        summary="Webstore invitation resent and prior pending invitation superseded",
+        metadata={"new_invitation_id": invite["id"]},
+    )
     return {"invitation": invite}
 
 
@@ -573,6 +612,18 @@ async def accept_invitation(raw_token: str) -> dict:
     await db.webstore_access_assignments.update_one(
         {"tenant_id": invitation["tenant_id"], "id": assignment["id"]},
         {"$set": {"status": "active", "accepted_at": now, "portal_identity_id": identity["id"], "updated_at": now}},
+    )
+    await _audit(
+        tenant_id=invitation["tenant_id"],
+        webstore_id=invitation["webstore_id"],
+        actor_type="portal",
+        actor_id=identity["id"],
+        actor_email=identity.get("email"),
+        action="webstore.invitation_accepted",
+        entity_type="webstore_invitation",
+        entity_id=invitation["id"],
+        summary="Webstore invitation accepted",
+        metadata={"role": assignment["role"]},
     )
     if assignment.get("is_primary_owner"):
         await db.webstores.update_one(
@@ -710,7 +761,7 @@ async def save_questionnaire_draft(identity: dict, webstore_id: str, fields: dic
         "updated_at": _now_iso(),
     }
     existing = await db.webstore_questionnaire_submissions.find_one(
-        {"tenant_id": identity["tenant_id"], "webstore_id": webstore_id, "portal_identity_id": identity["id"], "status": {"$in": ["draft", "returned_for_changes"]}},
+        {"tenant_id": identity["tenant_id"], "webstore_id": webstore_id, "portal_identity_id": identity["id"], "status": "draft"},
         {"_id": 0},
     )
     if existing:
@@ -729,7 +780,17 @@ async def save_questionnaire_draft(identity: dict, webstore_id: str, fields: dic
 
 
 async def submit_questionnaire(identity: dict, webstore_id: str, fields: dict[str, Any]) -> dict:
+    existing_submitted = await db.webstore_questionnaire_submissions.find_one(
+        {"tenant_id": identity["tenant_id"], "webstore_id": webstore_id, "portal_identity_id": identity["id"], "status": {"$in": ["submitted", "reviewed"]}},
+        {"_id": 0},
+        sort=[("submitted_at", -1), ("updated_at", -1)],
+    )
+    if existing_submitted:
+        return serialize_doc(existing_submitted)
     draft = await save_questionnaire_draft(identity, webstore_id, fields)
+    missing_required = _missing_required_answers(draft.get("template_snapshot", {}).get("templates") or [], draft.get("answers") or {})
+    if missing_required:
+        raise WebstoreSetupError("questionnaire_required_answers_missing", f"Missing required answers: {', '.join(missing_required)}", 400)
     now = _now_iso()
     snapshot = {
         "answers": draft.get("answers") or {},
@@ -758,6 +819,17 @@ async def submit_questionnaire(identity: dict, webstore_id: str, fields: dict[st
     )
     submitted = await db.webstore_questionnaire_submissions.find_one({"tenant_id": identity["tenant_id"], "id": draft["id"]}, {"_id": 0})
     return serialize_doc(submitted or {})
+
+
+def _missing_required_answers(templates: list[dict], answers: dict[str, Any]) -> list[str]:
+    missing: list[str] = []
+    for template in templates:
+        for section in template.get("sections") or []:
+            for question in section.get("questions") or []:
+                key = question.get("key")
+                if question.get("required") and (answers.get(key) in (None, "")):
+                    missing.append(key)
+    return missing
 
 
 async def return_questionnaire(user: dict, webstore_id: str, submission_id: str, reason: str) -> dict:
@@ -962,6 +1034,12 @@ def _safe_file_record(doc: dict, *, staff: bool = False) -> dict:
     return {k: v for k, v in doc.items() if k in allowed}
 
 
+def _svg_is_safe(data: bytes) -> bool:
+    lower = data[:200_000].lower()
+    blocked = [b"<script", b"javascript:", b" onload=", b" onerror=", b"<foreignobject", b"http://", b"https://", b"xlink:href="]
+    return not any(marker in lower for marker in blocked)
+
+
 async def store_setup_file(
     *,
     tenant_id: str,
@@ -986,7 +1064,9 @@ async def store_setup_file(
     if not _looks_like(data, ext):
         raise WebstoreSetupError("file_content_mismatch", "File content does not match the allowed file type", 400)
     detected = _detect_content_type(filename, content_type)
-    svg_safe = ext == "svg" and b"<script" not in data.lower() and b" onload=" not in data.lower()
+    if ext == "svg" and not _svg_is_safe(data):
+        raise WebstoreSetupError("unsafe_svg_not_allowed", "SVG setup files cannot contain scripts, remote references, or unsafe inline markup", 400)
+    svg_safe = ext == "svg"
     inline = ext in {"png", "jpg", "jpeg", "webp", "pdf"} or svg_safe
     key = storage.build_key(tenant_id, filename)
     storage.put_bytes(key, data, detected)
@@ -1023,6 +1103,17 @@ async def store_setup_file(
             {"$set": {"status": "replaced", "replaced_by_file_id": doc["id"], "updated_at": _now_iso()}},
         )
     await _refresh_setup_state(tenant_id, webstore_id)
+    await _audit(
+        tenant_id=tenant_id,
+        webstore_id=webstore_id,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        action="webstore.setup_file_uploaded" if not replaces_file_id else "webstore.setup_file_replaced",
+        entity_type="webstore_setup_file",
+        entity_id=doc["id"],
+        summary="Webstore setup file uploaded" if not replaces_file_id else "Webstore setup file replaced",
+        metadata={"category": category, "extension": ext, "size_bytes": len(data), "version": version},
+    )
     return _safe_file_record(serialize_doc(doc), staff=actor_type == "staff")
 
 
@@ -1090,6 +1181,18 @@ async def remove_setup_file(user: dict, webstore_id: str, file_id: str, reason: 
     if result.matched_count != 1:
         raise WebstoreSetupError("setup_file_not_found", "Setup file not found", 404)
     await _refresh_setup_state(user["tenant_id"], webstore_id)
+    await _audit(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        actor_type="staff",
+        actor_id=user.get("id"),
+        actor_email=user.get("email"),
+        action="webstore.setup_file_removed",
+        entity_type="webstore_setup_file",
+        entity_id=file_id,
+        summary="Webstore setup file removed",
+        metadata={"reason": reason},
+    )
     return {"file_id": file_id, "status": "removed"}
 
 
@@ -1113,7 +1216,7 @@ def _set_path(updates: dict, path: str, value: Any) -> None:
 def _field_updates_from_changes(changes: list[dict[str, Any]]) -> dict:
     updates: dict[str, Any] = {}
     for change in changes:
-        _set_path(updates, change["target"], change["to"])
+        updates[change["target"]] = change["to"]
     return updates
 
 
@@ -1125,10 +1228,16 @@ async def answer_application_preview(user: dict, webstore_id: str, fields: dict[
     if not submission or submission.get("status") not in {"submitted", "reviewed"}:
         raise WebstoreSetupError("submitted_questionnaire_required", "A submitted questionnaire is required", 409)
     answers = submission.get("submitted_snapshot", {}).get("answers") or submission.get("answers") or {}
-    selected = fields.get("selected_answer_keys") or list(answers)
+    selected = fields.get("selected_answer_keys") or []
+    if not selected:
+        raise WebstoreSetupError("selected_answers_required", "Select at least one questionnaire answer to apply", 400)
     proposed: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
+    proposed_values = fields.get("proposed_values") or {}
     for key in selected:
+        if key not in answers:
+            rejected.append({"answer_key": key, "reason": "answer_not_found"})
+            continue
         if key in LOCKED_ANSWER_FIELDS:
             rejected.append({"answer_key": key, "reason": "locked_field"})
             continue
@@ -1136,7 +1245,7 @@ async def answer_application_preview(user: dict, webstore_id: str, fields: dict[
         if not mapping:
             rejected.append({"answer_key": key, "reason": "no_safe_mapping"})
             continue
-        value = answers.get(key)
+        value = proposed_values.get(key, answers.get(key))
         if value is None or value == "":
             continue
         target = mapping["target"]
@@ -1208,6 +1317,14 @@ async def reverse_answer_application(user: dict, webstore_id: str, application_i
     if not original:
         raise WebstoreSetupError("answer_application_not_found", "Applied answer application not found", 404)
     reversal_changes = [{**change, "from": change.get("to"), "to": change.get("from")} for change in original.get("applied_changes", [])]
+    current_store = await _get_store(user["tenant_id"], webstore_id)
+    conflicts = [
+        change
+        for change in original.get("applied_changes", [])
+        if _get_path(current_store, change["target"]) != change.get("to")
+    ]
+    if conflicts:
+        raise WebstoreSetupError("answer_reversal_conflict", "Answer application cannot be reversed because newer changes touched the same fields", 409)
     updates = _field_updates_from_changes(reversal_changes)
     updates["updated_at"] = _now_iso()
     await db.webstores.update_one({"tenant_id": user["tenant_id"], "id": webstore_id}, {"$set": updates})
@@ -1230,4 +1347,16 @@ async def reverse_answer_application(user: dict, webstore_id: str, application_i
         reversal_of_application_id=application_id,
     ).model_dump()
     await db.webstore_answer_applications.insert_one(prepare_for_mongo(reversal))
+    await _audit(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        actor_type="staff",
+        actor_id=user.get("id"),
+        actor_email=user.get("email"),
+        action="webstore.questionnaire_answers_reversed",
+        entity_type="webstore_answer_application",
+        entity_id=reversal["id"],
+        summary="Webstore questionnaire answer application reversed",
+        metadata={"reversal_of_application_id": application_id},
+    )
     return {"application": serialize_doc(reversal)}

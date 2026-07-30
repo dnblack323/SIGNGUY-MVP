@@ -166,7 +166,7 @@ async def test_questionnaire_snapshot_safe_apply_and_reversal_are_non_pricing(st
     async with await _client_as(stage2_ctx["user"]) as client:
         preview = await client.post(
             f"/api/webstores/{created['store']['id']}/questionnaire/apply-preview",
-            json={"submission_id": submission_id, "selected_answer_keys": []},
+            json={"submission_id": submission_id, "selected_answer_keys": ["store_name", "selling_price_cents", "stripe_payment_ready"]},
         )
         assert preview.status_code == 200, preview.text
         rejected = {row["answer_key"] for row in preview.json()["rejected_changes"]}
@@ -175,12 +175,12 @@ async def test_questionnaire_snapshot_safe_apply_and_reversal_are_non_pricing(st
 
         apply = await client.post(
             f"/api/webstores/{created['store']['id']}/questionnaire/apply",
-            json={"submission_id": submission_id, "reason": "Owner verified", "idempotency_key": f"apply-{stage2_ctx['suffix']}"},
+            json={"submission_id": submission_id, "selected_answer_keys": ["store_name"], "reason": "Owner verified", "idempotency_key": f"apply-{stage2_ctx['suffix']}"},
         )
         assert apply.status_code == 200, apply.text
         replay = await client.post(
             f"/api/webstores/{created['store']['id']}/questionnaire/apply",
-            json={"submission_id": submission_id, "reason": "Owner verified", "idempotency_key": f"apply-{stage2_ctx['suffix']}"},
+            json={"submission_id": submission_id, "selected_answer_keys": ["store_name"], "reason": "Owner verified", "idempotency_key": f"apply-{stage2_ctx['suffix']}"},
         )
         assert replay.json()["idempotent_replay"] is True
         store = await db.webstores.find_one({"tenant_id": stage2_ctx["tenant_id"], "id": created["store"]["id"]}, {"_id": 0})
@@ -226,6 +226,13 @@ async def test_setup_files_are_validated_stored_versioned_and_allowlisted(stage2
         )
         assert blocked.status_code == 400
 
+        unsafe_svg = await client.post(
+            f"/api/webstores/{created['store']['id']}/setup-files",
+            data={"category": "logo"},
+            files={"file": ("bad.svg", b'<svg><script>alert(1)</script></svg>', "image/svg+xml")},
+        )
+        assert unsafe_svg.status_code == 400
+
         replacement = await client.post(
             f"/api/webstores/{created['store']['id']}/setup-files",
             data={"category": "logo", "replaces_file_id": file_doc["id"]},
@@ -235,6 +242,135 @@ async def test_setup_files_are_validated_stored_versioned_and_allowlisted(stage2
         assert replacement.json()["file"]["version"] == 2
         previous = await db.webstore_setup_files.find_one({"tenant_id": stage2_ctx["tenant_id"], "id": file_doc["id"]}, {"_id": 0})
         assert previous["status"] == "replaced"
+
+        download = await client.get(f"/api/webstores/{created['store']['id']}/setup-files/{replacement.json()['file']['id']}/download")
+        assert download.status_code == 200
+        assert download.content == png
+
+
+@pytest.mark.asyncio
+async def test_stage2_static_template_route_and_type_change_controls(stage2_ctx):
+    async with await _client_as(stage2_ctx["user"]) as client:
+        created = await _create_store(client, stage2_ctx["suffix"], store_type="event")
+        templates = await client.get("/api/webstores/setup/questionnaire-templates", params={"store_type": "event", "active_only": True})
+        assert templates.status_code == 200, templates.text
+        assert templates.json()["items"]
+
+        blocked = await client.patch(f"/api/webstores/{created['store']['id']}", json={"store_type": "fundraiser"})
+        assert blocked.status_code == 409
+
+        assignment = (await client.get(f"/api/webstores/{created['store']['id']}/assignments")).json()["items"][0]
+        resend = await client.post(f"/api/webstores/{created['store']['id']}/assignments/{assignment['id']}/resend")
+        raw = resend.json()["invitation"]["invitation_url"].split("t=", 1)[1]
+
+    public = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+    async with public:
+        accepted = await public.post("/api/portal/webstores/invitations/accept", json={"token": raw})
+    token = accepted.json()["token"]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"Authorization": f"Bearer {token}"}) as portal:
+        submit = await portal.post(
+            f"/api/portal/webstores/{created['store']['id']}/questionnaire",
+            json={"answers": {"store_name": "Event Store", "event_location": "Field"}},
+        )
+        assert submit.status_code == 200, submit.text
+
+    async with await _client_as(stage2_ctx["user"]) as client:
+        changed = await client.patch(
+            f"/api/webstores/{created['store']['id']}",
+            json={
+                "store_type": "fundraiser",
+                "confirm_type_change": True,
+                "impact_review_acknowledged": True,
+                "type_change_reason": "Owner changed program",
+            },
+        )
+        assert changed.status_code == 200, changed.text
+        assert changed.json()["store_type"] == "fundraiser"
+        submission = await db.webstore_questionnaire_submissions.find_one({"tenant_id": stage2_ctx["tenant_id"], "webstore_id": created["store"]["id"]}, {"_id": 0})
+        assert "store_name" in submission["inactive_answer_paths"]
+        store = await db.webstores.find_one({"tenant_id": stage2_ctx["tenant_id"], "id": created["store"]["id"]}, {"_id": 0})
+        assert store["setup_profile"]["type_change_history"][-1]["reason"] == "Owner changed program"
+
+
+@pytest.mark.asyncio
+async def test_stage2_invitation_resend_revoke_and_identity_conflict(stage2_ctx):
+    async with await _client_as(stage2_ctx["user"]) as client:
+        created = await _create_store(client, stage2_ctx["suffix"])
+        assignment_resp = await client.post(
+            f"/api/webstores/{created['store']['id']}/assignments",
+            json={"role": "manager", "email": f"manager-review-{stage2_ctx['suffix']}@example.com", "name": "Manager Review"},
+        )
+        assignment_id = assignment_resp.json()["assignment"]["id"]
+        first_raw = assignment_resp.json()["invitation"]["invitation_url"].split("t=", 1)[1]
+        resend = await client.post(f"/api/webstores/{created['store']['id']}/assignments/{assignment_id}/resend")
+        second_raw = resend.json()["invitation"]["invitation_url"].split("t=", 1)[1]
+
+    public = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+    async with public:
+        old = await public.post("/api/portal/webstores/invitations/accept", json={"token": first_raw})
+        assert old.status_code == 410
+        accepted = await public.post("/api/portal/webstores/invitations/accept", json={"token": second_raw})
+        assert accepted.status_code == 200, accepted.text
+        token = accepted.json()["token"]
+
+    async with await _client_as(stage2_ctx["user"]) as client:
+        revoke = await client.post(f"/api/webstores/{created['store']['id']}/assignments/{assignment_id}/revoke", json={"reason": "No longer assisting"})
+        assert revoke.status_code == 200, revoke.text
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"Authorization": f"Bearer {token}"}) as portal:
+        denied = await portal.get(f"/api/portal/webstores/{created['store']['id']}")
+        assert denied.status_code == 403
+
+    await db.portal_identities.insert_one({
+        "id": f"portal-customer-{stage2_ctx['suffix']}",
+        "tenant_id": stage2_ctx["tenant_id"],
+        "portal_type": "customer",
+        "email": f"customer-portal-{stage2_ctx['suffix']}@example.com",
+        "full_name": "Customer Portal",
+        "permissions": [],
+        "status": "active",
+    })
+    async with await _client_as(stage2_ctx["user"]) as client:
+        conflict = await client.post(
+            f"/api/webstores/{created['store']['id']}/assignments",
+            json={"role": "owner", "email": f"customer-portal-{stage2_ctx['suffix']}@example.com", "name": "Conflict"},
+        )
+        assert conflict.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_stage2_questionnaire_required_answers_repeat_submit_and_explicit_selection(stage2_ctx):
+    async with await _client_as(stage2_ctx["user"]) as client:
+        created = await _create_store(client, stage2_ctx["suffix"])
+        assignment = (await client.get(f"/api/webstores/{created['store']['id']}/assignments")).json()["items"][0]
+        raw = (await client.post(f"/api/webstores/{created['store']['id']}/assignments/{assignment['id']}/resend")).json()["invitation"]["invitation_url"].split("t=", 1)[1]
+
+    public = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+    async with public:
+        token = (await public.post("/api/portal/webstores/invitations/accept", json={"token": raw})).json()["token"]
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"Authorization": f"Bearer {token}"}) as portal:
+        missing = await portal.post(f"/api/portal/webstores/{created['store']['id']}/questionnaire", json={"answers": {"event_location": "Gym"}})
+        assert missing.status_code == 400
+        submitted = await portal.post(f"/api/portal/webstores/{created['store']['id']}/questionnaire", json={"answers": {"store_name": "First Name", "event_location": "Gym"}})
+        assert submitted.status_code == 200
+        repeat = await portal.post(f"/api/portal/webstores/{created['store']['id']}/questionnaire", json={"answers": {"store_name": "Second Name", "event_location": "Gym"}})
+        assert repeat.status_code == 200
+        assert repeat.json()["id"] == submitted.json()["id"]
+
+    async with await _client_as(stage2_ctx["user"]) as client:
+        no_selection = await client.post(
+            f"/api/webstores/{created['store']['id']}/questionnaire/apply-preview",
+            json={"submission_id": submitted.json()["id"], "selected_answer_keys": []},
+        )
+        assert no_selection.status_code == 400
+        selected = await client.post(
+            f"/api/webstores/{created['store']['id']}/questionnaire/apply-preview",
+            json={"submission_id": submitted.json()["id"], "selected_answer_keys": ["event_location"], "proposed_values": {"event_location": "Updated Gym"}},
+        )
+        assert selected.status_code == 200
+        assert [row["answer_key"] for row in selected.json()["proposed_changes"]] == ["event_location"]
+        assert selected.json()["proposed_changes"][0]["to"] == "Updated Gym"
 
 
 @pytest.mark.asyncio

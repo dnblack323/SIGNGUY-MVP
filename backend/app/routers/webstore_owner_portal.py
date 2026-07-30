@@ -43,6 +43,21 @@ class InvitationAcceptIn(BaseModel):
     token: str
 
 
+async def _read_upload_limited(file: UploadFile) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    max_bytes = setup_svc.MAX_SETUP_FILE_BYTES
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise WebstoreSetupError("file_too_large", "Setup files must be 50 MB or smaller", 413)
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @router.get("")
 async def list_owned(identity: dict = Depends(_webstore_identity)) -> dict:
     try:
@@ -119,7 +134,7 @@ async def upload_setup_file(
     identity: dict = Depends(_webstore_identity),
 ) -> dict:
     try:
-        data = await file.read()
+        data = await _read_upload_limited(file)
         return await setup_svc.portal_upload_setup_file(
             identity,
             webstore_id,

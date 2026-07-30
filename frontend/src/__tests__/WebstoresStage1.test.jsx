@@ -250,6 +250,11 @@ test("webstore detail shows setup intake, assignments, files, and answer preview
   expect(screen.getByTestId("webstore-setup-state")).toHaveTextContent("staff_review");
   expect(await screen.findByText("owner@example.com")).toBeInTheDocument();
   expect(await screen.findByText("logo.png")).toBeInTheDocument();
+  await user.click(screen.getByTestId("webstore-select-answer-store_name"));
   await user.click(screen.getByRole("button", { name: /Preview apply/ }));
+  await waitFor(() => expect(previewWebstoreAnswerApplication).toHaveBeenCalledWith("ws-2", expect.objectContaining({
+    selected_answer_keys: ["store_name"],
+    proposed_values: expect.objectContaining({ store_name: "New Name" }),
+  })));
   expect(await screen.findByTestId("webstore-answer-preview")).toHaveTextContent("Store name");
 });

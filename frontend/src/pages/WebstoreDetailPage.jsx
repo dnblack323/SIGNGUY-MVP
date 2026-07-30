@@ -44,6 +44,8 @@ export default function WebstoreDetailPage() {
   const [fileCategory, setFileCategory] = useState("logo");
   const [setupFile, setSetupFile] = useState(null);
   const [answerPreview, setAnswerPreview] = useState(null);
+  const [selectedAnswerKeys, setSelectedAnswerKeys] = useState([]);
+  const [proposedValues, setProposedValues] = useState({});
   const detail = useQuery({ queryKey: ["webstore", id], queryFn: () => getWebstore(id), enabled: !!id });
   const templates = useQuery({ queryKey: ["webstore-product-templates"], queryFn: listProductTemplates });
   const readiness = useQuery({ queryKey: ["webstore-readiness", id], queryFn: () => getLaunchReadiness(id), enabled: !!id });
@@ -86,16 +88,21 @@ export default function WebstoreDetailPage() {
     onError: (err) => toast.error(extractError(err)),
   });
   const previewAnswers = useMutation({
-    mutationFn: () => previewWebstoreAnswerApplication(id, { submission_id: questionnaireResponse.data?.submission?.id, selected_answer_keys: [] }),
+    mutationFn: () => previewWebstoreAnswerApplication(id, {
+      submission_id: questionnaireResponse.data?.submission?.id,
+      selected_answer_keys: selectedAnswerKeys,
+      proposed_values: proposedValues,
+    }),
     onSuccess: (data) => setAnswerPreview(data),
     onError: (err) => toast.error(extractError(err)),
   });
   const applyAnswers = useMutation({
     mutationFn: () => applyWebstoreAnswers(id, {
       submission_id: questionnaireResponse.data?.submission?.id,
-      selected_answer_keys: [],
+      selected_answer_keys: selectedAnswerKeys,
+      proposed_values: proposedValues,
       reason: "Apply verified Webstore intake answers",
-      idempotency_key: `apply-${questionnaireResponse.data?.submission?.id}`,
+      idempotency_key: `apply-${questionnaireResponse.data?.submission?.id}-${[...selectedAnswerKeys].sort().join("-")}`,
     }),
     onSuccess: async () => { toast.success("Answers applied"); setAnswerPreview(null); await refresh(); },
     onError: (err) => toast.error(extractError(err)),
@@ -204,13 +211,39 @@ export default function WebstoreDetailPage() {
           <div className="text-muted-foreground">{(questionnaire.data?.templates || []).length} active template section groups bound to this Webstore.</div>
           {questionnaireResponse.data?.submission ? (
             <>
+              {Object.keys(questionnaireResponse.data.submission.submitted_snapshot?.answers || questionnaireResponse.data.submission.answers || {}).length > 0 && (
+                <div className="rounded border p-3 space-y-2" data-testid="webstore-answer-selection">
+                  <div className="font-medium">Select answers to apply</div>
+                  {Object.entries(questionnaireResponse.data.submission.submitted_snapshot?.answers || questionnaireResponse.data.submission.answers || {}).map(([key, value]) => (
+                    <label key={key} className="grid gap-1.5 md:grid-cols-[180px_1fr] items-center text-sm">
+                      <span className="flex items-center gap-2">
+                        <Checkbox
+                          checked={selectedAnswerKeys.includes(key)}
+                          onCheckedChange={(checked) => {
+                            setSelectedAnswerKeys(checked ? [...selectedAnswerKeys, key] : selectedAnswerKeys.filter((item) => item !== key));
+                            setProposedValues({ ...proposedValues, [key]: proposedValues[key] ?? value });
+                          }}
+                          data-testid={`webstore-select-answer-${key}`}
+                        />
+                        {key.replace(/_/g, " ")}
+                      </span>
+                      <Input
+                        value={proposedValues[key] ?? value ?? ""}
+                        onChange={(e) => setProposedValues({ ...proposedValues, [key]: e.target.value })}
+                        disabled={!selectedAnswerKeys.includes(key)}
+                        data-testid={`webstore-proposed-answer-${key}`}
+                      />
+                    </label>
+                  ))}
+                </div>
+              )}
               <div className="rounded border bg-slate-50 p-3">
                 <div className="font-medium">Latest response: {questionnaireResponse.data.submission.status}</div>
                 <pre className="mt-2 max-h-40 overflow-auto text-xs">{JSON.stringify(questionnaireResponse.data.submission.submitted_snapshot?.answers || questionnaireResponse.data.submission.answers || {}, null, 2)}</pre>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => previewAnswers.mutate()} disabled={previewAnswers.isPending}>Preview apply</Button>
-                <Button onClick={() => applyAnswers.mutate()} disabled={!questionnaireResponse.data?.submission?.id || applyAnswers.isPending}>Apply safe answers</Button>
+                <Button variant="outline" onClick={() => previewAnswers.mutate()} disabled={previewAnswers.isPending || selectedAnswerKeys.length === 0}>Preview apply</Button>
+                <Button onClick={() => applyAnswers.mutate()} disabled={!questionnaireResponse.data?.submission?.id || applyAnswers.isPending || selectedAnswerKeys.length === 0}>Apply safe answers</Button>
               </div>
               {answerPreview && (
                 <div className="rounded border p-3" data-testid="webstore-answer-preview">
