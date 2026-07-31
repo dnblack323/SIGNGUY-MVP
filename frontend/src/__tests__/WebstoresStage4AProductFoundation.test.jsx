@@ -133,6 +133,20 @@ beforeEach(() => {
         mockup_associations: [],
         template_provenance: { source_template_id: "tpl-tenant", source_template_revision: 1 },
       },
+      {
+        id: "prod-archived",
+        name: "Archived Draft",
+        status: "archived",
+        public: false,
+        revision: 5,
+        product_type: "shirt",
+        category_id: "cat-1",
+        category_name: "Team Wear",
+        selling_price_cents: 0,
+        customer_images: {},
+        artwork_associations: [],
+        mockup_associations: [],
+      },
     ],
   });
   getLaunchReadiness.mockResolvedValue({ ready: false, checks: { payment_ready: false }, payment_unavailable_reason: "Real verified provider checkout is not connected yet." });
@@ -207,11 +221,62 @@ beforeEach(() => {
 
 test("staff product image picker previews selected files before save", async () => {
   const user = userEvent.setup();
+  updateWebstoreProduct
+    .mockImplementationOnce((_webstoreId, productId, payload) => Promise.resolve({
+      id: productId,
+      name: payload.name,
+      status: "draft",
+      public: false,
+      revision: 4,
+      product_type: payload.product_type,
+      category_id: payload.category_id,
+      category_name: payload.category_name,
+      selling_price_cents: 0,
+      images: [
+        {
+          slot: "primary",
+          role: "primary",
+          file_id: payload.customer_images.primary.file_id,
+          url: "/api/public/webstores/team-store-public/product-images/prod-1/primary",
+          preview_url: `/api/webstores/ws-1/setup-files/${payload.customer_images.primary.file_id}/preview`,
+          alt_text: payload.customer_images.primary.alt_text,
+        },
+      ],
+      artwork_associations: payload.artwork_associations,
+      mockup_associations: payload.mockup_associations,
+    }))
+    .mockImplementationOnce((_webstoreId, productId, payload) => Promise.resolve({
+      id: productId,
+      name: payload.name,
+      status: "draft",
+      public: false,
+      revision: 5,
+      product_type: payload.product_type,
+      category_id: payload.category_id,
+      category_name: payload.category_name,
+      selling_price_cents: 0,
+      customer_images: payload.customer_images,
+      images: [
+        {
+          slot: "primary",
+          role: "primary",
+          file_id: payload.customer_images.primary.file_id,
+          url: "/api/public/webstores/team-store-public/product-images/prod-1/primary",
+          preview_url: `/api/webstores/ws-1/setup-files/${payload.customer_images.primary.file_id}/preview`,
+          alt_text: payload.customer_images.primary.alt_text,
+        },
+      ],
+      artwork_associations: payload.artwork_associations,
+      mockup_associations: payload.mockup_associations,
+    }));
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
-  await screen.findByText("Team Store");
-  await user.click(screen.getByRole("tab", { name: "Products" }));
+  await screen.findByText(/Team Store/);
+  expect(screen.getByText("Webstore Builder")).toBeInTheDocument();
+  expect(screen.queryByText(/Order Portal/i)).not.toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "Product Setup" }));
   await user.click(screen.getByTestId("webstore-product-row-prod-1"));
+  await user.click(screen.getByRole("tab", { name: "Images and Mockups" }));
 
   const primary = screen.getByTestId("webstore-product-image-primary");
   await user.click(within(primary).getByTestId("webstore-product-image-primary-file"));
@@ -229,44 +294,195 @@ test("staff product image picker previews selected files before save", async () 
   expect(within(secondary).queryByRole("img")).not.toBeInTheDocument();
   expect(within(primary).getByRole("img", { name: "Shirt front" })).toHaveAttribute("src", "/api/webstores/ws-1/setup-files/file-2/preview");
 
+  await user.click(screen.getByRole("tab", { name: "Review Status" }));
   await user.click(screen.getByTestId("webstore-save-product"));
   await waitFor(() => expect(updateWebstoreProduct).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({
     expected_revision: 3,
     customer_images: {
       primary: expect.objectContaining({
         file_id: "file-2",
-        url: "/api/webstores/ws-1/setup-files/file-2/preview",
       }),
     },
   })));
+
+  await user.click(screen.getByRole("tab", { name: "Images and Mockups" }));
+  await waitFor(() => {
+    expect(within(primary).getByRole("img", { name: "Shirt front" })).toHaveAttribute("src", "/api/webstores/ws-1/setup-files/file-2/preview");
+  });
+
+  await user.click(screen.getByRole("tab", { name: "Review Status" }));
+  await user.click(screen.getByTestId("webstore-save-product"));
+  await waitFor(() => expect(updateWebstoreProduct).toHaveBeenCalledTimes(2));
+  expect(updateWebstoreProduct.mock.calls[1][2]).toEqual(expect.objectContaining({
+    expected_revision: 4,
+    customer_images: {
+      primary: expect.objectContaining({
+        file_id: "file-2",
+        alt_text: "Shirt front",
+      }),
+    },
+  }));
 });
 
-test("staff product foundation tab manages drafts, templates, categories, and asset associations", async () => {
+test("staff persisted product images prefer authenticated previews over public URLs after reload", async () => {
+  const user = userEvent.setup();
+  getWebstore.mockResolvedValue({
+    webstore: {
+      id: "ws-1",
+      name: "Team Store",
+      slug: "team-store",
+      public_slug: "team-store-public",
+      public_url: "/p/webstores/team-store-public",
+      status: "draft",
+      store_type: "general",
+    },
+    launch_packets: [],
+    products: [
+      {
+        id: "prod-1",
+        name: "Persisted Draft Shirt",
+        status: "draft",
+        public: false,
+        revision: 4,
+        product_type: "shirt",
+        category_id: "cat-1",
+        category_name: "Team Wear",
+        selling_price_cents: 0,
+        customer_images: {
+          primary: { file_id: "file-1", alt_text: "Persisted primary" },
+          secondary: { file_id: "file-3", alt_text: "Persisted secondary" },
+        },
+        images: [
+          {
+            slot: "primary",
+            role: "primary",
+            file_id: "file-1",
+            url: "/api/public/webstores/team-store-public/product-images/prod-1/primary",
+            preview_url: "/api/webstores/ws-1/setup-files/file-1/preview",
+            alt_text: "Persisted primary",
+          },
+          {
+            slot: "secondary",
+            role: "secondary",
+            file_id: "file-3",
+            url: "/api/public/webstores/team-store-public/product-images/prod-1/secondary",
+            preview_url: "/api/webstores/ws-1/setup-files/file-3/preview",
+            alt_text: "Persisted secondary",
+          },
+        ],
+        artwork_associations: [],
+        mockup_associations: [],
+      },
+      {
+        id: "prod-fallback",
+        name: "Public Fallback Product",
+        status: "active",
+        public: true,
+        revision: 1,
+        product_type: "shirt",
+        selling_price_cents: 0,
+        customer_images: {},
+        images: [
+          {
+            slot: "primary",
+            role: "primary",
+            url: "/api/public/webstores/team-store-public/product-images/prod-fallback/primary",
+            alt_text: "Fallback primary",
+          },
+        ],
+        artwork_associations: [],
+        mockup_associations: [],
+      },
+    ],
+  });
+
+  renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
+
+  await screen.findByText(/Team Store/);
+  await user.click(screen.getByRole("tab", { name: "Product Setup" }));
+
+  expect(screen.getByTestId("webstore-product-card-prod-1").querySelector("img")).toHaveAttribute("src", "/api/webstores/ws-1/setup-files/file-1/preview");
+  expect(screen.getByTestId("webstore-product-card-prod-fallback").querySelector("img")).toHaveAttribute("src", "/api/public/webstores/team-store-public/product-images/prod-fallback/primary");
+
+  await user.click(screen.getByTestId("webstore-product-row-prod-1"));
+  await user.click(screen.getByRole("tab", { name: "Images and Mockups" }));
+
+  const primary = screen.getByTestId("webstore-product-image-primary");
+  const secondary = screen.getByTestId("webstore-product-image-secondary");
+  expect(within(primary).getByRole("img", { name: "Persisted primary" })).toHaveAttribute("src", "/api/webstores/ws-1/setup-files/file-1/preview");
+  expect(within(secondary).getByRole("img", { name: "Persisted secondary" })).toHaveAttribute("src", "/api/webstores/ws-1/setup-files/file-3/preview");
+  expect(within(primary).getByDisplayValue("Persisted primary")).toBeInTheDocument();
+  expect(within(secondary).getByDisplayValue("Persisted secondary")).toBeInTheDocument();
+
+  await user.click(within(primary).getByTestId("webstore-product-image-primary-file"));
+  await user.click(await screen.findByText("front-new.png"));
+  expect(within(primary).getByRole("img", { name: "Persisted primary" })).toHaveAttribute("src", "/api/webstores/ws-1/setup-files/file-2/preview");
+  expect(within(secondary).getByRole("img", { name: "Persisted secondary" })).toHaveAttribute("src", "/api/webstores/ws-1/setup-files/file-3/preview");
+
+  await user.click(within(secondary).getByRole("button", { name: "Remove" }));
+  expect(within(secondary).queryByRole("img")).not.toBeInTheDocument();
+  expect(within(primary).getByRole("img", { name: "Persisted primary" })).toHaveAttribute("src", "/api/webstores/ws-1/setup-files/file-2/preview");
+
+  await user.click(screen.getByRole("tab", { name: "Review Status" }));
+  await user.click(screen.getByTestId("webstore-save-product"));
+  await waitFor(() => expect(updateWebstoreProduct).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({
+    expected_revision: 4,
+    customer_images: {
+      primary: expect.objectContaining({
+        file_id: "file-2",
+        alt_text: "Persisted primary",
+      }),
+    },
+  })));
+  expect(updateWebstoreProduct.mock.calls[0][2].customer_images.secondary).toBeUndefined();
+  expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("draft - private draft");
+});
+
+test("staff product builder separates planning from focused product setup", async () => {
   const user = userEvent.setup();
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
-  expect(await screen.findByText("Team Store")).toBeInTheDocument();
-  await user.click(screen.getByRole("tab", { name: "Products" }));
+  expect(await screen.findByText(/Team Store/)).toBeInTheDocument();
+  expect(screen.getByText("Webstore Builder")).toBeInTheDocument();
+  expect(screen.queryByText(/Order Portal/i)).not.toBeInTheDocument();
+  expect(screen.getByTestId("webstore-builder-progress")).toHaveTextContent("Product Plan");
+  expect(screen.getByTestId("webstore-builder-status-panel")).toHaveTextContent("AI review");
 
-  expect(screen.getByTestId("webstore-product-foundation")).toBeInTheDocument();
-  expect(screen.getByText(/Platform starter/)).toBeInTheDocument();
-  expect(screen.getByText("Legacy free-text category preserved: Legacy / Unknown")).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "Product Plan" }));
+  const plan = screen.getByTestId("webstore-product-plan");
+  expect(plan).toHaveTextContent("Questionnaire Summary");
+  expect(plan).toHaveTextContent("AI Product Suggestions");
+  expect(plan).toHaveTextContent("No generated suggestions yet");
+  expect(within(plan).getByRole("button", { name: "Ask AI for Another Suggestion" })).toBeDisabled();
+  expect(within(plan).getByRole("button", { name: "Create Custom Product" })).toBeInTheDocument();
+  expect(screen.queryByText(/Create Blank Product/i)).not.toBeInTheDocument();
+  expect(screen.queryByTestId("webstore-create-template")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("webstore-create-category")).not.toBeInTheDocument();
 
-  await user.click(screen.getByTestId("webstore-create-blank-product"));
+  await user.click(within(plan).getByTestId("webstore-create-blank-product"));
   await waitFor(() => expect(createProductFromTemplate).toHaveBeenCalledWith("ws-1", { name: "New draft product", product_type: "general" }));
 
-  fireEvent.change(screen.getByTestId("webstore-category-name"), { target: { value: "Spirit Wear" } });
-  await user.click(screen.getByTestId("webstore-create-category"));
-  await waitFor(() => expect(createWebstoreProductCategory).toHaveBeenCalledWith("ws-1", { name: "Spirit Wear", description: "" }));
+  await user.click(within(plan).getByTestId("webstore-stage4-template-select"));
+  await user.click(await screen.findByText("Tenant Shirt"));
+  await user.click(within(plan).getByTestId("webstore-add-template-draft"));
+  await waitFor(() => expect(createProductFromTemplate).toHaveBeenCalledWith("ws-1", expect.objectContaining({ source_template_id: "tpl-tenant" })));
 
+  await user.click(screen.getByRole("tab", { name: "Product Setup" }));
+  expect(screen.getByTestId("webstore-product-foundation")).toHaveTextContent("Selected Products");
+  expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("Continue Setup");
+  expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("draft - private draft");
+  expect(screen.getByText(/Platform starter/)).toBeInTheDocument();
+  expect(screen.getByText("Legacy free-text category preserved: Legacy / Unknown")).toBeInTheDocument();
   await user.click(screen.getByTestId("webstore-product-row-prod-1"));
+  expect(screen.getByTestId("webstore-product-editor-sections")).toHaveTextContent("Basic Information");
+  fireEvent.change(screen.getByTestId("webstore-product-name"), { target: { value: "Updated Draft Shirt" } });
+  await user.click(screen.getByRole("tab", { name: "Review Status" }));
   await user.click(screen.getByTestId("webstore-product-artwork-associations"));
   await user.click(await screen.findByText("artwork.png"));
   await user.click(screen.getByTestId("webstore-product-artwork-associations"));
   await user.click(await screen.findByText("artwork-2.png"));
   await user.click(screen.getByTestId("webstore-product-mockup-associations"));
   await user.click(await screen.findByText("Mockup preview"));
-  fireEvent.change(screen.getByTestId("webstore-product-name"), { target: { value: "Updated Draft Shirt" } });
   await user.click(screen.getByTestId("webstore-save-product"));
   await waitFor(() => expect(updateWebstoreProduct).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({
     expected_revision: 3,
@@ -275,11 +491,29 @@ test("staff product foundation tab manages drafts, templates, categories, and as
     mockup_associations: [{ mockup_id: "mock-1" }],
   })));
 
-  await user.click(screen.getAllByRole("button", { name: "Edit" })[0]);
-  await user.click(screen.getByTestId("webstore-save-template"));
-  await waitFor(() => expect(updateProductTemplate).toHaveBeenCalledWith("tpl-tenant", expect.objectContaining({ expected_revision: 2 })));
-
-  await user.click(screen.getAllByRole("button", { name: "Edit" })[1]);
+  await user.click(within(screen.getByTestId("webstore-category-resources")).getByRole("button", { name: "Edit" }));
   await user.click(screen.getByTestId("webstore-save-category"));
   await waitFor(() => expect(updateWebstoreProductCategory).toHaveBeenCalledWith("ws-1", "cat-1", expect.objectContaining({ expected_revision: 4 })));
+
+  await user.click(within(screen.getByTestId("webstore-product-card-prod-1")).getByRole("button", { name: "Archive" }));
+  await waitFor(() => expect(archiveWebstoreProduct).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({ expected_revision: 3 })));
+  await user.click(within(screen.getByTestId("webstore-product-card-prod-archived")).getByRole("button", { name: "Restore" }));
+  await waitFor(() => expect(restoreWebstoreProduct).toHaveBeenCalledWith("ws-1", "prod-archived", expect.objectContaining({ expected_revision: 5 })));
+});
+
+test("stale product saves keep the editor open and offer a reload action", async () => {
+  const user = userEvent.setup();
+  updateWebstoreProduct.mockRejectedValueOnce({ response: { data: { detail: "This product changed after you opened it. Reload it before saving." } } });
+  renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
+
+  await screen.findByText(/Team Store/);
+  await user.click(screen.getByRole("tab", { name: "Product Setup" }));
+  await user.click(screen.getByTestId("webstore-product-row-prod-1"));
+  fireEvent.change(screen.getByTestId("webstore-product-name"), { target: { value: "Updated Draft Shirt" } });
+  await user.click(screen.getByRole("tab", { name: "Review Status" }));
+  await user.click(screen.getByTestId("webstore-save-product"));
+
+  expect(await screen.findByText("Product was not saved")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Reload latest product data" })).toBeInTheDocument();
+  expect(updateWebstoreProduct).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({ expected_revision: 3 }));
 });

@@ -218,7 +218,7 @@ test("public storefront saves a purchase intent and keeps checkout unavailable",
 
   renderWithProviders(<PublicWebstorePage />, { route: "/p/webstores/team-store", path: "/p/webstores/:slug" });
 
-  expect(await screen.findByText("Team Store")).toBeInTheDocument();
+  expect(await screen.findByText(/Team Store/)).toBeInTheDocument();
   expect(screen.getByTestId("webstore-checkout-disabled")).toHaveTextContent("Real Webstore checkout is not connected yet.");
   fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "2" } });
   const buyerFields = screen.getAllByRole("textbox");
@@ -266,10 +266,11 @@ test("webstore detail exposes computed payment readiness without a manual ready 
 
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
-  expect(await screen.findByText("Team Store")).toBeInTheDocument();
+  expect(await screen.findByText(/Team Store/)).toBeInTheDocument();
   expect(screen.getByTestId("webstore-payment-readiness")).toHaveTextContent("Payment readiness: Not connected");
   expect(screen.queryByLabelText("Payment boundary ready")).not.toBeInTheDocument();
-  expect(screen.getByRole("link", { name: /Public/ })).toHaveAttribute("href", "/p/webstores/shop-team-store");
+  expect(screen.getByRole("button", { name: /Preview Not Ready/ })).toBeDisabled();
+  expect(screen.queryByRole("link", { name: /Preview Portal/ })).not.toBeInTheDocument();
 });
 
 test("authenticated Webstores creation supports the six official store types", async () => {
@@ -337,9 +338,9 @@ test("webstore detail shows setup intake, assignments, files, and answer preview
   const user = userEvent.setup();
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-2", path: "/webstores/:id" });
 
-  expect(await screen.findByText("Setup Store")).toBeInTheDocument();
+  expect(await screen.findByText(/Setup Store/)).toBeInTheDocument();
   expect(screen.getByTestId("webstore-setup-state")).toHaveTextContent("staff_review");
-  expect(await screen.findByText("owner@example.com")).toBeInTheDocument();
+  expect(await screen.findAllByText("owner@example.com")).toHaveLength(2);
   expect(await screen.findByTestId("webstore-assignment-resend-assign-2")).toBeInTheDocument();
   expect(await screen.findByTestId("webstore-assignment-revoke-assign-2")).toBeInTheDocument();
   expect(await screen.findByText("logo.png")).toBeInTheDocument();

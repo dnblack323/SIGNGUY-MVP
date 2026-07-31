@@ -34,7 +34,7 @@ import AssistantLauncher from "@/components/assistant/AssistantLauncher";
 import WorkspaceDock from "@/components/workspaces/WorkspaceDock";
 import { WorkspaceProvider, useWorkspace } from "@/context/WorkspaceContext";
 import { cn } from "@/lib/utils";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   activeModuleForPath,
   filterNavItemsByPermissions,
@@ -66,6 +66,8 @@ const COMMANDS = {
 
 const QUICK_ACCESS_KEYS = ["dockNew", "newCustomer", "newQuote", "newOrder", "pricing", "task", "calendar", "assistant"];
 const SIDEBAR_LEAVE_DELAY_MS = 180;
+const DESKTOP_SIDEBAR_COLLAPSED_WIDTH = 76;
+const DESKTOP_SIDEBAR_EXPANDED_WIDTH = 260;
 
 const RIBBON_BY_AREA = {
   "shop-operations": ["newCustomer", "newQuote", "newOrder", "pricing", "calendar"],
@@ -401,10 +403,12 @@ export default function AppShell() {
 function AppShellFrame() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopSidebarExpanded, setDesktopSidebarExpanded] = useState(false);
+  const [devBannerHeight, setDevBannerHeight] = useState(0);
   const [selectedAreaKey, setSelectedAreaKey] = useState(null);
   const leaveTimerRef = useRef(null);
   const sidebarFocusWithinRef = useRef(false);
   const desktopSidebarRef = useRef(null);
+  const devBannerRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { devBypass, permissions, user } = useAuth();
@@ -443,10 +447,40 @@ function AppShellFrame() {
 
   useEffect(() => () => clearLeaveTimer(), []);
 
+  useLayoutEffect(() => {
+    if (!devBypass) {
+      setDevBannerHeight(0);
+      return undefined;
+    }
+
+    const banner = devBannerRef.current;
+    if (!banner) return undefined;
+
+    const updateBannerHeight = () => {
+      setDevBannerHeight(Math.ceil(banner.getBoundingClientRect().height));
+    };
+
+    updateBannerHeight();
+
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateBannerHeight) : null;
+    observer?.observe(banner);
+    window.addEventListener("resize", updateBannerHeight);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", updateBannerHeight);
+    };
+  }, [devBypass]);
+
+  const desktopSidebarOffset = devBypass ? devBannerHeight : 0;
+  const desktopSidebarWidth = desktopSidebarExpanded
+    ? DESKTOP_SIDEBAR_EXPANDED_WIDTH
+    : DESKTOP_SIDEBAR_COLLAPSED_WIDTH;
+
   return (
     <div className="min-h-dvh overflow-x-hidden bg-slate-100 text-foreground" data-testid="authenticated-app-shell">
       {devBypass && (
-        <div className="w-full bg-amber-50 border-b border-amber-200 text-amber-900 text-xs px-4 py-1.5 flex items-center justify-center gap-2" data-testid="dev-bypass-banner">
+        <div ref={devBannerRef} className="w-full bg-amber-50 border-b border-amber-200 text-amber-900 text-xs px-4 py-1.5 flex items-center justify-center gap-2" data-testid="dev-bypass-banner">
           <ShieldAlert className="size-3.5" />
           <span><span className="font-semibold">Auth bypass ON</span> · you're browsing as Dev Shop owner. Set <span className="mono">AUTH_DEV_BYPASS=false</span> before deploying.</span>
         </div>
@@ -456,14 +490,15 @@ function AppShellFrame() {
           ref={desktopSidebarRef}
           className={cn(
             "fixed left-0 z-40 hidden flex-col border-r border-slate-900 bg-slate-950 shadow-2xl transition-[width] duration-150 ease-out lg:flex",
-            desktopSidebarExpanded ? "w-[260px]" : "w-[76px]",
           )}
           style={{
-            top: devBypass ? "32px" : "0",
-            height: devBypass ? "calc(100dvh - 32px)" : "100dvh",
+            top: `${desktopSidebarOffset}px`,
+            height: `calc(100dvh - ${desktopSidebarOffset}px)`,
+            width: `${desktopSidebarWidth}px`,
           }}
           data-testid="desktop-sidebar-shell"
           data-expanded={desktopSidebarExpanded ? "true" : "false"}
+          data-sidebar-width={desktopSidebarWidth}
           onMouseEnter={expandDesktopSidebar}
           onMouseLeave={collapseDesktopSidebarSoon}
           onFocusCapture={() => {
@@ -483,7 +518,12 @@ function AppShellFrame() {
           />
         </aside>
 
-        <div className="min-w-0 lg:pl-[76px]" data-testid="app-shell-main-region">
+        <div
+          className="min-w-0 transition-[padding-left] duration-150 ease-out lg:pl-[var(--app-shell-sidebar-width)]"
+          style={{ "--app-shell-sidebar-width": `${desktopSidebarWidth}px` }}
+          data-testid="app-shell-main-region"
+          data-sidebar-width={desktopSidebarWidth}
+        >
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetContent side="left" className="w-[280px] border-slate-900 bg-slate-950 p-0">
               <SheetTitle className="sr-only">Application navigation</SheetTitle>
@@ -508,7 +548,7 @@ function AppShellFrame() {
             <Outlet />
           </main>
           <div className="h-16 md:h-14" data-testid="workspace-dock-reserved-space" aria-hidden="true" />
-          <WorkspaceDock sidebarCollapsed />
+          <WorkspaceDock sidebarCollapsed={!desktopSidebarExpanded} />
           <AssistantLauncher />
         </div>
       </div>

@@ -83,11 +83,11 @@ function Page({ name }) {
   return <div data-testid={`${name}-route`}>{name} route</div>;
 }
 
-function renderShell(initialPath = "/") {
+function renderShell(initialPath = "/", authOverrides = {}) {
   api.get.mockResolvedValue({ data: { open_workspaces: [], recent_workspaces: [], limits: { max_open: 8, max_recent: 20 } } });
   api.post.mockResolvedValue({ data: { open_workspaces: [], recent_workspaces: [], limits: { max_open: 8, max_recent: 20 } } });
   useAuth.mockReturnValue({
-    devBypass: false,
+    devBypass: authOverrides.devBypass ?? false,
     hasPerm: (permission) => FULL_PERMISSIONS.includes(permission),
     logout: jest.fn(),
     permissions: FULL_PERMISSIONS,
@@ -104,6 +104,7 @@ function renderShell(initialPath = "/") {
           <Route path="/quotes" element={<><LocationProbe /><Page name="quotes" /></>} />
           <Route path="/orders" element={<><LocationProbe /><Page name="orders" /></>} />
           <Route path="/pricing-calculator" element={<><LocationProbe /><Page name="pricing" /></>} />
+          <Route path="/webstores/:id" element={<><LocationProbe /><Page name="webstore-detail" /></>} />
           <Route path="/finance" element={<><LocationProbe /><Page name="finance" /></>} />
           <Route path="/studio/design-image" element={<><LocationProbe /><Page name="design-image" /></>} />
         </Route>
@@ -112,9 +113,10 @@ function renderShell(initialPath = "/") {
   );
 }
 
-async function renderShellReady(initialPath = "/") {
-  renderShell(initialPath);
+async function renderShellReady(initialPath = "/", authOverrides = {}) {
+  const result = renderShell(initialPath, authOverrides);
   await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument());
+  return result;
 }
 
 function waitMs(ms) {
@@ -148,15 +150,24 @@ test("desktop sidebar defaults to compact fixed rail and expands on hover", asyn
   await renderShellReady("/orders");
 
   const sidebar = screen.getByTestId("desktop-sidebar-shell");
+  const mainRegion = screen.getByTestId("app-shell-main-region");
   expect(sidebar).toHaveAttribute("data-expanded", "false");
+  expect(sidebar).toHaveAttribute("data-sidebar-width", "76");
+  expect(sidebar).toHaveStyle({ width: "76px" });
   expect(sidebar).toHaveClass("fixed");
-  expect(screen.getByTestId("app-shell-main-region")).toHaveClass("lg:pl-[76px]");
+  expect(mainRegion).toHaveAttribute("data-sidebar-width", "76");
+  expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("76px");
+  expect(mainRegion).toHaveClass("lg:pl-[var(--app-shell-sidebar-width)]");
   expect(screen.queryByTestId("sidebar-collapse-toggle")).not.toBeInTheDocument();
   expect(screen.queryByTestId("sidebar-tenant-name")).not.toBeInTheDocument();
 
   fireEvent.mouseEnter(sidebar);
 
   expect(sidebar).toHaveAttribute("data-expanded", "true");
+  expect(sidebar).toHaveAttribute("data-sidebar-width", "260");
+  expect(sidebar).toHaveStyle({ width: "260px" });
+  expect(mainRegion).toHaveAttribute("data-sidebar-width", "260");
+  expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("260px");
   expect(screen.getByTestId("sidebar-tenant-name")).toHaveTextContent("Donnell Black's Shop");
 });
 
@@ -175,6 +186,9 @@ test("desktop sidebar uses a leave delay and then collapses without resetting pa
   await waitMs(140);
 
   expect(sidebar).toHaveAttribute("data-expanded", "false");
+  expect(sidebar).toHaveAttribute("data-sidebar-width", "76");
+  expect(screen.getByTestId("app-shell-main-region")).toHaveAttribute("data-sidebar-width", "76");
+  expect(screen.getByTestId("app-shell-main-region").style.getPropertyValue("--app-shell-sidebar-width")).toBe("76px");
   expect(screen.getByTestId("current-path")).toHaveTextContent("/orders");
   expect(window.scrollTo).not.toHaveBeenCalled();
 });
@@ -203,7 +217,7 @@ test("sidebar top, bottom, internal scrolling, tabs, ribbon, and dock stay in fi
   const nav = screen.getByTestId("primary-sidebar-nav");
   const bottomControls = screen.getByTestId("sidebar-bottom-controls");
 
-  expect(sidebar).toHaveStyle({ height: "100dvh" });
+  expect(sidebar).toHaveStyle({ top: "0px", height: "calc(100dvh - 0px)" });
   expect(nav).toHaveClass("overflow-y-auto");
   expect(within(bottomControls).getByTestId("sidebar-global-search")).toBeInTheDocument();
   expect(within(bottomControls).getByTestId("notification-bell")).toBeInTheDocument();
@@ -211,6 +225,76 @@ test("sidebar top, bottom, internal scrolling, tabs, ribbon, and dock stay in fi
   expect(screen.getByTestId("module-tab-row")).toBeInTheDocument();
   expect(screen.getByTestId("contextual-ribbon")).toBeInTheDocument();
   expect(screen.getByTestId("workspace-dock")).toHaveClass("lg:left-[76px]");
+
+  fireEvent.mouseEnter(sidebar);
+  expect(screen.getByTestId("workspace-dock")).toHaveClass("lg:left-[260px]");
+});
+
+test("webstore and non-webstore pages use the same shared sidebar offset", async () => {
+  const webstoreRender = await renderShellReady("/webstores/ws-1");
+
+  const webstoreSidebar = screen.getByTestId("desktop-sidebar-shell");
+  const webstoreMainRegion = screen.getByTestId("app-shell-main-region");
+  expect(screen.getByTestId("webstore-detail-route")).toBeInTheDocument();
+  expect(webstoreMainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("76px");
+
+  fireEvent.mouseEnter(webstoreSidebar);
+  expect(webstoreMainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("260px");
+
+  webstoreRender.unmount();
+
+  await renderShellReady("/orders");
+  const orderSidebar = screen.getByTestId("desktop-sidebar-shell");
+  const orderMainRegion = screen.getByTestId("app-shell-main-region");
+  expect(screen.getByTestId("orders-route")).toBeInTheDocument();
+  expect(orderMainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("76px");
+
+  fireEvent.mouseEnter(orderSidebar);
+  expect(orderMainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("260px");
+});
+
+test("desktop sidebar aligns to the measured development banner height", async () => {
+  const getBoundingClientRect = jest.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function mockRect() {
+    if (this.getAttribute("data-testid") === "dev-bypass-banner") {
+      return {
+        bottom: 41,
+        height: 41,
+        left: 0,
+        right: 1200,
+        top: 0,
+        width: 1200,
+        x: 0,
+        y: 0,
+        toJSON: () => {},
+      };
+    }
+    return {
+      bottom: 0,
+      height: 0,
+      left: 0,
+      right: 0,
+      top: 0,
+      width: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    };
+  });
+
+  await renderShellReady("/orders", { devBypass: true });
+
+  const sidebar = screen.getByTestId("desktop-sidebar-shell");
+  expect(screen.getByTestId("dev-bypass-banner")).toBeInTheDocument();
+  await waitFor(() => {
+    expect(sidebar).toHaveStyle({
+      top: "41px",
+      height: "calc(100dvh - 41px)",
+    });
+  });
+  expect(screen.getByTestId("primary-sidebar-nav")).toHaveClass("overflow-y-auto");
+  expect(screen.getByTestId("sidebar-bottom-controls")).toBeInTheDocument();
+
+  getBoundingClientRect.mockRestore();
 });
 
 test("active area module row is visible and module tabs navigate to existing routes", async () => {
