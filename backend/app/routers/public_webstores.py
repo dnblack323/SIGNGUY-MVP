@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..services import webstores as svc
 from ..services import webstore_branding as branding_svc
@@ -30,6 +30,8 @@ class BuyerLineIn(BaseModel):
 
 
 class BuyerOrderIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     buyer_name: str
     buyer_email: str
     buyer_phone: Optional[str] = None
@@ -79,9 +81,25 @@ async def create_buyer_order(slug: str, payload: BuyerOrderIn) -> dict:
         _raise(e)
 
 
+@router.post("/{slug}/cart-quote", status_code=201)
+async def create_cart_quote(slug: str, payload: BuyerOrderIn) -> dict:
+    try:
+        return await svc.create_purchase_intent(slug, payload.model_dump(exclude_none=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
 @router.post("/{slug}/purchase-intents", status_code=201)
 async def create_purchase_intent(slug: str, payload: BuyerOrderIn) -> dict:
     try:
         return await svc.create_purchase_intent(slug, payload.model_dump(exclude_none=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.get("/{slug}/confirmations/{confirmation_token}")
+async def confirmation(slug: str, confirmation_token: str) -> dict:
+    try:
+        return await svc.public_confirmation(slug, confirmation_token)
     except WebstoreError as e:
         _raise(e)

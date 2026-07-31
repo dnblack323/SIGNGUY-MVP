@@ -195,7 +195,7 @@ beforeEach(() => {
   listProductTemplates.mockResolvedValue([]);
 });
 
-test("public storefront saves a purchase intent and keeps checkout unavailable", async () => {
+test("public storefront creates a checkout intent with provider evidence authority", async () => {
   const user = userEvent.setup();
   axios.get.mockResolvedValue({
     data: {
@@ -203,8 +203,8 @@ test("public storefront saves a purchase intent and keeps checkout unavailable",
         id: "ws-1",
         name: "Team Store",
         description: "",
-        checkout_enabled: false,
-        checkout_unavailable_reason: "Real Webstore checkout is not connected yet.",
+        checkout_enabled: true,
+        checkout_unavailable_reason: null,
       },
       products: [{ id: "prod-1", name: "Team Shirt", product_type: "shirt", selling_price_cents: 2500 }],
     },
@@ -212,19 +212,20 @@ test("public storefront saves a purchase intent and keeps checkout unavailable",
   axios.post.mockResolvedValue({
     data: {
       purchase_intent: { id: "pi-1", status: "pending_payment", product_subtotal_cents: 5000, total_cents: 5000 },
-      checkout_available: false,
+      checkout_available: true,
+      checkout: { payment_authority: "verified_provider_event" },
     },
   });
 
   renderWithProviders(<PublicWebstorePage />, { route: "/p/webstores/team-store", path: "/p/webstores/:slug" });
 
   expect(await screen.findByText(/Team Store/)).toBeInTheDocument();
-  expect(screen.getByTestId("webstore-checkout-disabled")).toHaveTextContent("Real Webstore checkout is not connected yet.");
+  expect(screen.queryByTestId("webstore-checkout-disabled")).not.toBeInTheDocument();
   fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "2" } });
   const buyerFields = screen.getAllByRole("textbox");
   await user.type(buyerFields[0], "Casey Buyer");
   await user.type(buyerFields[1], "casey@example.com");
-  await user.click(screen.getByRole("button", { name: /Save purchase request/ }));
+  await user.click(screen.getByRole("button", { name: /Create checkout/ }));
 
   await waitFor(() => expect(axios.post).toHaveBeenCalledWith(
     "/api/public/webstores/team-store/purchase-intents",
@@ -236,8 +237,8 @@ test("public storefront saves a purchase intent and keeps checkout unavailable",
       idempotency_key: "intent-key-1",
     },
   ));
-  expect(await screen.findByText("Purchase request saved")).toBeInTheDocument();
-  expect(screen.getByText(/Checkout is not connected yet/)).toBeInTheDocument();
+  expect(await screen.findByText("Checkout intent created")).toBeInTheDocument();
+  expect(screen.getByText(/verified_provider_event/)).toBeInTheDocument();
 });
 
 test("webstore detail exposes computed payment readiness without a manual ready toggle", async () => {

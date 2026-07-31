@@ -130,6 +130,9 @@ PurchaseIntentStatus = Literal[
     "payment_processing",
     "paid_order_created",
     "payment_failed",
+    "partially_refunded",
+    "refunded",
+    "disputed",
     "expired",
     "canceled",
 ]
@@ -148,6 +151,9 @@ LedgerEntryType = Literal[
     "production_cost_estimate",
     "shop_gross_estimate",
     "refund",
+    "payout",
+    "dispute_hold",
+    "dispute_release",
 ]
 LedgerEntryStatus = Literal["posted", "reversed", "adjusted"]
 StripeBoundaryStatus = Literal["local_only", "pending_provider", "provider_ready", "failed"]
@@ -607,7 +613,16 @@ class WebstorePurchaseIntent(BaseDoc):
     canonical_payment_id: Optional[str] = None
     provider: Optional[str] = None
     provider_payment_id: Optional[str] = None
+    provider_checkout_id: Optional[str] = None
+    checkout_status: str = "created"
+    confirmation_token: Optional[str] = None
     verified_payment_event_id: Optional[str] = None
+    production_bridge_status: str = "not_started"
+    work_order_id: Optional[str] = None
+    fulfillment_status: str = "not_started"
+    refund_status: str = "not_refunded"
+    dispute_status: str = "none"
+    payout_status: str = "pending"
     immutable_snapshot: dict[str, Any] = Field(default_factory=dict)
 
 

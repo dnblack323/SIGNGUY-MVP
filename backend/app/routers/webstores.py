@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from ..deps import get_current_user
@@ -285,6 +285,19 @@ class PlatformFeeReversalIn(BaseModel):
     refund_basis_amount_cents: StrictInt = Field(gt=0)
 
 
+class WebstoreRefundIn(BaseModel):
+    amount_cents: Optional[StrictInt] = Field(default=None, gt=0)
+    reason: str
+    idempotency_key: Optional[str] = None
+
+
+class WebstoreProviderEventIn(BaseModel):
+    purchase_intent_id: str
+    amount_cents: StrictInt = Field(ge=0)
+    provider_event_id: str
+    status: str
+
+
 class AssignmentIn(BaseModel):
     role: str = "owner"
     email: str
@@ -436,6 +449,36 @@ async def launch_readiness(webstore_id: str, user: dict = Depends(get_current_us
 async def reports(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.reports(user, webstore_id)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/payments/{payment_id}/refund", status_code=201)
+async def refund_webstore_payment(
+    webstore_id: str,
+    payment_id: str,
+    payload: WebstoreRefundIn,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    user: dict = Depends(get_current_user),
+) -> dict:
+    try:
+        return await svc.refund_webstore_payment(user, webstore_id, payment_id, payload.model_dump(exclude_none=True), idempotency_key)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/payout-events", status_code=201)
+async def record_payout_event(webstore_id: str, payload: WebstoreProviderEventIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.record_payout_event(user, webstore_id, payload.model_dump())
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/dispute-events", status_code=201)
+async def record_dispute_event(webstore_id: str, payload: WebstoreProviderEventIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.record_dispute_event(user, webstore_id, payload.model_dump())
     except WebstoreError as e:
         _raise(e)
 

@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 import hashlib
 import json
 import re
+import secrets
 from typing import Any, Optional
 
 from fastapi import HTTPException
@@ -78,7 +79,7 @@ STAGE4A_FINANCIAL_VARIANT_FIELDS = {
     "image_file_ids",
 }
 SLUG_RE = re.compile(r"[^a-z0-9]+")
-PUBLIC_CHECKOUT_ENABLED = False
+PUBLIC_CHECKOUT_ENABLED = True
 VALID_WEBSTORE_TYPES = set(WEBSTORE_TYPES)
 VALID_WEBSTORE_STATUSES = set(WEBSTORE_LIFECYCLE_STATES)
 CURRENT_WEBSTORE_TERMS_VERSION = "webstore_terms_2026_07"
@@ -223,8 +224,8 @@ def _owner_safe_terms_snapshot(store: dict, owner: dict, packet: Optional[dict] 
         "store_type": store.get("store_type"),
         "store_owner_name": owner.get("name"),
         "store_owner_email": owner.get("email"),
-        "platform_fee_percent": "Configured by the shop; exact buyer checkout fees remain inactive until commerce is enabled.",
-        "stripe_processing_note": "Payment provider readiness is tracked separately. Batch 2 does not enable Stripe checkout or payouts.",
+        "platform_fee_percent": "Configured by the shop and snapshotted for backend-authoritative buyer checkout.",
+        "stripe_processing_note": "Payment provider readiness is tracked separately; canonical Orders are created only after verified payment evidence.",
         "owner_share_formula": "Owner-visible product share is shown in cents in the launch packet when configured.",
         "payout_method": "Not configured in this batch unless an existing provider record says otherwise.",
         "store_deadline": store.get("deadline_at") or store.get("intended_close_at"),
@@ -703,7 +704,7 @@ def _public_store(store: dict, published_branding: Optional[dict[str, Any]] = No
     result = {k: v for k, v in store.items() if k in allowed}
     result["branding"] = published_branding or {}
     result["checkout_enabled"] = bool(result.get("checkout_enabled")) and PUBLIC_CHECKOUT_ENABLED
-    result["checkout_unavailable_reason"] = "Real Webstore checkout is not connected yet." if not PUBLIC_CHECKOUT_ENABLED else None
+    result["checkout_unavailable_reason"] = None if result["checkout_enabled"] else "Checkout is currently paused for this Webstore."
     return result
 
 
@@ -743,7 +744,7 @@ def _portal_store(store: dict) -> dict:
     }
     result = {k: v for k, v in store.items() if k in allowed}
     result["checkout_enabled"] = bool(result.get("checkout_enabled")) and PUBLIC_CHECKOUT_ENABLED
-    result["checkout_unavailable_reason"] = "Real Webstore checkout is not connected yet."
+    result["checkout_unavailable_reason"] = None if result["checkout_enabled"] else "Checkout is currently paused for this Webstore."
     return result
 
 
@@ -1448,9 +1449,7 @@ async def set_webstore_status(user: dict, webstore_id: str, status: str, reason:
     _require_staff_perm(user, Perm.WEBSTORE_MANAGE if status in {"live", "launch_ready", "scheduled", "closed", "archived"} else Perm.WEBSTORE_WRITE)
     store = await _get_store(user["tenant_id"], webstore_id)
     _validate_transition(store.get("status", "draft"), status)
-    if status == "live":
-        raise WebstoreError("buyer_commerce_not_implemented", "Buyer storefront and checkout launch are reserved for Batch 3", 409)
-    if status in {"launch_ready", "scheduled"}:
+    if status in {"launch_ready", "scheduled", "live"}:
         readiness = await launch_readiness(user, webstore_id)
         if not readiness["ready"]:
             raise WebstoreError("launch_gates_failed", "Webstore launch gates are not satisfied", 409)
@@ -2539,9 +2538,9 @@ async def _assemble_launch_packet_snapshot(user: dict, store: dict, fields: dict
     qr_destination = store.get("public_url") or f"/p/webstores/{store.get('public_slug')}"
     qr_reference = {
         "destination": qr_destination,
-        "status": "preview_only_not_live",
+        "status": "launch_destination",
         "download_url": f"/api/webstores/{store['id']}/qr-code-preview",
-        "warning": "QR preview does not expose buyer checkout before public commerce is enabled.",
+        "warning": "QR destination opens to buyers only after the Webstore lifecycle status is live.",
     }
     pricing_summary = {
         "product_count": len(products),
@@ -2575,7 +2574,7 @@ async def _assemble_launch_packet_snapshot(user: dict, store: dict, fields: dict
         "terms": _owner_safe_terms_snapshot(store, owner),
         "qr_reference": qr_reference,
         "approval_instructions": "Review this exact packet version. Approve it or submit a structured change request.",
-        "public_commerce_status": "Buyer storefront, cart, checkout, payouts, Orders, and Production bridge remain unavailable in Batch 2.",
+        "public_commerce_status": "Buyer storefront, server-authoritative checkout, verified-payment Orders, payouts, and Production bridge are connected for Batch 3 launch.",
     }
     promotion_copy = _clean_optional_text(fields.get("promotion_copy")) or f"{store.get('name')} is being prepared for owner review."
     return {
@@ -3185,13 +3184,13 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
             "blocking": bool(payment["required"] and not payment["ready"]),
         },
         {
-            "key": "buyer_commerce_blocked",
-            "state": "blocked_by_batch_scope",
-            "reason": "Buyer storefront, cart, checkout, payments, Orders, and Production bridge are intentionally unavailable until Batch 3.",
+            "key": "buyer_commerce_connected",
+            "state": "ready",
+            "reason": "Public storefront, server-authoritative checkout intent, verified-payment bridge, Orders, and Production handoff are connected.",
             "severity": "advisory",
-            "action": "Proceed to Buyer Commerce and Operations Batch after this checkpoint.",
+            "action": "Launch, schedule, pause, or close the store from the lifecycle controls.",
             "resource": {"type": "batch_scope", "id": "batch_3"},
-            "owner_wording": "The store is not publicly live yet.",
+            "owner_wording": "The store can accept buyer checkout after launch.",
             "blocking": False,
         },
     ]
@@ -3220,7 +3219,7 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
         "payment_readiness": payment,
         "payment_readiness_source": "computed",
         "payment_unavailable_reason": payment["reason"],
-        "public_launch_blocked_until_batch_3": True,
+        "public_launch_blocked_until_batch_3": False,
     }
 
 
@@ -3303,10 +3302,51 @@ def _reject_public_money_authority(fields: dict[str, Any]) -> None:
         )
 
 
+def _variant_allowed(configured: list[dict[str, Any]], supplied: dict[str, Any]) -> bool:
+    if not supplied:
+        return True
+    for option in configured or []:
+        if all(str(option.get(k)) == str(v) for k, v in supplied.items()):
+            return True
+    return False
+
+
+def _validate_personalization(product: dict, supplied: dict[str, Any]) -> None:
+    if not product.get("personalization_enabled"):
+        return
+    missing: list[str] = []
+    for field in product.get("personalization_fields") or []:
+        key = field.get("key") or field.get("name") or field.get("id")
+        if bool(field.get("required")) and key and not str(supplied.get(key) or "").strip():
+            missing.append(str(key))
+    if missing:
+        raise WebstoreError("personalization_required", "Required personalization fields are missing", 400)
+
+
+def _checkout_response(intent: dict, *, created: bool) -> dict:
+    public_intent = serialize_doc(intent)
+    public_intent.pop("immutable_snapshot", None)
+    return {
+        "purchase_intent": public_intent,
+        "checkout_available": True,
+        "checkout_status": intent.get("checkout_status") or "created",
+        "checkout": {
+            "provider": intent.get("provider") or "local_test_provider",
+            "provider_checkout_id": intent.get("provider_checkout_id"),
+            "payment_required": True,
+            "payment_authority": "verified_provider_event",
+            "verified_payment_creates_order": True,
+        },
+        "created": created,
+    }
+
+
 async def create_purchase_intent(slug: str, fields: dict[str, Any]) -> dict:
     _reject_public_money_authority(fields)
     storefront = await _storefront_by_slug(slug)
     store = storefront["webstore"]
+    if not store.get("checkout_enabled"):
+        raise WebstoreError("checkout_paused", "Checkout is currently paused for this Webstore", 409)
     full_store = await db.webstores.find_one({"public_slug": slug, "id": store["id"]}, {"_id": 0})
     tenant_id = full_store["tenant_id"]
     if fields.get("idempotency_key"):
@@ -3315,9 +3355,10 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any]) -> dict:
             {"_id": 0},
         )
         if existing:
-            return {"purchase_intent": serialize_doc(existing), "checkout_available": False, "checkout_unavailable_reason": "Real Webstore checkout is not connected yet."}
+            return _checkout_response(existing, created=False)
     product_map = {p["id"]: p for p in storefront["products"]}
     line_items: list[dict[str, Any]] = []
+    financial_lines: list[dict[str, Any]] = []
     subtotal = 0
     for raw in fields.get("line_items") or []:
         product_id = raw.get("product_id")
@@ -3328,9 +3369,24 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any]) -> dict:
         if qty <= 0:
             raise WebstoreError("invalid_quantity", "Quantity must be at least 1", 400)
         full_product = await _get_product(tenant_id, product_id, store["id"])
+        if not _variant_allowed(full_product.get("variants") or [], raw.get("variant") or {}):
+            raise WebstoreError("variant_not_available", "Selected product variant is not available for checkout", 409)
+        _validate_personalization(full_product, raw.get("personalization") or {})
         unit = int(full_product["selling_price_cents"])
         line_total = unit * qty
         subtotal += line_total
+        fee_bps = int(full_product.get("platform_fee_basis_points") or 0)
+        financial_lines.append(
+            {
+                "product_id": product_id,
+                "line_total_cents": line_total,
+                "platform_fee_basis_points": fee_bps,
+                "platform_fee_cents": int((Decimal(line_total) * Decimal(fee_bps) / Decimal(10000)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)),
+                "store_owner_share_cents": int(full_product.get("store_owner_share_cents") or 0) * qty,
+                "fundraiser_share_cents": int(full_product.get("fundraiser_share_cents") or 0) * qty,
+                "production_cost_cents": int(full_product.get("production_cost_cents") or 0) * qty,
+            }
+        )
         line_items.append(
             {
                 "product_id": product_id,
@@ -3377,8 +3433,17 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any]) -> dict:
                 "total_cents": total,
                 "currency": "usd",
             },
+            "checkout_contract": {
+                "authority": "verified_provider_event",
+                "success_redirect_is_not_payment_evidence": True,
+            },
+            "financial_lines": financial_lines,
         },
     ).model_dump()
+    intent["provider"] = "local_test_provider"
+    intent["provider_checkout_id"] = f"webstore_checkout:{intent['id']}"
+    intent["checkout_status"] = "created"
+    intent["confirmation_token"] = secrets.token_urlsafe(24)
     try:
         await db.webstore_purchase_intents.insert_one(prepare_for_mongo(intent))
     except DuplicateKeyError:
@@ -3386,7 +3451,7 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any]) -> dict:
             {"tenant_id": tenant_id, "webstore_id": store["id"], "idempotency_key": fields.get("idempotency_key")},
             {"_id": 0},
         )
-        return {"purchase_intent": serialize_doc(existing), "checkout_available": False, "checkout_unavailable_reason": "Real Webstore checkout is not connected yet."}
+        return _checkout_response(existing, created=False)
     await _audit(
         tenant_id=tenant_id,
         webstore_id=store["id"],
@@ -3395,19 +3460,47 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any]) -> dict:
         action="webstore.purchase_intent_created",
         entity_type="webstore_purchase_intent",
         entity_id=intent["id"],
-        summary="Webstore purchase intent created without checkout",
-        metadata={"total_cents": total},
+        summary="Webstore checkout intent created; canonical records await verified payment evidence",
+        metadata={"total_cents": total, "payment_authority": "verified_provider_event"},
     )
     saved = await db.webstore_purchase_intents.find_one({"tenant_id": tenant_id, "id": intent["id"]}, {"_id": 0})
-    return {
-        "purchase_intent": serialize_doc(saved),
-        "checkout_available": False,
-        "checkout_unavailable_reason": "Real Webstore checkout is not connected yet.",
-    }
+    return _checkout_response(saved, created=True)
 
 
 async def create_buyer_order(slug: str, fields: dict[str, Any]) -> dict:
     return await create_purchase_intent(slug, fields)
+
+
+async def public_confirmation(slug: str, confirmation_token: str) -> dict:
+    storefront = await _storefront_by_slug(slug)
+    store = storefront["webstore"]
+    full_store = await db.webstores.find_one({"public_slug": slug, "id": store["id"]}, {"_id": 0})
+    intent = await db.webstore_purchase_intents.find_one(
+        {
+            "tenant_id": full_store["tenant_id"],
+            "webstore_id": store["id"],
+            "public_slug": slug,
+            "confirmation_token": confirmation_token,
+            "canonical_order_id": {"$type": "string"},
+        },
+        {"_id": 0},
+    )
+    if not intent:
+        raise WebstoreError("confirmation_not_found", "Webstore confirmation was not found", 404)
+    public_intent = serialize_doc(intent)
+    public_intent.pop("immutable_snapshot", None)
+    order = await db.orders.find_one({"tenant_id": full_store["tenant_id"], "id": intent.get("canonical_order_id")}, {"_id": 0})
+    return {
+        "purchase_intent": public_intent,
+        "order": {
+            "id": intent.get("canonical_order_id"),
+            "number": (order or {}).get("number"),
+            "status": (order or {}).get("status"),
+            "total_cents": int(intent.get("total_cents") or 0),
+        },
+        "payment_status": intent.get("status"),
+        "fulfillment_status": intent.get("fulfillment_status"),
+    }
 
 
 async def _create_ledger_rows(
@@ -3592,22 +3685,83 @@ async def bridge_buyer_order_to_order(user: dict, buyer_order_id: str) -> dict:
 async def reports(user: dict, webstore_id: str) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_READ)
     await _get_store(user["tenant_id"], webstore_id)
-    orders = [doc async for doc in db.webstore_buyer_orders.find({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}, {"_id": 0})]
+    legacy_orders = [doc async for doc in db.webstore_buyer_orders.find({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}, {"_id": 0})]
+    purchase_intents = [
+        serialize_doc(doc)
+        async for doc in db.webstore_purchase_intents.find(
+            {"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "canonical_order_id": {"$type": "string"}},
+            {"_id": 0, "immutable_snapshot": 0},
+        )
+    ]
     ledger = [doc async for doc in db.webstore_ledger_entries.find({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}, {"_id": 0})]
     by_entry: dict[str, int] = {}
     for row in ledger:
         by_entry[row["entry_type"]] = by_entry.get(row["entry_type"], 0) + int(row.get("amount_cents") or 0)
     product_qty: dict[str, int] = {}
-    for order in orders:
+    for order in [*legacy_orders, *purchase_intents]:
         for line in order.get("line_items") or []:
             product_qty[line["product_id"]] = product_qty.get(line["product_id"], 0) + int(line.get("quantity") or 0)
+    gross = sum(int(o.get("total_cents") or 0) for o in purchase_intents) + sum(int(o.get("total_cents") or 0) for o in legacy_orders)
     return {
         "webstore_id": webstore_id,
-        "order_count": len(orders),
-        "gross_sales_cents": sum(int(o.get("total_cents") or 0) for o in orders),
+        "order_count": len(purchase_intents) + len(legacy_orders),
+        "canonical_order_count": len(purchase_intents),
+        "legacy_order_count": len(legacy_orders),
+        "gross_sales_cents": gross,
+        "refund_total_cents": abs(by_entry.get("refund", 0)),
+        "payout_total_cents": by_entry.get("payout", 0),
+        "dispute_hold_cents": abs(by_entry.get("dispute_hold", 0)),
         "ledger_totals_cents": by_entry,
         "product_quantities": product_qty,
+        "purchase_intents": purchase_intents,
     }
+
+
+async def refund_webstore_payment(user: dict, webstore_id: str, payment_id: str, fields: dict[str, Any], idempotency_key: Optional[str] = None) -> dict:
+    _require_staff_perm(user, Perm.WEBSTORE_MANAGE)
+    await _get_store(user["tenant_id"], webstore_id)
+    from . import webstore_payments
+
+    return await webstore_payments.initiate_webstore_refund(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        payment_id=payment_id,
+        amount_cents=fields.get("amount_cents"),
+        reason=_clean_text(fields.get("reason"), "reason", limit=500),
+        actor_user_id=user["id"],
+        actor_email=user.get("email") or "",
+        idempotency_key=idempotency_key or fields.get("idempotency_key"),
+    )
+
+
+async def record_payout_event(user: dict, webstore_id: str, fields: dict[str, Any]) -> dict:
+    _require_staff_perm(user, Perm.WEBSTORE_MANAGE)
+    await _get_store(user["tenant_id"], webstore_id)
+    from . import webstore_payments
+
+    return await webstore_payments.record_webstore_payout_event(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        purchase_intent_id=_clean_text(fields.get("purchase_intent_id"), "purchase_intent_id"),
+        amount_cents=int(fields.get("amount_cents") or 0),
+        provider_event_id=_clean_text(fields.get("provider_event_id"), "provider_event_id"),
+        status=_clean_text(fields.get("status") or "pending", "status", limit=60),
+    )
+
+
+async def record_dispute_event(user: dict, webstore_id: str, fields: dict[str, Any]) -> dict:
+    _require_staff_perm(user, Perm.WEBSTORE_MANAGE)
+    await _get_store(user["tenant_id"], webstore_id)
+    from . import webstore_payments
+
+    return await webstore_payments.record_webstore_dispute_event(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        purchase_intent_id=_clean_text(fields.get("purchase_intent_id"), "purchase_intent_id"),
+        amount_cents=int(fields.get("amount_cents") or 0),
+        provider_event_id=_clean_text(fields.get("provider_event_id"), "provider_event_id"),
+        status=_clean_text(fields.get("status") or "opened", "status", limit=60),
+    )
 
 
 async def _owner_portal_store(identity: dict, webstore_id: str) -> dict:
@@ -3714,6 +3868,7 @@ async def owner_portal_detail(identity: dict, webstore_id: str) -> dict:
             "owner_wording": "Payment setup is not live yet.",
         },
     ]
+    owner_report = await reports({"tenant_id": identity["tenant_id"], "role": "owner", "id": identity.get("id"), "email": identity.get("email")}, webstore_id)
     return {
         "webstore": _portal_store(store),
         "products": products,
@@ -3722,5 +3877,13 @@ async def owner_portal_detail(identity: dict, webstore_id: str) -> dict:
         "current_terms_version": terms_version,
         "terms_acceptance": _portal_terms_acceptance(terms),
         "readiness_summary": owner_gates,
-        "public_launch_blocked_until_batch_3": True,
+        "commerce_summary": {
+            "order_count": owner_report["order_count"],
+            "gross_sales_cents": owner_report["gross_sales_cents"],
+            "refund_total_cents": owner_report["refund_total_cents"],
+            "payout_total_cents": owner_report["payout_total_cents"],
+            "dispute_hold_cents": owner_report["dispute_hold_cents"],
+            "product_quantities": owner_report["product_quantities"],
+        },
+        "public_launch_blocked_until_batch_3": False,
     }

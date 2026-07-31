@@ -28,13 +28,24 @@ export default function PublicWebstorePage() {
     try {
       const line_items = Object.entries(cart).filter(([, quantity]) => quantity > 0).map(([product_id, quantity]) => ({ product_id, quantity }));
       const r = await axios.post(`${API}/public/webstores/${slug}/purchase-intents`, { ...buyer, line_items, idempotency_key: crypto.randomUUID() });
-      setDone(r.data.purchase_intent);
-      toast.success("Purchase request saved");
+      setDone({ intent: r.data.purchase_intent, checkout: r.data.checkout });
+      toast.success("Checkout intent created");
     } catch (e) { toast.error(e?.response?.data?.detail || "Purchase request failed"); }
   }
   if (err) return <div className="min-h-screen grid place-items-center p-6 text-sm text-rose-700" data-testid="public-webstore-error">{err}</div>;
   if (!data) return <div className="min-h-screen grid place-items-center p-6 text-sm text-muted-foreground">Loading...</div>;
-  if (done) return <div className="min-h-screen grid place-items-center p-6"><Card><CardHeader><CardTitle>Purchase request saved</CardTitle></CardHeader><CardContent>Checkout is not connected yet. Reference: <span className="font-mono">{done.id}</span></CardContent></Card></div>;
+  if (done) return (
+    <div className="min-h-screen grid place-items-center p-6">
+      <Card>
+        <CardHeader><CardTitle>Checkout intent created</CardTitle></CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <p>Reference: <span className="font-mono">{done.intent.id}</span></p>
+          <p>Payment authority: {done.checkout?.payment_authority || "verified_provider_event"}</p>
+          <p className="text-muted-foreground">Your order is confirmed after the payment provider verifies the payment.</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
   const publishedBranding = data.webstore.branding || {};
   const hasPublishedBranding = Object.keys(publishedBranding).length > 0;
   return (
@@ -42,14 +53,14 @@ export default function PublicWebstorePage() {
       {hasPublishedBranding ? (
         <div className="max-w-6xl mx-auto px-4 py-4">
           <WebstoreBrandingPreview branding={publishedBranding} webstore={data.webstore} products={data.products || []} />
-          <p className="text-xs text-amber-700 mt-2" data-testid="webstore-checkout-disabled">{data.webstore.checkout_unavailable_reason || "Checkout is not connected yet."}</p>
+          {!data.webstore.checkout_enabled && <p className="text-xs text-amber-700 mt-2" data-testid="webstore-checkout-disabled">{data.webstore.checkout_unavailable_reason || "Checkout is currently paused."}</p>}
         </div>
       ) : (
         <header className="bg-white border-b">
           <div className="max-w-5xl mx-auto px-4 py-5">
             <h1 className="text-3xl font-semibold">{data.webstore.name}</h1>
-            <p className="text-sm text-muted-foreground mt-1">{data.webstore.description || "Select products and save a purchase request."}</p>
-            <p className="text-xs text-amber-700 mt-2" data-testid="webstore-checkout-disabled">{data.webstore.checkout_unavailable_reason || "Checkout is not connected yet."}</p>
+            <p className="text-sm text-muted-foreground mt-1">{data.webstore.description || "Select products and create a checkout intent."}</p>
+            {!data.webstore.checkout_enabled && <p className="text-xs text-amber-700 mt-2" data-testid="webstore-checkout-disabled">{data.webstore.checkout_unavailable_reason || "Checkout is currently paused."}</p>}
           </div>
         </header>
       )}
@@ -71,12 +82,12 @@ export default function PublicWebstorePage() {
         <Card className="h-fit">
           <CardHeader><CardTitle className="text-base">Checkout</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-xs text-muted-foreground">Real payment checkout is unavailable in this stage. Saving this request will not create an Order.</p>
+            <p className="text-xs text-muted-foreground">Final totals and order creation are confirmed by the backend after verified payment.</p>
             <div className="grid gap-1.5"><Label>Name</Label><Input value={buyer.buyer_name} onChange={(e) => setBuyer({ ...buyer, buyer_name: e.target.value })} /></div>
             <div className="grid gap-1.5"><Label>Email</Label><Input type="email" value={buyer.buyer_email} onChange={(e) => setBuyer({ ...buyer, buyer_email: e.target.value })} /></div>
             <div className="grid gap-1.5"><Label>Phone</Label><Input value={buyer.buyer_phone} onChange={(e) => setBuyer({ ...buyer, buyer_phone: e.target.value })} /></div>
-            <div className="flex items-center justify-between border-t pt-3"><span className="text-sm text-muted-foreground">Subtotal</span><span className="font-semibold">{centsToDollarsString(total)}</span></div>
-            <Button className="w-full" disabled={!buyer.buyer_name || !buyer.buyer_email || total <= 0} onClick={checkout}><ShoppingCart className="size-4 mr-2" />Save purchase request</Button>
+            <div className="flex items-center justify-between border-t pt-3"><span className="text-sm text-muted-foreground">Estimated subtotal</span><span className="font-semibold">{centsToDollarsString(total)}</span></div>
+            <Button className="w-full" disabled={!data.webstore.checkout_enabled || !buyer.buyer_name || !buyer.buyer_email || total <= 0} onClick={checkout}><ShoppingCart className="size-4 mr-2" />Create checkout</Button>
           </CardContent>
         </Card>
       </main>

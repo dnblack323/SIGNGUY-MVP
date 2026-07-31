@@ -106,6 +106,16 @@ export default function WebstoreOwnerPortalPage() {
         </CardContent>
       </Card>
       <Card>
+        <CardHeader><CardTitle className="text-base">Commerce</CardTitle></CardHeader>
+        <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+          <div><div className="text-xs text-muted-foreground">Orders</div><div className="font-semibold">{data.commerce_summary?.order_count || 0}</div></div>
+          <div><div className="text-xs text-muted-foreground">Sales</div><div className="font-semibold">{centsToDollarsString(data.commerce_summary?.gross_sales_cents || 0)}</div></div>
+          <div><div className="text-xs text-muted-foreground">Refunds</div><div className="font-semibold">{centsToDollarsString(data.commerce_summary?.refund_total_cents || 0)}</div></div>
+          <div><div className="text-xs text-muted-foreground">Payouts</div><div className="font-semibold">{centsToDollarsString(data.commerce_summary?.payout_total_cents || 0)}</div></div>
+          <div><div className="text-xs text-muted-foreground">Disputes</div><div className="font-semibold">{centsToDollarsString(data.commerce_summary?.dispute_hold_cents || 0)}</div></div>
+        </CardContent>
+      </Card>
+      <Card>
         <CardHeader><CardTitle className="text-base">Questionnaire</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           {(questionnaire?.templates || []).flatMap((template) => template.sections || []).map((section) => (

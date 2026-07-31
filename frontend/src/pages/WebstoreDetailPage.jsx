@@ -714,7 +714,7 @@ export default function WebstoreDetailPage() {
             <div className="rounded border bg-slate-50 px-3 py-2 text-xs" data-testid="webstore-qr-preview">
               <div className="font-medium">QR preview</div>
               <div>{activePacket?.snapshot?.qr_reference?.destination || store.public_url || "Generate a packet to prepare the QR destination."}</div>
-              <div className="text-muted-foreground">Preview only. Buyer storefront and checkout remain unavailable until Batch 3.</div>
+              <div className="text-muted-foreground">QR destination opens the public Webstore when the lifecycle status is live.</div>
             </div>
             <div className="grid gap-2">
               <Label>Launch schedule intent</Label>

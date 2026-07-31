@@ -128,7 +128,7 @@ async def test_owner_packet_terms_change_request_and_invalidation_are_versioned(
         initial_readiness = (await client.get(f"/api/webstores/{store['id']}/launch-readiness")).json()
         assert initial_readiness["checks"]["included_products_ready"] is True
         assert initial_readiness["checks"]["packet_generated"] is False
-        assert initial_readiness["public_launch_blocked_until_batch_3"] is True
+        assert initial_readiness["public_launch_blocked_until_batch_3"] is False
 
         packet_resp = await client.post(f"/api/webstores/{store['id']}/launch-packets", json={"promotion_copy": "Review the booster launch."})
         assert packet_resp.status_code == 201, packet_resp.text
@@ -197,7 +197,7 @@ async def test_owner_packet_terms_change_request_and_invalidation_are_versioned(
         ready = (await client.get(f"/api/webstores/{store['id']}/launch-readiness")).json()
         assert ready["checks"]["packet_approved"] is True
         assert ready["checks"]["terms_current"] is True
-        assert ready["checks"]["buyer_commerce_blocked"] is True
+        assert ready["checks"]["buyer_commerce_connected"] is True
         nonmaterial = await client.patch(f"/api/webstores/{store['id']}/products/{product['id']}", json={"expected_revision": patched.json()["revision"], "production_notes": "Internal heat press setting."})
         assert nonmaterial.status_code == 200
         still_ready = (await client.get(f"/api/webstores/{store['id']}/launch-readiness")).json()

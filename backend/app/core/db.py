@@ -1010,6 +1010,12 @@ async def ensure_indexes() -> None:
         unique=True,
         partialFilterExpression={"provider_payment_id": {"$type": "string"}},
     )
+    await db.webstore_purchase_intents.create_index(
+        [("tenant_id", 1), ("webstore_id", 1), ("confirmation_token", 1)],
+        unique=True,
+        partialFilterExpression={"confirmation_token": {"$type": "string"}},
+    )
+    await db.webstore_purchase_intents.create_index([("tenant_id", 1), ("webstore_id", 1), ("canonical_order_id", 1)])
     await db.webstore_payment_events.create_index("id", unique=True)
     await db.webstore_payment_events.create_index(
         [("provider", 1), ("provider_event_id", 1)],
@@ -1026,6 +1032,7 @@ async def ensure_indexes() -> None:
     await db.webstore_ledger_entries.create_index([("tenant_id", 1), ("webstore_id", 1), ("created_at", -1)])
     await db.webstore_ledger_entries.create_index([("tenant_id", 1), ("buyer_order_id", 1), ("entry_type", 1)])
     await db.webstore_ledger_entries.create_index([("tenant_id", 1), ("source_type", 1), ("source_id", 1)])
+    await db.webstore_ledger_entries.create_index([("tenant_id", 1), ("webstore_id", 1), ("source_type", 1), ("source_id", 1), ("entry_type", 1)])
     await db.webstore_ledger_entries.create_index([("tenant_id", 1), ("reversal_of_ledger_entry_id", 1)])
 
     await db.webstore_activity_events.create_index("id", unique=True)

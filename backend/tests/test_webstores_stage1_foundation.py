@@ -139,7 +139,7 @@ async def test_public_purchase_creates_intent_not_unpaid_buyer_order_or_canonica
 
     public = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
     async with public:
-        response = await public.post(
+        tampered = await public.post(
             f"/api/public/webstores/{seeded['public_slug']}/purchase-intents",
             json={
                 "buyer_name": "Casey Buyer",
@@ -152,7 +152,17 @@ async def test_public_purchase_creates_intent_not_unpaid_buyer_order_or_canonica
                 "idempotency_key": f"intent-{uuid.uuid4().hex}",
             },
         )
+        response = await public.post(
+            f"/api/public/webstores/{seeded['public_slug']}/purchase-intents",
+            json={
+                "buyer_name": "Casey Buyer",
+                "buyer_email": "casey@example.com",
+                "line_items": [{"product_id": seeded["product_id"], "quantity": 2}],
+                "idempotency_key": f"intent-{uuid.uuid4().hex}",
+            },
+        )
 
+    assert tampered.status_code == 400
     assert response.status_code == 201, response.text
     intent = response.json()["purchase_intent"]
     assert intent["product_subtotal_cents"] == 5000
@@ -163,7 +173,8 @@ async def test_public_purchase_creates_intent_not_unpaid_buyer_order_or_canonica
     assert intent["fee_cents"] == 0
     assert intent["total_cents"] == 5000
     assert intent["status"] == "pending_payment"
-    assert response.json()["checkout_available"] is False
+    assert response.json()["checkout_available"] is True
+    assert response.json()["checkout"]["payment_authority"] == "verified_provider_event"
     assert await db.webstore_buyer_orders.count_documents({"tenant_id": stage1_ctx["tenant_id"]}) == before_buyer_orders
     assert await db.orders.count_documents({"tenant_id": stage1_ctx["tenant_id"]}) == before_orders
 
@@ -351,7 +362,8 @@ async def test_public_slug_is_global_and_public_responses_are_redacted(stage1_ct
     assert "production_cost_cents" not in product
     assert "store_owner_share_cents" not in product
     assert "supplier_notes" not in product
-    assert body["webstore"]["checkout_enabled"] is False
+    assert body["webstore"]["checkout_enabled"] is True
+    assert body["webstore"]["checkout_unavailable_reason"] is None
 
 
 @pytest.mark.asyncio

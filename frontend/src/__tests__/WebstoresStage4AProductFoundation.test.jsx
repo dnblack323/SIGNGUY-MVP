@@ -383,18 +383,18 @@ test("staff launch readiness shows packet versioning, terms, QR, schedule, and c
     terms_acceptance: null,
     payment_readiness: { state: "not_configured" },
     payment_unavailable_reason: "Real verified provider checkout is not connected yet.",
-    public_launch_blocked_until_batch_3: true,
+    public_launch_blocked_until_batch_3: false,
     gates: [
       { key: "packet_delivered", state: "ready", reason: "Current packet version was delivered.", blocking: false, action: "Send the current packet version." },
       { key: "packet_approved", state: "blocked", reason: "Store Owner approval is required.", blocking: true, action: "Owner approves v2." },
       { key: "terms_current", state: "blocked", reason: "Store Owner must accept Terms version webstore_terms_2026_07.", blocking: true, action: "Owner accepts Terms." },
-      { key: "buyer_commerce_blocked", state: "blocked_by_batch_scope", reason: "Buyer storefront and checkout remain unavailable until Batch 3.", blocking: false },
+      { key: "buyer_commerce_connected", state: "ready", reason: "Public storefront, checkout, Orders, and Production handoff are connected.", blocking: false },
     ],
   });
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
   expect(await screen.findByTestId("webstore-readiness-gate-packet_delivered")).toHaveTextContent("Current packet version was delivered");
-  expect(screen.getByTestId("webstore-readiness-gate-buyer_commerce_blocked")).toHaveTextContent("Batch 3");
+  expect(screen.getByTestId("webstore-readiness-gate-buyer_commerce_connected")).toHaveTextContent("connected");
   expect(screen.getByTestId("webstore-terms-readiness")).toHaveTextContent("Waiting on separate Store Owner Terms acceptance");
   expect(screen.getByTestId("webstore-launch-packet-summary")).toHaveTextContent("Version 2");
   expect(screen.getByTestId("webstore-qr-preview")).toHaveTextContent("/p/webstores/team-store-public");

@@ -264,10 +264,12 @@ api_router.include_router(webhooks_stripe_billing_router_module.router)
 # EC14 - Webstores shared core, owner portal, and public storefront.
 from app.routers import public_webstores as public_webstores_router_module
 from app.routers import webstore_owner_portal as webstore_owner_portal_router_module
+from app.routers import webhooks_webstore as webhooks_webstore_router_module
 from app.routers import webstores as webstores_router_module
 api_router.include_router(webstores_router_module.router)
 api_router.include_router(webstore_owner_portal_router_module.router)
 api_router.include_router(public_webstores_router_module.router)
+api_router.include_router(webhooks_webstore_router_module.router)
 
 # EC15 - Wrap Lab shared core. Staff-only; no AI/provider, Stripe, or EC19 work.
 from app.routers import wrap_lab as wrap_lab_router_module
