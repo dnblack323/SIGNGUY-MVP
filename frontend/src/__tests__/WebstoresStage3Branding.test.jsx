@@ -241,3 +241,50 @@ test("owner portal can approve submitted branding but cannot publish", async () 
   await userEvent.click(within(editor).getByRole("button", { name: /Approve/ }));
   await waitFor(() => expect(portalApi.post).toHaveBeenCalledWith("/portal/webstores/ws-1/branding/approve", { note: "" }));
 });
+
+test("owner portal separates packet approval, change requests, and Terms acceptance", async () => {
+  portalApi.get.mockImplementation((url) => {
+    if (url.endsWith("/branding")) return Promise.resolve({ data: brandingResponse({ permissions: { can_publish: false, can_owner_decide: false } }) });
+    if (url.endsWith("/questionnaire")) return Promise.resolve({ data: { templates: [] } });
+    if (url.endsWith("/setup-progress")) return Promise.resolve({ data: { setup_state: "setup_complete", steps: [] } });
+    if (url.endsWith("/setup-files")) return Promise.resolve({ data: { items: [] } });
+    return Promise.resolve({ data: {
+      webstore: { id: "ws-1", name: "Team Store", status: "sent_for_approval", setup_state: "setup_complete" },
+      products: [],
+      current_terms_version: "webstore_terms_2026_07",
+      terms_acceptance: null,
+      readiness_summary: [
+        { key: "packet_approval", state: "waiting", owner_wording: "Packet approval is still needed." },
+        { key: "terms", state: "waiting", owner_wording: "Terms version webstore_terms_2026_07 still needs acceptance." },
+      ],
+      launch_packet: {
+        id: "packet-2",
+        version: 2,
+        status: "delivered",
+        delivery_status: "test_capture_unavailable",
+        promotion_copy: "Review the launch packet.",
+        snapshot: { products: [{ packet_ref: "prod-1", name: "Team Shirt", description: "Cotton tee", selling_price_cents: 2500 }] },
+      },
+      change_requests: [],
+    } });
+  });
+  portalApi.post.mockResolvedValue({ data: {} });
+
+  renderWithProviders(<WebstoreOwnerPortalPage />, { route: "/portal/webstores/ws-1", path: "/portal/webstores/:webstoreId" });
+
+  expect(await screen.findByTestId("portal-launch-packet-products")).toHaveTextContent("Team Shirt");
+  expect(screen.getByTestId("portal-readiness-summary")).toHaveTextContent("Packet approval is still needed");
+  await userEvent.click(screen.getByTestId("portal-approve-packet"));
+  await waitFor(() => expect(portalApi.post).toHaveBeenCalledWith("/portal/webstores/ws-1/launch-packets/packet-2/approve"));
+
+  await userEvent.type(screen.getByTestId("portal-change-request-comment"), "Please use the navy mockup.");
+  await userEvent.click(screen.getByTestId("portal-request-changes"));
+  await waitFor(() => expect(portalApi.post).toHaveBeenCalledWith(
+    "/portal/webstores/ws-1/launch-packets/packet-2/request-changes",
+    expect.objectContaining({ category: "general", comment: "Please use the navy mockup." }),
+  ));
+
+  expect(screen.getByTestId("portal-terms-version")).toHaveTextContent("webstore_terms_2026_07");
+  await userEvent.click(screen.getByTestId("portal-accept-terms"));
+  await waitFor(() => expect(portalApi.post).toHaveBeenCalledWith("/portal/webstores/ws-1/terms/accept", { terms_version: "webstore_terms_2026_07" }));
+});

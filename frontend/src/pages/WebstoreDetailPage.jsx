@@ -42,6 +42,7 @@ import {
   uploadWebstoreSetupFile,
   updateWebstoreProduct,
   updateWebstoreProductCategory,
+  updateWebstoreChangeRequest,
   archiveWebstoreProduct,
   archiveWebstoreProductCategory,
   restoreWebstoreProduct,
@@ -126,6 +127,8 @@ export default function WebstoreDetailPage() {
   const [productError, setProductError] = useState("");
   const [categoryEditDraft, setCategoryEditDraft] = useState({});
   const [editingCategoryId, setEditingCategoryId] = useState("");
+  const [scheduleDraft, setScheduleDraft] = useState({ intended_launch_at: "", intended_close_at: "", launch_timezone: "America/New_York" });
+  const [changeResponses, setChangeResponses] = useState({});
   const detail = useQuery({ queryKey: ["webstore", id], queryFn: () => getWebstore(id), enabled: !!id });
   const templates = useQuery({ queryKey: ["webstore-product-templates"], queryFn: listProductTemplates });
   const categories = useQuery({ queryKey: ["webstore-product-categories", id], queryFn: () => listWebstoreProductCategories(id), enabled: !!id });
@@ -317,6 +320,25 @@ export default function WebstoreDetailPage() {
   const launch = useMutation({
     mutationFn: () => setWebstoreStatus(id, "live"),
     onSuccess: async () => { toast.success("Webstore launched"); await refresh(); },
+    onError: (err) => toast.error(extractError(err)),
+  });
+  const updateChange = useMutation({
+    mutationFn: ({ requestId, status, response }) => updateWebstoreChangeRequest(id, requestId, { status, response }),
+    onSuccess: async () => { toast.success("Change request updated"); await refresh(); },
+    onError: (err) => toast.error(extractError(err)),
+  });
+  const saveSchedule = useMutation({
+    mutationFn: () => updateWebstore(id, {
+      intended_launch_at: scheduleDraft.intended_launch_at || undefined,
+      intended_close_at: scheduleDraft.intended_close_at || undefined,
+      launch_timezone: scheduleDraft.launch_timezone || undefined,
+    }),
+    onSuccess: async () => { toast.success("Launch schedule saved"); await refresh(); },
+    onError: (err) => toast.error(extractError(err)),
+  });
+  const markLaunchReady = useMutation({
+    mutationFn: () => setWebstoreStatus(id, "launch_ready", "All Batch 2 owner approval gates passed"),
+    onSuccess: async () => { toast.success("Marked launch-ready"); await refresh(); },
     onError: (err) => toast.error(extractError(err)),
   });
   const setProductField = (field, value) => setProductDraft((draft) => ({ ...draft, [field]: value }));
@@ -671,22 +693,41 @@ export default function WebstoreDetailPage() {
         <Card>
           <CardHeader><CardTitle className="text-base">Launch Gates</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm">
-            {Object.entries(readiness.data?.checks || {}).map(([key, ok]) => (
-              <div className="flex items-center justify-between gap-3" key={key}>
-                <span className="capitalize text-muted-foreground">{key.replace(/_/g, " ")}</span>
-                <Badge variant={ok ? "secondary" : "outline"}>{ok ? "Ready" : "Missing"}</Badge>
+            {(readiness.data?.gates || Object.entries(readiness.data?.checks || {}).map(([key, ok]) => ({ key, state: ok ? "ready" : "blocked", reason: ok ? "Ready" : "Missing", blocking: !ok }))).map((gate) => (
+              <div className="rounded border p-3" key={gate.key} data-testid={`webstore-readiness-gate-${gate.key}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="capitalize font-medium">{gate.key.replace(/_/g, " ")}</span>
+                  <Badge variant={!gate.blocking ? "secondary" : "outline"}>{gate.state || (!gate.blocking ? "ready" : "blocked")}</Badge>
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">{gate.reason || gate.owner_wording}</div>
+                {gate.action && <div className="mt-1 text-xs text-slate-700">{gate.action}</div>}
               </div>
             ))}
-            <div className="flex items-center gap-2 pt-2">
-              <Checkbox checked={!!store.terms_fee_acknowledged} onCheckedChange={(checked) => saveGate.mutate({ terms_fee_acknowledged: !!checked })} id="fee-ack" />
-              <Label htmlFor="fee-ack">Terms and fees acknowledged</Label>
+            <div className="rounded border bg-slate-50 px-3 py-2 text-xs" data-testid="webstore-terms-readiness">
+              <div className="font-medium">Terms version: {readiness.data?.current_terms_version || detail.data?.current_terms_version || "webstore_terms_2026_07"}</div>
+              <div>{readiness.data?.terms_acceptance ? `Accepted ${formatDateTime(readiness.data.terms_acceptance.accepted_at)}` : "Waiting on separate Store Owner Terms acceptance."}</div>
             </div>
             <div className="rounded border bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="webstore-payment-readiness">
-              <div className="font-medium">Payment readiness: {readiness.data?.checks?.payment_ready ? "Ready" : "Not connected"}</div>
+              <div className="font-medium">Payment readiness: {(readiness.data?.payment_readiness?.state || "").replace("not_configured", "Not connected") || (readiness.data?.checks?.payment_ready ? "Ready" : "Not connected")}</div>
               <div>{readiness.data?.payment_unavailable_reason || "Real verified provider checkout is not connected yet."}</div>
             </div>
-            <Button className="w-full" disabled={!readiness.data?.ready || launch.isPending} onClick={() => launch.mutate()} data-testid="webstore-launch">
-              <ShieldCheck className="size-4 mr-2" />Launch
+            <div className="rounded border bg-slate-50 px-3 py-2 text-xs" data-testid="webstore-qr-preview">
+              <div className="font-medium">QR preview</div>
+              <div>{activePacket?.snapshot?.qr_reference?.destination || store.public_url || "Generate a packet to prepare the QR destination."}</div>
+              <div className="text-muted-foreground">Preview only. Buyer storefront and checkout remain unavailable until Batch 3.</div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Launch schedule intent</Label>
+              <Input value={scheduleDraft.intended_launch_at} onChange={(e) => setScheduleDraft({ ...scheduleDraft, intended_launch_at: e.target.value })} placeholder="2026-08-15T13:00:00-04:00" data-testid="webstore-intended-launch-at" />
+              <Input value={scheduleDraft.intended_close_at} onChange={(e) => setScheduleDraft({ ...scheduleDraft, intended_close_at: e.target.value })} placeholder="2026-09-15T17:00:00-04:00" data-testid="webstore-intended-close-at" />
+              <Input value={scheduleDraft.launch_timezone} onChange={(e) => setScheduleDraft({ ...scheduleDraft, launch_timezone: e.target.value })} data-testid="webstore-launch-timezone" />
+              <Button variant="outline" disabled={saveSchedule.isPending} onClick={() => saveSchedule.mutate()} data-testid="webstore-save-schedule"><Clock className="size-4 mr-2" />Save schedule intent</Button>
+            </div>
+            <Button className="w-full" disabled={!readiness.data?.ready || markLaunchReady.isPending} onClick={() => markLaunchReady.mutate()} data-testid="webstore-launch-ready">
+              <ShieldCheck className="size-4 mr-2" />Mark launch-ready
+            </Button>
+            <Button className="w-full" variant="outline" disabled onClick={() => launch.mutate()} data-testid="webstore-launch">
+              <Lock className="size-4 mr-2" />Buyer launch waits for Batch 3
             </Button>
           </CardContent>
         </Card>
@@ -720,7 +761,46 @@ export default function WebstoreDetailPage() {
               <Button variant="outline" disabled={packet.isPending} onClick={() => packet.mutate()}><CheckCircle2 className="size-4 mr-2" />Generate</Button>
               <Button disabled={!activePacket || sendPacket.isPending} onClick={() => sendPacket.mutate()}><Send className="size-4 mr-2" />Send</Button>
             </div>
-            {activePacket && <Alert><AlertTitle className="capitalize">{activePacket.status.replace(/_/g, " ")}</AlertTitle><AlertDescription>{activePacket.promotion_copy || "Packet snapshot is ready."}</AlertDescription></Alert>}
+            {activePacket && (
+              <Alert data-testid="webstore-launch-packet-summary">
+                <AlertTitle className="capitalize">Version {activePacket.version || 1} - {String(activePacket.status).replace(/_/g, " ")}</AlertTitle>
+                <AlertDescription>
+                  <div>{activePacket.promotion_copy || "Packet snapshot is ready."}</div>
+                  <div className="mt-1 text-xs">Products: {activePacket.pricing_summary?.product_count || activePacket.snapshot?.products?.length || 0} · Delivery: {activePacket.delivery_status || "not sent"}</div>
+                  <div className="mt-1 text-xs">Snapshot: {activePacket.snapshot_hash || "pending"}</div>
+                </AlertDescription>
+              </Alert>
+            )}
+            {(detail.data?.change_requests || []).length > 0 && (
+              <div className="rounded border divide-y" data-testid="webstore-change-requests">
+                {detail.data.change_requests.map((request) => (
+                  <div key={request.id} className="p-3 space-y-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-medium capitalize">{request.category} - v{request.packet_version}</div>
+                      <Badge variant={["resolved", "declined", "superseded"].includes(request.status) ? "secondary" : "outline"}>{request.status}</Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground">{request.owner_comment}</div>
+                    {!["resolved", "declined", "superseded"].includes(request.status) && (
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Response to owner"
+                          value={changeResponses[request.id] || ""}
+                          data-testid={`webstore-change-response-${request.id}`}
+                          onChange={(e) => setChangeResponses((prev) => ({ ...prev, [request.id]: e.target.value }))}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateChange.mutate({ requestId: request.id, status: "resolved", response: changeResponses[request.id] || "Resolved by shop staff." })}
+                        >
+                          Resolve
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

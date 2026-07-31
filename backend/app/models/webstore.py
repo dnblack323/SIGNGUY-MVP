@@ -32,6 +32,9 @@ WEBSTORE_LIFECYCLE_STATES = (
     "sent_for_approval",
     "changes_requested",
     "approved",
+    "launch_ready",
+    "scheduled",
+    "paused",
     "live",
     "closing_soon",
     "closed",
@@ -56,6 +59,9 @@ WebstoreStatus = Literal[
     "sent_for_approval",
     "changes_requested",
     "approved",
+    "launch_ready",
+    "scheduled",
+    "paused",
     "live",
     "closing_soon",
     "closed",
@@ -104,7 +110,8 @@ ArtworkStatus = Literal[
     "rejected",
 ]
 MockupStatus = Literal["draft", "generated", "shop_approved", "owner_approved", "changes_requested"]
-LaunchPacketStatus = Literal["draft", "generated", "sent_for_approval", "changes_requested", "owner_approved"]
+LaunchPacketStatus = Literal["draft", "generated", "sent_for_approval", "delivered", "changes_requested", "owner_approved", "superseded", "invalidated"]
+WebstoreChangeRequestStatus = Literal["open", "answered", "resolved", "declined", "superseded"]
 BuyerOrderStatus = Literal[
     "new",
     "paid",
@@ -175,12 +182,26 @@ class Webstore(BaseDoc):
     terms_fee_acknowledged: bool = False
     owner_approved_at: Optional[str] = None
     owner_approved_by_portal_identity_id: Optional[str] = None
+    owner_approved_packet_id: Optional[str] = None
+    owner_approved_packet_version: Optional[StrictInt] = Field(default=None, ge=1)
+    owner_approval_invalidated_at: Optional[str] = None
+    owner_approval_invalidated_reason: Optional[str] = None
     launch_packet_id: Optional[str] = None
+    launch_packet_version: StrictInt = Field(default=0, ge=0)
+    required_terms_version: str = "webstore_terms_2026_07"
+    terms_acceptance_id: Optional[str] = None
+    terms_accepted_version: Optional[str] = None
+    terms_accepted_at: Optional[str] = None
+    terms_accepted_by_portal_identity_id: Optional[str] = None
     direct_owner_payout_required: bool = False
     stripe_onboarding_required: bool = False
     stripe_payment_ready: bool = False
+    payment_readiness_status: str = "not_configured"
     public_url: Optional[str] = None
     deadline_at: Optional[str] = None
+    intended_launch_at: Optional[str] = None
+    intended_close_at: Optional[str] = None
+    launch_timezone: Optional[str] = None
     launched_at: Optional[str] = None
     closed_at: Optional[str] = None
     archived_at: Optional[str] = None
@@ -467,15 +488,76 @@ class WebstoreMockup(BaseDoc):
 class WebstoreLaunchPacket(BaseDoc):
     tenant_id: str
     webstore_id: str
+    version: StrictInt = Field(default=1, ge=1)
     status: LaunchPacketStatus = "draft"
     snapshot: dict[str, Any] = Field(default_factory=dict)
+    snapshot_hash: Optional[str] = None
     pricing_summary: dict[str, Any] = Field(default_factory=dict)
     promotion_copy: Optional[str] = None
     qr_code_url: Optional[str] = None
     share_url: Optional[str] = None
+    generated_by_user_id: Optional[str] = None
+    delivered_by_user_id: Optional[str] = None
+    delivery_recipient_email: Optional[str] = None
+    delivery_status: Optional[str] = None
+    delivery_error: Optional[str] = None
+    delivery_idempotency_key: Optional[str] = None
+    delivery_portal_path: Optional[str] = None
     sent_at: Optional[str] = None
+    delivered_at: Optional[str] = None
     owner_decision_at: Optional[str] = None
+    owner_decision_by_portal_identity_id: Optional[str] = None
     change_request_reason: Optional[str] = None
+    superseded_at: Optional[str] = None
+    invalidated_at: Optional[str] = None
+    invalidated_reason: Optional[str] = None
+
+
+class WebstorePacketApproval(BaseDoc):
+    tenant_id: str
+    webstore_id: str
+    packet_id: str
+    packet_version: StrictInt = Field(ge=1)
+    portal_identity_id: str
+    approver_name: Optional[str] = None
+    approver_email: Optional[str] = None
+    accepted_snapshot_hash: str
+    approved_at: str
+    status: str = "current"
+    invalidated_at: Optional[str] = None
+    invalidated_reason: Optional[str] = None
+    audit_evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class WebstoreTermsAcceptance(BaseDoc):
+    tenant_id: str
+    webstore_id: str
+    terms_version: str
+    portal_identity_id: str
+    acceptor_name: Optional[str] = None
+    acceptor_email: Optional[str] = None
+    accepted_at: str
+    packet_id: Optional[str] = None
+    packet_version: Optional[StrictInt] = Field(default=None, ge=1)
+    terms_snapshot: dict[str, Any] = Field(default_factory=dict)
+    fee_summary_snapshot: dict[str, Any] = Field(default_factory=dict)
+    audit_evidence: dict[str, Any] = Field(default_factory=dict)
+    status: str = "current"
+
+
+class WebstoreChangeRequest(BaseDoc):
+    tenant_id: str
+    webstore_id: str
+    packet_id: str
+    packet_version: StrictInt = Field(ge=1)
+    category: str
+    affected_item_ref: Optional[str] = None
+    owner_comment: str
+    status: WebstoreChangeRequestStatus = "open"
+    portal_identity_id: str
+    owner_visible_history: list[dict[str, Any]] = Field(default_factory=list)
+    staff_only_history: list[dict[str, Any]] = Field(default_factory=list)
+    resolved_at: Optional[str] = None
 
 
 class WebstoreBuyerOrder(BaseDoc):

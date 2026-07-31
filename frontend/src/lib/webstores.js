@@ -177,6 +177,11 @@ export async function sendLaunchPacket(webstoreId, packetId) {
   return r.data;
 }
 
+export async function updateWebstoreChangeRequest(webstoreId, requestId, payload) {
+  const r = await api.post(`/webstores/${webstoreId}/change-requests/${requestId}`, payload);
+  return r.data;
+}
+
 export async function getLaunchReadiness(webstoreId) {
   const r = await api.get(`/webstores/${webstoreId}/launch-readiness`);
   return r.data;

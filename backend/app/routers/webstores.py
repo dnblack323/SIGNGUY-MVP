@@ -65,9 +65,17 @@ class WebstorePatchIn(BaseModel):
     branding: Optional[dict[str, Any]] = None
     store_type: Optional[str] = None
     terms_fee_acknowledged: Optional[bool] = None
+    required_terms_version: Optional[str] = None
     direct_owner_payout_required: Optional[bool] = None
     stripe_onboarding_required: Optional[bool] = None
+    payment_readiness_status: Optional[str] = None
     deadline_at: Optional[str] = None
+    target_launch_at: Optional[str] = None
+    event_start_at: Optional[str] = None
+    event_location: Optional[str] = None
+    intended_launch_at: Optional[str] = None
+    intended_close_at: Optional[str] = None
+    launch_timezone: Optional[str] = None
     confirm_type_change: Optional[bool] = None
     type_change_reason: Optional[str] = None
     impact_review_acknowledged: Optional[bool] = None
@@ -265,6 +273,12 @@ class LaunchPacketIn(BaseModel):
     promotion_copy: Optional[str] = None
     qr_code_url: Optional[str] = None
     share_url: Optional[str] = None
+
+
+class ChangeRequestUpdateIn(BaseModel):
+    status: str
+    response: Optional[str] = None
+    internal_note: Optional[str] = None
 
 
 class PlatformFeeReversalIn(BaseModel):
@@ -759,6 +773,14 @@ async def generate_launch_packet(webstore_id: str, payload: LaunchPacketIn, user
 async def send_launch_packet(webstore_id: str, packet_id: str, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.send_launch_packet(user, webstore_id, packet_id)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/change-requests/{request_id}")
+async def update_change_request(webstore_id: str, request_id: str, payload: ChangeRequestUpdateIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.staff_update_change_request(user, webstore_id, request_id, payload.model_dump(exclude_none=True))
     except WebstoreError as e:
         _raise(e)
 

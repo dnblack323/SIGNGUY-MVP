@@ -57,6 +57,16 @@ class InvitationAcceptIn(BaseModel):
     token: str
 
 
+class PacketChangeRequestIn(BaseModel):
+    category: str = "general"
+    affected_item_ref: str | None = None
+    comment: str
+
+
+class TermsAcceptIn(BaseModel):
+    terms_version: str | None = None
+
+
 async def _read_upload_limited(file: UploadFile) -> bytes:
     chunks: list[bytes] = []
     total = 0
@@ -221,5 +231,21 @@ async def download_setup_file(webstore_id: str, file_id: str, identity: dict = D
 async def approve_launch(webstore_id: str, packet_id: str, identity: dict = Depends(_webstore_identity)) -> dict:
     try:
         return await svc.owner_approve_launch_packet(identity, webstore_id, packet_id)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/launch-packets/{packet_id}/request-changes")
+async def request_launch_changes(webstore_id: str, packet_id: str, payload: PacketChangeRequestIn, identity: dict = Depends(_webstore_identity)) -> dict:
+    try:
+        return await svc.owner_request_launch_packet_changes(identity, webstore_id, packet_id, payload.model_dump(exclude_none=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/terms/accept")
+async def accept_terms(webstore_id: str, payload: TermsAcceptIn, identity: dict = Depends(_webstore_identity)) -> dict:
+    try:
+        return await svc.owner_accept_terms(identity, webstore_id, payload.model_dump(exclude_none=True))
     except WebstoreError as e:
         _raise(e)

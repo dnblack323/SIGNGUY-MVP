@@ -36,6 +36,7 @@ import {
   setWebstoreStatus,
   updateProductTemplate,
   updateWebstore,
+  updateWebstoreChangeRequest,
   updateWebstoreProduct,
   updateWebstoreProductCategory,
   uploadWebstoreSetupFile,
@@ -75,6 +76,7 @@ jest.mock("@/lib/webstores", () => ({
   setWebstoreStatus: jest.fn(),
   updateProductTemplate: jest.fn(),
   updateWebstore: jest.fn(),
+  updateWebstoreChangeRequest: jest.fn(),
   updateWebstoreProduct: jest.fn(),
   updateWebstoreProductCategory: jest.fn(),
   uploadWebstoreSetupFile: jest.fn(),
@@ -191,6 +193,7 @@ beforeEach(() => {
   sendLaunchPacket.mockResolvedValue({});
   setWebstoreStatus.mockResolvedValue({});
   updateWebstore.mockResolvedValue({});
+  updateWebstoreChangeRequest.mockResolvedValue({});
   getWebstoreBranding.mockResolvedValue({ branding: { draft: {}, validation: { errors: [], warnings: [] } }, permissions: {} });
   listProductTemplates.mockResolvedValue([
     { id: "tpl-platform", scope: "platform", status: "active", template_name: "Starter Shirt", product_category: "Apparel", product_type: "shirt" },
@@ -322,6 +325,88 @@ test("staff product image picker previews selected files before save", async () 
       }),
     },
   }));
+});
+
+test("staff launch readiness shows packet versioning, terms, QR, schedule, and change-request controls", async () => {
+  getWebstore.mockResolvedValueOnce({
+    webstore: {
+      id: "ws-1",
+      name: "Team Store",
+      slug: "team-store",
+      public_slug: "team-store-public",
+      public_url: "/p/webstores/team-store-public",
+      status: "sent_for_approval",
+      store_type: "fundraiser",
+      launch_packet_id: "packet-2",
+      launch_packet_version: 2,
+      required_terms_version: "webstore_terms_2026_07",
+    },
+    current_terms_version: "webstore_terms_2026_07",
+    terms_acceptance: null,
+    launch_packets: [{
+      id: "packet-2",
+      version: 2,
+      status: "delivered",
+      delivery_status: "test_capture_unavailable",
+      promotion_copy: "Review the booster launch.",
+      snapshot_hash: "hash-2",
+      pricing_summary: { product_count: 1 },
+      snapshot: { qr_reference: { destination: "/p/webstores/team-store-public" }, products: [{ packet_ref: "prod-1", name: "Draft Shirt", selling_price_cents: 2500 }] },
+    }],
+    change_requests: [{
+      id: "change-1",
+      packet_version: 2,
+      category: "description",
+      owner_comment: "Please mention Friday pickup.",
+      status: "open",
+    }],
+    products: [{
+      id: "prod-1",
+      name: "Draft Shirt",
+      status: "ready",
+      public: false,
+      revision: 3,
+      product_type: "shirt",
+      category_id: "cat-1",
+      category_name: "Team Wear",
+      selling_price_cents: 2500,
+      launch_packet_eligible: true,
+      launch_packet_include: true,
+      customer_images: { primary: { file_id: "file-1", alt_text: "Shirt front" } },
+      artwork_associations: [],
+      mockup_associations: [],
+    }],
+  });
+  getLaunchReadiness.mockResolvedValueOnce({
+    ready: false,
+    current_terms_version: "webstore_terms_2026_07",
+    terms_acceptance: null,
+    payment_readiness: { state: "not_configured" },
+    payment_unavailable_reason: "Real verified provider checkout is not connected yet.",
+    public_launch_blocked_until_batch_3: true,
+    gates: [
+      { key: "packet_delivered", state: "ready", reason: "Current packet version was delivered.", blocking: false, action: "Send the current packet version." },
+      { key: "packet_approved", state: "blocked", reason: "Store Owner approval is required.", blocking: true, action: "Owner approves v2." },
+      { key: "terms_current", state: "blocked", reason: "Store Owner must accept Terms version webstore_terms_2026_07.", blocking: true, action: "Owner accepts Terms." },
+      { key: "buyer_commerce_blocked", state: "blocked_by_batch_scope", reason: "Buyer storefront and checkout remain unavailable until Batch 3.", blocking: false },
+    ],
+  });
+  renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
+
+  expect(await screen.findByTestId("webstore-readiness-gate-packet_delivered")).toHaveTextContent("Current packet version was delivered");
+  expect(screen.getByTestId("webstore-readiness-gate-buyer_commerce_blocked")).toHaveTextContent("Batch 3");
+  expect(screen.getByTestId("webstore-terms-readiness")).toHaveTextContent("Waiting on separate Store Owner Terms acceptance");
+  expect(screen.getByTestId("webstore-launch-packet-summary")).toHaveTextContent("Version 2");
+  expect(screen.getByTestId("webstore-qr-preview")).toHaveTextContent("/p/webstores/team-store-public");
+  expect(screen.getByTestId("webstore-change-requests")).toHaveTextContent("Please mention Friday pickup");
+
+  fireEvent.change(screen.getByTestId("webstore-intended-launch-at"), { target: { value: "2026-08-15T13:00:00-04:00" } });
+  fireEvent.change(screen.getByTestId("webstore-intended-close-at"), { target: { value: "2026-09-15T17:00:00-04:00" } });
+  fireEvent.click(screen.getByTestId("webstore-save-schedule"));
+  await waitFor(() => expect(updateWebstore).toHaveBeenCalledWith("ws-1", expect.objectContaining({
+    intended_launch_at: "2026-08-15T13:00:00-04:00",
+    intended_close_at: "2026-09-15T17:00:00-04:00",
+  })));
 });
 
 test("staff persisted product images prefer authenticated previews over public URLs after reload", async () => {

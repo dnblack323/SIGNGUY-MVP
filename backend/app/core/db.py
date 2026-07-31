@@ -958,6 +958,30 @@ async def ensure_indexes() -> None:
 
     await db.webstore_launch_packets.create_index("id", unique=True)
     await db.webstore_launch_packets.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
+    await db.webstore_launch_packets.create_index([("tenant_id", 1), ("webstore_id", 1), ("version", -1)], unique=True)
+    await db.webstore_launch_packets.create_index(
+        [("tenant_id", 1), ("webstore_id", 1), ("delivery_idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"delivery_idempotency_key": {"$type": "string"}},
+    )
+
+    await db.webstore_packet_approvals.create_index("id", unique=True)
+    await db.webstore_packet_approvals.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
+    await db.webstore_packet_approvals.create_index(
+        [("tenant_id", 1), ("webstore_id", 1), ("packet_id", 1), ("portal_identity_id", 1)],
+        unique=True,
+    )
+
+    await db.webstore_terms_acceptances.create_index("id", unique=True)
+    await db.webstore_terms_acceptances.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
+    await db.webstore_terms_acceptances.create_index(
+        [("tenant_id", 1), ("webstore_id", 1), ("terms_version", 1), ("portal_identity_id", 1)],
+        unique=True,
+    )
+
+    await db.webstore_change_requests.create_index("id", unique=True)
+    await db.webstore_change_requests.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1), ("created_at", -1)])
+    await db.webstore_change_requests.create_index([("tenant_id", 1), ("packet_id", 1), ("packet_version", 1)])
 
     await db.webstore_buyer_orders.create_index("id", unique=True)
     await db.webstore_buyer_orders.create_index(
