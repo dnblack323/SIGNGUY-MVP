@@ -435,7 +435,7 @@ test("staff persisted product images prefer authenticated previews over public U
     },
   })));
   expect(updateWebstoreProduct.mock.calls[0][2].customer_images.secondary).toBeUndefined();
-  expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("draft - private draft");
+  expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("planned - private catalog");
 });
 
 test("staff product builder separates planning from focused product setup", async () => {
@@ -470,13 +470,28 @@ test("staff product builder separates planning from focused product setup", asyn
   await user.click(screen.getByRole("tab", { name: "Product Setup" }));
   expect(screen.getByTestId("webstore-product-foundation")).toHaveTextContent("Selected Products");
   expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("Continue Setup");
-  expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("draft - private draft");
+  expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("planned - private catalog");
   expect(screen.getByText(/Platform starter/)).toBeInTheDocument();
   expect(screen.getByText("Legacy free-text category preserved: Legacy / Unknown")).toBeInTheDocument();
   await user.click(screen.getByTestId("webstore-product-row-prod-1"));
   expect(screen.getByTestId("webstore-product-editor-sections")).toHaveTextContent("Basic Information");
   fireEvent.change(screen.getByTestId("webstore-product-name"), { target: { value: "Updated Draft Shirt" } });
+  await user.click(screen.getByRole("tab", { name: "Pricing and Shares" }));
+  fireEvent.change(screen.getByTestId("webstore-product-selling-price"), { target: { value: "2500" } });
+  fireEvent.change(screen.getByTestId("webstore-product-production-cost"), { target: { value: "900" } });
+  fireEvent.change(screen.getByTestId("webstore-product-owner-share"), { target: { value: "300" } });
+  await user.click(screen.getByRole("tab", { name: "Options and Personalization" }));
+  fireEvent.change(screen.getByTestId("webstore-product-sku"), { target: { value: "TEAM-SHIRT" } });
+  await user.click(screen.getByRole("button", { name: "Add Variant" }));
+  fireEvent.change(screen.getByTestId("webstore-variant-size-0"), { target: { value: "L" } });
+  fireEvent.change(screen.getByTestId("webstore-variant-color-0"), { target: { value: "Black" } });
+  fireEvent.change(screen.getByTestId("webstore-variant-sku-0"), { target: { value: "TEAM-SHIRT-L-BLK" } });
+  fireEvent.change(screen.getByTestId("webstore-variant-price-0"), { target: { value: "2600" } });
+  await user.click(screen.getByTestId("webstore-add-personalization"));
+  fireEvent.change(screen.getByTestId("webstore-personalization-label-0"), { target: { value: "Player name" } });
   await user.click(screen.getByRole("tab", { name: "Review Status" }));
+  await user.click(screen.getByTestId("webstore-product-packet-eligible"));
+  await user.click(screen.getByTestId("webstore-product-packet-include"));
   await user.click(screen.getByTestId("webstore-product-artwork-associations"));
   await user.click(await screen.findByText("artwork.png"));
   await user.click(screen.getByTestId("webstore-product-artwork-associations"));
@@ -487,6 +502,15 @@ test("staff product builder separates planning from focused product setup", asyn
   await waitFor(() => expect(updateWebstoreProduct).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({
     expected_revision: 3,
     name: "Updated Draft Shirt",
+    sku: "TEAM-SHIRT",
+    selling_price_cents: 2500,
+    production_cost_cents: 900,
+    store_owner_share_cents: 300,
+    variants: [expect.objectContaining({ size: "L", color: "Black", sku: "TEAM-SHIRT-L-BLK", selling_price_cents: 2600 })],
+    personalization_enabled: true,
+    personalization_fields: [expect.objectContaining({ label: "Player name", type: "text" })],
+    launch_packet_eligible: true,
+    launch_packet_include: true,
     artwork_associations: [{ artwork_id: "art-1" }, { artwork_id: "art-2" }],
     mockup_associations: [{ mockup_id: "mock-1" }],
   })));

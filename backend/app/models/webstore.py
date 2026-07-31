@@ -66,7 +66,7 @@ WebstoreStatus = Literal[
 ]
 WebstoreOwnerStatus = Literal["active", "disabled", "archived"]
 WebstoreType = Literal["b2b", "fundraiser", "event", "promotional", "employee", "general"]
-WebstoreProductStatus = Literal["draft", "active", "inactive", "archived"]
+WebstoreProductStatus = Literal["draft", "planned", "incomplete", "ready", "active", "inactive", "archived"]
 WebstoreTemplateScope = Literal["tenant", "platform"]
 WebstoreTemplateStatus = Literal["draft", "active", "archived"]
 WebstoreCategoryStatus = Literal["active", "archived"]
@@ -246,9 +246,17 @@ class WebstoreProduct(BaseDoc):
     production_cost_cents: StrictInt = Field(default=0, ge=0)
     selling_price_cents: StrictInt = Field(ge=0)
     store_owner_share_cents: StrictInt = Field(default=0, ge=0)
+    fundraiser_share_cents: StrictInt = Field(default=0, ge=0)
     platform_fee_basis_points: StrictInt = Field(default=150, ge=0, le=10000)
     variants: list[dict[str, Any]] = Field(default_factory=list)
     personalization_enabled: bool = False
+    personalization_fields: list[dict[str, Any]] = Field(default_factory=list)
+    bundle_items: list[dict[str, Any]] = Field(default_factory=list)
+    inventory_policy: str = "not_tracked"
+    inventory_quantity: Optional[StrictInt] = Field(default=None, ge=0)
+    launch_packet_eligible: bool = False
+    launch_packet_include: bool = False
+    readiness_notes: list[str] = Field(default_factory=list)
     image_file_ids: list[str] = Field(default_factory=list)
     customer_images: dict[str, Any] = Field(default_factory=dict)
     artwork_associations: list[dict[str, Any]] = Field(default_factory=list)

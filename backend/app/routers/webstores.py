@@ -157,9 +157,16 @@ class ProductIn(BaseModel):
     production_cost_cents: Optional[StrictInt] = Field(default=None, ge=0)
     selling_price_cents: Optional[StrictInt] = Field(default=None, ge=0)
     store_owner_share_cents: Optional[StrictInt] = Field(default=None, ge=0)
+    fundraiser_share_cents: Optional[StrictInt] = Field(default=None, ge=0)
     platform_fee_basis_points: Optional[StrictInt] = Field(default=None, ge=0, le=10000)
     variants: Optional[list[dict[str, Any]]] = None
     personalization_enabled: bool = False
+    personalization_fields: list[dict[str, Any]] = Field(default_factory=list)
+    bundle_items: list[dict[str, Any]] = Field(default_factory=list)
+    inventory_policy: str = "not_tracked"
+    inventory_quantity: Optional[StrictInt] = Field(default=None, ge=0)
+    launch_packet_eligible: bool = False
+    launch_packet_include: bool = False
     image_file_ids: list[str] = Field(default_factory=list)
     customer_images: dict[str, Any] = Field(default_factory=dict)
     artwork_associations: list[dict[str, Any]] = Field(default_factory=list)
@@ -189,8 +196,16 @@ class ProductPatchIn(BaseModel):
     production_cost_cents: Optional[StrictInt] = Field(default=None, ge=0)
     selling_price_cents: Optional[StrictInt] = Field(default=None, ge=0)
     store_owner_share_cents: Optional[StrictInt] = Field(default=None, ge=0)
+    fundraiser_share_cents: Optional[StrictInt] = Field(default=None, ge=0)
     platform_fee_basis_points: Optional[StrictInt] = Field(default=None, ge=0, le=10000)
+    variants: Optional[list[dict[str, Any]]] = None
     personalization_enabled: Optional[bool] = None
+    personalization_fields: Optional[list[dict[str, Any]]] = None
+    bundle_items: Optional[list[dict[str, Any]]] = None
+    inventory_policy: Optional[str] = None
+    inventory_quantity: Optional[StrictInt] = Field(default=None, ge=0)
+    launch_packet_eligible: Optional[bool] = None
+    launch_packet_include: Optional[bool] = None
     customer_images: Optional[dict[str, Any]] = None
     artwork_associations: Optional[list[dict[str, Any]]] = None
     mockup_associations: Optional[list[dict[str, Any]]] = None

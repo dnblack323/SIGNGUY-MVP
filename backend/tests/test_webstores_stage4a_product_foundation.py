@@ -457,22 +457,45 @@ async def test_stage4a_product_categories_lifecycle_revision_public_redaction_an
         )
         assert publication_denied.status_code == 400
 
-        stage4b_denied = await client.patch(
+        catalog_update = await client.patch(
             f"/api/webstores/{store['id']}/products/{product['id']}",
-            json={"expected_revision": product["revision"], "selling_price_cents": 2500, "variants": [{"size": "L"}], "sku": "SKU-1"},
+            json={
+                "expected_revision": product["revision"],
+                "selling_price_cents": 2500,
+                "production_cost_cents": 900,
+                "store_owner_share_cents": 300,
+                "variants": [{"size": "L", "color": "Black", "sku": "SKU-1-L-BLK", "selling_price_cents": 2600}],
+                "sku": "SKU-1",
+                "personalization_enabled": True,
+                "personalization_fields": [{"key": "player_name", "label": "Player name", "type": "text", "required": True}],
+                "launch_packet_include": True,
+            },
         )
-        assert stage4b_denied.status_code == 400
+        assert catalog_update.status_code == 200, catalog_update.text
+        catalog_product = catalog_update.json()
+        assert catalog_product["selling_price_cents"] == 2500
+        assert catalog_product["production_cost_cents"] == 900
+        assert catalog_product["store_owner_share_cents"] == 300
+        assert catalog_product["variants"][0]["sku"] == "SKU-1-L-BLK"
+        assert catalog_product["personalization_fields"][0]["key"] == "player_name"
+        assert catalog_product["launch_packet_eligible"] is True
+
+        float_money_denied = await client.patch(
+            f"/api/webstores/{store['id']}/products/{product['id']}",
+            json={"expected_revision": catalog_product["revision"], "selling_price_cents": 25.5},
+        )
+        assert float_money_denied.status_code == 422
 
         missing_alt = await client.patch(
             f"/api/webstores/{store['id']}/products/{product['id']}",
-            json={"expected_revision": product["revision"], "customer_images": {"secondary": {"file_id": image["id"]}}},
+            json={"expected_revision": catalog_product["revision"], "customer_images": {"secondary": {"file_id": image["id"]}}},
         )
         assert missing_alt.status_code == 400
 
         update = await client.patch(
             f"/api/webstores/{store['id']}/products/{product['id']}",
             json={
-                "expected_revision": product["revision"],
+                "expected_revision": catalog_product["revision"],
                 "name": "Updated Draft Hoodie",
                 "short_description": "Customer safe",
                 "customer_images": {
@@ -541,6 +564,83 @@ async def test_stage4a_product_categories_lifecycle_revision_public_redaction_an
         assert image_resp.status_code == 200
         draft_image = await public.get(f"/api/public/webstores/{store['public_slug']}/product-images/{updated['id']}/primary")
         assert draft_image.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_batch1_catalog_validation_for_skus_variants_bundles_and_readiness(stage4a_ctx):
+    async with await _client_as(stage4a_ctx["staff"]) as client:
+        store = await _create_store(client, f"batch1-{stage4a_ctx['suffix']}")
+        image = await _seed_setup_file(stage4a_ctx, store["id"])
+        category = (await client.post(f"/api/webstores/{store['id']}/product-categories", json={"name": "Apparel"})).json()
+
+        base_resp = await client.post(
+            f"/api/webstores/{store['id']}/products",
+            json={
+                "name": "Batch One Shirt",
+                "product_type": "shirt",
+                "category_id": category["id"],
+                "sku": "B1-SHIRT",
+                "selling_price_cents": 2500,
+                "production_cost_cents": 900,
+                "store_owner_share_cents": 300,
+                "customer_images": {"primary": {"file_id": image["id"], "alt_text": "Batch shirt"}},
+                "variants": [
+                    {"size": "M", "color": "Black", "sku": "B1-SHIRT-M-BLK", "selling_price_cents": 2500},
+                    {"size": "L", "color": "Black", "sku": "B1-SHIRT-L-BLK", "selling_price_cents": 2600},
+                ],
+            },
+        )
+        assert base_resp.status_code == 201, base_resp.text
+        base = base_resp.json()
+        assert base["catalog_status"] == "ready"
+
+        duplicate_sku = await client.post(
+            f"/api/webstores/{store['id']}/products",
+            json={"name": "Duplicate SKU", "product_type": "shirt", "sku": "B1-SHIRT"},
+        )
+        assert duplicate_sku.status_code == 409
+
+        duplicate_combo = await client.patch(
+            f"/api/webstores/{store['id']}/products/{base['id']}",
+            json={
+                "expected_revision": base["revision"],
+                "variants": [
+                    {"size": "M", "color": "Black", "sku": "UNIQUE-1"},
+                    {"size": "M", "color": "Black", "sku": "UNIQUE-2"},
+                ],
+            },
+        )
+        assert duplicate_combo.status_code == 409
+
+        share_exceeds_price = await client.patch(
+            f"/api/webstores/{store['id']}/products/{base['id']}",
+            json={"expected_revision": base["revision"], "store_owner_share_cents": 3000},
+        )
+        assert share_exceeds_price.status_code == 400
+
+        addon = (await client.post(f"/api/webstores/{store['id']}/products", json={"name": "Sticker Add On", "product_type": "sticker"})).json()
+        bundled = await client.patch(
+            f"/api/webstores/{store['id']}/products/{base['id']}",
+            json={"expected_revision": base["revision"], "bundle_items": [{"product_id": addon["id"], "quantity": 2}]},
+        )
+        assert bundled.status_code == 200, bundled.text
+        assert bundled.json()["bundle_items"][0]["product_id"] == addon["id"]
+        assert bundled.json()["bundle_items"][0]["quantity"] == 2
+
+        self_bundle = await client.patch(
+            f"/api/webstores/{store['id']}/products/{base['id']}",
+            json={"expected_revision": bundled.json()["revision"], "bundle_items": [{"product_id": base["id"], "quantity": 1}]},
+        )
+        assert self_bundle.status_code == 409
+
+        ready = await client.patch(
+            f"/api/webstores/{store['id']}/products/{base['id']}",
+            json={"expected_revision": bundled.json()["revision"], "status": "ready", "launch_packet_include": True},
+        )
+        assert ready.status_code == 200, ready.text
+        assert ready.json()["status"] == "ready"
+        assert ready.json()["launch_packet_eligible"] is True
+        assert ready.json()["launch_packet_include"] is True
 
 
 @pytest.mark.asyncio

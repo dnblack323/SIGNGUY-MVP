@@ -99,6 +99,15 @@ function productImageAltText(product = {}, slot = "primary") {
   return explicit?.alt_text || responseImage?.alt_text || "";
 }
 
+function toIntCents(value) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function productCatalogStatus(product = {}) {
+  return product.catalog_status || product.setup_status || (product.status === "draft" ? "planned" : product.status || "planned");
+}
+
 export default function WebstoreDetailPage() {
   const { id } = useParams();
   const qc = useQueryClient();
@@ -167,7 +176,7 @@ export default function WebstoreDetailPage() {
   const filteredProducts = useMemo(() => {
     const q = productFilters.q.trim().toLowerCase();
     return (detail.data?.products || []).filter((product) => {
-      if (productFilters.status !== "all" && product.status !== productFilters.status) return false;
+      if (productFilters.status !== "all" && productCatalogStatus(product) !== productFilters.status && product.status !== productFilters.status) return false;
       if (productFilters.category_id !== "all" && product.category_id !== productFilters.category_id) return false;
       if (q && !String(product.name || "").toLowerCase().includes(q)) return false;
       return true;
@@ -196,6 +205,21 @@ export default function WebstoreDetailPage() {
       product_type: productDraft.product_type,
       category_id: productDraft.category_id || undefined,
       category_name: productDraft.category_name || undefined,
+      sku: productDraft.sku || undefined,
+      selling_price_cents: toIntCents(productDraft.selling_price_cents),
+      production_cost_cents: toIntCents(productDraft.production_cost_cents),
+      store_owner_share_cents: toIntCents(productDraft.store_owner_share_cents),
+      fundraiser_share_cents: toIntCents(productDraft.fundraiser_share_cents),
+      platform_fee_basis_points: toIntCents(productDraft.platform_fee_basis_points ?? 150),
+      variants: productDraft.variants || [],
+      personalization_enabled: Boolean(productDraft.personalization_enabled),
+      personalization_fields: productDraft.personalization_fields || [],
+      bundle_items: productDraft.bundle_items || [],
+      inventory_policy: productDraft.inventory_policy || "not_tracked",
+      inventory_quantity: productDraft.inventory_quantity === "" || productDraft.inventory_quantity == null ? undefined : toIntCents(productDraft.inventory_quantity),
+      status: productDraft.status || "draft",
+      launch_packet_eligible: Boolean(productDraft.launch_packet_eligible),
+      launch_packet_include: Boolean(productDraft.launch_packet_include),
       production_method: productDraft.production_method,
       production_notes: productDraft.production_notes,
       supplier_source_info: productDraft.supplier_source_info,
@@ -347,6 +371,56 @@ export default function WebstoreDetailPage() {
   const removeAssociation = (field, key, value) => {
     setProductDraft((draft) => ({ ...draft, [field]: (draft[field] || []).filter((item) => item[key] !== value) }));
   };
+  const addVariant = () => setProductDraft((draft) => ({
+    ...draft,
+    variants: [
+      ...(draft.variants || []),
+      { id: `variant-${(draft.variants || []).length + 1}`, size: "", color: "", sku: "", selling_price_cents: draft.selling_price_cents || 0, status: "active", available: true },
+    ],
+  }));
+  const setVariantField = (index, field, value) => setProductDraft((draft) => ({
+    ...draft,
+    variants: (draft.variants || []).map((variant, currentIndex) => (
+      currentIndex === index ? { ...variant, [field]: value } : variant
+    )),
+  }));
+  const removeVariant = (index) => setProductDraft((draft) => ({
+    ...draft,
+    variants: (draft.variants || []).filter((_, currentIndex) => currentIndex !== index),
+  }));
+  const addPersonalizationField = () => setProductDraft((draft) => ({
+    ...draft,
+    personalization_enabled: true,
+    personalization_fields: [
+      ...(draft.personalization_fields || []),
+      { key: `field_${(draft.personalization_fields || []).length + 1}`, label: "", type: "text", required: false },
+    ],
+  }));
+  const setPersonalizationField = (index, field, value) => setProductDraft((draft) => ({
+    ...draft,
+    personalization_fields: (draft.personalization_fields || []).map((item, currentIndex) => (
+      currentIndex === index ? { ...item, [field]: value } : item
+    )),
+  }));
+  const removePersonalizationField = (index) => setProductDraft((draft) => ({
+    ...draft,
+    personalization_fields: (draft.personalization_fields || []).filter((_, currentIndex) => currentIndex !== index),
+  }));
+  const addBundleItem = (productId) => {
+    if (!productId || productId === "none") return;
+    const bundled = (detail.data?.products || []).find((item) => item.id === productId);
+    setProductDraft((draft) => {
+      if ((draft.bundle_items || []).some((item) => item.product_id === productId)) return draft;
+      return {
+        ...draft,
+        bundle_items: [...(draft.bundle_items || []), { product_id: productId, name_snapshot: bundled?.name, quantity: 1, sku_snapshot: bundled?.sku }],
+      };
+    });
+  };
+  const removeBundleItem = (productId) => setProductDraft((draft) => ({
+    ...draft,
+    bundle_items: (draft.bundle_items || []).filter((item) => item.product_id !== productId),
+  }));
   const formatLabel = (value) => String(value || "").replace(/_/g, " ");
   const formatDateTime = (value) => {
     if (!value) return "Not recorded";
@@ -384,7 +458,10 @@ export default function WebstoreDetailPage() {
     { label: "Basic information", done: Boolean(product?.name && product?.product_type) },
     { label: "Image or mockup", done: Boolean(staffProductImageUrl(product, "primary")) },
     { label: "Category", done: Boolean(product?.category_id || product?.category_name || product?.category) },
+    { label: "Pricing", done: Number(product?.selling_price_cents || 0) > 0 },
+    { label: "SKU or options", done: Boolean(product?.sku || (product?.variants || []).length) },
     { label: "Production setup", done: Boolean(product?.production_method || product?.production_notes) },
+    { label: "Packet eligible", done: Boolean(product?.launch_packet_eligible || productCatalogStatus(product) === "ready" || productCatalogStatus(product) === "active") },
   ];
   const startProductSetup = (product) => {
     setSelectedProductId(product.id);
@@ -746,8 +823,8 @@ export default function WebstoreDetailPage() {
               <CardHeader><CardTitle className="text-base">Selected Products</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 <Alert>
-                  <AlertTitle>Private draft setup</AlertTitle>
-                  <AlertDescription>Each selected product stays private until later launch approval. Continue Setup opens only the product foundation fields that are safe to edit now.</AlertDescription>
+                  <AlertTitle>Private catalog setup</AlertTitle>
+                  <AlertDescription>Each selected product stays private while Staff completes catalog status, options, cents-based pricing, shares, media, and packet eligibility.</AlertDescription>
                 </Alert>
                 <div className="grid gap-2 md:grid-cols-3">
                   <Input placeholder="Search products" value={productFilters.q} onChange={(e) => setProductFilters({ ...productFilters, q: e.target.value })} data-testid="webstore-product-search" />
@@ -755,8 +832,10 @@ export default function WebstoreDetailPage() {
                     <SelectTrigger data-testid="webstore-product-status-filter"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All statuses</SelectItem>
-                      <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="active">Active legacy</SelectItem>
+                      <SelectItem value="planned">Planned</SelectItem>
+                      <SelectItem value="incomplete">Incomplete</SelectItem>
+                      <SelectItem value="ready">Ready</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
                       <SelectItem value="archived">Archived</SelectItem>
                     </SelectContent>
                   </Select>
@@ -788,7 +867,7 @@ export default function WebstoreDetailPage() {
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <div>
                               <div className="font-medium">{product.name}</div>
-                              <div className="text-xs text-muted-foreground capitalize">{formatLabel(product.status)} - {product.public ? "public legacy" : "private draft"} - {product.category_name || product.category || "No category"}</div>
+                              <div className="text-xs text-muted-foreground capitalize">{formatLabel(productCatalogStatus(product))} - {product.public ? "public legacy" : "private catalog"} - {product.category_name || product.category || "No category"}</div>
                             </div>
                             <Badge variant="outline">{centsToDollarsString(product.selling_price_cents)}</Badge>
                           </div>
@@ -882,14 +961,59 @@ export default function WebstoreDetailPage() {
                       ))}
                     </div>
                       </TabsContent>
-                      <TabsContent value="options">
-                        <div className="rounded-md border bg-slate-50 p-4 text-sm text-muted-foreground">
-                          Product options, size/color variants, personalization prompts, and buyer-facing required fields are coming in a later Webstores stage.
+                      <TabsContent value="options" className="space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <Label>Variants and SKUs</Label>
+                            <Button type="button" size="sm" variant="outline" onClick={addVariant}>Add Variant</Button>
+                          </div>
+                          <div className="grid gap-2">
+                            {(productDraft.variants || []).map((variant, index) => (
+                              <div key={variant.id || index} className="grid gap-2 rounded border p-2 md:grid-cols-[1fr_1fr_1fr_120px_auto]">
+                                <Input placeholder="Size" value={variant.size || ""} onChange={(e) => setVariantField(index, "size", e.target.value)} data-testid={`webstore-variant-size-${index}`} />
+                                <Input placeholder="Color" value={variant.color || ""} onChange={(e) => setVariantField(index, "color", e.target.value)} data-testid={`webstore-variant-color-${index}`} />
+                                <Input placeholder="SKU" value={variant.sku || ""} onChange={(e) => setVariantField(index, "sku", e.target.value)} data-testid={`webstore-variant-sku-${index}`} />
+                                <Input type="number" min="0" placeholder="Price cents" value={variant.selling_price_cents ?? ""} onChange={(e) => setVariantField(index, "selling_price_cents", toIntCents(e.target.value))} data-testid={`webstore-variant-price-${index}`} />
+                                <Button type="button" size="sm" variant="outline" onClick={() => removeVariant(index)}>Remove</Button>
+                              </div>
+                            ))}
+                            {(productDraft.variants || []).length === 0 && <div className="rounded border p-3 text-sm text-muted-foreground">No variants yet. A single SKU can still be saved on this product.</div>}
+                          </div>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="grid gap-1.5"><Label>Product SKU</Label><Input value={productDraft.sku || ""} onChange={(e) => setProductField("sku", e.target.value)} data-testid="webstore-product-sku" /></div>
+                          <div className="grid gap-1.5"><Label>Inventory policy</Label><Select value={productDraft.inventory_policy || "not_tracked"} onValueChange={(value) => setProductField("inventory_policy", value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="not_tracked">Not tracked</SelectItem><SelectItem value="track_quantity">Track quantity</SelectItem><SelectItem value="made_to_order">Made to order</SelectItem></SelectContent></Select></div>
+                          <div className="grid gap-1.5"><Label>Inventory quantity</Label><Input type="number" min="0" value={productDraft.inventory_quantity ?? ""} onChange={(e) => setProductField("inventory_quantity", e.target.value === "" ? "" : toIntCents(e.target.value))} /></div>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <Label>Personalization</Label>
+                            <div className="flex items-center gap-2 text-sm"><Checkbox checked={Boolean(productDraft.personalization_enabled)} onCheckedChange={(checked) => setProductField("personalization_enabled", Boolean(checked))} />Enabled</div>
+                          </div>
+                          <div className="grid gap-2">
+                            {(productDraft.personalization_fields || []).map((field, index) => (
+                              <div key={field.key || index} className="grid gap-2 rounded border p-2 md:grid-cols-[1fr_1fr_120px_auto]">
+                                <Input placeholder="Key" value={field.key || ""} onChange={(e) => setPersonalizationField(index, "key", e.target.value)} />
+                                <Input placeholder="Prompt label" value={field.label || ""} onChange={(e) => setPersonalizationField(index, "label", e.target.value)} data-testid={`webstore-personalization-label-${index}`} />
+                                <Select value={field.type || "text"} onValueChange={(value) => setPersonalizationField(index, "type", value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="text">Text</SelectItem><SelectItem value="textarea">Textarea</SelectItem><SelectItem value="select">Select</SelectItem><SelectItem value="number">Number</SelectItem></SelectContent></Select>
+                                <Button type="button" size="sm" variant="outline" onClick={() => removePersonalizationField(index)}>Remove</Button>
+                              </div>
+                            ))}
+                          </div>
+                          <Button type="button" size="sm" variant="outline" onClick={addPersonalizationField} data-testid="webstore-add-personalization">Add Prompt</Button>
                         </div>
                       </TabsContent>
-                      <TabsContent value="pricing">
-                        <div className="rounded-md border bg-slate-50 p-4 text-sm text-muted-foreground">
-                          Pricing rules, Webstore Owner share, platform fee, payout setup, discounts, donations, and deadlines are locked until the approved later stages implement them.
+                      <TabsContent value="pricing" className="space-y-3">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="grid gap-1.5"><Label>Selling price (cents)</Label><Input type="number" min="0" value={productDraft.selling_price_cents ?? 0} onChange={(e) => setProductField("selling_price_cents", toIntCents(e.target.value))} data-testid="webstore-product-selling-price" /></div>
+                          <div className="grid gap-1.5"><Label>Production cost (cents)</Label><Input type="number" min="0" value={productDraft.production_cost_cents ?? 0} onChange={(e) => setProductField("production_cost_cents", toIntCents(e.target.value))} data-testid="webstore-product-production-cost" /></div>
+                          <div className="grid gap-1.5"><Label>Owner share (cents)</Label><Input type="number" min="0" value={productDraft.store_owner_share_cents ?? 0} onChange={(e) => setProductField("store_owner_share_cents", toIntCents(e.target.value))} data-testid="webstore-product-owner-share" /></div>
+                          <div className="grid gap-1.5"><Label>Fundraiser share (cents)</Label><Input type="number" min="0" value={productDraft.fundraiser_share_cents ?? 0} onChange={(e) => setProductField("fundraiser_share_cents", toIntCents(e.target.value))} /></div>
+                          <div className="grid gap-1.5"><Label>Platform fee (basis points)</Label><Input type="number" min="0" max="10000" value={productDraft.platform_fee_basis_points ?? 150} onChange={(e) => setProductField("platform_fee_basis_points", toIntCents(e.target.value))} /></div>
+                          <div className="rounded-md border bg-slate-50 p-3 text-sm">
+                            <div className="font-medium">Internal margin</div>
+                            <div className="text-muted-foreground">{centsToDollarsString(Math.max(0, Number(productDraft.selling_price_cents || 0) - Number(productDraft.production_cost_cents || 0) - Number(productDraft.store_owner_share_cents || 0) - Number(productDraft.fundraiser_share_cents || 0)))}</div>
+                          </div>
                         </div>
                       </TabsContent>
                       <TabsContent value="production" className="space-y-3">
@@ -908,6 +1032,47 @@ export default function WebstoreDetailPage() {
                                 {item.done ? <CheckCircle2 className="size-3 text-emerald-700" /> : <Clock className="size-3 text-amber-700" />}
                                 <span>{item.label}</span>
                               </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="grid gap-1.5">
+                            <Label>Catalog status</Label>
+                            <Select value={productDraft.status || "draft"} onValueChange={(value) => setProductField("status", value)}>
+                              <SelectTrigger data-testid="webstore-product-status"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="planned">Planned</SelectItem>
+                                <SelectItem value="incomplete">Incomplete</SelectItem>
+                                <SelectItem value="ready">Ready</SelectItem>
+                                <SelectItem value="active">Active</SelectItem>
+                                <SelectItem value="archived">Archived</SelectItem>
+                                {productDraft.status === "draft" && <SelectItem value="draft">Draft legacy</SelectItem>}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid gap-2 rounded border p-3 text-sm">
+                            <div className="flex items-center gap-2">
+                              <Checkbox checked={Boolean(productDraft.launch_packet_eligible)} onCheckedChange={(checked) => setProductField("launch_packet_eligible", Boolean(checked))} data-testid="webstore-product-packet-eligible" />
+                              <Label>Eligible for later Launch Packet</Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Checkbox checked={Boolean(productDraft.launch_packet_include)} onCheckedChange={(checked) => setProductField("launch_packet_include", Boolean(checked))} data-testid="webstore-product-packet-include" />
+                              <Label>Include when Launch Packet assembly is implemented</Label>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Bundle items</Label>
+                          <Select value="none" onValueChange={addBundleItem}>
+                            <SelectTrigger data-testid="webstore-product-bundle-select"><SelectValue placeholder="Add product to bundle" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Choose product</SelectItem>
+                              {(detail.data?.products || []).filter((item) => item.id !== productDraft.id && item.status !== "archived").map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <div className="flex flex-wrap gap-2">
+                            {(productDraft.bundle_items || []).map((item) => (
+                              <Button key={item.product_id} type="button" size="sm" variant="outline" onClick={() => removeBundleItem(item.product_id)}>{item.name_snapshot || item.product_id} remove</Button>
                             ))}
                           </div>
                         </div>
@@ -946,7 +1111,7 @@ export default function WebstoreDetailPage() {
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Button onClick={() => saveProduct.mutate()} disabled={saveProduct.isPending || !productDraft.name} data-testid="webstore-save-product"><Save className="size-4 mr-2" />Save Draft</Button>
+                      <Button onClick={() => saveProduct.mutate()} disabled={saveProduct.isPending || !productDraft.name} data-testid="webstore-save-product"><Save className="size-4 mr-2" />Save Product</Button>
                       {productDraft.status === "archived" ? (
                         <Button variant="outline" onClick={() => restoreProduct.mutate(productDraft)}><RotateCcw className="size-4 mr-2" />Restore Draft</Button>
                       ) : (

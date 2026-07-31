@@ -49,11 +49,12 @@ PRODUCT_PURCHASABLE_STATUSES = {"active"}
 PLATFORM_TEMPLATE_TENANT_ID = "__platform__"
 TEMPLATE_SCOPES = {"tenant", "platform"}
 TEMPLATE_STATUSES = {"draft", "active", "archived"}
-PRODUCT_STATUSES = {"draft", "active", "inactive", "archived"}
+PRODUCT_STATUSES = {"draft", "planned", "incomplete", "ready", "active", "inactive", "archived"}
+CATALOG_PRODUCT_STATUSES = {"planned", "incomplete", "ready", "active", "archived"}
 CATEGORY_STATUSES = {"active", "archived"}
 CUSTOMER_IMAGE_SLOTS = {"primary", "secondary"}
 PRODUCT_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "svg"}
-STAGE4A_PUBLICATION_FIELDS = {"public", "featured", "status"}
+STAGE4A_PUBLICATION_FIELDS = {"public", "featured"}
 STAGE4A_FINANCIAL_VARIANT_FIELDS = {
     "production_cost_cents",
     "selling_price_cents",
@@ -145,9 +146,33 @@ def _clean_optional_text(value: Any, *, limit: int = 2000) -> Optional[str]:
 def _clean_money(value: Any, *, default: int = 0) -> int:
     if value in (None, ""):
         return default
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise WebstoreError("money_must_be_integer_cents", "Money values must be integer cents", 400)
     amount = int(value)
     if amount < 0:
         raise WebstoreError("negative_money_not_allowed", "Money values cannot be negative", 400)
+    return amount
+
+
+def _clean_basis_points(value: Any, *, default: int = 150) -> int:
+    if value in (None, ""):
+        return default
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise WebstoreError("basis_points_must_be_integer", "Fee percentages must be stored as integer basis points", 400)
+    amount = int(value)
+    if amount < 0 or amount > 10000:
+        raise WebstoreError("basis_points_out_of_range", "Fee basis points must be between 0 and 10000", 400)
+    return amount
+
+
+def _clean_quantity(value: Any, *, default: Optional[int] = None, minimum: int = 0) -> Optional[int]:
+    if value in (None, ""):
+        return default
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise WebstoreError("quantity_must_be_integer", "Inventory and bundle quantities must be whole numbers", 400)
+    amount = int(value)
+    if amount < minimum:
+        raise WebstoreError("quantity_out_of_range", "Inventory and bundle quantities cannot be negative", 400)
     return amount
 
 
@@ -175,20 +200,14 @@ def _reject_stage4a_publication_request(fields: dict[str, Any], *, allow_system_
         return
     if fields.get("public") is True:
         raise WebstoreError(
-            "stage4a_publication_not_available",
-            "Products cannot be made public in Product Foundation. Publication is handled in a later Webstore stage.",
+            "catalog_publication_not_available",
+            "Products cannot be made public from Batch 1 catalog setup. Public launch and checkout are handled in later Webstore batches.",
             400,
         )
     if fields.get("featured") is True:
         raise WebstoreError(
-            "stage4a_featured_not_available",
-            "Products cannot be featured in Product Foundation. Featuring products is handled in a later Webstore stage.",
-            400,
-        )
-    if "status" in fields and str(fields.get("status") or "draft").lower() != "draft":
-        raise WebstoreError(
-            "stage4a_product_status_not_available",
-            "Product Foundation can only create and edit private Draft products. Approval and publication are handled later.",
+            "catalog_featured_not_available",
+            "Products cannot be featured publicly from Batch 1 catalog setup. Public storefront controls are handled later.",
             400,
         )
 
@@ -399,6 +418,75 @@ def _product_image_map(product: dict) -> dict[str, dict[str, Any]]:
     }
 
 
+def _variant_option_signature(variant: dict[str, Any]) -> str:
+    option_keys = ["size", "color", "style", "material"]
+    option_values = [
+        f"{key}:{_normalize_name(str(variant.get(key) or ''))}"
+        for key in option_keys
+        if variant.get(key) not in (None, "")
+    ]
+    explicit_options = variant.get("options") if isinstance(variant.get("options"), dict) else {}
+    for key in sorted(explicit_options):
+        value = explicit_options.get(key)
+        if value not in (None, ""):
+            option_values.append(f"{_normalize_name(str(key))}:{_normalize_name(str(value))}")
+    return "|".join(option_values) or _normalize_name(str(variant.get("name") or variant.get("sku") or "default"))
+
+
+def _public_variant(variant: dict[str, Any]) -> dict[str, Any]:
+    allowed = {
+        "id",
+        "name",
+        "size",
+        "color",
+        "style",
+        "material",
+        "options",
+        "sku",
+        "price_delta_cents",
+        "selling_price_cents",
+        "inventory_quantity",
+        "available",
+        "status",
+    }
+    return {k: v for k, v in variant.items() if k in allowed and v not in (None, "")}
+
+
+def _public_personalization_field(field: dict[str, Any]) -> dict[str, Any]:
+    allowed = {"key", "label", "type", "required", "choices", "placeholder", "max_length"}
+    return {k: v for k, v in field.items() if k in allowed and v not in (None, "")}
+
+
+def _product_setup_requirements(product: dict) -> list[dict[str, Any]]:
+    has_images = bool(_product_image_map(product)) or bool(product.get("mockup_associations"))
+    has_variants = bool(product.get("variants")) or bool(product.get("sku"))
+    requirements = [
+        {"key": "basic_information", "label": "Basic information", "complete": bool(product.get("name") and product.get("product_type"))},
+        {"key": "catalog_organization", "label": "Category", "complete": bool(product.get("category_id") or product.get("category_name") or product.get("category"))},
+        {"key": "pricing", "label": "Selling price", "complete": int(product.get("selling_price_cents") or 0) > 0},
+        {"key": "images_or_mockups", "label": "Image or mockup", "complete": has_images},
+        {"key": "options_or_sku", "label": "SKU or options", "complete": has_variants},
+    ]
+    if product.get("personalization_enabled"):
+        requirements.append({"key": "personalization", "label": "Personalization prompts", "complete": bool(product.get("personalization_fields"))})
+    return requirements
+
+
+def _derived_catalog_status(product: dict) -> str:
+    status = product.get("status") or "planned"
+    if status in {"archived", "active", "ready", "incomplete", "planned"}:
+        return status
+    if status == "draft":
+        requirements = _product_setup_requirements(product)
+        complete = sum(1 for item in requirements if item["complete"])
+        if complete == 0:
+            return "planned"
+        return "ready" if all(item["complete"] for item in requirements) else "incomplete"
+    if status == "inactive":
+        return "incomplete"
+    return "planned"
+
+
 def _image_slot_change_events(before: dict[str, Any], after: dict[str, Any]) -> list[tuple[str, str, dict[str, Any]]]:
     events: list[tuple[str, str, dict[str, Any]]] = []
     for slot in ("primary", "secondary"):
@@ -434,6 +522,11 @@ def _image_slot_change_events(before: dict[str, Any], after: dict[str, Any]) -> 
 
 
 def _public_product(product: dict, *, public_slug: Optional[str] = None) -> dict:
+    public_variants = [
+        variant
+        for variant in (_public_variant(item) for item in product.get("variants") or [] if item.get("status", "active") != "archived")
+        if variant
+    ]
     result = {
         "id": product.get("id"),
         "name": product.get("name"),
@@ -445,6 +538,10 @@ def _public_product(product: dict, *, public_slug: Optional[str] = None) -> dict
         "sku": product.get("sku"),
         "selling_price_cents": product.get("selling_price_cents"),
         "personalization_enabled": bool(product.get("personalization_enabled")),
+        "personalization_fields": [
+            _public_personalization_field(field)
+            for field in product.get("personalization_fields") or []
+        ],
         "images": [
             _image_reference_for_response(product, slot=slot, image=image, public_slug=public_slug)
             for slot, image in _product_image_map(product).items()
@@ -453,6 +550,8 @@ def _public_product(product: dict, *, public_slug: Optional[str] = None) -> dict
         "featured": bool(product.get("featured")),
         "status": product.get("status"),
     }
+    if public_variants:
+        result["variants"] = public_variants
     return {k: v for k, v in result.items() if v not in (None, "")}
 
 
@@ -468,6 +567,11 @@ def _staff_product(product: dict, *, public_slug: Optional[str] = None) -> dict:
         _image_reference_for_response(product, slot=slot, image=image, public_slug=public_slug, include_private_id=True)
         for slot, image in _product_image_map(product).items()
     ]
+    data["catalog_status"] = _derived_catalog_status(product)
+    data["setup_status"] = data["catalog_status"]
+    data["setup_requirements"] = _product_setup_requirements(product)
+    data["launch_packet_eligible"] = bool(product.get("launch_packet_eligible")) or data["catalog_status"] in {"ready", "active"}
+    data["launch_packet_include"] = bool(product.get("launch_packet_include")) and data["launch_packet_eligible"]
     data["template_provenance"] = {
         "source_template_id": product.get("source_template_id"),
         "source_template_revision": product.get("source_template_revision"),
@@ -741,6 +845,126 @@ async def _normalize_template_mockup_associations(user: dict, webstore_id: str, 
             "alt_text": _clean_optional_text(item.get("alt_text") or mockup.get("alt_text"), limit=200),
             "file_name": mockup.get("file_name"),
         })
+    return normalized
+
+
+async def _ensure_unique_product_skus(
+    *,
+    tenant_id: str,
+    webstore_id: str,
+    product_id: str,
+    sku: Optional[str],
+    variants: list[dict[str, Any]],
+) -> None:
+    supplied = [str(value).strip() for value in [sku, *[variant.get("sku") for variant in variants]] if str(value or "").strip()]
+    lowered = [_normalize_name(value) for value in supplied]
+    if len(lowered) != len(set(lowered)):
+        raise WebstoreError("duplicate_product_sku", "Product and variant SKUs must be unique within this product", 409)
+    if not lowered:
+        return
+    async for doc in db.webstore_products.find(
+        {"tenant_id": tenant_id, "webstore_id": webstore_id, "id": {"$ne": product_id}, "status": {"$ne": "archived"}},
+        {"_id": 0, "sku": 1, "variants": 1},
+    ):
+        existing = [str(value).strip() for value in [doc.get("sku"), *[variant.get("sku") for variant in doc.get("variants") or []]] if str(value or "").strip()]
+        if set(lowered) & {_normalize_name(value) for value in existing}:
+            raise WebstoreError("duplicate_product_sku", "Product and variant SKUs must be unique within this Webstore", 409)
+
+
+def _normalize_variants(variants: Optional[list[dict[str, Any]]], *, base_selling_price_cents: int) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    signatures: set[str] = set()
+    for index, item in enumerate(variants or []):
+        if not isinstance(item, dict):
+            raise WebstoreError("invalid_variant", "Each variant must be an object", 400)
+        variant: dict[str, Any] = {
+            "id": _clean_optional_text(item.get("id"), limit=80) or f"variant-{index + 1}",
+            "name": _clean_optional_text(item.get("name"), limit=120),
+            "size": _clean_optional_text(item.get("size"), limit=80),
+            "color": _clean_optional_text(item.get("color"), limit=80),
+            "style": _clean_optional_text(item.get("style"), limit=80),
+            "material": _clean_optional_text(item.get("material"), limit=80),
+            "sku": _clean_optional_text(item.get("sku"), limit=120),
+            "options": item.get("options") if isinstance(item.get("options"), dict) else {},
+            "status": _clean_status(item.get("status"), {"active", "inactive", "archived"}, "active", "variant_status"),
+            "available": bool(item.get("available", True)),
+            "inventory_quantity": _clean_quantity(item.get("inventory_quantity"), default=None),
+            "production_cost_cents": _clean_money(item.get("production_cost_cents"), default=0),
+            "store_owner_share_cents": _clean_money(item.get("store_owner_share_cents"), default=0),
+            "fundraiser_share_cents": _clean_money(item.get("fundraiser_share_cents"), default=0),
+            "price_delta_cents": _clean_money(item.get("price_delta_cents"), default=0),
+        }
+        variant["selling_price_cents"] = _clean_money(item.get("selling_price_cents"), default=base_selling_price_cents + variant["price_delta_cents"])
+        if variant["store_owner_share_cents"] + variant["fundraiser_share_cents"] > variant["selling_price_cents"]:
+            raise WebstoreError("share_exceeds_price", "Owner and fundraiser shares cannot exceed the variant selling price", 400)
+        signature = _variant_option_signature(variant)
+        if signature in signatures:
+            raise WebstoreError("duplicate_variant_combination", "Each size/color/options variant combination must be unique", 409)
+        signatures.add(signature)
+        normalized.append({k: v for k, v in variant.items() if v not in (None, "", {})})
+    return normalized
+
+
+def _normalize_personalization_fields(items: Optional[list[dict[str, Any]]], *, enabled: bool) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for index, item in enumerate(items or []):
+        if not isinstance(item, dict):
+            raise WebstoreError("invalid_personalization_field", "Each personalization prompt must be an object", 400)
+        label = _clean_text(item.get("label"), "personalization_label", limit=120)
+        key = _clean_optional_text(item.get("key"), limit=80) or _slug(label).replace("-", "_") or f"field_{index + 1}"
+        field_type = str(item.get("type") or "text").strip().lower()
+        if field_type not in {"text", "textarea", "select", "number"}:
+            raise WebstoreError("invalid_personalization_type", "Personalization prompts support text, textarea, select, or number", 400)
+        field = {
+            "key": key,
+            "label": label,
+            "type": field_type,
+            "required": bool(item.get("required", False)),
+            "choices": [str(choice).strip() for choice in item.get("choices") or [] if str(choice).strip()][:20],
+            "placeholder": _clean_optional_text(item.get("placeholder"), limit=120),
+            "max_length": _clean_quantity(item.get("max_length"), default=None, minimum=1),
+        }
+        if field_type == "select" and not field["choices"]:
+            raise WebstoreError("personalization_choices_required", "Select personalization prompts require at least one choice", 400)
+        normalized.append({k: v for k, v in field.items() if v not in (None, "", [])})
+    if enabled and not normalized:
+        raise WebstoreError("personalization_fields_required", "Add at least one personalization prompt or turn personalization off", 400)
+    keys = [field["key"] for field in normalized]
+    if len(keys) != len(set(keys)):
+        raise WebstoreError("duplicate_personalization_field", "Personalization prompt keys must be unique", 409)
+    return normalized
+
+
+async def _normalize_bundle_items(
+    user: dict,
+    webstore_id: str,
+    product_id: str,
+    items: Optional[list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items or []:
+        if not isinstance(item, dict):
+            raise WebstoreError("invalid_bundle_item", "Each bundle item must be an object", 400)
+        bundled_product_id = str(item.get("product_id") or "").strip()
+        if not bundled_product_id:
+            continue
+        if bundled_product_id == product_id:
+            raise WebstoreError("bundle_self_reference", "A product bundle cannot include itself", 409)
+        if bundled_product_id in seen:
+            raise WebstoreError("duplicate_bundle_item", "Bundle items must be unique", 409)
+        bundled = await _get_product(user["tenant_id"], bundled_product_id, webstore_id)
+        if bundled.get("status") == "archived":
+            raise WebstoreError("bundle_item_archived", "Archived products cannot be included in bundles", 409)
+        seen.add(bundled_product_id)
+        normalized.append(
+            {
+                "product_id": bundled_product_id,
+                "name_snapshot": bundled.get("name"),
+                "quantity": _clean_quantity(item.get("quantity"), default=1, minimum=1),
+                "sku_snapshot": bundled.get("sku"),
+            }
+        )
     return normalized
 
 
@@ -1279,7 +1503,6 @@ async def create_product(user: dict, webstore_id: str, fields: dict[str, Any]) -
     _require_staff_perm(user, Perm.WEBSTORE_WRITE)
     store = await _get_store(user["tenant_id"], webstore_id)
     _reject_stage4a_publication_request(fields)
-    _reject_stage4a_financial_variant_request(fields)
     idempotency_key = fields.get("idempotency_key")
     operation = "copy_template" if fields.get("source_template_id") else "create_blank"
     source_template_id = fields.get("source_template_id")
@@ -1318,6 +1541,13 @@ async def create_product(user: dict, webstore_id: str, fields: dict[str, Any]) -
         "supplier_source_info": fields.get("supplier_source_info") or (template or {}).get("supplier_source_info"),
         "production_notes": fields.get("production_notes") or (template or {}).get("default_production_notes"),
     }
+    production_cost_cents = _clean_money(fields.get("production_cost_cents"), default=int((template or {}).get("suggested_production_cost_cents") or 0))
+    selling_price_cents = _clean_money(fields.get("selling_price_cents"), default=int((template or {}).get("suggested_selling_price_cents") or 0))
+    store_owner_share_cents = _clean_money(fields.get("store_owner_share_cents"), default=int((template or {}).get("suggested_store_owner_share_cents") or 0))
+    fundraiser_share_cents = _clean_money(fields.get("fundraiser_share_cents"), default=0)
+    if store_owner_share_cents + fundraiser_share_cents > selling_price_cents:
+        raise WebstoreError("share_exceeds_price", "Owner and fundraiser shares cannot exceed the product selling price", 400)
+    status = _clean_status(fields.get("status"), PRODUCT_STATUSES, "draft", "product_status")
     product = WebstoreProduct(
         tenant_id=user["tenant_id"],
         webstore_id=webstore_id,
@@ -1334,22 +1564,50 @@ async def create_product(user: dict, webstore_id: str, fields: dict[str, Any]) -
         production_method=_clean_optional_text(merged.get("production_method"), limit=120),
         supplier_source_info=_clean_optional_text(merged.get("supplier_source_info")),
         fulfillment_notes=_clean_optional_text(fields.get("fulfillment_notes")),
-        sku=None,
-        production_cost_cents=0,
-        selling_price_cents=0,
-        store_owner_share_cents=0,
-        platform_fee_basis_points=150,
+        sku=_clean_optional_text(fields.get("sku"), limit=120),
+        production_cost_cents=production_cost_cents,
+        selling_price_cents=selling_price_cents,
+        store_owner_share_cents=store_owner_share_cents,
+        fundraiser_share_cents=fundraiser_share_cents,
+        platform_fee_basis_points=_clean_basis_points(fields.get("platform_fee_basis_points"), default=int((template or {}).get("platform_fee_basis_points") or 150)),
         variants=[],
-        personalization_enabled=False,
+        personalization_enabled=bool(fields.get("personalization_enabled", False)),
+        personalization_fields=[],
+        bundle_items=[],
+        inventory_policy=str(fields.get("inventory_policy") or "not_tracked")[:80],
+        inventory_quantity=_clean_quantity(fields.get("inventory_quantity"), default=None),
+        launch_packet_eligible=bool(fields.get("launch_packet_eligible", False)),
+        launch_packet_include=bool(fields.get("launch_packet_include", False)),
         image_file_ids=[],
         customer_images=customer_images,
         production_notes=_clean_optional_text(merged.get("production_notes")),
         public=False,
         featured=False,
-        status="draft",
+        status=status,
         created_by_user_id=user.get("id"),
         updated_by_user_id=user.get("id"),
     ).model_dump()
+    variant_source = fields.get("variants") if "variants" in fields else (template or {}).get("default_variants")
+    product["variants"] = _normalize_variants(variant_source, base_selling_price_cents=selling_price_cents)
+    product["personalization_fields"] = _normalize_personalization_fields(
+        fields.get("personalization_fields"),
+        enabled=bool(product.get("personalization_enabled")),
+    )
+    product["bundle_items"] = await _normalize_bundle_items(user, webstore_id, product["id"], fields.get("bundle_items"))
+    await _ensure_unique_product_skus(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        product_id=product["id"],
+        sku=product.get("sku"),
+        variants=product.get("variants") or [],
+    )
+    if product.get("launch_packet_include") and not bool(product.get("launch_packet_eligible")):
+        product["launch_packet_eligible"] = True
+    if product.get("status") in {"ready", "active"}:
+        missing = [item["label"] for item in _product_setup_requirements(product) if not item["complete"]]
+        if missing:
+            raise WebstoreError("product_not_ready", f"Complete product setup before marking it ready: {', '.join(missing)}", 409)
+        product["launch_packet_eligible"] = True
     if "artwork_associations" in fields:
         product["artwork_associations"] = await _normalize_artwork_associations(user, webstore_id, product["id"], fields.get("artwork_associations"))
     elif template:
@@ -1464,12 +1722,7 @@ async def update_product(user: dict, webstore_id: str, product_id: str, fields: 
     product = await _get_product(user["tenant_id"], product_id, webstore_id)
     if not allow_system_transition:
         if STAGE4A_PUBLICATION_FIELDS & set(fields):
-            raise WebstoreError(
-                "stage4a_publication_not_available",
-                "Product Foundation cannot approve, activate, publish, feature, or unpublish products. Those controls are handled in a later Webstore stage.",
-                400,
-            )
-        _reject_stage4a_financial_variant_request(fields)
+            _reject_stage4a_publication_request(fields)
     expected = fields.get("expected_revision")
     if expected is None:
         raise WebstoreError("product_revision_required", "Reload this product before saving so we can verify you have the latest version.", 400)
@@ -1498,12 +1751,66 @@ async def update_product(user: dict, webstore_id: str, product_id: str, fields: 
         updates["artwork_associations"] = await _normalize_artwork_associations(user, webstore_id, product_id, fields.get("artwork_associations"))
     if "mockup_associations" in fields:
         updates["mockup_associations"] = await _normalize_mockup_associations(user, webstore_id, product_id, fields.get("mockup_associations"))
+    if "sku" in fields:
+        updates["sku"] = _clean_optional_text(fields.get("sku"), limit=120)
+    selling_price_cents = int(product.get("selling_price_cents") or 0)
+    if "selling_price_cents" in fields:
+        selling_price_cents = _clean_money(fields.get("selling_price_cents"), default=selling_price_cents)
+        updates["selling_price_cents"] = selling_price_cents
+    if "production_cost_cents" in fields:
+        updates["production_cost_cents"] = _clean_money(fields.get("production_cost_cents"), default=int(product.get("production_cost_cents") or 0))
+    if "store_owner_share_cents" in fields:
+        updates["store_owner_share_cents"] = _clean_money(fields.get("store_owner_share_cents"), default=int(product.get("store_owner_share_cents") or 0))
+    if "fundraiser_share_cents" in fields:
+        updates["fundraiser_share_cents"] = _clean_money(fields.get("fundraiser_share_cents"), default=int(product.get("fundraiser_share_cents") or 0))
+    if "platform_fee_basis_points" in fields:
+        updates["platform_fee_basis_points"] = _clean_basis_points(fields.get("platform_fee_basis_points"), default=int(product.get("platform_fee_basis_points") or 150))
+    if "variants" in fields:
+        updates["variants"] = _normalize_variants(fields.get("variants"), base_selling_price_cents=selling_price_cents)
+    personalization_enabled = bool(product.get("personalization_enabled"))
+    if "personalization_enabled" in fields:
+        personalization_enabled = bool(fields.get("personalization_enabled"))
+        updates["personalization_enabled"] = personalization_enabled
+    if "personalization_fields" in fields or "personalization_enabled" in fields:
+        updates["personalization_fields"] = _normalize_personalization_fields(
+            fields.get("personalization_fields", product.get("personalization_fields") or []),
+            enabled=personalization_enabled,
+        )
+    if "bundle_items" in fields:
+        updates["bundle_items"] = await _normalize_bundle_items(user, webstore_id, product_id, fields.get("bundle_items"))
+    if "inventory_policy" in fields:
+        updates["inventory_policy"] = str(fields.get("inventory_policy") or "not_tracked")[:80]
+    if "inventory_quantity" in fields:
+        updates["inventory_quantity"] = _clean_quantity(fields.get("inventory_quantity"), default=None)
+    if "launch_packet_eligible" in fields:
+        updates["launch_packet_eligible"] = bool(fields.get("launch_packet_eligible"))
+    if "launch_packet_include" in fields:
+        updates["launch_packet_include"] = bool(fields.get("launch_packet_include"))
+    projected_owner_share = int(updates.get("store_owner_share_cents", product.get("store_owner_share_cents") or 0) or 0)
+    projected_fundraiser_share = int(updates.get("fundraiser_share_cents", product.get("fundraiser_share_cents") or 0) or 0)
+    if projected_owner_share + projected_fundraiser_share > selling_price_cents:
+        raise WebstoreError("share_exceeds_price", "Owner and fundraiser shares cannot exceed the product selling price", 400)
+    await _ensure_unique_product_skus(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        product_id=product_id,
+        sku=updates.get("sku", product.get("sku")),
+        variants=updates.get("variants", product.get("variants") or []),
+    )
     if "public" in fields:
         updates["public"] = bool(fields.get("public"))
     if "featured" in fields:
         updates["featured"] = bool(fields.get("featured"))
     if "status" in fields:
         updates["status"] = _clean_status(fields.get("status"), PRODUCT_STATUSES, product.get("status", "draft"), "product_status")
+    projected = {**product, **updates}
+    if projected.get("status") in {"ready", "active"}:
+        missing = [item["label"] for item in _product_setup_requirements(projected) if not item["complete"]]
+        if missing:
+            raise WebstoreError("product_not_ready", f"Complete product setup before marking it ready: {', '.join(missing)}", 409)
+        updates["launch_packet_eligible"] = True
+    if updates.get("launch_packet_include") and not bool(projected.get("launch_packet_eligible") or updates.get("launch_packet_eligible")):
+        updates["launch_packet_eligible"] = True
     updates["revision"] = expected_revision + 1
     updates["updated_by_user_id"] = user.get("id")
     updates["updated_at"] = _now_iso()
