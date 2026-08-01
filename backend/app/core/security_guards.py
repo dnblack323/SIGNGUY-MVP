@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Iterable
+from urllib.parse import urlparse
 
 from .config import Settings
 
@@ -40,6 +41,60 @@ class StartupGuardError(RuntimeError):
 class GuardViolation:
     code: str
     message: str
+
+
+WEBSTORE_STRIPE_PLACEHOLDERS = frozenset({"", "change-me", "changeme", "placeholder", "test", "example"})
+
+
+def _valid_callback_url(value: str | None) -> bool:
+    if not value:
+        return False
+    parsed = urlparse(value)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def collect_webstore_stripe_violations(settings: Settings) -> list[GuardViolation]:
+    """Validate the deferred Webstores Stripe configuration without enabling calls."""
+    if not getattr(settings, "stripe_enabled", False):
+        return []
+
+    violations: list[GuardViolation] = []
+    secret = (getattr(settings, "stripe_secret_key", None) or "").strip()
+    publishable = (getattr(settings, "stripe_publishable_key", None) or "").strip()
+    mode = getattr(settings, "stripe_mode", "").strip().lower()
+    charge_model = getattr(settings, "stripe_charge_model", "deferred").strip().lower()
+
+    if secret.lower() in WEBSTORE_STRIPE_PLACEHOLDERS or publishable.lower() in WEBSTORE_STRIPE_PLACEHOLDERS:
+        violations.append(GuardViolation("webstore_stripe_credentials_missing", "Webstore Stripe credentials are required when STRIPE_ENABLED=true."))
+    if not secret or not publishable:
+        violations.append(GuardViolation("webstore_stripe_credentials_missing", "Webstore Stripe secret and publishable keys are required when STRIPE_ENABLED=true."))
+    if mode not in {"test", "live"}:
+        violations.append(GuardViolation("webstore_stripe_mode_invalid", "STRIPE_MODE must be test or live."))
+    if charge_model == "deferred":
+        violations.append(GuardViolation("webstore_stripe_charge_model_deferred", "Webstore Stripe charge model remains deferred."))
+    if charge_model not in {"deferred", "direct", "destination", "separate"}:
+        violations.append(GuardViolation("webstore_stripe_charge_model_invalid", "STRIPE_CONNECT_CHARGE_MODEL is not recognized."))
+    if mode == "test" and secret.startswith("sk_live_"):
+        violations.append(GuardViolation("webstore_stripe_mode_mismatch", "Test mode cannot use a live Stripe secret key."))
+    if mode == "live" and secret.startswith("sk_test_"):
+        violations.append(GuardViolation("webstore_stripe_mode_mismatch", "Live mode cannot use a test Stripe secret key."))
+    if mode == "test" and publishable.startswith("pk_live_"):
+        violations.append(GuardViolation("webstore_stripe_mode_mismatch", "Test mode cannot use a live Stripe publishable key."))
+    if mode == "live" and publishable.startswith("pk_test_"):
+        violations.append(GuardViolation("webstore_stripe_mode_mismatch", "Live mode cannot use a test Stripe publishable key."))
+    if not getattr(settings, "stripe_connect_client_id", None):
+        violations.append(GuardViolation("webstore_stripe_connect_client_id_missing", "Stripe Connect client ID is required when STRIPE_ENABLED=true."))
+    for name in (
+        "stripe_connect_return_url",
+        "stripe_connect_refresh_url",
+        "stripe_checkout_success_url",
+        "stripe_checkout_cancel_url",
+    ):
+        if not _valid_callback_url(getattr(settings, name, None)):
+            violations.append(GuardViolation("webstore_stripe_callback_url_invalid", f"{name} must be an absolute HTTP(S) URL."))
+    if not getattr(settings, "stripe_webhook_secret", None):
+        violations.append(GuardViolation("webstore_stripe_webhook_unavailable", "STRIPE_WEBHOOK_SECRET is required for provider event verification."))
+    return violations
 
 
 def _is_production(settings: Settings) -> bool:

@@ -50,6 +50,11 @@ export async function getWebstoreQuestionnaire(id) {
   return r.data;
 }
 
+export async function sendWebstoreQuestionnaire(id, payload = {}) {
+  const r = await api.post(`/webstores/${id}/questionnaire/send`, payload);
+  return r.data;
+}
+
 export async function getWebstoreQuestionnaireResponse(id) {
   const r = await api.get(`/webstores/${id}/questionnaire-response`);
   return r.data;
@@ -184,6 +189,16 @@ export async function updateWebstoreChangeRequest(webstoreId, requestId, payload
 
 export async function getLaunchReadiness(webstoreId) {
   const r = await api.get(`/webstores/${webstoreId}/launch-readiness`);
+  return r.data;
+}
+
+export async function getWebstorePaymentProviderStatus(webstoreId) {
+  const r = await api.get(`/webstores/${webstoreId}/payment-provider`);
+  return r.data;
+}
+
+export async function requestWebstorePaymentProviderAction(webstoreId, action) {
+  const r = await api.post(`/webstores/${webstoreId}/payment-provider/${action}`);
   return r.data;
 }
 

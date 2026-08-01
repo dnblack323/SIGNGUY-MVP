@@ -17,6 +17,7 @@ from . import stripe_core
 from .audit import record_audit
 from .invoice_reconciliation import reconcile
 from .sequence import next_record_number
+from .webstore_payment_provider import ProviderRefund
 
 
 async def _invoice_balance(tenant_id: str, invoice_id: str) -> tuple[dict, int]:
@@ -477,6 +478,108 @@ async def initiate_refund(
         action="refund_initiated", entity_type="invoice", entity_id=src["invoice_id"],
         summary=f"Refund initiated (${amount_cents / 100:,.2f}) for payment {payment_id}",
         diff={"refund_id": refund_row.id, "stripe_refund_id": result["id"], "reason": reason},
+    )
+    return serialize_doc(refund_row.model_dump())
+
+
+async def record_provider_refund(
+    *,
+    tenant_id: str,
+    payment_id: str,
+    provider_refund: ProviderRefund,
+    reason: str,
+    actor_user_id: str,
+    actor_email: str,
+) -> dict:
+    """Record a refund after a Webstore provider has already approved it.
+
+    This is deliberately separate from ``initiate_refund``. EC4 owns the
+    canonical Payment record, while the Webstore provider boundary owns the
+    external refund operation and supplies the reconciled reference.
+    """
+    src = await db.payments.find_one({"id": payment_id, "tenant_id": tenant_id})
+    if not src:
+        raise ValueError("payment_not_found")
+    if src.get("source") != "stripe":
+        raise ValueError("only_stripe_payments_can_be_refunded")
+    if src.get("status") not in {"confirmed", "partially_refunded"}:
+        raise ValueError("payment_not_refundable")
+    if not reason or not reason.strip():
+        raise ValueError("refund_reason_required")
+    if provider_refund.provider_payment_reference != src.get("stripe_payment_intent_id"):
+        raise ValueError("provider_payment_reference_mismatch")
+    if provider_refund.currency != str(src.get("currency") or "usd").lower():
+        raise ValueError("provider_refund_currency_mismatch")
+    if provider_refund.amount_cents <= 0:
+        raise ValueError("refund_amount_invalid")
+
+    existing = await db.payments.find_one(
+        {"tenant_id": tenant_id, "refund_of_payment_id": payment_id, "idempotency_key": provider_refund.idempotency_key},
+        {"_id": 0},
+    )
+    if existing:
+        return serialize_doc(existing)
+
+    prior_refunded = 0
+    async for refund in db.payments.find(
+        {"tenant_id": tenant_id, "refund_of_payment_id": payment_id, "status": {"$in": ["pending", "confirmed"]}},
+        {"_id": 0, "amount_cents": 1},
+    ):
+        prior_refunded += int(refund.get("amount_cents") or 0)
+    if provider_refund.amount_cents > int(src.get("amount_cents") or 0) - prior_refunded:
+        raise ValueError("refund_amount_invalid")
+
+    refund_row = Payment(
+        tenant_id=tenant_id,
+        record_number_type="refund",
+        invoice_id=src["invoice_id"],
+        customer_id=src["customer_id"],
+        order_id=src.get("order_id"),
+        source="stripe",
+        status="pending",
+        amount_cents=provider_refund.amount_cents,
+        currency=provider_refund.currency,
+        stripe_refund_id=provider_refund.provider_refund_reference,
+        refund_of_payment_id=payment_id,
+        refund_reason=reason.strip(),
+        idempotency_key=provider_refund.idempotency_key,
+        created_by=actor_user_id,
+    )
+    allocation = await next_record_number(
+        tenant_id=tenant_id,
+        record_type="refund",
+        idempotency_key=provider_refund.idempotency_key,
+        issued_to_entity_type="payment",
+        issued_to_entity_id=refund_row.id,
+        actor_user_id=actor_user_id,
+        actor_email=actor_email,
+        reason="payment.record_provider_refund",
+        context={"source_payment_id": payment_id, "provider_refund_reference": provider_refund.provider_refund_reference},
+    )
+    refund_row.number = allocation.number
+    try:
+        await db.payments.insert_one(prepare_for_mongo(refund_row.model_dump()))
+    except DuplicateKeyError:
+        existing = await db.payments.find_one(
+            {"tenant_id": tenant_id, "refund_of_payment_id": payment_id, "idempotency_key": provider_refund.idempotency_key},
+            {"_id": 0},
+        )
+        if existing:
+            return serialize_doc(existing)
+        raise
+    await record_audit(
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        actor_email=actor_email,
+        action="refund_recorded_provider_authority",
+        entity_type="invoice",
+        entity_id=src["invoice_id"],
+        summary=f"Provider-authorized refund recorded (${provider_refund.amount_cents / 100:,.2f})",
+        diff={
+            "refund_id": refund_row.id,
+            "provider_refund_reference": provider_refund.provider_refund_reference,
+            "provider_event_status": provider_refund.status,
+        },
     )
     return serialize_doc(refund_row.model_dump())
 

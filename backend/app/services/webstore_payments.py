@@ -12,6 +12,7 @@ from typing import Any, Optional
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
+from ..core.config import get_settings
 from ..core.db import db
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.customer import Customer
@@ -20,6 +21,17 @@ from ..models.payment import Payment
 from ..models.webstore import WebstoreLedgerEntry, WebstorePaymentEvent
 from .sequence import next_number, next_record_number
 from .webstores import WebstoreError, _audit
+from .webstore_payment_provider import (
+    PAYMENT_PROVIDER_NOT_CONFIGURED,
+    ProviderAuthority,
+    ProviderFinancialEvent,
+    ProviderRefund,
+    VerifiedProviderPayment,
+    financial_event_from_provider_result,
+    get_webstore_payment_provider,
+    provider_configuration_status,
+    refund_from_provider_result,
+)
 
 
 def _now_iso() -> str:
@@ -50,6 +62,24 @@ def _event_response(event: dict) -> dict:
         "order_id": event.get("canonical_order_id"),
         "payment_id": event.get("canonical_payment_id"),
     }
+
+
+def _require_provider_authority(authority: Optional[ProviderAuthority] = None) -> None:
+    if authority is not None:
+        if authority.verified and authority.webhook_verified and authority.charge_model != "deferred":
+            return
+        raise WebstoreError(
+            "payment_provider_not_configured",
+            "Provider-authoritative Webstore payment processing is unavailable until provider verification is complete.",
+            503,
+        )
+    status = provider_configuration_status()
+    if not status["provider_authority"]:
+        raise WebstoreError(
+            "payment_provider_not_configured",
+            "Provider-authoritative Webstore payment processing is unavailable until the Stripe adapter is implemented and verified.",
+            503,
+        )
 
 
 async def _customer_for_intent(intent: dict, *, provider_event_id: str) -> dict:
@@ -157,8 +187,6 @@ async def _create_payment(intent: dict, order: dict, customer: dict, event: Webs
         confirmed_at=utc_now(),
         created_by="webstore-payment",
     ).model_dump()
-    if event.provider == "local_test_provider":
-        payment["dev_simulated"] = True
     allocation = await next_record_number(
         tenant_id=intent["tenant_id"],
         record_type="payment",
@@ -262,8 +290,30 @@ async def _bridge_to_production(intent: dict, order: dict) -> tuple[str, Optiona
         return "failed", None
 
 
-async def process_verified_payment_event(event_fields: dict[str, Any]) -> dict:
+async def process_verified_payment_event(
+    event_fields: Optional[dict[str, Any]] = None,
+    *,
+    verified_payment: Optional[VerifiedProviderPayment] = None,
+    provider_authority: Optional[ProviderAuthority] = None,
+) -> dict:
+    _require_provider_authority(provider_authority)
+    if verified_payment is not None:
+        if not isinstance(verified_payment, VerifiedProviderPayment):
+            raise WebstoreError("payment_event_invalid", "Verified provider payment result is invalid", 400)
+        event_fields = verified_payment.as_internal_fields()
+    elif provider_authority is not None:
+        raise WebstoreError(
+            "payment_event_requires_typed_result",
+            "Provider-authorized payment processing requires a typed provider result",
+            400,
+        )
+    if not isinstance(event_fields, dict):
+        raise WebstoreError("payment_event_incomplete", "Verified payment event is incomplete", 400)
     provider = str(event_fields.get("provider") or "").strip().lower()
+    provider_mode = str(event_fields.get("provider_mode") or "test").strip().lower()
+    provider_account_reference = event_fields.get("provider_account_reference")
+    if provider_authority is not None and (provider != provider_authority.provider or provider_mode != provider_authority.mode):
+        raise WebstoreError("provider_event_authority_mismatch", "Provider event does not match provider authority", 409)
     provider_event_id = str(event_fields.get("provider_event_id") or "").strip()
     provider_payment_id = str(event_fields.get("provider_payment_id") or "").strip()
     purchase_intent_id = str(event_fields.get("purchase_intent_id") or "").strip()
@@ -286,12 +336,13 @@ async def process_verified_payment_event(event_fields: dict[str, Any]) -> dict:
         provider=provider,
         provider_event_id=provider_event_id,
         provider_payment_id=provider_payment_id,
+        provider_mode=provider_mode,
+        provider_account_reference=provider_account_reference,
         amount_cents=int(event_fields.get("amount_cents") or 0),
         currency=str(event_fields.get("currency") or "usd").lower(),
-        raw_event_snapshot=event_fields.get("raw_event_snapshot") or {},
     )
     try:
-        await db.webstore_payment_events.insert_one(prepare_for_mongo(event.model_dump()))
+        await db.webstore_payment_events.insert_one(prepare_for_mongo(event.model_dump(exclude={"raw_event_snapshot"})))
     except DuplicateKeyError:
         existing_event = await _existing_event(provider, provider_event_id)
         if existing_event:
@@ -435,7 +486,10 @@ async def initiate_webstore_refund(
     actor_user_id: str,
     actor_email: str,
     idempotency_key: Optional[str] = None,
+    provider=None,
+    provider_authority: Optional[ProviderAuthority] = None,
 ) -> dict:
+    _require_provider_authority(provider_authority)
     intent = await db.webstore_purchase_intents.find_one(
         {"tenant_id": tenant_id, "webstore_id": webstore_id, "canonical_payment_id": payment_id},
         {"_id": 0},
@@ -443,29 +497,59 @@ async def initiate_webstore_refund(
     if not intent:
         raise WebstoreError("webstore_payment_not_found", "Webstore payment not found", 404)
 
-    from .payment_service import initiate_refund
+    source_payment = await db.payments.find_one({"tenant_id": tenant_id, "id": payment_id}, {"_id": 0})
+    if not source_payment or source_payment.get("source") != "stripe":
+        raise WebstoreError("payment_not_refundable", "Webstore payment is not refundable", 409)
+    if source_payment.get("status") not in {"confirmed", "partially_refunded"}:
+        raise WebstoreError("payment_not_refundable", "Webstore payment is not refundable", 409)
+    refund_amount = amount_cents
+    if refund_amount is None:
+        refund_amount = int(source_payment.get("amount_cents") or 0)
+    provider_impl = provider or get_webstore_payment_provider(get_settings())
+    provider_result = await provider_impl.create_refund(
+        tenant_id=tenant_id,
+        webstore_id=webstore_id,
+        provider_payment_reference=source_payment.get("stripe_payment_intent_id"),
+        amount_cents=refund_amount,
+        currency=str(source_payment.get("currency") or "usd").lower(),
+        reason=reason,
+        idempotency_key=idempotency_key or f"webstore-refund:{payment_id}:{refund_amount}",
+        provider_authority=provider_authority,
+    )
+    if not provider_result.ok:
+        code = "payment_provider_not_configured" if provider_result.code == PAYMENT_PROVIDER_NOT_CONFIGURED else "payment_provider_refund_failed"
+        raise WebstoreError(code, provider_result.message, 503)
+    try:
+        provider_refund = refund_from_provider_result(provider_result)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise WebstoreError("provider_refund_invalid", "Provider refund result failed reconciliation", 502) from exc
+    if provider_refund.provider_payment_reference != source_payment.get("stripe_payment_intent_id"):
+        raise WebstoreError("provider_refund_mismatch", "Provider refund does not match the canonical Payment", 409)
+    if provider_authority is not None and (
+        provider_refund.provider != provider_authority.provider
+        or provider_refund.provider_mode != provider_authority.mode
+        or provider_refund.provider_account_reference != provider_authority.account_reference
+    ):
+        raise WebstoreError("provider_refund_authority_mismatch", "Provider refund does not match provider authority", 409)
+    if provider_refund.amount_cents != refund_amount:
+        raise WebstoreError("provider_refund_amount_mismatch", "Provider refund amount does not match the requested amount", 409)
+    requested_idempotency_key = idempotency_key or f"webstore-refund:{payment_id}:{refund_amount}"
+    if provider_refund.idempotency_key != requested_idempotency_key:
+        raise WebstoreError("provider_refund_idempotency_mismatch", "Provider refund does not match the requested idempotency key", 409)
 
     try:
-        refund = await initiate_refund(
+        from .payment_service import record_provider_refund
+
+        refund = await record_provider_refund(
             tenant_id=tenant_id,
             payment_id=payment_id,
-            amount_cents=amount_cents,
+            provider_refund=provider_refund,
             reason=reason,
             actor_user_id=actor_user_id,
             actor_email=actor_email,
-            idempotency_key=idempotency_key,
         )
     except ValueError as exc:
         raise WebstoreError(str(exc), str(exc), 400) from exc
-
-    source_payment = await db.payments.find_one({"tenant_id": tenant_id, "id": payment_id}, {"_id": 0})
-    if source_payment and source_payment.get("dev_simulated"):
-        now = utc_now()
-        await db.payments.update_one(
-            {"tenant_id": tenant_id, "id": refund["id"]},
-            {"$set": {"status": "confirmed", "refunded_at": now, "updated_at": now.isoformat()}},
-        )
-        refund = serialize_doc(await db.payments.find_one({"tenant_id": tenant_id, "id": refund["id"]}, {"_id": 0}))
 
     entry = WebstoreLedgerEntry(
         tenant_id=tenant_id,
@@ -492,11 +576,6 @@ async def initiate_webstore_refund(
         {"tenant_id": tenant_id, "id": intent["id"]},
         {"$set": {"refund_status": refund_status, "status": refund_status, "updated_at": _now_iso()}},
     )
-    if source_payment and source_payment.get("dev_simulated"):
-        await db.payments.update_one(
-            {"tenant_id": tenant_id, "id": payment_id},
-            {"$set": {"status": refund_status, "updated_at": _now_iso()}},
-        )
     await _audit(
         tenant_id=tenant_id,
         webstore_id=webstore_id,
@@ -506,75 +585,108 @@ async def initiate_webstore_refund(
         action="webstore.refund_recorded",
         entity_type="payment",
         entity_id=refund["id"],
-        summary="Webstore refund recorded through canonical Payment service",
-        metadata={"source_payment_id": payment_id, "amount_cents": refund.get("amount_cents"), "refund_status": refund_status},
+        summary="Webstore refund recorded through provider-authorized canonical Payment service",
+        metadata={"source_payment_id": payment_id, "amount_cents": refund.get("amount_cents"), "refund_status": refund_status, "provider_refund_reference": provider_refund.provider_refund_reference},
     )
     ledger = await db.webstore_ledger_entries.find_one({"tenant_id": tenant_id, "source_type": "canonical_refund_payment", "source_id": refund["id"]}, {"_id": 0})
     return {"refund": refund, "ledger_entry": serialize_doc(ledger), "refund_status": refund_status}
 
 
-async def record_webstore_payout_event(
+async def reconcile_webstore_financial_event(
     *,
     tenant_id: str,
     webstore_id: str,
-    purchase_intent_id: str,
-    amount_cents: int,
-    provider_event_id: str,
-    status: str,
+    provider_event: Optional[ProviderFinancialEvent] = None,
+    provider=None,
+    provider_authority: Optional[ProviderAuthority] = None,
 ) -> dict:
-    intent = await db.webstore_purchase_intents.find_one({"tenant_id": tenant_id, "webstore_id": webstore_id, "id": purchase_intent_id}, {"_id": 0})
-    if not intent or not intent.get("canonical_payment_id"):
-        raise WebstoreError("paid_purchase_intent_required", "A verified paid Webstore purchase intent is required", 409)
-    entry = WebstoreLedgerEntry(
-        tenant_id=tenant_id,
-        webstore_id=webstore_id,
-        buyer_order_id=purchase_intent_id,
-        entry_type="payout",
-        amount_cents=amount_cents,
-        basis_amount_cents=int(intent.get("total_cents") or 0),
-        source_type="provider_payout_event",
-        source_id=provider_event_id,
-        status="posted" if status == "paid" else "adjusted",
-        notes=f"Provider payout event status {status}",
-    ).model_dump()
-    await _insert_ledger_entry(entry)
-    await db.webstore_purchase_intents.update_one(
-        {"tenant_id": tenant_id, "id": purchase_intent_id},
-        {"$set": {"payout_status": status, "updated_at": _now_iso()}},
+    """Reconcile only typed, provider-authoritative payout/dispute events."""
+    _require_provider_authority(provider_authority)
+    if provider_event is None:
+        provider_impl = provider or get_webstore_payment_provider(get_settings())
+        result = await provider_impl.reconcile_provider_event(
+            tenant_id=tenant_id,
+            webstore_id=webstore_id,
+            provider_authority=provider_authority,
+        )
+        if not result.ok:
+            code = "payment_provider_not_configured" if result.code == PAYMENT_PROVIDER_NOT_CONFIGURED else "provider_event_reconciliation_failed"
+            raise WebstoreError(code, result.message, 503)
+        try:
+            provider_event = financial_event_from_provider_result(result)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise WebstoreError("provider_event_invalid", "Provider event failed reconciliation", 502) from exc
+    if not isinstance(provider_event, ProviderFinancialEvent):
+        raise WebstoreError("provider_event_invalid", "Provider event is not a typed provider result", 400)
+
+    intent = await db.webstore_purchase_intents.find_one(
+        {"tenant_id": tenant_id, "webstore_id": webstore_id, "provider_payment_id": provider_event.provider_payment_reference},
+        {"_id": 0},
     )
-    saved = await db.webstore_ledger_entries.find_one({"tenant_id": tenant_id, "source_type": "provider_payout_event", "source_id": provider_event_id}, {"_id": 0})
-    return {"ledger_entry": serialize_doc(saved), "payout_status": status}
-
-
-async def record_webstore_dispute_event(
-    *,
-    tenant_id: str,
-    webstore_id: str,
-    purchase_intent_id: str,
-    amount_cents: int,
-    provider_event_id: str,
-    status: str,
-) -> dict:
-    intent = await db.webstore_purchase_intents.find_one({"tenant_id": tenant_id, "webstore_id": webstore_id, "id": purchase_intent_id}, {"_id": 0})
     if not intent or not intent.get("canonical_payment_id"):
         raise WebstoreError("paid_purchase_intent_required", "A verified paid Webstore purchase intent is required", 409)
-    entry_type = "dispute_release" if status in {"won", "released"} else "dispute_hold"
-    amount = abs(amount_cents) if entry_type == "dispute_release" else -abs(amount_cents)
+    if provider_event.amount_cents < 0 or provider_event.amount_cents > int(intent.get("total_cents") or 0):
+        raise WebstoreError("provider_event_amount_invalid", "Provider event amount is outside the canonical purchase", 409)
+    if provider_event.currency != str(intent.get("currency") or "usd").lower():
+        raise WebstoreError("provider_event_currency_mismatch", "Provider event currency does not match the purchase", 409)
+    if provider_authority is not None and (
+        provider_event.provider != provider_authority.provider
+        or provider_event.provider_mode != provider_authority.mode
+        or provider_event.provider_account_reference != provider_authority.account_reference
+    ):
+        raise WebstoreError("provider_event_authority_mismatch", "Provider event does not match provider authority", 409)
+
+    source_type = "provider_dispute_event" if provider_event.event_type == "dispute" else f"provider_{provider_event.event_type}_event"
+    existing = await db.webstore_ledger_entries.find_one(
+        {"tenant_id": tenant_id, "webstore_id": webstore_id, "source_type": source_type, "source_id": provider_event.provider_event_id},
+        {"_id": 0},
+    )
+    if existing:
+        same = all(
+            [
+                existing.get("amount_cents") == provider_event.amount_cents,
+                existing.get("currency") == provider_event.currency,
+                existing.get("provider_event_type") == provider_event.event_type,
+                existing.get("provider_payment_reference") == provider_event.provider_payment_reference,
+            ]
+        )
+        if not same:
+            raise WebstoreError("provider_event_conflict", "Conflicting provider event was rejected", 409)
+        return {"ledger_entry": serialize_doc(existing), "already_processed": True}
+
+    sequence_field = "dispute_provider_event_sequence" if provider_event.event_type == "dispute" else "payout_provider_event_sequence"
+    current_sequence = intent.get(sequence_field)
+    if provider_event.sequence is not None and current_sequence is not None and provider_event.sequence <= int(current_sequence):
+        raise WebstoreError("provider_event_out_of_order", "Out-of-order provider event was rejected", 409)
+
+    if provider_event.event_type == "dispute":
+        entry_type = "dispute_release" if provider_event.status in {"won", "released", "closed"} else "dispute_hold"
+        amount_cents = abs(provider_event.amount_cents) if entry_type == "dispute_release" else -abs(provider_event.amount_cents)
+        intent_updates = {"dispute_status": provider_event.status, "status": "disputed"}
+    else:
+        entry_type = "payout"
+        amount_cents = provider_event.amount_cents
+        intent_updates = {"payout_status": provider_event.status}
     entry = WebstoreLedgerEntry(
         tenant_id=tenant_id,
         webstore_id=webstore_id,
-        buyer_order_id=purchase_intent_id,
+        buyer_order_id=intent["id"],
         entry_type=entry_type,  # type: ignore[arg-type]
-        amount_cents=amount,
+        amount_cents=amount_cents,
+        currency=provider_event.currency,
         basis_amount_cents=int(intent.get("total_cents") or 0),
-        source_type="provider_dispute_event",
-        source_id=provider_event_id,
-        notes=f"Provider dispute event status {status}",
+        source_type=source_type,
+        source_id=provider_event.provider_event_id,
+        provider_event_type=provider_event.event_type,
+        provider_mode=provider_event.provider_mode,
+        provider_account_reference=provider_event.provider_account_reference,
+        provider_payment_reference=provider_event.provider_payment_reference,
+        provider_event_sequence=provider_event.sequence,
+        notes=f"Provider event status {provider_event.status}",
     ).model_dump()
     await _insert_ledger_entry(entry)
-    await db.webstore_purchase_intents.update_one(
-        {"tenant_id": tenant_id, "id": purchase_intent_id},
-        {"$set": {"dispute_status": status, "status": "disputed", "updated_at": _now_iso()}},
-    )
-    saved = await db.webstore_ledger_entries.find_one({"tenant_id": tenant_id, "source_type": "provider_dispute_event", "source_id": provider_event_id}, {"_id": 0})
-    return {"ledger_entry": serialize_doc(saved), "dispute_status": status}
+    if provider_event.sequence is not None:
+        intent_updates[sequence_field] = provider_event.sequence
+    intent_updates["updated_at"] = _now_iso()
+    await db.webstore_purchase_intents.update_one({"tenant_id": tenant_id, "id": intent["id"]}, {"$set": intent_updates})
+    return {"ledger_entry": serialize_doc(entry), "already_processed": False}

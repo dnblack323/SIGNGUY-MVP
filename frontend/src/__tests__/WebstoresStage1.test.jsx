@@ -15,6 +15,7 @@ import {
   getWebstoreQuestionnaireResponse,
   generateLaunchPacket,
   getLaunchReadiness,
+  getWebstorePaymentProviderStatus,
   getWebstoreSetupProgress,
   getWebstore,
   getWebstoreReports,
@@ -49,6 +50,7 @@ import {
   createWebstoreProductCategory,
   listWebstoreProductCategories,
   updateWebstoreProductCategory,
+  requestWebstorePaymentProviderAction,
 } from "@/lib/webstores";
 import { useAuth } from "@/auth/AuthContext";
 
@@ -66,6 +68,7 @@ jest.mock("@/lib/webstores", () => ({
   getWebstoreQuestionnaireResponse: jest.fn(),
   generateLaunchPacket: jest.fn(),
   getLaunchReadiness: jest.fn(),
+  getWebstorePaymentProviderStatus: jest.fn(),
   getWebstoreSetupProgress: jest.fn(),
   getWebstore: jest.fn(),
   getWebstoreReports: jest.fn(),
@@ -100,6 +103,7 @@ jest.mock("@/lib/webstores", () => ({
   createWebstoreProductCategory: jest.fn(),
   listWebstoreProductCategories: jest.fn(),
   updateWebstoreProductCategory: jest.fn(),
+  requestWebstorePaymentProviderAction: jest.fn(),
 }));
 
 jest.mock("@/auth/AuthContext", () => ({
@@ -143,6 +147,7 @@ beforeEach(() => {
   getWebstoreQuestionnaireResponse.mockResolvedValue({ submission: null });
   generateLaunchPacket.mockResolvedValue({});
   getWebstoreSetupProgress.mockResolvedValue({ setup_state: "not_started", steps: [] });
+  getWebstorePaymentProviderStatus.mockResolvedValue({ status: { label: "Not configured", reason: "Stripe integration is disabled." }, actions: {} });
   listWebstoreAssignments.mockResolvedValue([]);
   listWebstoreSetupFiles.mockResolvedValue([]);
   applyWebstoreAnswers.mockResolvedValue({});
@@ -168,6 +173,7 @@ beforeEach(() => {
   listWebstoreArtwork.mockResolvedValue([]);
   listWebstoreMockups.mockResolvedValue([]);
   updateWebstoreProductCategory.mockResolvedValue({});
+  requestWebstorePaymentProviderAction.mockResolvedValue({});
   getWebstoreBranding.mockResolvedValue({
     webstore: { id: "ws-1", name: "Team Store", store_type: "general" },
     branding: {

@@ -156,7 +156,7 @@ LedgerEntryType = Literal[
     "dispute_release",
 ]
 LedgerEntryStatus = Literal["posted", "reversed", "adjusted"]
-StripeBoundaryStatus = Literal["local_only", "pending_provider", "provider_ready", "failed"]
+StripeBoundaryStatus = Literal["pending_provider", "provider_ready", "failed"]
 AIUsageStatus = Literal["drafted", "reviewed", "approved", "rejected"]
 
 
@@ -203,6 +203,17 @@ class Webstore(BaseDoc):
     stripe_onboarding_required: bool = False
     stripe_payment_ready: bool = False
     payment_readiness_status: str = "not_configured"
+    payment_provider: str = "stripe"
+    payment_provider_mode: str = "test"
+    provider_account_reference: Optional[str] = None
+    provider_onboarding_state: str = "not_started"
+    provider_charges_enabled: bool = False
+    provider_payouts_enabled: bool = False
+    provider_requirements_currently_due: list[str] = Field(default_factory=list)
+    provider_requirements_past_due: list[str] = Field(default_factory=list)
+    provider_restriction_status: Optional[str] = None
+    provider_last_verified_at: Optional[str] = None
+    provider_readiness_source: str = "provider_unconfigured"
     public_url: Optional[str] = None
     deadline_at: Optional[str] = None
     intended_launch_at: Optional[str] = None
@@ -244,7 +255,7 @@ class WebstoreProductTemplate(BaseDoc):
     suggested_production_cost_cents: StrictInt = Field(default=0, ge=0)
     suggested_selling_price_cents: StrictInt = Field(default=0, ge=0)
     suggested_store_owner_share_cents: StrictInt = Field(default=0, ge=0)
-    platform_fee_basis_points: StrictInt = Field(default=150, ge=0, le=10000)
+    platform_fee_basis_points: StrictInt = Field(default=0, ge=0, le=10000)
     internal_notes: Optional[str] = None
     editable_by_shop: bool = True
     active: bool = True
@@ -274,7 +285,7 @@ class WebstoreProduct(BaseDoc):
     selling_price_cents: StrictInt = Field(ge=0)
     store_owner_share_cents: StrictInt = Field(default=0, ge=0)
     fundraiser_share_cents: StrictInt = Field(default=0, ge=0)
-    platform_fee_basis_points: StrictInt = Field(default=150, ge=0, le=10000)
+    platform_fee_basis_points: StrictInt = Field(default=0, ge=0, le=10000)
     variants: list[dict[str, Any]] = Field(default_factory=list)
     personalization_enabled: bool = False
     personalization_fields: list[dict[str, Any]] = Field(default_factory=list)
@@ -615,6 +626,16 @@ class WebstorePurchaseIntent(BaseDoc):
     provider_payment_id: Optional[str] = None
     provider_checkout_id: Optional[str] = None
     checkout_status: str = "created"
+    checkout_attempt_id: Optional[str] = None
+    checkout_attempt_state: str = "not_created"
+    provider_mode: str = "test"
+    provider_session_reference: Optional[str] = None
+    provider_payment_reference: Optional[str] = None
+    expected_amount_cents: StrictInt = Field(default=0, ge=0)
+    expected_currency: str = "usd"
+    reconciliation_state: str = "not_started"
+    processing_state: str = "not_started"
+    recovery_state: str = "not_required"
     confirmation_token: Optional[str] = None
     verified_payment_event_id: Optional[str] = None
     production_bridge_status: str = "not_started"
@@ -623,6 +644,8 @@ class WebstorePurchaseIntent(BaseDoc):
     refund_status: str = "not_refunded"
     dispute_status: str = "none"
     payout_status: str = "pending"
+    payout_provider_event_sequence: Optional[StrictInt] = None
+    dispute_provider_event_sequence: Optional[StrictInt] = None
     immutable_snapshot: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -633,6 +656,8 @@ class WebstorePaymentEvent(BaseDoc):
     provider: str
     provider_event_id: str
     provider_payment_id: str
+    provider_mode: str = "test"
+    provider_account_reference: Optional[str] = None
     amount_cents: StrictInt = Field(ge=0)
     currency: str = "usd"
     status: PaymentEventStatus = "processing"
@@ -641,6 +666,9 @@ class WebstorePaymentEvent(BaseDoc):
     canonical_payment_id: Optional[str] = None
     failure_code: Optional[str] = None
     failure_reason: Optional[str] = None
+    reconciliation_state: str = "pending"
+    quarantine_reason: Optional[str] = None
+    processing_state: str = "not_started"
     processed_at: Optional[str] = None
     raw_event_snapshot: dict[str, Any] = Field(default_factory=dict)
 
@@ -656,6 +684,11 @@ class WebstoreLedgerEntry(BaseDoc):
     snapshot_basis_points: Optional[StrictInt] = Field(default=None, ge=0, le=10000)
     source_type: str
     source_id: str
+    provider_event_type: Optional[str] = None
+    provider_mode: Optional[str] = None
+    provider_account_reference: Optional[str] = None
+    provider_payment_reference: Optional[str] = None
+    provider_event_sequence: Optional[StrictInt] = None
     status: LedgerEntryStatus = "posted"
     reversal_of_ledger_entry_id: Optional[str] = None
     notes: Optional[str] = None
@@ -690,11 +723,30 @@ class WebstoreStripeConnectRecord(BaseDoc):
     webstore_id: str
     owner_id: Optional[str] = None
     record_type: str
-    status: StripeBoundaryStatus = "local_only"
+    status: StripeBoundaryStatus = "pending_provider"
+    provider_name: str = "stripe"
+    provider_mode: str = "test"
+    connected_account_reference: Optional[str] = None
+    onboarding_state: str = "not_started"
+    charges_enabled: bool = False
+    payouts_enabled: bool = False
+    requirements_currently_due: list[str] = Field(default_factory=list)
+    requirements_past_due: list[str] = Field(default_factory=list)
+    restriction_status: Optional[str] = None
+    last_provider_verified_at: Optional[str] = None
     stripe_account_id: Optional[str] = None
     stripe_checkout_session_id: Optional[str] = None
     checkout_url: Optional[str] = None
     amount_cents: Optional[StrictInt] = Field(default=None, ge=0)
     currency: str = "usd"
     idempotency_key: Optional[str] = None
+    expected_amount_cents: Optional[StrictInt] = Field(default=None, ge=0)
+    expected_currency: str = "usd"
+    provider_session_reference: Optional[str] = None
+    provider_payment_reference: Optional[str] = None
+    provider_event_reference: Optional[str] = None
+    reconciliation_state: str = "not_started"
+    processing_state: str = "not_started"
+    recovery_state: str = "not_required"
+    allocation_snapshot: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)

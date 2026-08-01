@@ -1,9 +1,6 @@
 """EC14 - Webstores contracts."""
 from __future__ import annotations
 
-import hashlib
-import hmac
-import json
 import uuid
 
 import pytest
@@ -192,11 +189,8 @@ async def test_webstore_permission_tenant_and_owner_portal_scope(ctx):
 
 
 @pytest.mark.asyncio
-async def test_launch_checkout_purchase_intent_ledger_reversal_and_legacy_bridge_safety(ctx, monkeypatch):
+async def test_launch_readiness_blocks_public_commerce_until_provider_authority(ctx, monkeypatch):
     monkeypatch.setenv("AUTH_DEV_BYPASS", "true")
-    monkeypatch.setenv("WEBSTORE_TEST_WEBHOOK_SECRET", "webstore-test-secret")
-    before_invoices = await db.invoices.count_documents({"tenant_id": ctx["tenant_id"]})
-    before_payments = await db.payments.count_documents({"tenant_id": ctx["tenant_id"]})
     suffix = uuid.uuid4().hex[:6]
 
     async with await _client_as(ctx["owner"]) as owner_client:
@@ -227,179 +221,11 @@ async def test_launch_checkout_purchase_intent_ledger_reversal_and_legacy_bridge
             app.dependency_overrides[get_current_user] = _override(ctx["owner"])
             ready = await owner_client_again.get(f"/api/webstores/{store['id']}/launch-readiness")
             assert ready.status_code == 200
-            assert ready.json()["ready"] is True, ready.text
-            assert ready.json()["checks"]["payment_ready"] is True
-            assert ready.json()["public_launch_blocked_until_batch_3"] is False
-            assert ready.json()["payment_readiness_source"] == "computed"
+            assert ready.json()["ready"] is False, ready.text
+            assert ready.json()["checks"]["payment_ready"] is False
+            assert ready.json()["public_launch_blocked_until_batch_3"] is True
+            assert ready.json()["payment_readiness_source"] == "provider_boundary"
             launched = await owner_client_again.post(f"/api/webstores/{store['id']}/status", json={"status": "live"})
-            assert launched.status_code == 200, launched.text
-            store = await db.webstores.find_one({"tenant_id": ctx["tenant_id"], "id": store["id"]}, {"_id": 0})
-
-    public = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
-    async with public:
-        storefront = await public.get(f"/api/public/webstores/{store['public_slug']}")
-        assert storefront.status_code == 200, storefront.text
-        public_product = storefront.json()["products"][0]
-        assert public_product["id"] == product["id"]
-        assert "production_cost_cents" not in public_product
-        assert storefront.json()["webstore"]["checkout_enabled"] is True
-        tampered = await public.post(
-            f"/api/public/webstores/{store['public_slug']}/buyer-orders",
-            json={
-                "buyer_name": "Casey Buyer",
-                "buyer_email": f"casey-{suffix}@example.com",
-                "line_items": [{"product_id": product["id"], "quantity": 2}],
-                "donation_cents": 500,
-                "shipping_cents": 800,
-                "tax_cents": 350,
-                "idempotency_key": f"buyer-{suffix}",
-            },
-        )
-        assert tampered.status_code == 400
-        order_resp = await public.post(
-            f"/api/public/webstores/{store['public_slug']}/buyer-orders",
-            json={
-                "buyer_name": "Casey Buyer",
-                "buyer_email": f"casey-{suffix}@example.com",
-                "line_items": [{"product_id": product["id"], "quantity": 2}],
-                "idempotency_key": f"buyer-{suffix}",
-            },
-        )
-        assert order_resp.status_code == 201, order_resp.text
-        payload = order_resp.json()
-        purchase_intent = payload["purchase_intent"]
-        assert "immutable_snapshot" not in purchase_intent
-        assert purchase_intent["product_subtotal_cents"] == 5000
-        assert purchase_intent["donation_cents"] == 0
-        assert purchase_intent["shipping_cents"] == 0
-        assert purchase_intent["tax_cents"] == 0
-        assert purchase_intent["total_cents"] == 5000
-        assert payload["checkout_available"] is True
-        assert payload["checkout"]["payment_authority"] == "verified_provider_event"
-        assert await db.webstore_buyer_orders.count_documents({"tenant_id": ctx["tenant_id"]}) == 0
-        assert await db.webstore_ledger_entries.count_documents({"tenant_id": ctx["tenant_id"], "buyer_order_id": purchase_intent["id"]}) == 0
-        assert await db.orders.count_documents({"tenant_id": ctx["tenant_id"], "source_type": "webstore_purchase_intent", "source_id": purchase_intent["id"]}) == 0
-
-        duplicate = await public.post(
-            f"/api/public/webstores/{store['public_slug']}/buyer-orders",
-            json={
-                "buyer_name": "Casey Buyer",
-                "buyer_email": f"casey-{suffix}@example.com",
-                "line_items": [{"product_id": product["id"], "quantity": 2}],
-                "idempotency_key": f"buyer-{suffix}",
-            },
-        )
-        assert duplicate.status_code == 201
-        assert duplicate.json()["purchase_intent"]["id"] == purchase_intent["id"]
-
-    body = {
-        "tenant_id": ctx["tenant_id"],
-        "purchase_intent_id": purchase_intent["id"],
-        "provider_event_id": f"evt-{suffix}",
-        "provider_payment_id": f"pi-{suffix}",
-        "amount_cents": 5000,
-        "currency": "usd",
-    }
-    encoded = json.dumps(body, separators=(",", ":")).encode("utf-8")
-    signature = hmac.new(b"webstore-test-secret", encoded, hashlib.sha256).hexdigest()
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as webhook_client:
-        processed = await webhook_client.post(
-            "/api/webhooks/webstores/test-provider",
-            content=encoded,
-            headers={"Content-Type": "application/json", "X-Webstore-Test-Signature": f"sha256={signature}"},
-        )
-        assert processed.status_code == 200, processed.text
-        replay = await webhook_client.post(
-            "/api/webhooks/webstores/test-provider",
-            content=encoded,
-            headers={"Content-Type": "application/json", "X-Webstore-Test-Signature": f"sha256={signature}"},
-        )
-        assert replay.status_code == 200, replay.text
-
-    payment_event = processed.json()["payment_event"]
-    assert payment_event["status"] == "processed"
-    assert await db.invoices.count_documents({"tenant_id": ctx["tenant_id"]}) == before_invoices
-    assert await db.payments.count_documents({"tenant_id": ctx["tenant_id"]}) == before_payments + 1
-    canonical = await db.webstore_purchase_intents.find_one({"tenant_id": ctx["tenant_id"], "id": purchase_intent["id"]}, {"_id": 0})
-    assert canonical["canonical_order_id"]
-    assert canonical["canonical_payment_id"]
-    assert canonical["production_bridge_status"] == "bridged"
-    assert canonical["work_order_id"]
-    assert await db.orders.count_documents({"tenant_id": ctx["tenant_id"], "id": canonical["canonical_order_id"], "source_type": "webstore_purchase_intent"}) == 1
-    assert await db.order_items.count_documents({"tenant_id": ctx["tenant_id"], "order_id": canonical["canonical_order_id"], "source_type": "webstore_purchase_intent"}) == 1
-    assert await db.webstore_ledger_entries.count_documents({"tenant_id": ctx["tenant_id"], "buyer_order_id": purchase_intent["id"]}) >= 5
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as public_confirm:
-        confirmation = await public_confirm.get(f"/api/public/webstores/{store['public_slug']}/confirmations/{canonical['confirmation_token']}")
-        assert confirmation.status_code == 200, confirmation.text
-        assert confirmation.json()["order"]["id"] == canonical["canonical_order_id"]
-
-    async with await _client_as(ctx["owner"]) as owner_client:
-        refund = await owner_client.post(
-            f"/api/webstores/{store['id']}/payments/{canonical['canonical_payment_id']}/refund",
-            json={"amount_cents": 1000, "reason": "Buyer requested quantity adjustment", "idempotency_key": f"refund-{suffix}"},
-            headers={"Idempotency-Key": f"refund-{suffix}"},
-        )
-        assert refund.status_code == 201, refund.text
-        assert refund.json()["refund_status"] == "partially_refunded"
-        payout = await owner_client.post(
-            f"/api/webstores/{store['id']}/payout-events",
-            json={"purchase_intent_id": purchase_intent["id"], "amount_cents": 3200, "provider_event_id": f"payout-{suffix}", "status": "paid"},
-        )
-        assert payout.status_code == 201, payout.text
-        dispute = await owner_client.post(
-            f"/api/webstores/{store['id']}/dispute-events",
-            json={"purchase_intent_id": purchase_intent["id"], "amount_cents": 500, "provider_event_id": f"dispute-{suffix}", "status": "opened"},
-        )
-        assert dispute.status_code == 201, dispute.text
-        report = await owner_client.get(f"/api/webstores/{store['id']}/reports")
-        assert report.status_code == 200
-        assert report.json()["canonical_order_count"] == 1
-        assert report.json()["refund_total_cents"] == 1000
-        assert report.json()["payout_total_cents"] == 3200
-        assert report.json()["dispute_hold_cents"] == 500
-
-    ledger_id = f"legacy-ledger-{uuid.uuid4().hex[:8]}"
-    await db.webstore_ledger_entries.insert_one(
-        {
-            "id": ledger_id,
-            "tenant_id": ctx["tenant_id"],
-            "webstore_id": store["id"],
-            "buyer_order_id": "legacy-buyer-order",
-            "entry_type": "platform_usage_fee",
-            "amount_cents": 100,
-            "currency": "usd",
-            "basis_amount_cents": 5000,
-            "source_type": "legacy_webstore_buyer_order",
-            "source_id": "legacy-buyer-order",
-            "status": "posted",
-        }
-    )
-    async with await _client_as(ctx["owner"]) as owner_client:
-        reversal = await owner_client.post(
-            f"/api/webstores/ledger/{ledger_id}/platform-fee-reversals",
-            json={"refund_basis_amount_cents": 2500},
-        )
-        assert reversal.status_code == 201, reversal.text
-        assert reversal.json()["amount_cents"] == -50
-        original = await db.webstore_ledger_entries.find_one({"id": ledger_id}, {"_id": 0})
-        assert original["amount_cents"] == 100
-
-        await db.webstore_buyer_orders.insert_one(
-            {
-                "id": f"legacy-buyer-{suffix}",
-                "tenant_id": ctx["tenant_id"],
-                "webstore_id": store["id"],
-                "buyer_name": "Legacy Buyer",
-                "buyer_email": f"legacy-{suffix}@example.com",
-                "line_items": [],
-                "product_subtotal_cents": 1000,
-                "total_cents": 1000,
-                "status": "new",
-                "payment_status": "pending",
-                "fulfillment_status": "not_started",
-            }
-        )
-        bridge = await owner_client.post(f"/api/webstores/buyer-orders/legacy-buyer-{suffix}/bridge")
-        assert bridge.status_code == 409
-        assert bridge.json()["detail"] == "Legacy Webstore buyer orders cannot become canonical Orders without verified payment evidence."
+            assert launched.status_code == 409, launched.text
+            assert (await db.webstores.find_one({"tenant_id": ctx["tenant_id"], "id": store["id"]}, {"_id": 0}))["status"] != "live"
+            return

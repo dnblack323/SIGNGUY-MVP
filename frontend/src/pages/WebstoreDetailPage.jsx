@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, CheckCircle2, Clock, ExternalLink, Eye, FileUp, Lock, PackagePlus, Palette, RotateCcw, Save, Send, ShieldCheck, Sparkles, UserPlus } from "lucide-react";
+import { Archive, CheckCircle2, Clock, ExternalLink, Eye, FileUp, Lock, Mail, PackagePlus, Palette, RotateCcw, Save, Send, ShieldCheck, Sparkles, UserPlus } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,7 @@ import {
   getWebstoreQuestionnaireResponse,
   generateLaunchPacket,
   getLaunchReadiness,
+  getWebstorePaymentProviderStatus,
   getWebstoreSetupProgress,
   getWebstore,
   getWebstoreReports,
@@ -37,6 +38,7 @@ import {
   resendWebstoreInvitation,
   revokeWebstoreAssignment,
   reverseWebstoreAnswerApplication,
+  sendWebstoreQuestionnaire,
   sendLaunchPacket,
   setWebstoreStatus,
   uploadWebstoreSetupFile,
@@ -48,6 +50,7 @@ import {
   restoreWebstoreProduct,
   restoreWebstoreProductCategory,
   updateWebstore,
+  requestWebstorePaymentProviderAction,
 } from "@/lib/webstores";
 import { toast } from "sonner";
 
@@ -127,12 +130,12 @@ export default function WebstoreDetailPage() {
   const [productError, setProductError] = useState("");
   const [categoryEditDraft, setCategoryEditDraft] = useState({});
   const [editingCategoryId, setEditingCategoryId] = useState("");
-  const [scheduleDraft, setScheduleDraft] = useState({ intended_launch_at: "", intended_close_at: "", launch_timezone: "America/New_York" });
   const [changeResponses, setChangeResponses] = useState({});
   const detail = useQuery({ queryKey: ["webstore", id], queryFn: () => getWebstore(id), enabled: !!id });
   const templates = useQuery({ queryKey: ["webstore-product-templates"], queryFn: listProductTemplates });
   const categories = useQuery({ queryKey: ["webstore-product-categories", id], queryFn: () => listWebstoreProductCategories(id), enabled: !!id });
   const readiness = useQuery({ queryKey: ["webstore-readiness", id], queryFn: () => getLaunchReadiness(id), enabled: !!id });
+  const paymentProvider = useQuery({ queryKey: ["webstore-payment-provider", id], queryFn: () => getWebstorePaymentProviderStatus(id), enabled: !!id });
   const reports = useQuery({ queryKey: ["webstore-reports", id], queryFn: () => getWebstoreReports(id), enabled: !!id });
   const setupProgress = useQuery({ queryKey: ["webstore-setup-progress", id], queryFn: () => getWebstoreSetupProgress(id), enabled: !!id });
   const assignments = useQuery({ queryKey: ["webstore-assignments", id], queryFn: () => listWebstoreAssignments(id), enabled: !!id });
@@ -148,6 +151,7 @@ export default function WebstoreDetailPage() {
     await Promise.all([
       qc.invalidateQueries({ queryKey: ["webstore", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-readiness", id] }),
+      qc.invalidateQueries({ queryKey: ["webstore-payment-provider", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-reports", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-setup-progress", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-assignments", id] }),
@@ -213,7 +217,7 @@ export default function WebstoreDetailPage() {
       production_cost_cents: toIntCents(productDraft.production_cost_cents),
       store_owner_share_cents: toIntCents(productDraft.store_owner_share_cents),
       fundraiser_share_cents: toIntCents(productDraft.fundraiser_share_cents),
-      platform_fee_basis_points: toIntCents(productDraft.platform_fee_basis_points ?? 150),
+      platform_fee_basis_points: toIntCents(productDraft.platform_fee_basis_points ?? 0),
       variants: productDraft.variants || [],
       personalization_enabled: Boolean(productDraft.personalization_enabled),
       personalization_fields: productDraft.personalization_fields || [],
@@ -269,6 +273,14 @@ export default function WebstoreDetailPage() {
     onSuccess: async () => { toast.success("Invitation regenerated"); await refresh(); },
     onError: (err) => toast.error(extractError(err)),
   });
+  const sendQuestionnaire = useMutation({
+    mutationFn: () => sendWebstoreQuestionnaire(id),
+    onSuccess: async (data) => {
+      toast.success(data?.email_sent ? "Questionnaire sent" : "Questionnaire link is ready");
+      await refresh();
+    },
+    onError: (err) => toast.error(extractError(err)),
+  });
   const revokeAssignment = useMutation({
     mutationFn: (assignmentId) => revokeWebstoreAssignment(id, assignmentId, "Revoked during setup review"),
     onSuccess: async () => { toast.success("Assignment revoked"); await refresh(); },
@@ -322,18 +334,14 @@ export default function WebstoreDetailPage() {
     onSuccess: async () => { toast.success("Webstore launched"); await refresh(); },
     onError: (err) => toast.error(extractError(err)),
   });
+  const paymentProviderAction = useMutation({
+    mutationFn: (action) => requestWebstorePaymentProviderAction(id, action),
+    onSuccess: async () => { toast.success("Stripe integration is not enabled in this foundation build"); await refresh(); },
+    onError: (err) => toast.error(extractError(err)),
+  });
   const updateChange = useMutation({
     mutationFn: ({ requestId, status, response }) => updateWebstoreChangeRequest(id, requestId, { status, response }),
     onSuccess: async () => { toast.success("Change request updated"); await refresh(); },
-    onError: (err) => toast.error(extractError(err)),
-  });
-  const saveSchedule = useMutation({
-    mutationFn: () => updateWebstore(id, {
-      intended_launch_at: scheduleDraft.intended_launch_at || undefined,
-      intended_close_at: scheduleDraft.intended_close_at || undefined,
-      launch_timezone: scheduleDraft.launch_timezone || undefined,
-    }),
-    onSuccess: async () => { toast.success("Launch schedule saved"); await refresh(); },
     onError: (err) => toast.error(extractError(err)),
   });
   const markLaunchReady = useMutation({
@@ -506,6 +514,9 @@ export default function WebstoreDetailPage() {
             ) : (
               <Button variant="outline" size="sm" disabled><ExternalLink className="size-4 mr-2" />Webstore Owner Portal Not Ready</Button>
             )}
+            <Button variant="outline" size="sm" disabled={sendQuestionnaire.isPending || !ownerAssignment} onClick={() => sendQuestionnaire.mutate()} data-testid="webstore-send-questionnaire">
+              <Mail className="size-4 mr-2" />Send Questionnaire
+            </Button>
             {store.status === "live" && (store.public_url || store.public_slug || store.slug) ? (
               <Button asChild variant="outline" size="sm"><Link to={store.public_url || `/p/webstores/${store.public_slug || store.slug}`}><Eye className="size-4 mr-2" />Preview Webstore</Link></Button>
             ) : (
@@ -540,18 +551,6 @@ export default function WebstoreDetailPage() {
         </div>
       </div>
 
-      <div className="grid gap-2 rounded-lg border bg-white p-3 shadow-sm sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8" data-testid="webstore-builder-progress">
-        {workflowSteps.map((step, index) => (
-          <div key={step.label} className={`rounded-md border p-2 text-sm ${step.state === "current" ? "border-sky-500 bg-sky-50" : step.state === "complete" ? "border-emerald-200 bg-emerald-50" : "bg-slate-50"}`}>
-            <div className="flex items-center gap-2">
-              {step.state === "complete" ? <CheckCircle2 className="size-4 text-emerald-700" /> : step.state === "future" ? <Lock className="size-4 text-slate-500" /> : <Clock className="size-4 text-sky-700" />}
-              <span className="font-medium">{index + 1}. {step.label}</span>
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">{step.note || formatLabel(step.state)}</div>
-          </div>
-        ))}
-      </div>
-
       <div className="grid gap-3 md:grid-cols-4" data-testid="webstore-builder-status-panel">
         <Card><CardContent className="p-3 text-sm"><div className="text-xs font-medium uppercase text-muted-foreground">Current step</div><div className="font-semibold">{currentBuilderStep}</div></CardContent></Card>
         <Card><CardContent className="p-3 text-sm"><div className="text-xs font-medium uppercase text-muted-foreground">Owner questionnaire</div><div className="font-semibold">{questionnaireSubmission ? "Submitted" : "Waiting on owner"}</div></CardContent></Card>
@@ -559,15 +558,16 @@ export default function WebstoreDetailPage() {
         <Card><CardContent className="p-3 text-sm"><div className="text-xs font-medium uppercase text-muted-foreground">Products selected</div><div className="font-semibold">{selectedProductsCount}</div></CardContent></Card>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-4" data-testid="webstore-detail-tabs">
-        <TabsList className="flex h-auto flex-wrap justify-start">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="product-plan">Product Plan</TabsTrigger>
-          <TabsTrigger value="product-setup">Product Setup</TabsTrigger>
-          <TabsTrigger value="setup">Store Setup</TabsTrigger>
-          <TabsTrigger value="branding"><Palette className="size-4 mr-1" />Branding</TabsTrigger>
-          <TabsTrigger value="preview">Preview</TabsTrigger>
-          <TabsTrigger value="approval">Approval</TabsTrigger>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <Tabs defaultValue="overview" className="space-y-4 min-w-0" data-testid="webstore-detail-tabs">
+        <TabsList className="flex h-auto flex-wrap justify-start gap-1 rounded-md border bg-slate-100 p-1">
+          <TabsTrigger className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow" value="overview">Overview</TabsTrigger>
+          <TabsTrigger className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow" value="product-plan">Product Plan</TabsTrigger>
+          <TabsTrigger className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow" value="product-setup">Product Setup</TabsTrigger>
+          <TabsTrigger className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow" value="setup">Store Setup</TabsTrigger>
+          <TabsTrigger className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow" value="branding"><Palette className="size-4 mr-1" />Branding</TabsTrigger>
+          <TabsTrigger className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow" value="preview">Preview</TabsTrigger>
+          <TabsTrigger className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow" value="approval">Approval</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
@@ -711,17 +711,24 @@ export default function WebstoreDetailPage() {
               <div className="font-medium">Payment readiness: {(readiness.data?.payment_readiness?.state || "").replace("not_configured", "Not connected") || (readiness.data?.checks?.payment_ready ? "Ready" : "Not connected")}</div>
               <div>{readiness.data?.payment_unavailable_reason || "Real verified provider checkout is not connected yet."}</div>
             </div>
+            <div className="rounded border p-3 space-y-3" data-testid="webstore-stripe-status">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-medium">Stripe Connect</div>
+                <Badge variant="outline">{paymentProvider.data?.status?.label || "Not configured"}</Badge>
+              </div>
+              <div className="text-xs text-muted-foreground">{paymentProvider.data?.status?.reason || "Stripe integration is disabled for this foundation build."}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button size="sm" variant="outline" disabled={paymentProviderAction.isPending} onClick={() => paymentProviderAction.mutate("connect")}><Mail className="size-4 mr-2" />Send Stripe Connect Email</Button>
+                <Button size="sm" variant="outline" disabled={paymentProviderAction.isPending} onClick={() => paymentProviderAction.mutate("refresh_status")}><RotateCcw className="size-4 mr-2" />Refresh status</Button>
+                <Button size="sm" variant="outline" disabled={paymentProviderAction.isPending} onClick={() => paymentProviderAction.mutate("resume_onboarding")}>Resume onboarding</Button>
+                <Button size="sm" variant="outline" disabled={paymentProviderAction.isPending} onClick={() => paymentProviderAction.mutate("view_requirements")}>View requirements</Button>
+              </div>
+              <div className="text-xs text-muted-foreground">Provider authority is required before checkout or launch. No Stripe calls are made in this build.</div>
+            </div>
             <div className="rounded border bg-slate-50 px-3 py-2 text-xs" data-testid="webstore-qr-preview">
               <div className="font-medium">QR preview</div>
               <div>{activePacket?.snapshot?.qr_reference?.destination || store.public_url || "Generate a packet to prepare the QR destination."}</div>
               <div className="text-muted-foreground">QR destination opens the public Webstore when the lifecycle status is live.</div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Launch schedule intent</Label>
-              <Input value={scheduleDraft.intended_launch_at} onChange={(e) => setScheduleDraft({ ...scheduleDraft, intended_launch_at: e.target.value })} placeholder="2026-08-15T13:00:00-04:00" data-testid="webstore-intended-launch-at" />
-              <Input value={scheduleDraft.intended_close_at} onChange={(e) => setScheduleDraft({ ...scheduleDraft, intended_close_at: e.target.value })} placeholder="2026-09-15T17:00:00-04:00" data-testid="webstore-intended-close-at" />
-              <Input value={scheduleDraft.launch_timezone} onChange={(e) => setScheduleDraft({ ...scheduleDraft, launch_timezone: e.target.value })} data-testid="webstore-launch-timezone" />
-              <Button variant="outline" disabled={saveSchedule.isPending} onClick={() => saveSchedule.mutate()} data-testid="webstore-save-schedule"><Clock className="size-4 mr-2" />Save schedule intent</Button>
             </div>
             <Button className="w-full" disabled={!readiness.data?.ready || markLaunchReady.isPending} onClick={() => markLaunchReady.mutate()} data-testid="webstore-launch-ready">
               <ShieldCheck className="size-4 mr-2" />Mark launch-ready
@@ -756,7 +763,17 @@ export default function WebstoreDetailPage() {
         <Card>
           <CardHeader><CardTitle className="text-base">Launch Packet</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid gap-1.5"><Label>Promotion copy</Label><Input value={promo} onChange={(e) => setPromo(e.target.value)} data-testid="webstore-promo" /></div>
+            <div className="grid gap-1.5">
+              <Label>Launch packet message</Label>
+              <Textarea
+                rows={3}
+                value={promo}
+                onChange={(e) => setPromo(e.target.value)}
+                placeholder="Optional owner-facing launch/promo note included in the next packet version."
+                data-testid="webstore-promo"
+              />
+              <div className="text-xs text-muted-foreground">This text is saved into the generated packet version and shown to the store owner for approval.</div>
+            </div>
             <div className="flex gap-2">
               <Button variant="outline" disabled={packet.isPending} onClick={() => packet.mutate()}><CheckCircle2 className="size-4 mr-2" />Generate</Button>
               <Button disabled={!activePacket || sendPacket.isPending} onClick={() => sendPacket.mutate()}><Send className="size-4 mr-2" />Send</Button>
@@ -765,7 +782,7 @@ export default function WebstoreDetailPage() {
               <Alert data-testid="webstore-launch-packet-summary">
                 <AlertTitle className="capitalize">Version {activePacket.version || 1} - {String(activePacket.status).replace(/_/g, " ")}</AlertTitle>
                 <AlertDescription>
-                  <div>{activePacket.promotion_copy || "Packet snapshot is ready."}</div>
+                  <div className="rounded border bg-white p-2 text-sm">{activePacket.promotion_copy || "No custom launch message was entered for this packet."}</div>
                   <div className="mt-1 text-xs">Products: {activePacket.pricing_summary?.product_count || activePacket.snapshot?.products?.length || 0} · Delivery: {activePacket.delivery_status || "not sent"}</div>
                   <div className="mt-1 text-xs">Snapshot: {activePacket.snapshot_hash || "pending"}</div>
                 </AlertDescription>
@@ -1089,7 +1106,7 @@ export default function WebstoreDetailPage() {
                           <div className="grid gap-1.5"><Label>Production cost (cents)</Label><Input type="number" min="0" value={productDraft.production_cost_cents ?? 0} onChange={(e) => setProductField("production_cost_cents", toIntCents(e.target.value))} data-testid="webstore-product-production-cost" /></div>
                           <div className="grid gap-1.5"><Label>Owner share (cents)</Label><Input type="number" min="0" value={productDraft.store_owner_share_cents ?? 0} onChange={(e) => setProductField("store_owner_share_cents", toIntCents(e.target.value))} data-testid="webstore-product-owner-share" /></div>
                           <div className="grid gap-1.5"><Label>Fundraiser share (cents)</Label><Input type="number" min="0" value={productDraft.fundraiser_share_cents ?? 0} onChange={(e) => setProductField("fundraiser_share_cents", toIntCents(e.target.value))} /></div>
-                          <div className="grid gap-1.5"><Label>Platform fee (basis points)</Label><Input type="number" min="0" max="10000" value={productDraft.platform_fee_basis_points ?? 150} onChange={(e) => setProductField("platform_fee_basis_points", toIntCents(e.target.value))} /></div>
+                          <div className="grid gap-1.5"><Label>Platform fee (basis points)</Label><Input type="number" min="0" max="10000" value={productDraft.platform_fee_basis_points ?? 0} onChange={(e) => setProductField("platform_fee_basis_points", toIntCents(e.target.value))} /></div>
                           <div className="rounded-md border bg-slate-50 p-3 text-sm">
                             <div className="font-medium">Internal margin</div>
                             <div className="text-muted-foreground">{centsToDollarsString(Math.max(0, Number(productDraft.selling_price_cents || 0) - Number(productDraft.production_cost_cents || 0) - Number(productDraft.store_owner_share_cents || 0) - Number(productDraft.fundraiser_share_cents || 0)))}</div>
@@ -1286,6 +1303,26 @@ export default function WebstoreDetailPage() {
           <WebstoreBrandingEditor webstoreId={id} products={detail.data?.products || []} />
         </TabsContent>
       </Tabs>
+      <aside className="space-y-3 xl:sticky xl:top-4 xl:self-start" data-testid="webstore-builder-progress">
+        <Card className="border-sky-200">
+          <CardHeader><CardTitle className="text-base">Setup Timeline</CardTitle></CardHeader>
+          <CardContent className="space-y-0">
+            {workflowSteps.map((step, index) => (
+              <div key={step.label} className="relative flex gap-3 pb-4 last:pb-0">
+                {index < workflowSteps.length - 1 && <div className="absolute left-[15px] top-8 bottom-0 w-px bg-slate-200" />}
+                <div className={`z-10 mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${step.state === "complete" ? "border-emerald-300 bg-emerald-50 text-emerald-700" : step.state === "current" ? "border-sky-500 bg-sky-700 text-white" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
+                  {step.state === "complete" ? <CheckCircle2 className="size-4" /> : index + 1}
+                </div>
+                <div className={`min-w-0 rounded-md border p-2 text-sm ${step.state === "current" ? "border-sky-200 bg-sky-50" : step.state === "complete" ? "border-emerald-100 bg-emerald-50/60" : "bg-white"}`}>
+                  <div className="font-medium">{step.label}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{step.note || formatLabel(step.state)}</div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </aside>
+      </div>
     </div>
   );
 }
