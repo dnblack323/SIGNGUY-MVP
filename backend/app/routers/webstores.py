@@ -86,6 +86,11 @@ class StatusIn(BaseModel):
     reason: Optional[str] = None
 
 
+class QuestionnaireSendIn(BaseModel):
+    email: Optional[str] = None
+    name: Optional[str] = None
+
+
 class LifecycleRevisionIn(BaseModel):
     expected_revision: StrictInt = Field(ge=1)
 
@@ -528,6 +533,14 @@ async def change_primary_owner(webstore_id: str, payload: PrimaryOwnerIn, user: 
 async def bound_questionnaire(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await setup_svc.bind_questionnaire_templates(user, webstore_id)
+    except WebstoreSetupError as e:
+        _raise_setup(e)
+
+
+@router.post("/{webstore_id}/questionnaire/send")
+async def send_questionnaire(webstore_id: str, payload: QuestionnaireSendIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await setup_svc.send_questionnaire_to_owner(user, webstore_id, payload.model_dump(exclude_none=True))
     except WebstoreSetupError as e:
         _raise_setup(e)
 

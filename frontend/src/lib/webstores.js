@@ -50,6 +50,11 @@ export async function getWebstoreQuestionnaire(id) {
   return r.data;
 }
 
+export async function sendWebstoreQuestionnaire(id, payload = {}) {
+  const r = await api.post(`/webstores/${id}/questionnaire/send`, payload);
+  return r.data;
+}
+
 export async function getWebstoreQuestionnaireResponse(id) {
   const r = await api.get(`/webstores/${id}/questionnaire-response`);
   return r.data;

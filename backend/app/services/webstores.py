@@ -145,6 +145,82 @@ MATERIAL_PRODUCT_FIELDS = {
     "featured",
     "status",
 }
+
+STARTER_PRODUCT_TEMPLATE_MARKER = "starter_common_webstore_template_2026_08"
+STARTER_PRODUCT_TEMPLATES = [
+    {
+        "template_name": "T-shirt",
+        "product_category": "apparel",
+        "product_type": "tshirt",
+        "default_title": "T-shirt",
+        "default_short_description": "Comfortable custom printed T-shirt.",
+        "default_description": "A classic short-sleeve T-shirt customized with your store artwork. Available in common adult sizes and selected colors.",
+        "suggested_category_name": "Apparel",
+        "production_method": "screen_print_or_dtf",
+        "default_variants": [{"size": size, "color": "", "selling_price_cents": 2500} for size in ["S", "M", "L", "XL", "2XL"]],
+        "suggested_selling_price_cents": 2500,
+    },
+    {
+        "template_name": "Hoodie",
+        "product_category": "apparel",
+        "product_type": "hoodie",
+        "default_title": "Hoodie",
+        "default_short_description": "Warm pullover hoodie with custom artwork.",
+        "default_description": "A soft pullover hoodie decorated with your store artwork. Good for fundraisers, teams, events, and company stores.",
+        "suggested_category_name": "Apparel",
+        "production_method": "screen_print_or_dtf",
+        "default_variants": [{"size": size, "color": "", "selling_price_cents": 4500} for size in ["S", "M", "L", "XL", "2XL"]],
+        "suggested_selling_price_cents": 4500,
+    },
+    {
+        "template_name": "Hat",
+        "product_category": "apparel",
+        "product_type": "hat",
+        "default_title": "Hat",
+        "default_short_description": "Adjustable hat with logo or store artwork.",
+        "default_description": "An adjustable cap decorated with a logo, patch, or printed design for everyday wear.",
+        "suggested_category_name": "Accessories",
+        "production_method": "embroidery_or_patch",
+        "default_variants": [{"size": "One size", "color": "", "selling_price_cents": 2800}],
+        "suggested_selling_price_cents": 2800,
+    },
+    {
+        "template_name": "Decal / Sticker",
+        "product_category": "decals",
+        "product_type": "decal",
+        "default_title": "Decal / Sticker",
+        "default_short_description": "Custom decal or sticker using store artwork.",
+        "default_description": "A durable decal or sticker printed from your approved artwork. Great as an add-on item for events and fundraisers.",
+        "suggested_category_name": "Decals",
+        "production_method": "print_cut",
+        "default_variants": [{"size": "Small", "color": "Full color", "selling_price_cents": 600}, {"size": "Large", "color": "Full color", "selling_price_cents": 1000}],
+        "suggested_selling_price_cents": 600,
+    },
+    {
+        "template_name": "Banner",
+        "product_category": "signs",
+        "product_type": "banner",
+        "default_title": "Banner",
+        "default_short_description": "Custom event or sponsor banner.",
+        "default_description": "A printed banner customized with your store artwork, event information, sponsor logos, or promotional message.",
+        "suggested_category_name": "Signs",
+        "production_method": "digital_print",
+        "default_variants": [{"size": "2x4", "color": "Full color", "selling_price_cents": 6500}, {"size": "3x6", "color": "Full color", "selling_price_cents": 11000}],
+        "suggested_selling_price_cents": 6500,
+    },
+    {
+        "template_name": "Tumbler",
+        "product_category": "promotional",
+        "product_type": "tumbler",
+        "default_title": "Tumbler",
+        "default_short_description": "Drinkware with custom logo or campaign artwork.",
+        "default_description": "A branded tumbler or cup using your approved store artwork. Useful for company stores, fundraisers, and promotional campaigns.",
+        "suggested_category_name": "Drinkware",
+        "production_method": "sublimation_or_vendor",
+        "default_variants": [{"size": "20 oz", "color": "", "selling_price_cents": 3000}],
+        "suggested_selling_price_cents": 3000,
+    },
+]
 WEBSTORE_TRANSITIONS: dict[str, set[str]] = {
     "draft": {"questionnaire_sent", "waiting_on_store_owner", "questionnaire_submitted", "products_selected", "store_packet_generated", "archived"},
     "questionnaire_sent": {"waiting_on_store_owner", "questionnaire_submitted", "changes_requested", "archived"},
@@ -1576,8 +1652,29 @@ async def create_template(user: dict, fields: dict[str, Any]) -> dict:
     return serialize_doc(template)  # type: ignore[return-value]
 
 
+async def ensure_starter_product_templates(tenant_id: str) -> None:
+    for starter in STARTER_PRODUCT_TEMPLATES:
+        existing = await db.webstore_product_templates.find_one(
+            {"tenant_id": tenant_id, "template_name": starter["template_name"]},
+            {"_id": 0, "id": 1},
+        )
+        if existing:
+            continue
+        template = WebstoreProductTemplate(
+            tenant_id=tenant_id,
+            scope="tenant",
+            status="active",
+            active=True,
+            editable_by_shop=True,
+            internal_notes=STARTER_PRODUCT_TEMPLATE_MARKER,
+            **starter,
+        ).model_dump()
+        await db.webstore_product_templates.insert_one(prepare_for_mongo(template))
+
+
 async def list_templates(user: dict, *, active: Optional[bool] = None, scope: Optional[str] = None, status: Optional[str] = None) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_READ)
+    await ensure_starter_product_templates(user["tenant_id"])
     status_filter = status
     if active is not None:
         status_filter = "active" if active else None

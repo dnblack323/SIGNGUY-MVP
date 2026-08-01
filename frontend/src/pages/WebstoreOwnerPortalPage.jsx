@@ -10,6 +10,42 @@ import WebstoreBrandingEditor from "@/components/webstores/WebstoreBranding";
 import { centsToDollarsString } from "@/lib/format";
 import { toast } from "sonner";
 
+function QuestionInput({ question, value, onChange }) {
+  if (question.type === "paragraph") {
+    return <p className="rounded border bg-slate-50 p-3 text-sm text-muted-foreground">{question.label}</p>;
+  }
+  if (question.type === "select") {
+    return (
+      <select className="rounded-md border bg-white px-3 py-2 text-sm" value={value || ""} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Choose one</option>
+        {(question.options || []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    );
+  }
+  if (question.type === "checkbox") {
+    const selected = Array.isArray(value) ? value : [];
+    return (
+      <div className="grid gap-2 rounded-md border p-2">
+        {(question.options || []).map((option) => (
+          <label key={option.value} className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={selected.includes(option.value)}
+              onChange={(e) => onChange(e.target.checked ? [...selected, option.value] : selected.filter((item) => item !== option.value))}
+            />
+            <span>{option.label}</span>
+          </label>
+        ))}
+      </div>
+    );
+  }
+  if (question.type === "textarea") {
+    return <Textarea rows={3} value={value || ""} onChange={(e) => onChange(e.target.value)} />;
+  }
+  const inputType = ["date", "email", "number"].includes(question.type) ? question.type : "text";
+  return <input className="rounded-md border px-3 py-2 text-sm" type={inputType} value={value || ""} onChange={(e) => onChange(e.target.value)} />;
+}
+
 export default function WebstoreOwnerPortalPage() {
   const { webstoreId } = useParams();
   const [data, setData] = useState(null);
@@ -122,15 +158,17 @@ export default function WebstoreOwnerPortalPage() {
             <div key={section.id} className="rounded border p-3 space-y-2">
               <div className="font-medium">{section.title}</div>
               {(section.questions || []).map((question) => (
-                <label key={question.key} className="grid gap-1.5 text-sm">
-                  <span>{question.label}</span>
-                  <Textarea
-                    rows={question.type === "textarea" ? 3 : 1}
-                    value={answers[question.key] || ""}
-                    onChange={(e) => setAnswers({ ...answers, [question.key]: e.target.value })}
-                    data-testid={`portal-webstore-answer-${question.key}`}
-                  />
-                </label>
+                <div key={question.key} className="grid gap-1.5 text-sm">
+                  <span>{question.label}{question.required && <span className="text-rose-600"> *</span>}</span>
+                  <div data-testid={`portal-webstore-answer-${question.key}`}>
+                    <QuestionInput
+                      question={question}
+                      value={answers[question.key]}
+                      onChange={(value) => setAnswers({ ...answers, [question.key]: value })}
+                    />
+                  </div>
+                  {question.description && <span className="text-xs text-muted-foreground">{question.description}</span>}
+                </div>
               ))}
             </div>
           ))}
