@@ -20,6 +20,7 @@ from ..models.payment import Payment
 from ..models.webstore import WebstoreLedgerEntry, WebstorePaymentEvent
 from .sequence import next_number, next_record_number
 from .webstores import WebstoreError, _audit
+from .webstore_payment_provider import provider_configuration_status
 
 
 def _now_iso() -> str:
@@ -50,6 +51,16 @@ def _event_response(event: dict) -> dict:
         "order_id": event.get("canonical_order_id"),
         "payment_id": event.get("canonical_payment_id"),
     }
+
+
+def _require_provider_authority() -> None:
+    status = provider_configuration_status()
+    if not status["provider_authority"]:
+        raise WebstoreError(
+            "payment_provider_not_configured",
+            "Provider-authoritative Webstore payment processing is unavailable until the Stripe adapter is implemented and verified.",
+            503,
+        )
 
 
 async def _customer_for_intent(intent: dict, *, provider_event_id: str) -> dict:
@@ -157,8 +168,6 @@ async def _create_payment(intent: dict, order: dict, customer: dict, event: Webs
         confirmed_at=utc_now(),
         created_by="webstore-payment",
     ).model_dump()
-    if event.provider == "local_test_provider":
-        payment["dev_simulated"] = True
     allocation = await next_record_number(
         tenant_id=intent["tenant_id"],
         record_type="payment",
@@ -263,6 +272,7 @@ async def _bridge_to_production(intent: dict, order: dict) -> tuple[str, Optiona
 
 
 async def process_verified_payment_event(event_fields: dict[str, Any]) -> dict:
+    _require_provider_authority()
     provider = str(event_fields.get("provider") or "").strip().lower()
     provider_event_id = str(event_fields.get("provider_event_id") or "").strip()
     provider_payment_id = str(event_fields.get("provider_payment_id") or "").strip()
@@ -436,6 +446,7 @@ async def initiate_webstore_refund(
     actor_email: str,
     idempotency_key: Optional[str] = None,
 ) -> dict:
+    _require_provider_authority()
     intent = await db.webstore_purchase_intents.find_one(
         {"tenant_id": tenant_id, "webstore_id": webstore_id, "canonical_payment_id": payment_id},
         {"_id": 0},
@@ -522,6 +533,7 @@ async def record_webstore_payout_event(
     provider_event_id: str,
     status: str,
 ) -> dict:
+    _require_provider_authority()
     intent = await db.webstore_purchase_intents.find_one({"tenant_id": tenant_id, "webstore_id": webstore_id, "id": purchase_intent_id}, {"_id": 0})
     if not intent or not intent.get("canonical_payment_id"):
         raise WebstoreError("paid_purchase_intent_required", "A verified paid Webstore purchase intent is required", 409)
@@ -555,6 +567,7 @@ async def record_webstore_dispute_event(
     provider_event_id: str,
     status: str,
 ) -> dict:
+    _require_provider_authority()
     intent = await db.webstore_purchase_intents.find_one({"tenant_id": tenant_id, "webstore_id": webstore_id, "id": purchase_intent_id}, {"_id": 0})
     if not intent or not intent.get("canonical_payment_id"):
         raise WebstoreError("paid_purchase_intent_required", "A verified paid Webstore purchase intent is required", 409)

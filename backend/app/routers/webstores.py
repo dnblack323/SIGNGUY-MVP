@@ -112,7 +112,7 @@ class TemplateIn(BaseModel):
     suggested_production_cost_cents: StrictInt = Field(default=0, ge=0)
     suggested_selling_price_cents: StrictInt = Field(default=0, ge=0)
     suggested_store_owner_share_cents: StrictInt = Field(default=0, ge=0)
-    platform_fee_basis_points: StrictInt = Field(default=150, ge=0, le=10000)
+    platform_fee_basis_points: StrictInt = Field(default=0, ge=0, le=10000)
     internal_notes: Optional[str] = None
     active: bool = True
     webstore_id: Optional[str] = None
@@ -449,6 +449,22 @@ async def launch_readiness(webstore_id: str, user: dict = Depends(get_current_us
 async def reports(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.reports(user, webstore_id)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.get("/{webstore_id}/payment-provider")
+async def payment_provider(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.payment_provider_status(user, webstore_id)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/payment-provider/{action}")
+async def payment_provider_action(webstore_id: str, action: str, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.payment_provider_action(user, webstore_id, action)
     except WebstoreError as e:
         _raise(e)
 

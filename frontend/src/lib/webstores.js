@@ -187,6 +187,16 @@ export async function getLaunchReadiness(webstoreId) {
   return r.data;
 }
 
+export async function getWebstorePaymentProviderStatus(webstoreId) {
+  const r = await api.get(`/webstores/${webstoreId}/payment-provider`);
+  return r.data;
+}
+
+export async function requestWebstorePaymentProviderAction(webstoreId, action) {
+  const r = await api.post(`/webstores/${webstoreId}/payment-provider/${action}`);
+  return r.data;
+}
+
 export async function setWebstoreStatus(webstoreId, status, reason) {
   const r = await api.post(`/webstores/${webstoreId}/status`, { status, reason });
   return r.data;

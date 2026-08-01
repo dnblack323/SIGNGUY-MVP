@@ -70,6 +70,19 @@ class Settings:
             os.environ.get("STRIPE_WEBHOOK_SECRET") or None
         )
 
+        # Webstores Stripe-ready foundation. These values describe a future
+        # provider adapter; no Webstore provider calls are made by this build.
+        self.stripe_enabled: bool = os.environ.get("STRIPE_ENABLED", "false").lower() == "true"
+        self.stripe_mode: str = os.environ.get("STRIPE_MODE", "test").strip().lower()
+        self.stripe_secret_key: str | None = os.environ.get("STRIPE_SECRET_KEY") or None
+        self.stripe_publishable_key: str | None = os.environ.get("STRIPE_PUBLISHABLE_KEY") or None
+        self.stripe_connect_client_id: str | None = os.environ.get("STRIPE_CONNECT_CLIENT_ID") or None
+        self.stripe_connect_return_url: str | None = os.environ.get("STRIPE_CONNECT_RETURN_URL") or None
+        self.stripe_connect_refresh_url: str | None = os.environ.get("STRIPE_CONNECT_REFRESH_URL") or None
+        self.stripe_checkout_success_url: str | None = os.environ.get("STRIPE_CHECKOUT_SUCCESS_URL") or None
+        self.stripe_checkout_cancel_url: str | None = os.environ.get("STRIPE_CHECKOUT_CANCEL_URL") or None
+        self.stripe_charge_model: str = os.environ.get("STRIPE_CONNECT_CHARGE_MODEL", "deferred").strip().lower()
+
         # AI provider. Only required when AI generation is enabled.
         self.ai_enabled: bool = os.environ.get("AI_ENABLED", "false").lower() == "true"
         self.google_auth_enabled: bool = os.environ.get("GOOGLE_AUTH_ENABLED", "false").lower() == "true"

@@ -15,6 +15,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from ..core.db import db
+from ..core.config import get_settings
 from ..core.permissions import PlatformPerm, Perm, has_platform_admin_access, permissions_for_role
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.customer import Customer
@@ -48,6 +49,7 @@ from .email import record_processed_activity, send_email
 from .portal_identity import create_portal_identity
 from .sequence import next_number, next_record_number
 from . import storage
+from .webstore_payment_provider import get_webstore_payment_provider, provider_configuration_status
 
 WEBSTORES_FEATURE_KEY = "webstores"
 LIVE_BLOCKING_STATUSES = {"closed", "archived"}
@@ -263,7 +265,7 @@ def _clean_money(value: Any, *, default: int = 0) -> int:
     return amount
 
 
-def _clean_basis_points(value: Any, *, default: int = 150) -> int:
+def _clean_basis_points(value: Any, *, default: int = 0) -> int:
     if value in (None, ""):
         return default
     if isinstance(value, bool) or not isinstance(value, int):
@@ -703,8 +705,9 @@ def _public_store(store: dict, published_branding: Optional[dict[str, Any]] = No
     }
     result = {k: v for k, v in store.items() if k in allowed}
     result["branding"] = published_branding or {}
-    result["checkout_enabled"] = bool(result.get("checkout_enabled")) and PUBLIC_CHECKOUT_ENABLED
-    result["checkout_unavailable_reason"] = None if result["checkout_enabled"] else "Checkout is currently paused for this Webstore."
+    provider_status = provider_configuration_status(get_settings())
+    result["checkout_enabled"] = bool(result.get("checkout_enabled")) and PUBLIC_CHECKOUT_ENABLED and provider_status["provider_authority"]
+    result["checkout_unavailable_reason"] = None if result["checkout_enabled"] else provider_status["reason"]
     return result
 
 
@@ -743,8 +746,9 @@ def _portal_store(store: dict) -> dict:
         "event_location",
     }
     result = {k: v for k, v in store.items() if k in allowed}
-    result["checkout_enabled"] = bool(result.get("checkout_enabled")) and PUBLIC_CHECKOUT_ENABLED
-    result["checkout_unavailable_reason"] = None if result["checkout_enabled"] else "Checkout is currently paused for this Webstore."
+    provider_status = provider_configuration_status(get_settings())
+    result["checkout_enabled"] = bool(result.get("checkout_enabled")) and PUBLIC_CHECKOUT_ENABLED and provider_status["provider_authority"]
+    result["checkout_unavailable_reason"] = None if result["checkout_enabled"] else provider_status["reason"]
     return result
 
 
@@ -1540,7 +1544,7 @@ async def create_template(user: dict, fields: dict[str, Any]) -> dict:
         suggested_production_cost_cents=_clean_money(fields.get("suggested_production_cost_cents")),
         suggested_selling_price_cents=_clean_money(fields.get("suggested_selling_price_cents")),
         suggested_store_owner_share_cents=_clean_money(fields.get("suggested_store_owner_share_cents")),
-        platform_fee_basis_points=int(fields.get("platform_fee_basis_points", 150)),
+        platform_fee_basis_points=int(fields.get("platform_fee_basis_points", 0)),
         internal_notes=_clean_optional_text(fields.get("internal_notes")),
         active=status == "active",
         created_by_user_id=user.get("id"),
@@ -1810,7 +1814,7 @@ async def create_product(user: dict, webstore_id: str, fields: dict[str, Any]) -
         selling_price_cents=selling_price_cents,
         store_owner_share_cents=store_owner_share_cents,
         fundraiser_share_cents=fundraiser_share_cents,
-        platform_fee_basis_points=_clean_basis_points(fields.get("platform_fee_basis_points"), default=int((template or {}).get("platform_fee_basis_points") or 150)),
+        platform_fee_basis_points=_clean_basis_points(fields.get("platform_fee_basis_points"), default=int((template or {}).get("platform_fee_basis_points") or 0)),
         variants=[],
         personalization_enabled=bool(fields.get("personalization_enabled", False)),
         personalization_fields=[],
@@ -2005,7 +2009,7 @@ async def update_product(user: dict, webstore_id: str, product_id: str, fields: 
     if "fundraiser_share_cents" in fields:
         updates["fundraiser_share_cents"] = _clean_money(fields.get("fundraiser_share_cents"), default=int(product.get("fundraiser_share_cents") or 0))
     if "platform_fee_basis_points" in fields:
-        updates["platform_fee_basis_points"] = _clean_basis_points(fields.get("platform_fee_basis_points"), default=int(product.get("platform_fee_basis_points") or 150))
+        updates["platform_fee_basis_points"] = _clean_basis_points(fields.get("platform_fee_basis_points"), default=int(product.get("platform_fee_basis_points") or 0))
     if "variants" in fields:
         updates["variants"] = _normalize_variants(fields.get("variants"), base_selling_price_cents=selling_price_cents)
     personalization_enabled = bool(product.get("personalization_enabled"))
@@ -2490,20 +2494,18 @@ async def _included_packet_products(tenant_id: str, webstore_id: str, public_slu
 
 
 async def _payment_readiness(store: dict) -> dict[str, Any]:
-    raw = str(store.get("payment_readiness_status") or "").strip().lower()
-    if store.get("stripe_payment_ready") is True:
-        state = "ready"
-    elif raw in PAYMENT_READINESS_STATES:
-        state = raw
-    elif store.get("direct_owner_payout_required") or store.get("stripe_onboarding_required"):
-        state = "not_configured"
-    else:
-        state = "unavailable"
+    provider_status = provider_configuration_status(get_settings())
+    state = provider_status["state"]
     return {
         "state": state,
-        "ready": state in {"ready", "not_applicable"},
-        "required": bool(store.get("direct_owner_payout_required") or store.get("stripe_onboarding_required")),
-        "reason": "Real verified provider checkout and payout readiness are not connected yet." if state in {"not_configured", "pending", "restricted", "unavailable"} else "Payment prerequisites are satisfied.",
+        "label": provider_status["label"],
+        "ready": False,
+        "required": True,
+        "provider_authority": False,
+        "provider_mode": getattr(get_settings(), "stripe_mode", "test"),
+        "reason": provider_status["reason"],
+        "violations": provider_status["violations"],
+        "stored_flags_ignored": True,
     }
 
 
@@ -2574,7 +2576,7 @@ async def _assemble_launch_packet_snapshot(user: dict, store: dict, fields: dict
         "terms": _owner_safe_terms_snapshot(store, owner),
         "qr_reference": qr_reference,
         "approval_instructions": "Review this exact packet version. Approve it or submit a structured change request.",
-        "public_commerce_status": "Buyer storefront, server-authoritative checkout, verified-payment Orders, payouts, and Production bridge are connected for Batch 3 launch.",
+        "public_commerce_status": "Webstore catalog and approval preparation are available. Provider checkout, payments, payouts, and verified-payment Order creation remain deferred.",
     }
     promotion_copy = _clean_optional_text(fields.get("promotion_copy")) or f"{store.get('name')} is being prepared for owner review."
     return {
@@ -3185,13 +3187,13 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
         },
         {
             "key": "buyer_commerce_connected",
-            "state": "ready",
-            "reason": "Public storefront, server-authoritative checkout intent, verified-payment bridge, Orders, and Production handoff are connected.",
-            "severity": "advisory",
-            "action": "Launch, schedule, pause, or close the store from the lifecycle controls.",
+            "state": "blocked",
+            "reason": "Provider checkout, webhooks, and connected-account reconciliation are deferred by owner decision.",
+            "severity": "blocking",
+            "action": "Complete the later Stripe integration before enabling public commerce.",
             "resource": {"type": "batch_scope", "id": "batch_3"},
-            "owner_wording": "The store can accept buyer checkout after launch.",
-            "blocking": False,
+            "owner_wording": "Public commerce is not enabled in this foundation build.",
+            "blocking": True,
         },
     ]
     checks = {gate["key"]: not gate["blocking"] for gate in gates}
@@ -3217,10 +3219,71 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
         "terms_acceptance": _portal_terms_acceptance(terms),
         "open_change_request_count": len(open_changes),
         "payment_readiness": payment,
-        "payment_readiness_source": "computed",
+        "payment_readiness_source": "provider_boundary",
         "payment_unavailable_reason": payment["reason"],
-        "public_launch_blocked_until_batch_3": False,
+        "public_launch_blocked_until_batch_3": True,
     }
+
+
+async def payment_provider_status(user: dict, webstore_id: str) -> dict[str, Any]:
+    _require_staff_perm(user, Perm.WEBSTORE_READ)
+    store = await _get_store(user["tenant_id"], webstore_id)
+    status = provider_configuration_status(get_settings())
+    return {
+        "webstore_id": webstore_id,
+        "provider": "stripe",
+        "status": status,
+        "store_state": {
+            "mode": store.get("payment_provider_mode") or "test",
+            "onboarding_state": store.get("provider_onboarding_state") or "not_started",
+            "charges_enabled": False,
+            "payouts_enabled": False,
+            "requirements_currently_due": [],
+            "requirements_past_due": [],
+            "restriction_status": None,
+            "last_verified_at": None,
+            "provider_authority": False,
+        },
+        "actions": {
+            "connect": True,
+            "resume_onboarding": True,
+            "refresh_status": True,
+            "view_requirements": True,
+            "disconnect": bool(store.get("provider_account_reference")),
+        },
+    }
+
+
+async def payment_provider_action(user: dict, webstore_id: str, action: str) -> dict[str, Any]:
+    _require_staff_perm(user, Perm.WEBSTORE_MANAGE)
+    store = await _get_store(user["tenant_id"], webstore_id)
+    status = provider_configuration_status(get_settings())
+    if action not in {"connect", "resume_onboarding", "refresh_status", "view_requirements", "disconnect"}:
+        raise WebstoreError("payment_provider_action_invalid", "Unsupported payment provider action", 400)
+    provider = get_webstore_payment_provider(get_settings())
+    if action in {"connect", "resume_onboarding"}:
+        result = await provider.create_connected_account_onboarding_link(tenant_id=user["tenant_id"], webstore_id=webstore_id, owner_id=store.get("owner_id"))
+    elif action == "refresh_status":
+        result = await provider.synchronize_payment_readiness(tenant_id=user["tenant_id"], webstore_id=webstore_id)
+    elif action == "view_requirements":
+        result = await provider.retrieve_connected_account_status(tenant_id=user["tenant_id"], webstore_id=webstore_id)
+    else:
+        result = await provider.reconcile_provider_event(tenant_id=user["tenant_id"], webstore_id=webstore_id, action=action)
+    await _audit(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        actor_type="staff",
+        actor_id=user.get("id"),
+        actor_email=user.get("email"),
+        action=f"webstore.payment_provider_{action}",
+        entity_type="webstore",
+        entity_id=webstore_id,
+        summary="Webstore payment provider action requested",
+        metadata={"provider": "stripe", "result_code": result.code, "provider_authority": False},
+    )
+    if not result.ok:
+        raise WebstoreError("payment_provider_not_configured", result.message, 503)
+    return {"status": status, "result": {"ok": True, "code": result.code}}
 
 
 async def _storefront_by_slug(slug: str) -> dict:
@@ -3328,14 +3391,15 @@ def _checkout_response(intent: dict, *, created: bool) -> dict:
     public_intent.pop("immutable_snapshot", None)
     return {
         "purchase_intent": public_intent,
-        "checkout_available": True,
+        "checkout_available": False,
         "checkout_status": intent.get("checkout_status") or "created",
         "checkout": {
-            "provider": intent.get("provider") or "local_test_provider",
+            "provider": intent.get("provider") or "deferred",
             "provider_checkout_id": intent.get("provider_checkout_id"),
             "payment_required": True,
-            "payment_authority": "verified_provider_event",
-            "verified_payment_creates_order": True,
+            "payment_authority": "none",
+            "verified_payment_creates_order": False,
+            "unavailable_reason": "Provider checkout is deferred and no payment authority is enabled.",
         },
         "created": created,
     }
@@ -3343,6 +3407,13 @@ def _checkout_response(intent: dict, *, created: bool) -> dict:
 
 async def create_purchase_intent(slug: str, fields: dict[str, Any]) -> dict:
     _reject_public_money_authority(fields)
+    provider_status = provider_configuration_status(get_settings())
+    if not provider_status["provider_authority"]:
+        raise WebstoreError(
+            "payment_provider_not_configured",
+            "Online checkout is unavailable until the Webstore payment provider is configured and verified.",
+            503,
+        )
     storefront = await _storefront_by_slug(slug)
     store = storefront["webstore"]
     if not store.get("checkout_enabled"):
@@ -3440,9 +3511,6 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any]) -> dict:
             "financial_lines": financial_lines,
         },
     ).model_dump()
-    intent["provider"] = "local_test_provider"
-    intent["provider_checkout_id"] = f"webstore_checkout:{intent['id']}"
-    intent["checkout_status"] = "created"
     intent["confirmation_token"] = secrets.token_urlsafe(24)
     try:
         await db.webstore_purchase_intents.insert_one(prepare_for_mongo(intent))

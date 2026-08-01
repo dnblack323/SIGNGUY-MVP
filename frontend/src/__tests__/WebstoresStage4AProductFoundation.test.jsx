@@ -14,6 +14,7 @@ import {
   createWebstoreProductCategory,
   generateLaunchPacket,
   getLaunchReadiness,
+  getWebstorePaymentProviderStatus,
   getWebstore,
   getWebstoreBranding,
   getWebstoreQuestionnaire,
@@ -39,6 +40,7 @@ import {
   updateWebstoreChangeRequest,
   updateWebstoreProduct,
   updateWebstoreProductCategory,
+  requestWebstorePaymentProviderAction,
   uploadWebstoreSetupFile,
 } from "@/lib/webstores";
 import { useAuth } from "@/auth/AuthContext";
@@ -54,6 +56,7 @@ jest.mock("@/lib/webstores", () => ({
   createWebstoreProductCategory: jest.fn(),
   generateLaunchPacket: jest.fn(),
   getLaunchReadiness: jest.fn(),
+  getWebstorePaymentProviderStatus: jest.fn(),
   getWebstore: jest.fn(),
   getWebstoreBranding: jest.fn(),
   getWebstoreQuestionnaire: jest.fn(),
@@ -79,6 +82,7 @@ jest.mock("@/lib/webstores", () => ({
   updateWebstoreChangeRequest: jest.fn(),
   updateWebstoreProduct: jest.fn(),
   updateWebstoreProductCategory: jest.fn(),
+  requestWebstorePaymentProviderAction: jest.fn(),
   uploadWebstoreSetupFile: jest.fn(),
 }));
 
@@ -152,6 +156,7 @@ beforeEach(() => {
     ],
   });
   getLaunchReadiness.mockResolvedValue({ ready: false, checks: { payment_ready: false }, payment_unavailable_reason: "Real verified provider checkout is not connected yet." });
+  getWebstorePaymentProviderStatus.mockResolvedValue({ status: { label: "Not configured", reason: "Stripe integration is disabled." }, actions: {} });
   getWebstoreReports.mockResolvedValue({ order_count: 0, gross_sales_cents: 0, ledger_totals_cents: {} });
   getWebstoreSetupProgress.mockResolvedValue({ setup_state: "not_started", steps: [] });
   listWebstoreAssignments.mockResolvedValue([]);
@@ -220,6 +225,7 @@ beforeEach(() => {
   restoreWebstoreProductCategory.mockResolvedValue({});
   archiveWebstoreProduct.mockResolvedValue({});
   restoreWebstoreProduct.mockResolvedValue({});
+  requestWebstorePaymentProviderAction.mockResolvedValue({});
 });
 
 test("staff product image picker previews selected files before save", async () => {

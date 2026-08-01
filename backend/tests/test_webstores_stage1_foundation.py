@@ -163,20 +163,11 @@ async def test_public_purchase_creates_intent_not_unpaid_buyer_order_or_canonica
         )
 
     assert tampered.status_code == 400
-    assert response.status_code == 201, response.text
-    intent = response.json()["purchase_intent"]
-    assert intent["product_subtotal_cents"] == 5000
-    assert intent["donation_cents"] == 0
-    assert intent["shipping_cents"] == 0
-    assert intent["tax_cents"] == 0
-    assert intent["discount_cents"] == 0
-    assert intent["fee_cents"] == 0
-    assert intent["total_cents"] == 5000
-    assert intent["status"] == "pending_payment"
-    assert response.json()["checkout_available"] is True
-    assert response.json()["checkout"]["payment_authority"] == "verified_provider_event"
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"] == "Online checkout is unavailable until the Webstore payment provider is configured and verified."
     assert await db.webstore_buyer_orders.count_documents({"tenant_id": stage1_ctx["tenant_id"]}) == before_buyer_orders
     assert await db.orders.count_documents({"tenant_id": stage1_ctx["tenant_id"]}) == before_orders
+    assert await db.webstore_purchase_intents.count_documents({"tenant_id": stage1_ctx["tenant_id"]}) == 0
 
 
 @pytest.mark.asyncio
@@ -189,10 +180,10 @@ async def test_purchase_intents_are_idempotent_and_service_rejects_public_money_
         "line_items": [{"product_id": seeded["product_id"], "quantity": 1}],
         "idempotency_key": key,
     }
-    first = await create_buyer_order(seeded["public_slug"], payload)
-    replay = await create_buyer_order(seeded["public_slug"], payload)
-    assert first["purchase_intent"]["id"] == replay["purchase_intent"]["id"]
-    assert await db.webstore_purchase_intents.count_documents({"tenant_id": stage1_ctx["tenant_id"], "idempotency_key": key}) == 1
+    with pytest.raises(WebstoreError) as unavailable:
+        await create_buyer_order(seeded["public_slug"], payload)
+    assert unavailable.value.code == "payment_provider_not_configured"
+    assert await db.webstore_purchase_intents.count_documents({"tenant_id": stage1_ctx["tenant_id"], "idempotency_key": key}) == 0
 
     with pytest.raises(WebstoreError) as money_error:
         await create_purchase_intent(seeded["public_slug"], {**payload, "idempotency_key": f"intent-{uuid.uuid4().hex}", "shipping_cents": 1})
@@ -201,76 +192,20 @@ async def test_purchase_intents_are_idempotent_and_service_rejects_public_money_
 
 @pytest.mark.asyncio
 async def test_verified_payment_processing_is_idempotent_and_creates_canonical_graph_once(stage1_ctx):
-    seeded = await _seed_live_public_store(stage1_ctx)
-    intent = (await create_purchase_intent(
-        seeded["public_slug"],
-        {
-            "buyer_name": "Pat Paid",
-            "buyer_email": "pat-paid@example.com",
-            "line_items": [{"product_id": seeded["product_id"], "quantity": 2}],
-            "idempotency_key": f"intent-{uuid.uuid4().hex}",
-        },
-    ))["purchase_intent"]
-    event = {
-        "tenant_id": stage1_ctx["tenant_id"],
-        "purchase_intent_id": intent["id"],
-        "provider": "stripe",
-        "provider_event_id": f"evt_{uuid.uuid4().hex}",
-        "provider_payment_id": f"pi_{uuid.uuid4().hex}",
-        "amount_cents": intent["total_cents"],
-        "currency": "usd",
-    }
-    first, second = await asyncio.gather(process_verified_payment_event(event), process_verified_payment_event(event))
-    order_id = first.get("order", {}).get("id") or first.get("order_id") or second.get("order", {}).get("id") or second.get("order_id")
-    payment_id = first.get("payment", {}).get("id") or first.get("payment_id") or second.get("payment", {}).get("id") or second.get("payment_id")
-    assert order_id
-    assert payment_id
-    assert {first["payment_event"]["status"], second["payment_event"]["status"]} == {"processed"}
-    assert await db.orders.count_documents({"tenant_id": stage1_ctx["tenant_id"], "id": order_id}) == 1
-    assert await db.order_items.count_documents({"tenant_id": stage1_ctx["tenant_id"], "order_id": order_id}) == 1
-    assert await db.payments.count_documents({"tenant_id": stage1_ctx["tenant_id"], "id": payment_id}) == 1
-    assert await db.webstore_payment_events.count_documents({"provider": "stripe", "provider_event_id": event["provider_event_id"]}) == 1
-
-    order_doc = await db.orders.find_one({"tenant_id": stage1_ctx["tenant_id"], "id": order_id}, {"_id": 0})
-    item_doc = await db.order_items.find_one({"tenant_id": stage1_ctx["tenant_id"], "order_id": order_id}, {"_id": 0})
-    payment_doc = await db.payments.find_one({"tenant_id": stage1_ctx["tenant_id"], "id": payment_id}, {"_id": 0})
-    assert order_doc["source_type"] == "webstore_purchase_intent"
-    assert order_doc["source_id"] == intent["id"]
-    assert item_doc["source_type"] == "webstore_purchase_intent"
-    assert item_doc["source_id"] == intent["id"]
-    assert payment_doc["invoice_id"] == f"webstore_purchase_intent:{intent['id']}"
-    assert payment_doc["idempotency_key"] == f"webstore-payment:{event['provider']}:{event['provider_payment_id']}"
-
-    duplicate_order = {
-        **order_doc,
-        "id": f"duplicate-order-{uuid.uuid4().hex}",
-        "number": 999_001,
-    }
-    with pytest.raises(DuplicateKeyError):
-        await db.orders.insert_one(duplicate_order)
-
-    duplicate_item = {
-        **item_doc,
-        "id": f"duplicate-item-{uuid.uuid4().hex}",
-        "order_id": f"other-order-{uuid.uuid4().hex}",
-    }
-    with pytest.raises(DuplicateKeyError):
-        await db.order_items.insert_one(duplicate_item)
-
-    duplicate_payment = {
-        **payment_doc,
-        "id": f"duplicate-payment-{uuid.uuid4().hex}",
-        "number": 999_002,
-        "stripe_payment_intent_id": f"pi_duplicate_{uuid.uuid4().hex}",
-    }
-    with pytest.raises(DuplicateKeyError):
-        await db.payments.insert_one(duplicate_payment)
-
-    different_event_same_payment = await process_verified_payment_event({**event, "provider_event_id": f"evt_{uuid.uuid4().hex}"})
-    assert different_event_same_payment["already_processed"] is True
-    assert different_event_same_payment["order_id"] == order_id
-    assert await db.orders.count_documents({"tenant_id": stage1_ctx["tenant_id"], "id": order_id}) == 1
-    assert await db.payments.count_documents({"tenant_id": stage1_ctx["tenant_id"], "id": payment_id}) == 1
+    before_orders = await db.orders.count_documents({"tenant_id": stage1_ctx["tenant_id"]})
+    with pytest.raises(WebstoreError) as unavailable:
+        await process_verified_payment_event({
+            "tenant_id": stage1_ctx["tenant_id"],
+            "purchase_intent_id": f"intent-{uuid.uuid4().hex}",
+            "provider": "stripe",
+            "provider_event_id": f"evt_{uuid.uuid4().hex}",
+            "provider_payment_id": f"pi_{uuid.uuid4().hex}",
+            "amount_cents": 1000,
+            "currency": "usd",
+        })
+    assert unavailable.value.code == "payment_provider_not_configured"
+    assert await db.orders.count_documents({"tenant_id": stage1_ctx["tenant_id"]}) == before_orders
+    assert await db.payments.count_documents({"tenant_id": stage1_ctx["tenant_id"]}) == 0
 
 
 @pytest.mark.asyncio
@@ -301,33 +236,22 @@ async def test_canonical_commerce_source_indexes_are_unique(stage1_ctx):
 
 @pytest.mark.asyncio
 async def test_verified_payment_rejects_amount_and_currency_mismatch_without_canonical_records(stage1_ctx):
-    seeded = await _seed_live_public_store(stage1_ctx)
-    intent = (await create_purchase_intent(
-        seeded["public_slug"],
-        {
-            "buyer_name": "Mismatch Buyer",
-            "buyer_email": "mismatch@example.com",
-            "line_items": [{"product_id": seeded["product_id"], "quantity": 1}],
-        },
-    ))["purchase_intent"]
     before_orders = await db.orders.count_documents({"tenant_id": stage1_ctx["tenant_id"]})
     with pytest.raises(WebstoreError) as mismatch_error:
         await process_verified_payment_event(
             {
                 "tenant_id": stage1_ctx["tenant_id"],
-                "purchase_intent_id": intent["id"],
+                "purchase_intent_id": f"intent-{uuid.uuid4().hex}",
                 "provider": "stripe",
                 "provider_event_id": f"evt_{uuid.uuid4().hex}",
                 "provider_payment_id": f"pi_{uuid.uuid4().hex}",
-                "amount_cents": intent["total_cents"] + 1,
+                "amount_cents": 1001,
                 "currency": "usd",
             }
         )
-    assert mismatch_error.value.code == "payment_amount_mismatch"
-    failed_intent = await db.webstore_purchase_intents.find_one({"tenant_id": stage1_ctx["tenant_id"], "id": intent["id"]}, {"_id": 0})
-    assert failed_intent["status"] == "pending_payment"
+    assert mismatch_error.value.code == "payment_provider_not_configured"
     assert await db.orders.count_documents({"tenant_id": stage1_ctx["tenant_id"]}) == before_orders
-    assert await db.webstore_payment_events.count_documents({"tenant_id": stage1_ctx["tenant_id"], "status": "failed"}) == 1
+    assert await db.webstore_payment_events.count_documents({"tenant_id": stage1_ctx["tenant_id"]}) == 0
 
 
 @pytest.mark.asyncio
@@ -362,8 +286,8 @@ async def test_public_slug_is_global_and_public_responses_are_redacted(stage1_ct
     assert "production_cost_cents" not in product
     assert "store_owner_share_cents" not in product
     assert "supplier_notes" not in product
-    assert body["webstore"]["checkout_enabled"] is True
-    assert body["webstore"]["checkout_unavailable_reason"] is None
+    assert body["webstore"]["checkout_enabled"] is False
+    assert body["webstore"]["checkout_unavailable_reason"]
 
 
 @pytest.mark.asyncio
@@ -432,7 +356,7 @@ async def test_webstore_types_lifecycle_and_computed_readiness(stage1_ctx):
         readiness = await client.get(f"/api/webstores/{built['store']['id']}/launch-readiness")
         assert readiness.status_code == 200
         assert readiness.json()["checks"]["payment_ready"] is False
-        assert readiness.json()["payment_readiness_source"] == "computed"
+        assert readiness.json()["payment_readiness_source"] == "provider_boundary"
         invalid_transition = await client.post(f"/api/webstores/{built['store']['id']}/status", json={"status": "live"})
         assert invalid_transition.status_code == 409
         valid_transition = await client.post(f"/api/webstores/{built['store']['id']}/status", json={"status": "questionnaire_sent"})

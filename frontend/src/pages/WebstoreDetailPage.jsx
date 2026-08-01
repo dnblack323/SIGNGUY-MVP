@@ -23,6 +23,7 @@ import {
   getWebstoreQuestionnaireResponse,
   generateLaunchPacket,
   getLaunchReadiness,
+  getWebstorePaymentProviderStatus,
   getWebstoreSetupProgress,
   getWebstore,
   getWebstoreReports,
@@ -48,6 +49,7 @@ import {
   restoreWebstoreProduct,
   restoreWebstoreProductCategory,
   updateWebstore,
+  requestWebstorePaymentProviderAction,
 } from "@/lib/webstores";
 import { toast } from "sonner";
 
@@ -133,6 +135,7 @@ export default function WebstoreDetailPage() {
   const templates = useQuery({ queryKey: ["webstore-product-templates"], queryFn: listProductTemplates });
   const categories = useQuery({ queryKey: ["webstore-product-categories", id], queryFn: () => listWebstoreProductCategories(id), enabled: !!id });
   const readiness = useQuery({ queryKey: ["webstore-readiness", id], queryFn: () => getLaunchReadiness(id), enabled: !!id });
+  const paymentProvider = useQuery({ queryKey: ["webstore-payment-provider", id], queryFn: () => getWebstorePaymentProviderStatus(id), enabled: !!id });
   const reports = useQuery({ queryKey: ["webstore-reports", id], queryFn: () => getWebstoreReports(id), enabled: !!id });
   const setupProgress = useQuery({ queryKey: ["webstore-setup-progress", id], queryFn: () => getWebstoreSetupProgress(id), enabled: !!id });
   const assignments = useQuery({ queryKey: ["webstore-assignments", id], queryFn: () => listWebstoreAssignments(id), enabled: !!id });
@@ -148,6 +151,7 @@ export default function WebstoreDetailPage() {
     await Promise.all([
       qc.invalidateQueries({ queryKey: ["webstore", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-readiness", id] }),
+      qc.invalidateQueries({ queryKey: ["webstore-payment-provider", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-reports", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-setup-progress", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-assignments", id] }),
@@ -213,7 +217,7 @@ export default function WebstoreDetailPage() {
       production_cost_cents: toIntCents(productDraft.production_cost_cents),
       store_owner_share_cents: toIntCents(productDraft.store_owner_share_cents),
       fundraiser_share_cents: toIntCents(productDraft.fundraiser_share_cents),
-      platform_fee_basis_points: toIntCents(productDraft.platform_fee_basis_points ?? 150),
+      platform_fee_basis_points: toIntCents(productDraft.platform_fee_basis_points ?? 0),
       variants: productDraft.variants || [],
       personalization_enabled: Boolean(productDraft.personalization_enabled),
       personalization_fields: productDraft.personalization_fields || [],
@@ -320,6 +324,11 @@ export default function WebstoreDetailPage() {
   const launch = useMutation({
     mutationFn: () => setWebstoreStatus(id, "live"),
     onSuccess: async () => { toast.success("Webstore launched"); await refresh(); },
+    onError: (err) => toast.error(extractError(err)),
+  });
+  const paymentProviderAction = useMutation({
+    mutationFn: (action) => requestWebstorePaymentProviderAction(id, action),
+    onSuccess: async () => { toast.success("Stripe integration is not enabled in this foundation build"); await refresh(); },
     onError: (err) => toast.error(extractError(err)),
   });
   const updateChange = useMutation({
@@ -711,6 +720,20 @@ export default function WebstoreDetailPage() {
               <div className="font-medium">Payment readiness: {(readiness.data?.payment_readiness?.state || "").replace("not_configured", "Not connected") || (readiness.data?.checks?.payment_ready ? "Ready" : "Not connected")}</div>
               <div>{readiness.data?.payment_unavailable_reason || "Real verified provider checkout is not connected yet."}</div>
             </div>
+            <div className="rounded border p-3 space-y-3" data-testid="webstore-stripe-status">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-medium">Stripe Connect</div>
+                <Badge variant="outline">{paymentProvider.data?.status?.label || "Not configured"}</Badge>
+              </div>
+              <div className="text-xs text-muted-foreground">{paymentProvider.data?.status?.reason || "Stripe integration is disabled for this foundation build."}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button size="sm" variant="outline" disabled={paymentProviderAction.isPending} onClick={() => paymentProviderAction.mutate("connect")}><ExternalLink className="size-4 mr-2" />Connect Stripe</Button>
+                <Button size="sm" variant="outline" disabled={paymentProviderAction.isPending} onClick={() => paymentProviderAction.mutate("refresh_status")}><RotateCcw className="size-4 mr-2" />Refresh status</Button>
+                <Button size="sm" variant="outline" disabled={paymentProviderAction.isPending} onClick={() => paymentProviderAction.mutate("resume_onboarding")}>Resume onboarding</Button>
+                <Button size="sm" variant="outline" disabled={paymentProviderAction.isPending} onClick={() => paymentProviderAction.mutate("view_requirements")}>View requirements</Button>
+              </div>
+              <div className="text-xs text-muted-foreground">Provider authority is required before checkout or launch. No Stripe calls are made in this build.</div>
+            </div>
             <div className="rounded border bg-slate-50 px-3 py-2 text-xs" data-testid="webstore-qr-preview">
               <div className="font-medium">QR preview</div>
               <div>{activePacket?.snapshot?.qr_reference?.destination || store.public_url || "Generate a packet to prepare the QR destination."}</div>
@@ -1089,7 +1112,7 @@ export default function WebstoreDetailPage() {
                           <div className="grid gap-1.5"><Label>Production cost (cents)</Label><Input type="number" min="0" value={productDraft.production_cost_cents ?? 0} onChange={(e) => setProductField("production_cost_cents", toIntCents(e.target.value))} data-testid="webstore-product-production-cost" /></div>
                           <div className="grid gap-1.5"><Label>Owner share (cents)</Label><Input type="number" min="0" value={productDraft.store_owner_share_cents ?? 0} onChange={(e) => setProductField("store_owner_share_cents", toIntCents(e.target.value))} data-testid="webstore-product-owner-share" /></div>
                           <div className="grid gap-1.5"><Label>Fundraiser share (cents)</Label><Input type="number" min="0" value={productDraft.fundraiser_share_cents ?? 0} onChange={(e) => setProductField("fundraiser_share_cents", toIntCents(e.target.value))} /></div>
-                          <div className="grid gap-1.5"><Label>Platform fee (basis points)</Label><Input type="number" min="0" max="10000" value={productDraft.platform_fee_basis_points ?? 150} onChange={(e) => setProductField("platform_fee_basis_points", toIntCents(e.target.value))} /></div>
+                          <div className="grid gap-1.5"><Label>Platform fee (basis points)</Label><Input type="number" min="0" max="10000" value={productDraft.platform_fee_basis_points ?? 0} onChange={(e) => setProductField("platform_fee_basis_points", toIntCents(e.target.value))} /></div>
                           <div className="rounded-md border bg-slate-50 p-3 text-sm">
                             <div className="font-medium">Internal margin</div>
                             <div className="text-muted-foreground">{centsToDollarsString(Math.max(0, Number(productDraft.selling_price_cents || 0) - Number(productDraft.production_cost_cents || 0) - Number(productDraft.store_owner_share_cents || 0) - Number(productDraft.fundraiser_share_cents || 0)))}</div>

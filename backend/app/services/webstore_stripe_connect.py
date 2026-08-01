@@ -1,64 +1,48 @@
-"""EC14 - Webstores Stripe Connect boundary.
+"""Compatibility exports for the single Webstores payment-provider boundary.
 
-Phase 14 creates local boundary records only. It does not call Stripe APIs,
-open Checkout Sessions, process webhooks, or mutate EC4/EC13 billing records.
+The old EC14 local-record helpers are retained as safe compatibility names,
+but they no longer create checkout or onboarding records. Provider behavior is
+implemented only through :mod:`webstore_payment_provider`.
 """
 from __future__ import annotations
 
 from typing import Any, Optional
 
-from ..core.db import db
-from ..core.time_utils import prepare_for_mongo, serialize_doc
-from ..models.webstore import WebstoreStripeConnectRecord
+from .webstore_payment_provider import (
+    PAYMENT_PROVIDER_NOT_CONFIGURED,
+    NotConfiguredWebstorePaymentProvider,
+    ProviderResult,
+    WebstorePaymentProvider,
+    get_webstore_payment_provider,
+    payment_provider_not_configured,
+    provider_configuration_status,
+)
 
 
-async def create_local_checkout_record(
-    *,
-    tenant_id: str,
-    webstore_id: str,
-    buyer_order_id: str,
-    amount_cents: int,
-    currency: str = "usd",
-    idempotency_key: Optional[str] = None,
-    metadata: Optional[dict[str, Any]] = None,
-) -> dict:
-    if idempotency_key:
-        existing = await db.webstore_stripe_connect_records.find_one(
-            {"tenant_id": tenant_id, "webstore_id": webstore_id, "record_type": "checkout_session", "idempotency_key": idempotency_key},
-            {"_id": 0},
-        )
-        if existing:
-            return serialize_doc(existing)  # type: ignore[return-value]
-    record = WebstoreStripeConnectRecord(
-        tenant_id=tenant_id,
-        webstore_id=webstore_id,
-        record_type="checkout_session",
-        status="local_only",
-        amount_cents=amount_cents,
-        currency=currency,
-        idempotency_key=idempotency_key,
-        checkout_url=None,
-        metadata={"buyer_order_id": buyer_order_id, **(metadata or {})},
-    ).model_dump()
-    await db.webstore_stripe_connect_records.insert_one(prepare_for_mongo(record))
-    return serialize_doc(record)  # type: ignore[return-value]
+async def create_local_checkout_record(*, tenant_id: str, webstore_id: str, buyer_order_id: str, amount_cents: int, currency: str = "usd", idempotency_key: Optional[str] = None, metadata: Optional[dict[str, Any]] = None) -> ProviderResult:
+    """Reject the retired local checkout contract without writing fake state."""
+    return ProviderResult.failure(
+        PAYMENT_PROVIDER_NOT_CONFIGURED,
+        "Local Webstore checkout records are retired; configure the provider adapter before checkout.",
+    )
 
 
-async def create_local_onboarding_record(
-    *,
-    tenant_id: str,
-    webstore_id: str,
-    owner_id: str,
-    idempotency_key: Optional[str] = None,
-) -> dict:
-    record = WebstoreStripeConnectRecord(
-        tenant_id=tenant_id,
-        webstore_id=webstore_id,
-        owner_id=owner_id,
-        record_type="account_onboarding",
-        status="local_only",
-        idempotency_key=idempotency_key,
-        metadata={"provider_calls": "not_authorized_in_ec14"},
-    ).model_dump()
-    await db.webstore_stripe_connect_records.insert_one(prepare_for_mongo(record))
-    return serialize_doc(record)  # type: ignore[return-value]
+async def create_local_onboarding_record(*, tenant_id: str, webstore_id: str, owner_id: str, idempotency_key: Optional[str] = None) -> ProviderResult:
+    """Reject the retired local onboarding contract without writing fake state."""
+    return ProviderResult.failure(
+        PAYMENT_PROVIDER_NOT_CONFIGURED,
+        "Local Webstore onboarding records are retired; configure the provider adapter before onboarding.",
+    )
+
+
+__all__ = [
+    "PAYMENT_PROVIDER_NOT_CONFIGURED",
+    "NotConfiguredWebstorePaymentProvider",
+    "ProviderResult",
+    "WebstorePaymentProvider",
+    "create_local_checkout_record",
+    "create_local_onboarding_record",
+    "get_webstore_payment_provider",
+    "payment_provider_not_configured",
+    "provider_configuration_status",
+]
