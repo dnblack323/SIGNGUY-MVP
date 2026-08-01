@@ -41,6 +41,8 @@ This correction may implement:
 - Provider/readiness/checkout-attempt/reconciliation fields on existing Webstore records.
 - Safe launch and checkout gates.
 - Staff-visible provider status and prepared controls that fail safely.
+- Typed provider-authoritative test fixtures for internal conversion and reconciliation tests; no fixture is reachable through a deployed route.
+- Provider-gated refund recording through the canonical EC4 Payment service and typed payout/transfer/dispute reconciliation.
 - Integer-cent allocation snapshot contracts without account routing.
 - Regression tests and an exact Emergent handoff.
 
@@ -58,4 +60,4 @@ Emergent must implement the approved Stripe adapter behind the existing provider
 
 Batch 3 cannot be called production-commerce complete until the later Stripe integration passes separate acceptance. The valid foundation completion statement is:
 
-`WEBSTORES STRIPE-READY FOUNDATION COMPLETE - LIVE STRIPE INTEGRATION DEFERRED`
+`WEBSTORES STRIPE-READY FOUNDATION COMPLETE — LIVE STRIPE INTEGRATION DEFERRED`

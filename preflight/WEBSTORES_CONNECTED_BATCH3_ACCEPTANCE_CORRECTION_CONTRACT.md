@@ -1,6 +1,6 @@
 # Webstores Connected Batch 3 Acceptance Correction Contract
 
-Status: Stripe-ready foundation implemented for review. Live Stripe integration remains deferred by owner decision.
+Status: Stripe-ready foundation correction implemented for independent re-audit. Live Stripe integration remains deferred by owner decision.
 
 ## Starting state
 
@@ -48,7 +48,7 @@ Locked decisions retained here:
 
 ## Authorized architecture
 
-This branch adds one provider boundary with a typed disabled implementation. The provider boundary owns future onboarding, account status, readiness synchronization, Checkout Session creation/retrieval, payment verification, webhook verification/parsing, refunds, transfers/payouts, disputes, and provider-event reconciliation. The disabled implementation returns `PAYMENT_PROVIDER_NOT_CONFIGURED` and performs no network call or database money mutation.
+This branch adds one provider boundary with a typed disabled implementation. The provider boundary owns future onboarding, account status, readiness synchronization, Checkout Session creation/retrieval, payment verification, webhook verification/parsing, refunds, transfers/payouts, disputes, and provider-event reconciliation. Typed provider-authoritative fixtures are accepted only by internal service injection for tests; no deployed route can select them. The disabled implementation returns `PAYMENT_PROVIDER_NOT_CONFIGURED` and performs no network call or database money mutation.
 
 Stored Webstore flags never establish provider-authoritative readiness. Public checkout and live launch remain unavailable while `STRIPE_ENABLED=false`, the charge model is `deferred`, credentials are incomplete, or the provider adapter is absent.
 
@@ -65,7 +65,7 @@ Stored Webstore flags never establish provider-authoritative readiness. Public c
 
 ## Persistence
 
-Existing Mongo documents receive additive provider, readiness, checkout-attempt, reconciliation, recovery, and allocation-snapshot fields through the existing model/index path. No destructive migration or applied migration edit is required. Raw provider payload retention remains outside this foundation unless the established security architecture later authorizes protected storage.
+Existing Mongo documents receive additive provider, readiness, checkout-attempt, reconciliation, recovery, allocation-snapshot, provider-event sequence, and allowlisted provider-reference fields through the existing model/index path. No destructive migration or applied migration edit is required. Raw provider payload retention remains outside this foundation; payment events persist no raw payload from the provider boundary.
 
 ## Stop conditions
 

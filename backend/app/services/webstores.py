@@ -49,7 +49,7 @@ from .email import record_processed_activity, send_email
 from .portal_identity import create_portal_identity
 from .sequence import next_number, next_record_number
 from . import storage
-from .webstore_payment_provider import get_webstore_payment_provider, provider_configuration_status
+from .webstore_payment_provider import ProviderAuthority, get_webstore_payment_provider, provider_configuration_status
 
 WEBSTORES_FEATURE_KEY = "webstores"
 LIVE_BLOCKING_STATUSES = {"closed", "archived"}
@@ -1265,7 +1265,18 @@ async def create_webstore(user: dict, fields: dict[str, Any]) -> dict:
 async def list_webstores(user: dict, *, status: Optional[str] = None) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_READ)
     filters = {"status": status} if status else {}
-    return await stores_repo.list(tenant_id=user["tenant_id"], filters=filters, sort=[("updated_at", -1)])
+    result = await stores_repo.list(tenant_id=user["tenant_id"], filters=filters, sort=[("updated_at", -1)])
+    provider_status = provider_configuration_status(get_settings())
+    provider_authority = bool(provider_status["provider_authority"])
+    items = []
+    for item in result["items"]:
+        safe_item = dict(item)
+        safe_item["checkout_enabled"] = bool(item.get("checkout_enabled")) and provider_authority
+        safe_item["checkout_unavailable_reason"] = (
+            None if safe_item["checkout_enabled"] else provider_status["reason"]
+        )
+        items.append(safe_item)
+    return {**result, "items": items}
 
 
 async def get_webstore(user: dict, webstore_id: str) -> dict:
@@ -3405,10 +3416,10 @@ def _checkout_response(intent: dict, *, created: bool) -> dict:
     }
 
 
-async def create_purchase_intent(slug: str, fields: dict[str, Any]) -> dict:
+async def create_purchase_intent(slug: str, fields: dict[str, Any], *, allow_internal_draft: bool = False) -> dict:
     _reject_public_money_authority(fields)
     provider_status = provider_configuration_status(get_settings())
-    if not provider_status["provider_authority"]:
+    if not allow_internal_draft and not provider_status["provider_authority"]:
         raise WebstoreError(
             "payment_provider_not_configured",
             "Online checkout is unavailable until the Webstore payment provider is configured and verified.",
@@ -3416,7 +3427,7 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any]) -> dict:
         )
     storefront = await _storefront_by_slug(slug)
     store = storefront["webstore"]
-    if not store.get("checkout_enabled"):
+    if not allow_internal_draft and not store.get("checkout_enabled"):
         raise WebstoreError("checkout_paused", "Checkout is currently paused for this Webstore", 409)
     full_store = await db.webstores.find_one({"public_slug": slug, "id": store["id"]}, {"_id": 0})
     tenant_id = full_store["tenant_id"]
@@ -3535,8 +3546,25 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any]) -> dict:
     return _checkout_response(saved, created=True)
 
 
-async def create_buyer_order(slug: str, fields: dict[str, Any]) -> dict:
-    return await create_purchase_intent(slug, fields)
+async def create_buyer_order(
+    slug: str,
+    fields: dict[str, Any],
+    *,
+    provider_authority: Optional[ProviderAuthority] = None,
+) -> dict:
+    """Create a pending intent only after typed internal authority exists.
+
+    Public routers call ``create_purchase_intent`` with its fail-closed
+    default. Without typed authority this compatibility helper remains
+    fail-closed. With a controlled provider-authoritative fixture it creates
+    only a pending intent and never creates a Payment, Order, inventory
+    mutation, or Production record.
+    """
+    if provider_authority is None:
+        return await create_purchase_intent(slug, fields)
+    if not provider_authority.verified or not provider_authority.webhook_verified or provider_authority.charge_model == "deferred":
+        raise WebstoreError("payment_provider_not_configured", "Provider-authoritative Webstore preparation is unavailable", 503)
+    return await create_purchase_intent(slug, fields, allow_internal_draft=True)
 
 
 async def public_confirmation(slug: str, confirmation_token: str) -> dict:
@@ -3799,36 +3827,6 @@ async def refund_webstore_payment(user: dict, webstore_id: str, payment_id: str,
         actor_user_id=user["id"],
         actor_email=user.get("email") or "",
         idempotency_key=idempotency_key or fields.get("idempotency_key"),
-    )
-
-
-async def record_payout_event(user: dict, webstore_id: str, fields: dict[str, Any]) -> dict:
-    _require_staff_perm(user, Perm.WEBSTORE_MANAGE)
-    await _get_store(user["tenant_id"], webstore_id)
-    from . import webstore_payments
-
-    return await webstore_payments.record_webstore_payout_event(
-        tenant_id=user["tenant_id"],
-        webstore_id=webstore_id,
-        purchase_intent_id=_clean_text(fields.get("purchase_intent_id"), "purchase_intent_id"),
-        amount_cents=int(fields.get("amount_cents") or 0),
-        provider_event_id=_clean_text(fields.get("provider_event_id"), "provider_event_id"),
-        status=_clean_text(fields.get("status") or "pending", "status", limit=60),
-    )
-
-
-async def record_dispute_event(user: dict, webstore_id: str, fields: dict[str, Any]) -> dict:
-    _require_staff_perm(user, Perm.WEBSTORE_MANAGE)
-    await _get_store(user["tenant_id"], webstore_id)
-    from . import webstore_payments
-
-    return await webstore_payments.record_webstore_dispute_event(
-        tenant_id=user["tenant_id"],
-        webstore_id=webstore_id,
-        purchase_intent_id=_clean_text(fields.get("purchase_intent_id"), "purchase_intent_id"),
-        amount_cents=int(fields.get("amount_cents") or 0),
-        provider_event_id=_clean_text(fields.get("provider_event_id"), "provider_event_id"),
-        status=_clean_text(fields.get("status") or "opened", "status", limit=60),
     )
 
 

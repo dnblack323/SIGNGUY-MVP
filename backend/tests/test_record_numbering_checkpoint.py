@@ -17,6 +17,7 @@ from app.services.sequence import (
     preview_next_record_number,
 )
 from app.services.webstores import create_buyer_order
+from app.services.webstore_payment_provider import ProviderAuthority
 from server import app
 
 
@@ -351,8 +352,16 @@ async def test_webstore_buyer_order_numbers_are_idempotent_and_do_not_affect_can
         "line_items": [{"product_id": product_id, "quantity": 2}],
         "idempotency_key": idempotency_key,
     }
-    first = await create_buyer_order(f"public-{slug}", payload)
-    replay = await create_buyer_order(f"public-{slug}", payload)
+    provider_authority = ProviderAuthority(
+        provider="test-fixture",
+        mode="test",
+        account_reference="acct_test_fixture",
+        charge_model="test-fixture",
+        webhook_verified=True,
+        verified=True,
+    )
+    first = await create_buyer_order(f"public-{slug}", payload, provider_authority=provider_authority)
+    replay = await create_buyer_order(f"public-{slug}", payload, provider_authority=provider_authority)
 
     assert first["purchase_intent"]["status"] == "pending_payment"
     assert replay["purchase_intent"]["id"] == first["purchase_intent"]["id"]

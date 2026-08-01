@@ -644,6 +644,8 @@ class WebstorePurchaseIntent(BaseDoc):
     refund_status: str = "not_refunded"
     dispute_status: str = "none"
     payout_status: str = "pending"
+    payout_provider_event_sequence: Optional[StrictInt] = None
+    dispute_provider_event_sequence: Optional[StrictInt] = None
     immutable_snapshot: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -682,6 +684,11 @@ class WebstoreLedgerEntry(BaseDoc):
     snapshot_basis_points: Optional[StrictInt] = Field(default=None, ge=0, le=10000)
     source_type: str
     source_id: str
+    provider_event_type: Optional[str] = None
+    provider_mode: Optional[str] = None
+    provider_account_reference: Optional[str] = None
+    provider_payment_reference: Optional[str] = None
+    provider_event_sequence: Optional[StrictInt] = None
     status: LedgerEntryStatus = "posted"
     reversal_of_ledger_entry_id: Optional[str] = None
     notes: Optional[str] = None

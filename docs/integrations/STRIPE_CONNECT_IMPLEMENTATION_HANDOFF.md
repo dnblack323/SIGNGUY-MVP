@@ -59,6 +59,8 @@ Additive model fields are in `backend/app/models/webstore.py`:
 - `Webstore`: provider name/mode, connected-account reference, onboarding state, charges/payouts capability, requirements, restriction state, verification time, and readiness source.
 - `WebstorePurchaseIntent`: checkout attempt identity/state, expected amount/currency, provider references, reconciliation, processing, and recovery state.
 - `WebstorePaymentEvent`: provider mode/account reference, reconciliation state, quarantine reason, and processing state.
+- `WebstorePurchaseIntent`: payout/dispute provider-event sequence markers for out-of-order protection.
+- `WebstoreLedgerEntry`: allowlisted provider event type, mode, account, payment reference, and sequence fields; no raw provider payload.
 - `WebstoreStripeConnectRecord`: provider mode/account/onboarding/capability state, expected amounts, provider references, reconciliation, recovery, and allocation snapshot.
 
 These fields are preparation only. A stored value cannot establish provider readiness. No destructive migration or applied migration edit is required by this foundation.
@@ -93,7 +95,7 @@ It remains a restricted development harness only and cannot be production author
 - no raw provider payload exposure;
 - no success-page or browser-redirect payment mutation.
 
-`backend/app/services/webstore_payments.py:process_verified_payment_event` is the canonical conversion entrypoint, but the current foundation rejects it until provider authority exists. Do not remove canonical Customer, Order, Order Item, Payment, ledger, notification, email, or Production reuse.
+`backend/app/services/webstore_payments.py:process_verified_payment_event` is the canonical conversion entrypoint. It accepts raw event dictionaries only at the future adapter boundary; internal conversion tests use `VerifiedProviderPayment` plus `ProviderAuthority`. The current foundation rejects unconfigured events before lookup or mutation. Do not remove canonical Customer, Order, Order Item, Payment, ledger, notification, email, or Production reuse. Raw event payloads are not persisted.
 
 ## Canonical conversion
 
@@ -101,13 +103,12 @@ The eventual verified event workflow must create or match one canonical Customer
 
 ## Refunds and lifecycle events
 
-The existing entrypoints are:
+The canonical refund entrypoint is:
 
 - `backend/app/services/webstores.py:refund_webstore_payment`
-- `backend/app/services/webstores.py:record_payout_event`
-- `backend/app/services/webstores.py:record_dispute_event`
+- `backend/app/services/webstore_payments.py:initiate_webstore_refund`
 
-They are currently provider-gated and must not record staff-entered provider outcomes. Emergent must route authorized refunds through the provider adapter with idempotency, partial/full limits, immutable refund history, allocation reversals, fundraiser/owner adjustments, production warnings, inventory policy, analytics reconciliation, and buyer/owner-safe status. Payout/transfer and dispute states must come from signed provider events, with manual reconciliation clearly labeled as administrative history.
+Refund orchestration calls `WebstorePaymentProvider.create_refund`, reconciles the typed allowlisted `ProviderRefund`, then calls EC4 `payment_service.record_provider_refund` to create the canonical refund Payment exactly once. The unconfigured provider returns `PAYMENT_PROVIDER_NOT_CONFIGURED` before mutation. Payout/transfer/dispute states enter through `reconcile_webstore_financial_event` after adapter reconciliation; the former staff-supplied `/payout-events` and `/dispute-events` routes are absent so raw status, amount, and provider IDs cannot establish truth. Duplicate event IDs replay idempotently, conflicting duplicates reject, and out-of-order events reject without overwriting newer state.
 
 ## Readiness and launch gates
 
@@ -116,7 +117,7 @@ Readiness is exposed through:
 - `GET /api/webstores/{webstore_id}/payment-provider`
 - `GET /api/webstores/{webstore_id}/launch-readiness`
 
-The status labels are `Not configured`, `Test configuration incomplete`, `Connected - verification required`, `Restricted`, `Ready for test checkout`, and `Live ready`. The current disabled foundation reaches only `Not configured` by default. `launch_readiness` ignores stored readiness flags and blocks `launch_ready`, `scheduled`, and `live` while provider authority is absent.
+The status labels are `Not configured`, `Test configuration incomplete`, `Connected — verification required`, `Restricted`, `Ready for test checkout`, and `Live ready`. Backend state mapping lives in `provider_configuration_status`; only typed provider-authoritative status can reach the connected/restricted/ready mappings. The current disabled foundation reaches only `Not configured` by default. Deferred charge model, incomplete configuration, missing verification, and stored flags cannot reach either ready state. `launch_readiness` ignores stored readiness flags and blocks `launch_ready`, `scheduled`, and `live` while provider authority is absent.
 
 Public serialization in `backend/app/services/webstores.py` also forces `checkout_enabled=false` unless provider authority is available.
 
@@ -126,7 +127,7 @@ Public serialization in `backend/app/services/webstores.py` also forces `checkou
 - Staff status and prepared controls: `frontend/src/pages/WebstoreDetailPage.jsx`.
 - Public checkout continues to fail closed through the backend; frontend must never calculate authoritative totals or call privileged provider APIs.
 
-Controls for Connect, resume onboarding, refresh, requirements, and disconnect are status/action placeholders. They must show the safe provider error while disabled and never claim onboarding completion.
+Controls for Connect, resume onboarding, refresh, requirements, and disconnect are status/action placeholders. They must show the safe provider error while disabled and never claim onboarding completion. Frontend code displays the backend status and does not calculate readiness.
 
 ## Money and charge-model boundary
 
@@ -138,7 +139,7 @@ The adapter must cover connected-account updates, Checkout Session/payment succe
 
 ## Test fixtures and commands
 
-Provider tests must use controlled adapter fixtures or a mocked provider client behind this boundary. They must not add production-route bypasses or fake paid state. Required checks include configuration fail-closed behavior, stored-flag rejection, idempotency, tenant/store/account/mode/amount/currency mismatch, signature failures, quarantine, canonical conversion recovery, refund lifecycle, privacy, permissions, and existing non-Webstore regressions.
+Provider tests use typed `ProviderAuthority`, `VerifiedProviderPayment`, `ProviderRefund`, and `ProviderFinancialEvent` fixtures or a mocked provider client behind this boundary. They must not add production-route bypasses or fake paid state. Required checks include configuration fail-closed behavior, stored-flag rejection, idempotency, tenant/store/account/mode/amount/currency mismatch, signature failures, conflict rejection, out-of-order rejection, canonical conversion recovery, refund lifecycle, privacy, permissions, and existing non-Webstore regressions.
 
 Focused backend command:
 

@@ -291,13 +291,6 @@ class WebstoreRefundIn(BaseModel):
     idempotency_key: Optional[str] = None
 
 
-class WebstoreProviderEventIn(BaseModel):
-    purchase_intent_id: str
-    amount_cents: StrictInt = Field(ge=0)
-    provider_event_id: str
-    status: str
-
-
 class AssignmentIn(BaseModel):
     role: str = "owner"
     email: str
@@ -479,22 +472,6 @@ async def refund_webstore_payment(
 ) -> dict:
     try:
         return await svc.refund_webstore_payment(user, webstore_id, payment_id, payload.model_dump(exclude_none=True), idempotency_key)
-    except WebstoreError as e:
-        _raise(e)
-
-
-@router.post("/{webstore_id}/payout-events", status_code=201)
-async def record_payout_event(webstore_id: str, payload: WebstoreProviderEventIn, user: dict = Depends(get_current_user)) -> dict:
-    try:
-        return await svc.record_payout_event(user, webstore_id, payload.model_dump())
-    except WebstoreError as e:
-        _raise(e)
-
-
-@router.post("/{webstore_id}/dispute-events", status_code=201)
-async def record_dispute_event(webstore_id: str, payload: WebstoreProviderEventIn, user: dict = Depends(get_current_user)) -> dict:
-    try:
-        return await svc.record_dispute_event(user, webstore_id, payload.model_dump())
     except WebstoreError as e:
         _raise(e)
 
