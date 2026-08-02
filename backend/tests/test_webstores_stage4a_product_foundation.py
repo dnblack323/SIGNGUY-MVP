@@ -948,3 +948,155 @@ async def test_stage4a_artwork_mockup_and_cross_scope_denials(stage4a_ctx):
     async with await _client_as(stage4a_ctx["other_staff"]) as other_client:
         guessed = await other_client.patch(f"/api/webstores/{store['id']}/products/{product['id']}", json={"expected_revision": product["revision"], "name": "Cross tenant"})
         assert guessed.status_code in {403, 404}
+
+
+@pytest.mark.asyncio
+async def test_stage4_product_duplicate_reorder_and_owner_approval_snapshots(stage4a_ctx):
+    async with await _client_as(stage4a_ctx["staff"]) as client:
+        store = await _create_store(client, f"approval-{stage4a_ctx['suffix']}")
+        image = await _seed_setup_file(stage4a_ctx, store["id"])
+        product_resp = await client.post(
+            f"/api/webstores/{store['id']}/products",
+            json={
+                "name": "Approval Shirt",
+                "product_type": "shirt",
+                "selling_price_cents": 2500,
+                "production_cost_cents": 900,
+                "store_owner_share_cents": 300,
+                "sku": "APPROVAL-SHIRT",
+                "customer_images": {"primary": {"file_id": image["id"], "alt_text": "Approval shirt"}},
+                "variants": [{"size": "L", "color": "Black", "sku": "APPROVAL-L-BLK", "selling_price_cents": 2600}],
+            },
+        )
+        assert product_resp.status_code == 201, product_resp.text
+        product = product_resp.json()
+        duplicate_resp = await client.post(
+            f"/api/webstores/{store['id']}/products/{product['id']}/duplicate",
+            json={"expected_revision": product["revision"]},
+        )
+        assert duplicate_resp.status_code == 201, duplicate_resp.text
+        duplicate = duplicate_resp.json()
+        assert duplicate["id"] != product["id"]
+        assert duplicate["status"] == "draft"
+        assert duplicate["public"] is False
+        assert duplicate["approval_status"] == "not_submitted"
+
+        reordered = await client.patch(
+            f"/api/webstores/{store['id']}/products/reorder",
+            json={"product_ids": [duplicate["id"], product["id"]]},
+        )
+        assert reordered.status_code == 200, reordered.text
+        assert [item["id"] for item in reordered.json()["items"][:2]] == [duplicate["id"], product["id"]]
+        incomplete_reorder = await client.patch(
+            f"/api/webstores/{store['id']}/products/reorder",
+            json={"product_ids": [product["id"]]},
+        )
+        assert incomplete_reorder.status_code == 400
+
+        mockup_resp = await client.post(
+            f"/api/webstores/{store['id']}/mockups",
+            json={"product_id": product["id"], "mockup_file_id": image["id"], "purpose": "owner preview", "alt_text": "Approval mockup"},
+        )
+        assert mockup_resp.status_code == 201, mockup_resp.text
+        mockup = mockup_resp.json()
+        associated = await client.patch(
+            f"/api/webstores/{store['id']}/products/{product['id']}",
+            json={"expected_revision": product["revision"], "mockup_associations": [{"mockup_id": mockup["id"]}]},
+        )
+        assert associated.status_code == 200, associated.text
+        product = associated.json()
+
+        submitted = await client.post(
+            f"/api/webstores/{store['id']}/products/{product['id']}/submit-approval",
+            json={"expected_revision": product["revision"], "comment": "Please review the product."},
+        )
+        assert submitted.status_code == 200, submitted.text
+        submitted_product = submitted.json()
+        assert submitted_product["approval_status"] == "pending_owner_approval"
+        assert submitted_product["approval_snapshot"]["selling_price_cents"] == 2500
+        assert "production_cost_cents" not in str(submitted_product["approval_snapshot"])
+        assert "storage_key" not in str(submitted_product["approval_snapshot"])
+
+        submitted_mockup = await client.post(
+            f"/api/webstores/{store['id']}/mockups/{mockup['id']}/submit-approval",
+            json={"comment": "Please review the mockup."},
+        )
+        assert submitted_mockup.status_code == 200, submitted_mockup.text
+        assert submitted_mockup.json()["approval_status"] == "pending_owner_approval"
+
+        owner_identity = await create_portal_identity(
+            tenant_id=stage4a_ctx["tenant_id"],
+            portal_type="webstore_owner",
+            webstore_owner_id=store["owner"]["id"],
+            email=f"approval-owner-{stage4a_ctx['suffix']}@example.com",
+            full_name="Approval Owner",
+        )
+        await db.webstore_access_assignments.insert_one(
+            {
+                "id": f"approval-assign-{owner_identity['id']}",
+                "tenant_id": stage4a_ctx["tenant_id"],
+                "webstore_id": store["id"],
+                "portal_identity_id": owner_identity["id"],
+                "owner_id": store["owner"]["id"],
+                "email": owner_identity["email"],
+                "role": "owner",
+                "status": "active",
+            }
+        )
+        owner_token = create_portal_token(portal_identity_id=owner_identity["id"], tenant_id=stage4a_ctx["tenant_id"], portal_type="webstore_owner")
+
+    async with await _portal_client(owner_token) as portal:
+        detail = await portal.get(f"/api/portal/webstores/{store['id']}")
+        assert detail.status_code == 200, detail.text
+        portal_product = next(item for item in detail.json()["products"] if item["id"] == product["id"])
+        assert portal_product["approval_status"] == "pending_owner_approval"
+        assert "production_cost_cents" not in str(portal_product)
+        assert portal_product["mockups"][0]["approval_status"] == "pending_owner_approval"
+
+        changes = await portal.post(
+            f"/api/portal/webstores/{store['id']}/products/{product['id']}/approval",
+            json={"decision": "request_changes", "comment": "Use a brighter mockup."},
+        )
+        assert changes.status_code == 200, changes.text
+        assert changes.json()["approval_status"] == "changes_requested"
+        assert changes.json()["approval_history"][0]["action"] == "request_changes"
+
+    async with await _client_as(stage4a_ctx["staff"]) as client:
+        latest = next(item for item in (await client.get(f"/api/webstores/{store['id']}")).json()["products"] if item["id"] == product["id"])
+        resubmitted = await client.post(
+            f"/api/webstores/{store['id']}/products/{product['id']}/submit-approval",
+            json={"expected_revision": latest["revision"]},
+        )
+        assert resubmitted.status_code == 200, resubmitted.text
+        latest = resubmitted.json()
+
+    async with await _portal_client(owner_token) as portal:
+        approved = await portal.post(
+            f"/api/portal/webstores/{store['id']}/products/{product['id']}/approval",
+            json={"decision": "approve"},
+        )
+        assert approved.status_code == 200, approved.text
+        assert approved.json()["approval_status"] == "approved"
+        mockup_approved = await portal.post(
+            f"/api/portal/webstores/{store['id']}/mockups/{mockup['id']}/approval",
+            json={"decision": "approve"},
+        )
+        assert mockup_approved.status_code == 200, mockup_approved.text
+        assert mockup_approved.json()["owner_approved"] is True
+
+    async with await _client_as(stage4a_ctx["staff"]) as client:
+        material_change = await client.patch(
+            f"/api/webstores/{store['id']}/products/{product['id']}",
+            json={"expected_revision": latest["revision"], "selling_price_cents": 2700},
+        )
+        assert material_change.status_code == 200, material_change.text
+        assert material_change.json()["approval_status"] == "superseded"
+        history = [
+            doc
+            async for doc in db.approvals.find(
+                {"tenant_id": stage4a_ctx["tenant_id"], "parent_type": "webstore_product", "parent_id": product["id"]},
+                {"_id": 0},
+            )
+        ]
+        assert {doc["action"] for doc in history} == {"approve", "request_changes"}
+        assert any(doc.get("status") == "superseded" for doc in history)

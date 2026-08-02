@@ -63,6 +63,11 @@ class PacketChangeRequestIn(BaseModel):
     comment: str
 
 
+class ProductApprovalDecisionIn(BaseModel):
+    decision: str
+    comment: str | None = None
+
+
 class TermsAcceptIn(BaseModel):
     terms_version: str | None = None
 
@@ -231,6 +236,22 @@ async def download_setup_file(webstore_id: str, file_id: str, identity: dict = D
 async def approve_launch(webstore_id: str, packet_id: str, identity: dict = Depends(_webstore_identity)) -> dict:
     try:
         return await svc.owner_approve_launch_packet(identity, webstore_id, packet_id)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/products/{product_id}/approval")
+async def decide_product_approval(webstore_id: str, product_id: str, payload: ProductApprovalDecisionIn, identity: dict = Depends(_webstore_identity)) -> dict:
+    try:
+        return await svc.owner_decide_product_approval(identity, webstore_id, product_id, payload.model_dump(exclude_none=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/mockups/{mockup_id}/approval")
+async def decide_mockup_approval(webstore_id: str, mockup_id: str, payload: ProductApprovalDecisionIn, identity: dict = Depends(_webstore_identity)) -> dict:
+    try:
+        return await svc.owner_decide_mockup_approval(identity, webstore_id, mockup_id, payload.model_dump(exclude_none=True))
     except WebstoreError as e:
         _raise(e)
 

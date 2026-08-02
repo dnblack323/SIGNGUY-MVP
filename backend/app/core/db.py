@@ -248,6 +248,7 @@ async def ensure_indexes() -> None:
 
     await db.approvals.create_index("id", unique=True)
     await db.approvals.create_index([("tenant_id", 1), ("parent_type", 1), ("parent_id", 1), ("created_at", -1)])
+    await db.approvals.create_index([("tenant_id", 1), ("parent_type", 1), ("parent_id", 1), ("parent_version", -1)])
 
     await db.signature_requests.create_index("id", unique=True)
     await db.signature_requests.create_index([("tenant_id", 1), ("number", 1)], unique=True, sparse=True)
@@ -894,6 +895,8 @@ async def ensure_indexes() -> None:
     await db.webstore_products.create_index("id", unique=True)
     await db.webstore_products.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
     await db.webstore_products.create_index([("tenant_id", 1), ("webstore_id", 1), ("public", 1)])
+    await db.webstore_products.create_index([("tenant_id", 1), ("webstore_id", 1), ("display_order", 1)])
+    await db.webstore_products.create_index([("tenant_id", 1), ("webstore_id", 1), ("approval_status", 1)])
     await db.webstore_products.create_index([("tenant_id", 1), ("webstore_id", 1), ("category_id", 1), ("status", 1)])
     await db.webstore_products.create_index([("tenant_id", 1), ("webstore_id", 1), ("name", 1)])
     await db.webstore_products.create_index(
@@ -953,6 +956,7 @@ async def ensure_indexes() -> None:
 
     await db.webstore_mockups.create_index("id", unique=True)
     await db.webstore_mockups.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
+    await db.webstore_mockups.create_index([("tenant_id", 1), ("webstore_id", 1), ("approval_status", 1)])
     await db.webstore_mockups.create_index([("tenant_id", 1), ("product_id", 1)])
     await db.webstore_mockups.create_index([("tenant_id", 1), ("webstore_id", 1), ("product_id", 1)])
 

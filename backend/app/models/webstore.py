@@ -295,6 +295,14 @@ class WebstoreProduct(BaseDoc):
     inventory_quantity: Optional[StrictInt] = Field(default=None, ge=0)
     launch_packet_eligible: bool = False
     launch_packet_include: bool = False
+    display_order: StrictInt = Field(default=0, ge=0)
+    approval_status: str = "not_submitted"
+    approval_revision: Optional[StrictInt] = Field(default=None, ge=1)
+    approval_snapshot_hash: Optional[str] = None
+    approval_decision_at: Optional[str] = None
+    approval_decision_by_portal_identity_id: Optional[str] = None
+    approval_invalidated_at: Optional[str] = None
+    approval_invalidated_reason: Optional[str] = None
     readiness_notes: list[str] = Field(default_factory=list)
     image_file_ids: list[str] = Field(default_factory=list)
     customer_images: dict[str, Any] = Field(default_factory=dict)
@@ -500,6 +508,10 @@ class WebstoreMockup(BaseDoc):
     shop_approved: bool = False
     owner_visible: bool = False
     owner_approved: bool = False
+    approval_status: str = "not_submitted"
+    approval_snapshot_hash: Optional[str] = None
+    approval_decision_at: Optional[str] = None
+    approval_decision_by_portal_identity_id: Optional[str] = None
     notes: Optional[str] = None
 
 

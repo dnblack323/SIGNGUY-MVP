@@ -185,6 +185,7 @@ class ProductIn(BaseModel):
     bundle_items: list[dict[str, Any]] = Field(default_factory=list)
     inventory_policy: str = "not_tracked"
     inventory_quantity: Optional[StrictInt] = Field(default=None, ge=0)
+    display_order: Optional[StrictInt] = Field(default=None, ge=0)
     launch_packet_eligible: bool = False
     launch_packet_include: bool = False
     image_file_ids: list[str] = Field(default_factory=list)
@@ -224,6 +225,7 @@ class ProductPatchIn(BaseModel):
     bundle_items: Optional[list[dict[str, Any]]] = None
     inventory_policy: Optional[str] = None
     inventory_quantity: Optional[StrictInt] = Field(default=None, ge=0)
+    display_order: Optional[StrictInt] = Field(default=None, ge=0)
     launch_packet_eligible: Optional[bool] = None
     launch_packet_include: Optional[bool] = None
     customer_images: Optional[dict[str, Any]] = None
@@ -270,6 +272,24 @@ class MockupIn(BaseModel):
     shop_approved: bool = False
     owner_visible: bool = False
     notes: Optional[str] = None
+
+
+class ProductDuplicateIn(BaseModel):
+    expected_revision: StrictInt = Field(ge=1)
+    name: Optional[str] = None
+
+
+class ProductReorderIn(BaseModel):
+    product_ids: list[str] = Field(default_factory=list)
+
+
+class ProductApprovalSubmitIn(BaseModel):
+    expected_revision: StrictInt = Field(ge=1)
+    comment: Optional[str] = None
+
+
+class MockupApprovalSubmitIn(BaseModel):
+    comment: Optional[str] = None
 
 
 class AIContractIn(BaseModel):
@@ -737,10 +757,34 @@ async def list_products(
         _raise(e)
 
 
+@router.patch("/{webstore_id}/products/reorder")
+async def reorder_products(webstore_id: str, payload: ProductReorderIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.reorder_products(user, webstore_id, payload.product_ids)
+    except WebstoreError as e:
+        _raise(e)
+
+
 @router.patch("/{webstore_id}/products/{product_id}")
 async def update_product(webstore_id: str, product_id: str, payload: ProductPatchIn, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.update_product(user, webstore_id, product_id, payload.model_dump(exclude_unset=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/products/{product_id}/duplicate", status_code=201)
+async def duplicate_product(webstore_id: str, product_id: str, payload: ProductDuplicateIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.duplicate_product(user, webstore_id, product_id, payload.model_dump(exclude_none=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/products/{product_id}/submit-approval")
+async def submit_product_approval(webstore_id: str, product_id: str, payload: ProductApprovalSubmitIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.submit_product_for_approval(user, webstore_id, product_id, payload.model_dump(exclude_none=True))
     except WebstoreError as e:
         _raise(e)
 
@@ -821,6 +865,14 @@ async def list_artwork(webstore_id: str, product_id: Optional[str] = Query(None)
 async def create_mockup(webstore_id: str, payload: MockupIn, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.create_mockup(user, webstore_id, payload.model_dump(exclude_none=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/mockups/{mockup_id}/submit-approval")
+async def submit_mockup_approval(webstore_id: str, mockup_id: str, payload: MockupApprovalSubmitIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.submit_mockup_for_approval(user, webstore_id, mockup_id, payload.model_dump(exclude_none=True))
     except WebstoreError as e:
         _raise(e)
 

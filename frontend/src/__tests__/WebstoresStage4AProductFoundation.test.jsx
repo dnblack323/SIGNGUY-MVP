@@ -12,6 +12,7 @@ import {
   createProductTemplate,
   createWebstoreAssignment,
   createWebstoreProductCategory,
+  duplicateWebstoreProduct,
   generateLaunchPacket,
   getLaunchReadiness,
   getWebstorePaymentProviderStatus,
@@ -28,6 +29,7 @@ import {
   listWebstoreProductCategories,
   listWebstoreSetupFiles,
   previewWebstoreAnswerApplication,
+  reorderWebstoreProducts,
   resendWebstoreInvitation,
   restoreProductTemplate,
   restoreWebstoreProduct,
@@ -41,6 +43,8 @@ import {
   updateWebstoreProduct,
   updateWebstoreProductCategory,
   requestWebstorePaymentProviderAction,
+  submitWebstoreMockupApproval,
+  submitWebstoreProductApproval,
   uploadWebstoreSetupFile,
 } from "@/lib/webstores";
 import { useAuth } from "@/auth/AuthContext";
@@ -54,6 +58,7 @@ jest.mock("@/lib/webstores", () => ({
   createProductTemplate: jest.fn(),
   createWebstoreAssignment: jest.fn(),
   createWebstoreProductCategory: jest.fn(),
+  duplicateWebstoreProduct: jest.fn(),
   generateLaunchPacket: jest.fn(),
   getLaunchReadiness: jest.fn(),
   getWebstorePaymentProviderStatus: jest.fn(),
@@ -70,6 +75,7 @@ jest.mock("@/lib/webstores", () => ({
   listWebstoreProductCategories: jest.fn(),
   listWebstoreSetupFiles: jest.fn(),
   previewWebstoreAnswerApplication: jest.fn(),
+  reorderWebstoreProducts: jest.fn(),
   resendWebstoreInvitation: jest.fn(),
   restoreProductTemplate: jest.fn(),
   restoreWebstoreProduct: jest.fn(),
@@ -83,6 +89,8 @@ jest.mock("@/lib/webstores", () => ({
   updateWebstoreProduct: jest.fn(),
   updateWebstoreProductCategory: jest.fn(),
   requestWebstorePaymentProviderAction: jest.fn(),
+  submitWebstoreMockupApproval: jest.fn(),
+  submitWebstoreProductApproval: jest.fn(),
   uploadWebstoreSetupFile: jest.fn(),
 }));
 
@@ -134,6 +142,7 @@ beforeEach(() => {
         category_id: "cat-1",
         category_name: "Team Wear",
         selling_price_cents: 0,
+        approval_status: "not_submitted",
         customer_images: { primary: { file_id: "file-1", alt_text: "Shirt front" } },
         artwork_associations: [],
         mockup_associations: [],
@@ -149,6 +158,7 @@ beforeEach(() => {
         category_id: "cat-1",
         category_name: "Team Wear",
         selling_price_cents: 0,
+        approval_status: "not_submitted",
         customer_images: {},
         artwork_associations: [],
         mockup_associations: [],
@@ -225,6 +235,10 @@ beforeEach(() => {
   restoreWebstoreProductCategory.mockResolvedValue({});
   archiveWebstoreProduct.mockResolvedValue({});
   restoreWebstoreProduct.mockResolvedValue({});
+  duplicateWebstoreProduct.mockResolvedValue({ id: "prod-copy", name: "Draft Shirt Copy", status: "draft", public: false, revision: 1 });
+  reorderWebstoreProducts.mockResolvedValue({ items: [] });
+  submitWebstoreProductApproval.mockResolvedValue({ id: "prod-1", name: "Draft Shirt", status: "draft", public: false, revision: 3, approval_status: "pending_owner_approval" });
+  submitWebstoreMockupApproval.mockResolvedValue({ id: "mock-1", approval_status: "pending_owner_approval" });
   requestWebstorePaymentProviderAction.mockResolvedValue({});
 });
 
@@ -405,13 +419,8 @@ test("staff launch readiness shows packet versioning, terms, QR, schedule, and c
   expect(screen.getByTestId("webstore-qr-preview")).toHaveTextContent("/p/webstores/team-store-public");
   expect(screen.getByTestId("webstore-change-requests")).toHaveTextContent("Please mention Friday pickup");
 
-  fireEvent.change(screen.getByTestId("webstore-intended-launch-at"), { target: { value: "2026-08-15T13:00:00-04:00" } });
-  fireEvent.change(screen.getByTestId("webstore-intended-close-at"), { target: { value: "2026-09-15T17:00:00-04:00" } });
-  fireEvent.click(screen.getByTestId("webstore-save-schedule"));
-  await waitFor(() => expect(updateWebstore).toHaveBeenCalledWith("ws-1", expect.objectContaining({
-    intended_launch_at: "2026-08-15T13:00:00-04:00",
-    intended_close_at: "2026-09-15T17:00:00-04:00",
-  })));
+  expect(screen.queryByTestId("webstore-intended-launch-at")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("webstore-intended-close-at")).not.toBeInTheDocument();
 });
 
 test("staff persisted product images prefer authenticated previews over public URLs after reload", async () => {
@@ -560,6 +569,11 @@ test("staff product builder separates planning from focused product setup", asyn
   expect(screen.getByTestId("webstore-product-foundation")).toHaveTextContent("Selected Products");
   expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("Continue Setup");
   expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("planned - private catalog");
+  expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("not submitted");
+  await user.click(within(screen.getByTestId("webstore-product-card-prod-1")).getByRole("button", { name: "Duplicate" }));
+  await waitFor(() => expect(duplicateWebstoreProduct).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({ expected_revision: 3 })));
+  await user.click(within(screen.getByTestId("webstore-product-card-prod-1")).getByRole("button", { name: "Send Product Approval" }));
+  await waitFor(() => expect(submitWebstoreProductApproval).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({ expected_revision: 3 })));
   expect(screen.getByText(/Platform starter/)).toBeInTheDocument();
   expect(screen.getByText("Legacy free-text category preserved: Legacy / Unknown")).toBeInTheDocument();
   await user.click(screen.getByTestId("webstore-product-row-prod-1"));
@@ -587,6 +601,8 @@ test("staff product builder separates planning from focused product setup", asyn
   await user.click(await screen.findByText("artwork-2.png"));
   await user.click(screen.getByTestId("webstore-product-mockup-associations"));
   await user.click(await screen.findByText("Mockup preview"));
+  await user.click(screen.getByRole("button", { name: "Send Mockup Approval" }));
+  await waitFor(() => expect(submitWebstoreMockupApproval).toHaveBeenCalledWith("ws-1", "mock-1"));
   await user.click(screen.getByTestId("webstore-save-product"));
   await waitFor(() => expect(updateWebstoreProduct).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({
     expected_revision: 3,

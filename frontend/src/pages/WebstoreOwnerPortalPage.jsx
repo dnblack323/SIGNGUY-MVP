@@ -32,6 +32,7 @@ export default function WebstoreOwnerPortalPage() {
     category: "general",
     comment: "",
   });
+  const [productComments, setProductComments] = useState({});
   function load() {
     Promise.all([
       portalApi.get(`/portal/webstores/${webstoreId}`),
@@ -126,6 +127,35 @@ export default function WebstoreOwnerPortalPage() {
         terms_version: data.current_terms_version,
       });
       toast.success("Terms accepted");
+      load();
+    } catch (e) {
+      toast.error(portalExtractError(e));
+    }
+  }
+  async function decideProduct(productId, decision) {
+    const comment = productComments[productId] || "";
+    if (decision !== "approve" && !comment.trim()) return;
+    try {
+      await portalApi.post(
+        `/portal/webstores/${webstoreId}/products/${productId}/approval`,
+        { decision, comment },
+      );
+      toast.success("Product decision saved");
+      setProductComments({ ...productComments, [productId]: "" });
+      load();
+    } catch (e) {
+      toast.error(portalExtractError(e));
+    }
+  }
+  async function decideMockup(mockupId, decision, productId) {
+    const comment = productComments[productId] || "";
+    if (decision !== "approve" && !comment.trim()) return;
+    try {
+      await portalApi.post(
+        `/portal/webstores/${webstoreId}/mockups/${mockupId}/approval`,
+        { decision, comment },
+      );
+      toast.success("Mockup decision saved");
       load();
     } catch (e) {
       toast.error(portalExtractError(e));
@@ -337,16 +367,104 @@ export default function WebstoreOwnerPortalPage() {
                 )}
               </div>
               <div>
-                <div className="font-medium">{p.name}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="font-medium">{p.name}</div>
+                  <Badge variant={p.approval_status === "approved" ? "secondary" : "outline"}>
+                    {String(p.approval_status || "not_submitted").replace(
+                      /_/g,
+                      " ",
+                    )}
+                  </Badge>
+                </div>
                 <div className="text-xs text-muted-foreground">
                   {p.description || p.product_type}
                 </div>
                 {(p.mockups || []).length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {p.mockups.map((mockup) => (
-                      <Badge key={mockup.id} variant="outline">
-                        {mockup.alt_text || mockup.purpose || "Mockup"}
-                      </Badge>
+                      <div key={mockup.id} className="flex items-center gap-1">
+                        <Badge variant="outline">
+                          {mockup.alt_text || mockup.purpose || "Mockup"}
+                        </Badge>
+                        {mockup.approval_status ===
+                          "pending_owner_approval" && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                decideMockup(mockup.id, "approve", p.id)
+                              }
+                            >
+                              Approve Mockup
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                decideMockup(
+                                  mockup.id,
+                                  "request_changes",
+                                  p.id,
+                                )
+                              }
+                            >
+                              Request Changes
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {p.approval_status === "pending_owner_approval" && (
+                  <div className="mt-3 space-y-2">
+                    <Textarea
+                      rows={2}
+                      value={productComments[p.id] || ""}
+                      onChange={(e) =>
+                        setProductComments({
+                          ...productComments,
+                          [p.id]: e.target.value,
+                        })
+                      }
+                      placeholder="Optional approval note, or required reason for changes."
+                      data-testid={`portal-product-approval-comment-${p.id}`}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => decideProduct(p.id, "approve")}
+                        data-testid={`portal-product-approve-${p.id}`}
+                      >
+                        Approve Product
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          decideProduct(p.id, "request_changes")
+                        }
+                      >
+                        Request Changes
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => decideProduct(p.id, "reject")}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {(p.approval_history || []).length > 0 && (
+                  <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                    {p.approval_history.map((entry) => (
+                      <div key={entry.id}>
+                        {String(entry.action).replace(/_/g, " ")} -{" "}
+                        {entry.reason || "No comment"}
+                      </div>
                     ))}
                   </div>
                 )}

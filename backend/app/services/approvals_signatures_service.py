@@ -13,6 +13,7 @@ from ..services.sequence import next_number
 ALLOWED_APPROVAL_PARENTS = {
     "quote_revision", "proof_version", "contract",
     "order_item", "work_order_summary",
+    "webstore_product", "webstore_mockup",
 }
 
 
@@ -23,6 +24,8 @@ async def record_approval(
     reason: Optional[str] = None,
     actor_display: Optional[str] = None,
     ip: Optional[str] = None, user_agent: Optional[str] = None,
+    snapshot_hash: Optional[str] = None,
+    snapshot: Optional[dict] = None,
 ) -> dict:
     if parent_type not in ALLOWED_APPROVAL_PARENTS:
         raise ValueError(f"invalid_parent:{parent_type}")
@@ -39,6 +42,8 @@ async def record_approval(
         actor_type=actor_type,  # type: ignore[arg-type]
         actor_ref=actor_ref, actor_display=actor_display,
         ip=ip, user_agent=user_agent,
+        snapshot_hash=snapshot_hash,
+        snapshot=snapshot or {},
     ).model_dump()
     await db.approvals.insert_one(approval)
     await record_audit(

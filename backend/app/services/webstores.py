@@ -44,6 +44,7 @@ from ..models.webstore import (
 )
 from ..repositories.webstores import WebstoreRepository
 from .activity import record_activity_with_audit
+from .approvals_signatures_service import record_approval
 from . import webstore_branding as branding_svc
 from .entitlements import has_entitlement
 from .email import record_processed_activity, send_email
@@ -65,6 +66,8 @@ CATEGORY_STATUSES = {"active", "archived"}
 CUSTOMER_IMAGE_SLOTS = {"primary", "secondary"}
 PRODUCT_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "svg"}
 STAGE4A_PUBLICATION_FIELDS = {"public", "featured"}
+PRODUCT_APPROVAL_DECISIONS = {"approve", "request_changes", "reject"}
+PRODUCT_APPROVAL_STATUSES = {"not_submitted", "pending_owner_approval", "approved", "rejected", "changes_requested", "superseded"}
 STAGE4A_FINANCIAL_VARIANT_FIELDS = {
     "production_cost_cents",
     "selling_price_cents",
@@ -850,6 +853,9 @@ def _public_product(product: dict, *, public_slug: Optional[str] = None) -> dict
 def _portal_product(product: dict, *, public_slug: Optional[str] = None) -> dict:
     public = _public_product(product, public_slug=public_slug)
     public["webstore_id"] = product.get("webstore_id")
+    for key in ("approval_status", "approval_revision", "approval_decision_at", "approval_snapshot_hash"):
+        if product.get(key) not in (None, ""):
+            public[key] = product.get(key)
     return {k: v for k, v in public.items() if v not in (None, "")}
 
 
@@ -869,6 +875,149 @@ def _staff_product(product: dict, *, public_slug: Optional[str] = None) -> dict:
         "source_template_revision": product.get("source_template_revision"),
     }
     return data  # type: ignore[return-value]
+
+
+def _approval_history_row(doc: dict) -> dict:
+    return {
+        key: doc.get(key)
+        for key in (
+            "id",
+            "parent_type",
+            "parent_id",
+            "parent_version",
+            "action",
+            "reason",
+            "actor_type",
+            "actor_ref",
+            "actor_display",
+            "snapshot_hash",
+            "status",
+            "created_at",
+            "superseded_at",
+            "superseded_reason",
+        )
+        if doc.get(key) not in (None, "")
+    }
+
+
+async def _approval_history(tenant_id: str, parent_type: str, parent_id: str) -> list[dict[str, Any]]:
+    return [
+        _approval_history_row(doc)
+        async for doc in db.approvals.find(
+            {"tenant_id": tenant_id, "parent_type": parent_type, "parent_id": parent_id},
+            {"_id": 0, "snapshot": 0},
+        ).sort([("created_at", -1)])
+    ]
+
+
+def _owner_safe_product_snapshot(product: dict, *, public_slug: Optional[str] = None, mockups: Optional[list[dict[str, Any]]] = None) -> dict[str, Any]:
+    safe = _portal_product(product, public_slug=public_slug)
+    safe["revision"] = int(product.get("revision") or 1)
+    safe["snapshot_type"] = "webstore_product"
+    safe["mockups"] = mockups or []
+    return safe
+
+
+def _owner_safe_mockup_snapshot(mockup: dict, product: Optional[dict] = None, *, public_slug: Optional[str] = None) -> dict[str, Any]:
+    snapshot = {
+        "id": mockup.get("id"),
+        "webstore_id": mockup.get("webstore_id"),
+        "product_id": mockup.get("product_id"),
+        "artwork_id": mockup.get("artwork_id"),
+        "generation_source": mockup.get("generation_source"),
+        "purpose": mockup.get("purpose"),
+        "alt_text": mockup.get("alt_text"),
+        "status": mockup.get("status"),
+        "approval_status": mockup.get("approval_status"),
+        "approval_decision_at": mockup.get("approval_decision_at"),
+        "snapshot_type": "webstore_mockup",
+    }
+    if product:
+        snapshot["product"] = _portal_product(product, public_slug=public_slug)
+    return {k: v for k, v in snapshot.items() if v not in (None, "")}
+
+
+def _mockup_approval_snapshot(mockup: dict, product: Optional[dict] = None, *, public_slug: Optional[str] = None) -> dict[str, Any]:
+    snapshot = _owner_safe_mockup_snapshot(mockup, product, public_slug=public_slug)
+    for key in ("approval_status", "approval_decision_at"):
+        snapshot.pop(key, None)
+    if isinstance(snapshot.get("product"), dict):
+        for key in ("approval_status", "approval_revision", "approval_decision_at", "approval_snapshot_hash"):
+            snapshot["product"].pop(key, None)
+    return snapshot
+
+
+async def _current_mockups_for_product(tenant_id: str, webstore_id: str, product: dict) -> list[dict[str, Any]]:
+    mockup_ids = _association_ids(product.get("mockup_associations") or [], "mockup_id")
+    query: dict[str, Any] = {"tenant_id": tenant_id, "webstore_id": webstore_id, "status": {"$ne": "archived"}}
+    if mockup_ids:
+        query["$or"] = [{"id": {"$in": sorted(mockup_ids)}}, {"product_id": product["id"], "owner_visible": True}]
+    else:
+        query["product_id"] = product["id"]
+        query["owner_visible"] = True
+    rows: list[dict[str, Any]] = []
+    async for doc in db.webstore_mockups.find(query, {"_id": 0}).sort([("created_at", -1)]):
+        rows.append(_owner_safe_mockup_snapshot(serialize_doc(doc)))
+    return rows
+
+
+async def _product_approval_snapshot(tenant_id: str, webstore_id: str, product: dict, *, public_slug: Optional[str]) -> dict[str, Any]:
+    mockups = []
+    for mockup in await _current_mockups_for_product(tenant_id, webstore_id, product):
+        frozen = dict(mockup)
+        frozen.pop("approval_status", None)
+        frozen.pop("approval_decision_at", None)
+        mockups.append(frozen)
+    snapshot = _owner_safe_product_snapshot(
+        product,
+        public_slug=public_slug,
+        mockups=mockups,
+    )
+    for key in ("approval_status", "approval_revision", "approval_decision_at", "approval_snapshot_hash"):
+        snapshot.pop(key, None)
+    return snapshot
+
+
+async def _invalidate_product_approval_if_needed(
+    *,
+    tenant_id: str,
+    webstore_id: str,
+    product: dict,
+    reason: str,
+    actor_type: str,
+    actor_id: Optional[str],
+    actor_email: Optional[str],
+) -> None:
+    if product.get("approval_status") not in {"pending_owner_approval", "approved"}:
+        return
+    now = _now_iso()
+    await db.approvals.update_many(
+        {"tenant_id": tenant_id, "parent_type": "webstore_product", "parent_id": product["id"], "status": "current"},
+        {"$set": {"status": "superseded", "superseded_at": now, "superseded_reason": reason}},
+    )
+    await db.webstore_products.update_one(
+        {"tenant_id": tenant_id, "webstore_id": webstore_id, "id": product["id"]},
+        {
+            "$set": {
+                "approval_status": "superseded",
+                "approval_invalidated_at": now,
+                "approval_invalidated_reason": reason,
+                "updated_at": now,
+            }
+        },
+    )
+    await _audit(
+        tenant_id=tenant_id,
+        webstore_id=webstore_id,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        actor_email=actor_email,
+        action="webstore.product_approval_superseded",
+        entity_type="webstore_product",
+        entity_id=product["id"],
+        summary="Webstore product approval superseded by material product change",
+        metadata={"reason": reason},
+    )
 
 
 def _public_store(store: dict, published_branding: Optional[dict[str, Any]] = None) -> dict:
@@ -1017,6 +1166,16 @@ async def _get_product(tenant_id: str, product_id: str, webstore_id: Optional[st
     if not product:
         raise WebstoreError("webstore_product_not_found", "Webstore product not found", 404)
     return product
+
+
+async def _get_mockup(tenant_id: str, mockup_id: str, webstore_id: Optional[str] = None) -> dict:
+    filt = {"tenant_id": tenant_id, "id": mockup_id}
+    if webstore_id:
+        filt["webstore_id"] = webstore_id
+    mockup = await db.webstore_mockups.find_one(filt, {"_id": 0})
+    if not mockup:
+        raise WebstoreError("webstore_mockup_not_found", "Webstore mockup not found", 404)
+    return serialize_doc(mockup)
 
 
 async def _get_category(tenant_id: str, webstore_id: str, category_id: str) -> dict:
@@ -1504,6 +1663,10 @@ async def get_webstore(user: dict, webstore_id: str) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_READ)
     store = await _ensure_public_slug(await _get_store(user["tenant_id"], webstore_id))
     products = await list_products(user, webstore_id=webstore_id)
+    detail_products = []
+    for product in products["items"]:
+        product["approval_history"] = await _approval_history(user["tenant_id"], "webstore_product", product["id"])
+        detail_products.append(product)
     packets = await packets_repo.list(tenant_id=user["tenant_id"], filters={"webstore_id": webstore_id}, sort=[("created_at", -1)], limit=10)
     terms_version = store.get("required_terms_version") or CURRENT_WEBSTORE_TERMS_VERSION
     terms = await _terms_acceptance(user["tenant_id"], webstore_id, terms_version)
@@ -1513,7 +1676,7 @@ async def get_webstore(user: dict, webstore_id: str) -> dict:
     ]
     return {
         "webstore": store,
-        "products": products["items"],
+        "products": detail_products,
         "launch_packets": packets["items"],
         "change_requests": changes,
         "phase6_lifecycle_state": _phase6_state_for_status(store.get("status", "draft")),
@@ -1785,7 +1948,7 @@ async def transition_webstore_lifecycle(user: dict, webstore_id: str, lifecycle_
     await _audit(
         tenant_id=user["tenant_id"],
         webstore_id=webstore_id,
-        actor_type="staff",
+        actor_type="portal_webstore_owner",
         actor_id=user["id"],
         actor_email=user.get("email"),
         action="webstore.lifecycle.transitioned",
@@ -2135,6 +2298,15 @@ async def create_product(user: dict, webstore_id: str, fields: dict[str, Any]) -
     if store_owner_share_cents + fundraiser_share_cents > selling_price_cents:
         raise WebstoreError("share_exceeds_price", "Owner and fundraiser shares cannot exceed the product selling price", 400)
     status = _clean_status(fields.get("status"), PRODUCT_STATUSES, "draft", "product_status")
+    if "display_order" in fields:
+        display_order = _clean_quantity(fields.get("display_order"), default=0) or 0
+    else:
+        last = await db.webstore_products.find_one(
+            {"tenant_id": user["tenant_id"], "webstore_id": webstore_id},
+            {"_id": 0, "display_order": 1},
+            sort=[("display_order", -1)],
+        )
+        display_order = int((last or {}).get("display_order") or 0) + 100
     product = WebstoreProduct(
         tenant_id=user["tenant_id"],
         webstore_id=webstore_id,
@@ -2165,6 +2337,7 @@ async def create_product(user: dict, webstore_id: str, fields: dict[str, Any]) -
         inventory_quantity=_clean_quantity(fields.get("inventory_quantity"), default=None),
         launch_packet_eligible=bool(fields.get("launch_packet_eligible", False)),
         launch_packet_include=bool(fields.get("launch_packet_include", False)),
+        display_order=display_order,
         image_file_ids=[],
         customer_images=customer_images,
         production_notes=_clean_optional_text(merged.get("production_notes")),
@@ -2261,12 +2434,169 @@ async def list_products(
         filters["status"] = status
     if category_id:
         filters["category_id"] = category_id
-    result = await products_repo.list(tenant_id=user["tenant_id"], filters=filters, sort=[("featured", -1), ("name", 1)])
+    result = await products_repo.list(tenant_id=user["tenant_id"], filters=filters, sort=[("display_order", 1), ("featured", -1), ("name", 1)])
     items = result["items"]
     if q:
         needle = _normalize_name(q)
         items = [item for item in items if needle in _normalize_name(item.get("name", ""))]
     return {**result, "items": [_staff_product(item, public_slug=store.get("public_slug")) for item in items], "total": len(items)}
+
+
+async def duplicate_product(user: dict, webstore_id: str, product_id: str, fields: dict[str, Any]) -> dict:
+    _require_staff_perm(user, Perm.WEBSTORE_WRITE)
+    store = await _get_store(user["tenant_id"], webstore_id)
+    product = await _get_product(user["tenant_id"], product_id, webstore_id)
+    expected_revision = int(fields.get("expected_revision") or 0)
+    if expected_revision != int(product.get("revision") or 1):
+        raise WebstoreError("product_revision_conflict", "This product changed after you opened it. Reload it before duplicating.", 409)
+    source = deepcopy(product)
+    for key in (
+        "_id",
+        "id",
+        "created_at",
+        "updated_at",
+        "revision",
+        "approval_status",
+        "approval_revision",
+        "approval_snapshot_hash",
+        "approval_decision_at",
+        "approval_decision_by_portal_identity_id",
+        "approval_invalidated_at",
+        "approval_invalidated_reason",
+        "stage4a_idempotency_key",
+        "stage4a_idempotency_actor_id",
+        "stage4a_idempotency_operation",
+        "stage4a_idempotency_source_template_id",
+        "stage4a_idempotency_payload_hash",
+        "name",
+        "status",
+        "public",
+        "featured",
+        "launch_packet_include",
+        "display_order",
+        "created_by_user_id",
+        "updated_by_user_id",
+        "sku",
+        "variants",
+    ):
+        source.pop(key, None)
+    last = await db.webstore_products.find_one(
+        {"tenant_id": user["tenant_id"], "webstore_id": webstore_id},
+        {"_id": 0, "display_order": 1},
+        sort=[("display_order", -1)],
+    )
+    duplicate = WebstoreProduct(
+        **source,
+        id=secrets.token_urlsafe(18),
+        name=_clean_text(fields.get("name") or f"{product.get('name', 'Product')} Copy", "name"),
+        sku=None,
+        variants=[{**variant, "sku": None} for variant in source.get("variants") or []],
+        status="draft",
+        public=False,
+        featured=False,
+        launch_packet_include=False,
+        approval_status="not_submitted",
+        display_order=int((last or {}).get("display_order") or 0) + 100,
+        created_by_user_id=user.get("id"),
+        updated_by_user_id=user.get("id"),
+    ).model_dump()
+    await db.webstore_products.insert_one(prepare_for_mongo(duplicate))
+    await _audit(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        actor_type="portal_webstore_owner",
+        actor_id=user.get("id"),
+        actor_email=user.get("email"),
+        action="webstore.product_duplicated",
+        entity_type="webstore_product",
+        entity_id=duplicate["id"],
+        summary="Webstore product duplicated into a private draft",
+        metadata={"source_product_id": product_id},
+    )
+    return _staff_product(duplicate, public_slug=store.get("public_slug"))
+
+
+async def reorder_products(user: dict, webstore_id: str, product_ids: list[str]) -> dict:
+    _require_staff_perm(user, Perm.WEBSTORE_WRITE)
+    store = await _get_store(user["tenant_id"], webstore_id)
+    ids = [str(item) for item in product_ids if str(item or "").strip()]
+    existing = [
+        doc
+        async for doc in db.webstore_products.find(
+            {"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "status": {"$ne": "archived"}},
+            {"_id": 0, "id": 1},
+        )
+    ]
+    expected_ids = {doc["id"] for doc in existing}
+    if set(ids) != expected_ids or len(ids) != len(expected_ids):
+        raise WebstoreError("reorder_requires_all_active_products", "Reorder must include each non-archived product exactly once", 400)
+    now = _now_iso()
+    for index, current_id in enumerate(ids):
+        await db.webstore_products.update_one(
+            {"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "id": current_id},
+            {"$set": {"display_order": (index + 1) * 100, "updated_at": now, "updated_by_user_id": user.get("id")}},
+        )
+    await _audit(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        actor_type="staff",
+        actor_id=user.get("id"),
+        actor_email=user.get("email"),
+        action="webstore.products_reordered",
+        entity_type="webstore",
+        entity_id=webstore_id,
+        summary="Webstore product display order updated",
+        metadata={"product_ids": ids},
+    )
+    return await list_products(user, webstore_id=webstore_id)
+
+
+async def submit_product_for_approval(user: dict, webstore_id: str, product_id: str, fields: dict[str, Any]) -> dict:
+    _require_staff_perm(user, Perm.WEBSTORE_WRITE)
+    store = await _get_store(user["tenant_id"], webstore_id)
+    product = await _get_product(user["tenant_id"], product_id, webstore_id)
+    expected_revision = int(fields.get("expected_revision") or 0)
+    if expected_revision != int(product.get("revision") or 1):
+        raise WebstoreError("product_revision_conflict", "This product changed after you opened it. Reload it before sending for approval.", 409)
+    if product.get("status") == "archived":
+        raise WebstoreError("product_archived", "Archived products cannot be sent for approval", 409)
+    snapshot = await _product_approval_snapshot(user["tenant_id"], webstore_id, product, public_slug=store.get("public_slug"))
+    snapshot_hash = _json_hash(snapshot)
+    now = _now_iso()
+    updated = await db.webstore_products.find_one_and_update(
+        {"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "id": product_id, "revision": expected_revision},
+        {
+            "$set": {
+                "approval_status": "pending_owner_approval",
+                "approval_revision": expected_revision,
+                "approval_snapshot_hash": snapshot_hash,
+                "approval_invalidated_at": None,
+                "approval_invalidated_reason": None,
+                "updated_at": now,
+                "updated_by_user_id": user.get("id"),
+            }
+        },
+        return_document=ReturnDocument.AFTER,
+        projection={"_id": 0},
+    )
+    if not updated:
+        raise WebstoreError("product_revision_conflict", "This product changed after you opened it. Reload it before sending for approval.", 409)
+    await _audit(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        actor_type="staff",
+        actor_id=user.get("id"),
+        actor_email=user.get("email"),
+        action="webstore.product_submitted_for_approval",
+        entity_type="webstore_product",
+        entity_id=product_id,
+        summary="Webstore product submitted for owner approval",
+        metadata={"product_revision": expected_revision, "snapshot_hash": snapshot_hash, "comment": fields.get("comment")},
+    )
+    data = _staff_product(updated, public_slug=store.get("public_slug"))
+    data["approval_history"] = await _approval_history(user["tenant_id"], "webstore_product", product_id)
+    data["approval_snapshot"] = snapshot
+    return data
 
 
 async def list_artwork(user: dict, webstore_id: str, *, product_id: Optional[str] = None) -> dict:
@@ -2295,7 +2625,7 @@ async def list_mockups(user: dict, webstore_id: str, *, product_id: Optional[str
     items = [
         {
             key: doc.get(key)
-            for key in ("id", "product_id", "artwork_id", "purpose", "alt_text", "status", "shop_approved")
+            for key in ("id", "product_id", "artwork_id", "purpose", "alt_text", "status", "shop_approved", "owner_visible", "owner_approved", "approval_status", "approval_snapshot_hash", "approval_decision_at")
             if doc.get(key) not in (None, "")
         }
         async for doc in db.webstore_mockups.find(query, {"_id": 0}).sort([("created_at", -1)])
@@ -2369,6 +2699,8 @@ async def update_product(user: dict, webstore_id: str, product_id: str, fields: 
         updates["inventory_policy"] = str(fields.get("inventory_policy") or "not_tracked")[:80]
     if "inventory_quantity" in fields:
         updates["inventory_quantity"] = _clean_quantity(fields.get("inventory_quantity"), default=None)
+    if "display_order" in fields:
+        updates["display_order"] = _clean_quantity(fields.get("display_order"), default=int(product.get("display_order") or 0)) or 0
     if "launch_packet_eligible" in fields:
         updates["launch_packet_eligible"] = bool(fields.get("launch_packet_eligible"))
     if "launch_packet_include" in fields:
@@ -2471,6 +2803,18 @@ async def update_product(user: dict, webstore_id: str, product_id: str, fields: 
         if key in updated and updated.get(key) != product.get(key)
     }
     if changed_material_fields:
+        await _invalidate_product_approval_if_needed(
+            tenant_id=user["tenant_id"],
+            webstore_id=webstore_id,
+            product=product,
+            actor_type="staff",
+            actor_id=user.get("id"),
+            actor_email=user.get("email"),
+            reason=f"Material product fields changed: {', '.join(sorted(changed_material_fields))}",
+        )
+        updated["approval_status"] = "superseded"
+        updated["approval_invalidated_at"] = _now_iso()
+        updated["approval_invalidated_reason"] = f"Material product fields changed: {', '.join(sorted(changed_material_fields))}"
         await _invalidate_packet_approval_if_needed(
             tenant_id=user["tenant_id"],
             webstore_id=webstore_id,
@@ -2747,6 +3091,47 @@ async def create_mockup(user: dict, webstore_id: str, fields: dict[str, Any]) ->
         summary="Webstore mockup created",
     )
     return serialize_doc(mockup)  # type: ignore[return-value]
+
+
+async def submit_mockup_for_approval(user: dict, webstore_id: str, mockup_id: str, fields: dict[str, Any]) -> dict:
+    _require_staff_perm(user, Perm.WEBSTORE_WRITE)
+    store = await _get_store(user["tenant_id"], webstore_id)
+    mockup = await _get_mockup(user["tenant_id"], mockup_id, webstore_id)
+    if mockup.get("status") == "archived":
+        raise WebstoreError("mockup_archived", "Archived mockups cannot be sent for approval", 409)
+    product = await _get_product(user["tenant_id"], mockup["product_id"], webstore_id) if mockup.get("product_id") else None
+    snapshot = _mockup_approval_snapshot(mockup, product, public_slug=store.get("public_slug"))
+    snapshot_hash = _json_hash(snapshot)
+    now = _now_iso()
+    updated = await db.webstore_mockups.find_one_and_update(
+        {"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "id": mockup_id},
+        {
+            "$set": {
+                "approval_status": "pending_owner_approval",
+                "approval_snapshot_hash": snapshot_hash,
+                "owner_visible": True,
+                "updated_at": now,
+            }
+        },
+        return_document=ReturnDocument.AFTER,
+        projection={"_id": 0},
+    )
+    await _audit(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        actor_type="staff",
+        actor_id=user.get("id"),
+        actor_email=user.get("email"),
+        action="webstore.mockup_submitted_for_approval",
+        entity_type="webstore_mockup",
+        entity_id=mockup_id,
+        summary="Webstore mockup submitted for owner approval",
+        metadata={"snapshot_hash": snapshot_hash, "comment": fields.get("comment")},
+    )
+    result = serialize_doc(updated or mockup)
+    result["approval_history"] = await _approval_history(user["tenant_id"], "webstore_mockup", mockup_id)
+    result["approval_snapshot"] = snapshot
+    return result
 
 
 async def create_ai_usage_event(user: dict, webstore_id: str, fields: dict[str, Any]) -> dict:
@@ -4239,10 +4624,12 @@ async def owner_portal_list(identity: dict) -> dict:
 
 async def owner_portal_detail(identity: dict, webstore_id: str) -> dict:
     store = await _owner_portal_store(identity, webstore_id)
-    products = [
-        _portal_product(doc, public_slug=store.get("public_slug"))
-        async for doc in db.webstore_products.find({"tenant_id": identity["tenant_id"], "webstore_id": webstore_id}, {"_id": 0}).sort("name", 1)
-    ]
+    products = []
+    async for doc in db.webstore_products.find({"tenant_id": identity["tenant_id"], "webstore_id": webstore_id}, {"_id": 0}).sort([("display_order", 1), ("name", 1)]):
+        item = _portal_product(doc, public_slug=store.get("public_slug"))
+        item["mockups"] = await _current_mockups_for_product(identity["tenant_id"], webstore_id, doc)
+        item["approval_history"] = await _approval_history(identity["tenant_id"], "webstore_product", doc["id"])
+        products.append(item)
     packet = None
     if store.get("launch_packet_id"):
         packet = await packets_repo.get(tenant_id=identity["tenant_id"], entity_id=store["launch_packet_id"])
@@ -4297,3 +4684,130 @@ async def owner_portal_detail(identity: dict, webstore_id: str) -> dict:
         },
         "public_launch_blocked_until_batch_3": False,
     }
+
+
+async def owner_decide_product_approval(identity: dict, webstore_id: str, product_id: str, fields: dict[str, Any]) -> dict:
+    store = await _owner_portal_store(identity, webstore_id)
+    product = await _get_product(identity["tenant_id"], product_id, webstore_id)
+    decision = str(fields.get("decision") or "").strip().lower()
+    if decision not in PRODUCT_APPROVAL_DECISIONS:
+        raise WebstoreError("invalid_product_approval_decision", "Choose approve, request_changes, or reject", 400)
+    comment = _clean_optional_text(fields.get("comment"), limit=2000)
+    if decision in {"request_changes", "reject"} and not comment:
+        raise WebstoreError("approval_comment_required", "A comment is required when requesting changes or rejecting a product", 400)
+    if product.get("approval_status") != "pending_owner_approval":
+        raise WebstoreError("product_not_pending_approval", "This product is not waiting for owner approval", 409)
+    expected_revision = int(product.get("approval_revision") or 0)
+    if expected_revision != int(product.get("revision") or 1):
+        raise WebstoreError("approval_revision_superseded", "This product changed after it was sent for approval", 409)
+    snapshot = await _product_approval_snapshot(identity["tenant_id"], webstore_id, product, public_slug=store.get("public_slug"))
+    snapshot_hash = _json_hash(snapshot)
+    if snapshot_hash != product.get("approval_snapshot_hash"):
+        raise WebstoreError("approval_snapshot_superseded", "This product review snapshot is no longer current", 409)
+    action = "decline" if decision == "reject" else decision
+    approval = await record_approval(
+        tenant_id=identity["tenant_id"],
+        parent_type="webstore_product",
+        parent_id=product_id,
+        parent_version=expected_revision,
+        action=action,
+        reason=comment,
+        actor_type="staff",
+        actor_ref=identity["id"],
+        actor_display=identity.get("full_name") or identity.get("email"),
+        snapshot_hash=snapshot_hash,
+        snapshot=snapshot,
+    )
+    status = "approved" if decision == "approve" else ("changes_requested" if decision == "request_changes" else "rejected")
+    now = _now_iso()
+    updated = await db.webstore_products.find_one_and_update(
+        {"tenant_id": identity["tenant_id"], "webstore_id": webstore_id, "id": product_id},
+        {
+            "$set": {
+                "approval_status": status,
+                "approval_decision_at": now,
+                "approval_decision_by_portal_identity_id": identity["id"],
+                "updated_at": now,
+            }
+        },
+        return_document=ReturnDocument.AFTER,
+        projection={"_id": 0},
+    )
+    await _audit(
+        tenant_id=identity["tenant_id"],
+        webstore_id=webstore_id,
+        actor_type="portal",
+        actor_id=identity.get("id"),
+        actor_email=identity.get("email"),
+        action=f"webstore.product_approval_{status}",
+        entity_type="webstore_product",
+        entity_id=product_id,
+        summary=f"Webstore product approval decision: {status.replace('_', ' ')}",
+        metadata={"approval_id": approval["id"], "product_revision": expected_revision},
+    )
+    result = _portal_product(updated or product, public_slug=store.get("public_slug"))
+    result["approval_history"] = await _approval_history(identity["tenant_id"], "webstore_product", product_id)
+    return result
+
+
+async def owner_decide_mockup_approval(identity: dict, webstore_id: str, mockup_id: str, fields: dict[str, Any]) -> dict:
+    store = await _owner_portal_store(identity, webstore_id)
+    mockup = await _get_mockup(identity["tenant_id"], mockup_id, webstore_id)
+    decision = str(fields.get("decision") or "").strip().lower()
+    if decision not in PRODUCT_APPROVAL_DECISIONS:
+        raise WebstoreError("invalid_mockup_approval_decision", "Choose approve, request_changes, or reject", 400)
+    comment = _clean_optional_text(fields.get("comment"), limit=2000)
+    if decision in {"request_changes", "reject"} and not comment:
+        raise WebstoreError("approval_comment_required", "A comment is required when requesting changes or rejecting a mockup", 400)
+    if mockup.get("approval_status") != "pending_owner_approval":
+        raise WebstoreError("mockup_not_pending_approval", "This mockup is not waiting for owner approval", 409)
+    product = await _get_product(identity["tenant_id"], mockup["product_id"], webstore_id) if mockup.get("product_id") else None
+    snapshot = _mockup_approval_snapshot(mockup, product, public_slug=store.get("public_slug"))
+    snapshot_hash = _json_hash(snapshot)
+    if snapshot_hash != mockup.get("approval_snapshot_hash"):
+        raise WebstoreError("mockup_snapshot_superseded", "This mockup review snapshot is no longer current", 409)
+    action = "decline" if decision == "reject" else decision
+    approval = await record_approval(
+        tenant_id=identity["tenant_id"],
+        parent_type="webstore_mockup",
+        parent_id=mockup_id,
+        action=action,
+        reason=comment,
+        actor_type="staff",
+        actor_ref=identity["id"],
+        actor_display=identity.get("full_name") or identity.get("email"),
+        snapshot_hash=snapshot_hash,
+        snapshot=snapshot,
+    )
+    status = "approved" if decision == "approve" else ("changes_requested" if decision == "request_changes" else "rejected")
+    now = _now_iso()
+    updated = await db.webstore_mockups.find_one_and_update(
+        {"tenant_id": identity["tenant_id"], "webstore_id": webstore_id, "id": mockup_id},
+        {
+            "$set": {
+                "approval_status": status,
+                "approval_decision_at": now,
+                "approval_decision_by_portal_identity_id": identity["id"],
+                "owner_approved": decision == "approve",
+                "status": "owner_approved" if decision == "approve" else ("changes_requested" if decision == "request_changes" else mockup.get("status", "generated")),
+                "updated_at": now,
+            }
+        },
+        return_document=ReturnDocument.AFTER,
+        projection={"_id": 0},
+    )
+    await _audit(
+        tenant_id=identity["tenant_id"],
+        webstore_id=webstore_id,
+        actor_type="portal",
+        actor_id=identity.get("id"),
+        actor_email=identity.get("email"),
+        action=f"webstore.mockup_approval_{status}",
+        entity_type="webstore_mockup",
+        entity_id=mockup_id,
+        summary=f"Webstore mockup approval decision: {status.replace('_', ' ')}",
+        metadata={"approval_id": approval["id"]},
+    )
+    result = serialize_doc(updated or mockup)
+    result["approval_history"] = await _approval_history(identity["tenant_id"], "webstore_mockup", mockup_id)
+    return result

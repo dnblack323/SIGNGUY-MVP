@@ -62,7 +62,9 @@ import {
   listWebstoreMockups,
   listWebstoreProductCategories,
   applyWebstoreAnswers,
+  duplicateWebstoreProduct,
   previewWebstoreAnswerApplication,
+  reorderWebstoreProducts,
   resendWebstoreInvitation,
   revokeWebstoreAssignment,
   reverseWebstoreAnswerApplication,
@@ -78,6 +80,8 @@ import {
   restoreWebstoreProduct,
   restoreWebstoreProductCategory,
   updateWebstore,
+  submitWebstoreMockupApproval,
+  submitWebstoreProductApproval,
   requestWebstorePaymentProviderAction,
 } from "@/lib/webstores";
 import { toast } from "sonner";
@@ -402,6 +406,7 @@ export default function WebstoreDetailPage() {
           productDraft.inventory_quantity == null
             ? undefined
             : toIntCents(productDraft.inventory_quantity),
+        display_order: toIntCents(productDraft.display_order ?? 0),
         status: productDraft.status || "draft",
         launch_packet_eligible: Boolean(productDraft.launch_packet_eligible),
         launch_packet_include: Boolean(productDraft.launch_packet_include),
@@ -458,6 +463,47 @@ export default function WebstoreDetailPage() {
       setProductError(message);
       toast.error(message);
     },
+  });
+  const duplicateProduct = useMutation({
+    mutationFn: (product) =>
+      duplicateWebstoreProduct(id, product.id, {
+        expected_revision: product.revision,
+      }),
+    onSuccess: async (product) => {
+      toast.success("Product duplicated");
+      setSelectedProductId(product.id);
+      setProductDraft(product);
+      await refresh();
+    },
+    onError: (err) => toast.error(extractError(err)),
+  });
+  const reorderProducts = useMutation({
+    mutationFn: (productIds) => reorderWebstoreProducts(id, productIds),
+    onSuccess: async () => {
+      toast.success("Product order updated");
+      await refresh();
+    },
+    onError: (err) => toast.error(extractError(err)),
+  });
+  const submitProductApproval = useMutation({
+    mutationFn: (product) =>
+      submitWebstoreProductApproval(id, product.id, {
+        expected_revision: product.revision,
+      }),
+    onSuccess: async (product) => {
+      toast.success("Product sent for owner approval");
+      setProductDraft(product);
+      await refresh();
+    },
+    onError: (err) => toast.error(extractError(err)),
+  });
+  const submitMockupApproval = useMutation({
+    mutationFn: (mockupId) => submitWebstoreMockupApproval(id, mockupId),
+    onSuccess: async () => {
+      toast.success("Mockup sent for owner approval");
+      await refresh();
+    },
+    onError: (err) => toast.error(extractError(err)),
   });
   const saveCategory = useMutation({
     mutationFn: () =>
@@ -2223,7 +2269,7 @@ export default function WebstoreDetailPage() {
                     </Button>
                   </div>
                   <div className="grid gap-3">
-                    {filteredProducts.map((product) => (
+                    {filteredProducts.map((product, index) => (
                       <div
                         key={product.id}
                         className="rounded-md border p-3 text-sm"
@@ -2265,6 +2311,9 @@ export default function WebstoreDetailPage() {
                                   product.selling_price_cents,
                                 )}
                               </Badge>
+                              <Badge variant={product.approval_status === "approved" ? "secondary" : "outline"}>
+                                {formatLabel(product.approval_status || "not_submitted")}
+                              </Badge>
                             </div>
                             <div className="mt-3 grid gap-1 text-xs text-muted-foreground md:grid-cols-2">
                               {getProductSetupItems(product).map((item) => (
@@ -2297,6 +2346,56 @@ export default function WebstoreDetailPage() {
                                 disabled={!staffProductImageUrl(product)}
                               >
                                 Preview
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => duplicateProduct.mutate(product)}
+                                disabled={duplicateProduct.isPending || product.status === "archived"}
+                              >
+                                Duplicate
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const ids = activeProducts.map((item) => item.id);
+                                  const current = ids.indexOf(product.id);
+                                  if (current > 0) {
+                                    [ids[current - 1], ids[current]] = [ids[current], ids[current - 1]];
+                                    reorderProducts.mutate(ids);
+                                  }
+                                }}
+                                disabled={index === 0 || reorderProducts.isPending || product.status === "archived"}
+                              >
+                                Move Up
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const ids = activeProducts.map((item) => item.id);
+                                  const current = ids.indexOf(product.id);
+                                  if (current >= 0 && current < ids.length - 1) {
+                                    [ids[current + 1], ids[current]] = [ids[current], ids[current + 1]];
+                                    reorderProducts.mutate(ids);
+                                  }
+                                }}
+                                disabled={index >= filteredProducts.length - 1 || reorderProducts.isPending || product.status === "archived"}
+                              >
+                                Move Down
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => submitProductApproval.mutate(product)}
+                                disabled={submitProductApproval.isPending || product.status === "archived"}
+                              >
+                                Send Product Approval
                               </Button>
                               {product.status === "archived" ? (
                                 <Button
@@ -3179,28 +3278,63 @@ export default function WebstoreDetailPage() {
                               </Select>
                               <div className="flex flex-wrap gap-2">
                                 {(productDraft.mockup_associations || []).map(
-                                  (item) => (
-                                    <Button
-                                      key={item.mockup_id}
-                                      type="button"
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        removeAssociation(
-                                          "mockup_associations",
-                                          "mockup_id",
-                                          item.mockup_id,
-                                        )
-                                      }
-                                    >
-                                      Associated mockup remove
-                                    </Button>
-                                  ),
+                                  (item) => {
+                                    const mockup = (mockupOptions.data || []).find(
+                                      (row) => row.id === item.mockup_id,
+                                    );
+                                    return (
+                                      <div
+                                        key={item.mockup_id}
+                                        className="flex flex-wrap items-center gap-2 rounded border px-2 py-1"
+                                      >
+                                        <span className="text-xs">
+                                          {mockup?.alt_text ||
+                                            mockup?.purpose ||
+                                            item.mockup_id}
+                                        </span>
+                                        <Badge variant="outline">
+                                          {formatLabel(
+                                            mockup?.approval_status ||
+                                              "not_submitted",
+                                          )}
+                                        </Badge>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() =>
+                                            submitMockupApproval.mutate(
+                                              item.mockup_id,
+                                            )
+                                          }
+                                          disabled={
+                                            submitMockupApproval.isPending
+                                          }
+                                        >
+                                          Send Mockup Approval
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() =>
+                                            removeAssociation(
+                                              "mockup_associations",
+                                              "mockup_id",
+                                              item.mockup_id,
+                                            )
+                                          }
+                                        >
+                                          Remove
+                                        </Button>
+                                      </div>
+                                    );
+                                  },
                                 )}
                               </div>
                               <p className="text-xs text-muted-foreground">
-                                Mockups are read-only previews until approval is
-                                added later.
+                                Mockup approval is separate from final launch
+                                approval.
                               </p>
                             </div>
                           </div>
@@ -3439,10 +3573,80 @@ export default function WebstoreDetailPage() {
           </TabsContent>
 
           <TabsContent value="approval" className="space-y-4">
-            <WebstoreBrandingEditor
-              webstoreId={id}
-              products={detail.data?.products || []}
-            />
+            <Card data-testid="webstore-product-approval-panel">
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Product and Mockup Approval
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {(detail.data?.products || []).map((product) => (
+                  <div
+                    key={product.id}
+                    className="rounded-md border p-3"
+                    data-testid={`webstore-product-approval-${product.id}`}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <div className="font-medium">{product.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Revision {product.revision || 1} -{" "}
+                          {centsToDollarsString(product.selling_price_cents)}
+                        </div>
+                      </div>
+                      <Badge
+                        variant={
+                          product.approval_status === "approved"
+                            ? "secondary"
+                            : "outline"
+                        }
+                      >
+                        {formatLabel(product.approval_status || "not_submitted")}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={
+                          submitProductApproval.isPending ||
+                          product.status === "archived"
+                        }
+                        onClick={() => submitProductApproval.mutate(product)}
+                      >
+                        Send Product Approval
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => startProductSetup(product)}
+                      >
+                        Edit Product
+                      </Button>
+                    </div>
+                    {(product.approval_history || []).length > 0 && (
+                      <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                        {product.approval_history.map((entry) => (
+                          <div key={entry.id}>
+                            {formatLabel(entry.action)} by{" "}
+                            {entry.actor_display || entry.actor_ref} on{" "}
+                            {formatDateTime(entry.created_at)}
+                            {entry.reason ? ` - ${entry.reason}` : ""}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {(detail.data?.products || []).length === 0 && (
+                  <div className="text-muted-foreground">
+                    Add products before requesting product approval.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
         <aside

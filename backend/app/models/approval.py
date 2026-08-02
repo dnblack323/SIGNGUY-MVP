@@ -13,9 +13,10 @@ from .base import BaseDoc
 ApprovalParentType = Literal[
     "quote_revision", "proof_version", "contract",
     "order_item", "work_order_summary",
+    "webstore_product", "webstore_mockup",
 ]
 ApprovalAction = Literal["approve", "request_changes", "decline"]
-ApprovalActorType = Literal["portal_customer", "public_token", "staff"]
+ApprovalActorType = Literal["portal_customer", "portal_webstore_owner", "public_token", "staff"]
 
 
 class Approval(BaseDoc):
@@ -30,3 +31,8 @@ class Approval(BaseDoc):
     actor_display: Optional[str] = None  # e.g. signer name for audit clarity
     ip: Optional[str] = None
     user_agent: Optional[str] = None
+    snapshot_hash: Optional[str] = None
+    snapshot: dict = Field(default_factory=dict)
+    status: str = "current"
+    superseded_at: Optional[str] = None
+    superseded_reason: Optional[str] = None

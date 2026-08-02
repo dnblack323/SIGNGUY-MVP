@@ -137,6 +137,21 @@ export async function updateWebstoreProduct(webstoreId, productId, payload) {
   return r.data;
 }
 
+export async function duplicateWebstoreProduct(webstoreId, productId, payload) {
+  const r = await api.post(`/webstores/${webstoreId}/products/${productId}/duplicate`, payload);
+  return r.data;
+}
+
+export async function reorderWebstoreProducts(webstoreId, productIds) {
+  const r = await api.patch(`/webstores/${webstoreId}/products/reorder`, { product_ids: productIds });
+  return r.data;
+}
+
+export async function submitWebstoreProductApproval(webstoreId, productId, payload) {
+  const r = await api.post(`/webstores/${webstoreId}/products/${productId}/submit-approval`, payload);
+  return r.data;
+}
+
 export async function archiveWebstoreProduct(webstoreId, productId, payload) {
   const r = await api.post(`/webstores/${webstoreId}/products/${productId}/archive`, payload);
   return r.data;
@@ -164,6 +179,11 @@ export async function listWebstoreMockups(webstoreId, params = {}) {
 
 export async function createWebstoreProductCategory(webstoreId, payload) {
   const r = await api.post(`/webstores/${webstoreId}/product-categories`, payload);
+  return r.data;
+}
+
+export async function submitWebstoreMockupApproval(webstoreId, mockupId, payload = {}) {
+  const r = await api.post(`/webstores/${webstoreId}/mockups/${mockupId}/submit-approval`, payload);
   return r.data;
 }
 
