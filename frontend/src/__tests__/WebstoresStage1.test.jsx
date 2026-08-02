@@ -284,12 +284,15 @@ test("authenticated Webstores creation supports the six official store types", a
   const user = userEvent.setup();
   renderWithProviders(<WebstoresPage />);
 
-  expect(await screen.findByText("New Webstore")).toBeInTheDocument();
+  expect(await screen.findByText("Create Webstore")).toBeInTheDocument();
   await user.type(screen.getByTestId("webstore-owner-name"), "Owner Name");
   await user.type(screen.getByTestId("webstore-owner-email"), "owner@example.com");
+  await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.clear(screen.getByTestId("webstore-name"));
   await user.type(screen.getByTestId("webstore-name"), "Employee Store");
   await user.click(screen.getByTestId("webstore-type"));
   await user.click(await screen.findByText("Employee"));
+  await user.click(screen.getByRole("button", { name: "Next" }));
   await user.click(screen.getByTestId("webstore-create"));
 
   await waitFor(() => expect(createWebstore).toHaveBeenCalledWith({
@@ -297,12 +300,10 @@ test("authenticated Webstores creation supports the six official store types", a
     name: "Employee Store",
     slug: undefined,
     store_type: "employee",
-    target_launch_at: undefined,
-    deadline_at: undefined,
     manager_emails: [],
     additional_owner_emails: [],
     idempotency_key: "webstore-create-owner@example.com-employee store",
-    send_owner_invitation: true,
+    send_owner_invitation: false,
   }));
 });
 

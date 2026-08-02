@@ -15,6 +15,16 @@ export async function listWebstoreActivity(id, params = {}) {
   return r.data;
 }
 
+export async function transitionWebstoreLifecycle(id, payload) {
+  const r = await api.post(`/webstores/${id}/lifecycle`, payload);
+  return r.data;
+}
+
+export async function listWebstoreLifecycleEvents(id, params = {}) {
+  const r = await api.get(`/webstores/${id}/lifecycle-events`, { params });
+  return r.data;
+}
+
 export async function createWebstoreOwner(payload) {
   const r = await api.post("/webstores/owners", payload);
   return r.data;

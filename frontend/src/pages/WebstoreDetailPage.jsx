@@ -28,6 +28,7 @@ import {
   getWebstore,
   getWebstoreReports,
   listWebstoreActivity,
+  listWebstoreLifecycleEvents,
   listWebstoreAssignments,
   listWebstoreSetupFiles,
   listProductTemplates,
@@ -139,6 +140,7 @@ export default function WebstoreDetailPage() {
   const paymentProvider = useQuery({ queryKey: ["webstore-payment-provider", id], queryFn: () => getWebstorePaymentProviderStatus(id), enabled: !!id });
   const reports = useQuery({ queryKey: ["webstore-reports", id], queryFn: () => getWebstoreReports(id), enabled: !!id });
   const activity = useQuery({ queryKey: ["webstore-activity", id], queryFn: () => listWebstoreActivity(id, { limit: 20 }), enabled: !!id });
+  const lifecycleEvents = useQuery({ queryKey: ["webstore-lifecycle-events", id], queryFn: () => listWebstoreLifecycleEvents(id, { limit: 5 }), enabled: !!id });
   const setupProgress = useQuery({ queryKey: ["webstore-setup-progress", id], queryFn: () => getWebstoreSetupProgress(id), enabled: !!id });
   const assignments = useQuery({ queryKey: ["webstore-assignments", id], queryFn: () => listWebstoreAssignments(id), enabled: !!id });
   const questionnaire = useQuery({ queryKey: ["webstore-questionnaire", id], queryFn: () => getWebstoreQuestionnaire(id), enabled: !!id });
@@ -156,6 +158,7 @@ export default function WebstoreDetailPage() {
       qc.invalidateQueries({ queryKey: ["webstore-payment-provider", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-reports", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-activity", id] }),
+      qc.invalidateQueries({ queryKey: ["webstore-lifecycle-events", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-setup-progress", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-assignments", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-questionnaire-response", id] }),
@@ -474,6 +477,8 @@ export default function WebstoreDetailPage() {
   const activeProducts = (detail.data?.products || []).filter((product) => product.status !== "archived");
   const selectedProductsCount = activeProducts.length;
   const uploadCount = setupFileItems.length;
+  const phase6LifecycleState = detail.data?.phase6_lifecycle_state || "draft";
+  const typeRequirements = detail.data?.type_requirements || setupProgress.data?.type_requirements || readiness.data?.type_requirements;
   const currentBuilderStep = selectedProductId ? "Product Setup" : selectedProductsCount ? "Product Setup" : "Product Plan";
   const nextRequiredAction = selectedProductsCount
     ? "Continue setup on selected draft products before launch preparation."
@@ -574,6 +579,58 @@ export default function WebstoreDetailPage() {
         <Card><CardContent className="p-3 text-sm"><div className="text-xs font-medium uppercase text-muted-foreground">Owner questionnaire</div><div className="font-semibold">{questionnaireSubmission ? "Submitted" : "Waiting on owner"}</div></CardContent></Card>
         <Card><CardContent className="p-3 text-sm"><div className="text-xs font-medium uppercase text-muted-foreground">AI review</div><div className="font-semibold">Coming in a later stage</div></CardContent></Card>
         <Card><CardContent className="p-3 text-sm"><div className="text-xs font-medium uppercase text-muted-foreground">Products selected</div><div className="font-semibold">{selectedProductsCount}</div></CardContent></Card>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_1fr]" data-testid="webstore-stage2-rules">
+        <Card className="border-sky-200">
+          <CardHeader><CardTitle className="text-base">Phase 6 Lifecycle</CardTitle></CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <div className="text-xs font-medium uppercase text-muted-foreground">Current Phase 6 state</div>
+                <div className="font-semibold capitalize">{formatLabel(phase6LifecycleState)}</div>
+              </div>
+              <div>
+                <div className="text-xs font-medium uppercase text-muted-foreground">Internal status</div>
+                <div className="font-semibold capitalize">{formatLabel(store.status)}</div>
+              </div>
+            </div>
+            <div className="rounded-md border divide-y">
+              {(lifecycleEvents.data?.items || []).slice(0, 3).map((event) => (
+                <div key={event.id} className="p-2">
+                  <div className="font-medium capitalize">{formatLabel(event.from_state || "created")} to {formatLabel(event.to_state)}</div>
+                  <div className="text-xs text-muted-foreground">{event.reason || "Lifecycle transition"} - {formatDateTime(event.created_at)}</div>
+                </div>
+              ))}
+              {!lifecycleEvents.isLoading && (lifecycleEvents.data?.items || []).length === 0 && <div className="p-2 text-muted-foreground">No lifecycle events recorded yet.</div>}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-emerald-200">
+          <CardHeader><CardTitle className="text-base">Store Type Rules</CardTitle></CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-xs font-medium uppercase text-muted-foreground">Type</div>
+                <div className="font-semibold">{typeRequirements?.label || formatLabel(store.store_type || "general")}</div>
+              </div>
+              <Badge variant={typeRequirements?.complete ? "secondary" : "outline"}>{typeRequirements?.complete ? "Complete" : "Needs setup"}</Badge>
+            </div>
+            <div className="rounded-md border divide-y">
+              {(typeRequirements?.items || []).map((item) => (
+                <div key={item.key} className="flex items-center justify-between gap-3 p-2">
+                  <div>
+                    <div className="font-medium">{item.label}</div>
+                    <div className="text-xs text-muted-foreground">{item.owner_wording}</div>
+                  </div>
+                  <Badge variant={item.complete ? "secondary" : "outline"}>{item.status}</Badge>
+                </div>
+              ))}
+              {(typeRequirements?.items || []).length === 0 && <div className="p-2 text-muted-foreground">No type requirements loaded yet.</div>}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">

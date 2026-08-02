@@ -30,6 +30,7 @@ function typeLabel(value) {
 }
 
 function actionForStore(store) {
+  if (store.manager_action_required) return store.manager_action_required;
   const status = store.setup_state || store.status;
   if (["questionnaire_sent", "waiting_on_store_owner"].includes(status)) return "Waiting on owner questionnaire";
   if (status === "questionnaire_submitted") return "Review answers and apply setup fields";

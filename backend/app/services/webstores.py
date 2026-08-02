@@ -31,6 +31,7 @@ from ..models.webstore import (
     WebstoreChangeRequest,
     WebstoreLaunchPacket,
     WebstoreLedgerEntry,
+    WebstoreLifecycleEvent,
     WebstoreMockup,
     WebstoreOwner,
     WebstorePacketApproval,
@@ -50,6 +51,7 @@ from .portal_identity import create_portal_identity
 from .sequence import next_number, next_record_number
 from . import storage
 from .webstore_payment_provider import ProviderAuthority, get_webstore_payment_provider, provider_configuration_status
+from .webstore_type_requirements import default_store_settings, evaluate_type_requirements
 
 WEBSTORES_FEATURE_KEY = "webstores"
 LIVE_BLOCKING_STATUSES = {"closed", "archived"}
@@ -84,6 +86,17 @@ SLUG_RE = re.compile(r"[^a-z0-9]+")
 PUBLIC_CHECKOUT_ENABLED = True
 VALID_WEBSTORE_TYPES = set(WEBSTORE_TYPES)
 VALID_WEBSTORE_STATUSES = set(WEBSTORE_LIFECYCLE_STATES)
+PHASE6_LIFECYCLE_STATES = (
+    "draft",
+    "intake_pending",
+    "setup_in_progress",
+    "owner_review",
+    "payment_setup_pending",
+    "ready_to_launch",
+    "live",
+    "closed",
+    "archived",
+)
 CURRENT_WEBSTORE_TERMS_VERSION = "webstore_terms_2026_07"
 PAYMENT_READINESS_STATES = {"not_configured", "pending", "restricted", "ready", "unavailable", "not_applicable"}
 CHANGE_REQUEST_CATEGORIES = {
@@ -247,6 +260,54 @@ WEBSTORE_TRANSITIONS: dict[str, set[str]] = {
     "relaunch_ready": {"approved", "launch_ready", "scheduled", "live", "archived"},
     "archived": set(),
 }
+PHASE6_LIFECYCLE_TRANSITIONS: dict[str, set[str]] = {
+    "draft": {"intake_pending", "archived"},
+    "intake_pending": {"setup_in_progress", "archived"},
+    "setup_in_progress": {"owner_review", "archived"},
+    "owner_review": {"setup_in_progress", "payment_setup_pending", "archived"},
+    "payment_setup_pending": {"owner_review", "ready_to_launch", "archived"},
+    "ready_to_launch": {"payment_setup_pending", "live", "closed", "archived"},
+    "live": {"closed", "archived"},
+    "closed": {"archived"},
+    "archived": set(),
+}
+PHASE6_TO_INTERNAL_STATUS = {
+    "draft": "draft",
+    "intake_pending": "waiting_on_store_owner",
+    "setup_in_progress": "questionnaire_submitted",
+    "owner_review": "store_packet_generated",
+    "payment_setup_pending": "approved",
+    "ready_to_launch": "launch_ready",
+    "live": "live",
+    "closed": "closed",
+    "archived": "archived",
+}
+INTERNAL_STATUS_TO_PHASE6 = {
+    "draft": "draft",
+    "questionnaire_sent": "intake_pending",
+    "waiting_on_store_owner": "intake_pending",
+    "questionnaire_submitted": "setup_in_progress",
+    "ai_setup_ready": "setup_in_progress",
+    "ai_product_suggestions_ready": "setup_in_progress",
+    "artwork_needs_review": "setup_in_progress",
+    "mockups_generated": "setup_in_progress",
+    "mockups_approved": "setup_in_progress",
+    "products_selected": "setup_in_progress",
+    "store_packet_generated": "owner_review",
+    "sent_for_approval": "owner_review",
+    "changes_requested": "owner_review",
+    "approved": "payment_setup_pending",
+    "launch_ready": "ready_to_launch",
+    "scheduled": "ready_to_launch",
+    "paused": "ready_to_launch",
+    "live": "live",
+    "closing_soon": "live",
+    "in_production": "live",
+    "completed": "closed",
+    "closed": "closed",
+    "relaunch_ready": "closed",
+    "archived": "archived",
+}
 
 owners_repo = WebstoreRepository("webstore_owners")
 stores_repo = WebstoreRepository("webstores")
@@ -263,6 +324,7 @@ change_requests_repo = WebstoreRepository("webstore_change_requests")
 buyer_orders_repo = WebstoreRepository("webstore_buyer_orders")
 ledger_repo = WebstoreRepository("webstore_ledger_entries")
 activity_repo = WebstoreRepository("webstore_activity_events")
+lifecycle_events_repo = WebstoreRepository("webstore_lifecycle_events")
 ai_repo = WebstoreRepository("webstore_ai_usage_events")
 
 
@@ -515,6 +577,20 @@ def _validate_transition(current: str, requested: str) -> None:
         raise WebstoreError("invalid_webstore_transition", f"Cannot move Webstore from {current} to {requested}", 409)
 
 
+def _phase6_state_for_status(status: str) -> str:
+    return INTERNAL_STATUS_TO_PHASE6.get(status or "draft", "draft")
+
+
+def _validate_phase6_transition(current: str, requested: str) -> None:
+    if requested not in PHASE6_LIFECYCLE_STATES:
+        raise WebstoreError("invalid_lifecycle_state", "Unsupported Phase 6 Webstores lifecycle state", 400)
+    if requested == current:
+        return
+    allowed = PHASE6_LIFECYCLE_TRANSITIONS.get(current, set())
+    if requested not in allowed:
+        raise WebstoreError("invalid_lifecycle_transition", f"Cannot move Webstore from {current} to {requested}", 409)
+
+
 def _require_staff_perm(user: dict, perm: Perm) -> None:
     if perm.value not in set(permissions_for_role(user.get("role", "staff"))):
         raise WebstoreError("permission_denied", f"Missing permission: {perm.value}", 403)
@@ -562,6 +638,35 @@ async def _audit(
         summary=summary,
         metadata={"webstore_id": webstore_id, **(metadata or {})},
     )
+
+
+async def _record_lifecycle_event(
+    *,
+    tenant_id: str,
+    webstore_id: str,
+    from_status: Optional[str],
+    to_status: str,
+    from_state: Optional[str],
+    to_state: str,
+    actor_id: Optional[str],
+    actor_email: Optional[str],
+    reason: Optional[str] = None,
+    metadata: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    event = WebstoreLifecycleEvent(
+        tenant_id=tenant_id,
+        webstore_id=webstore_id,
+        from_status=from_status,
+        to_status=to_status,
+        from_state=from_state,
+        to_state=to_state,
+        actor_id=actor_id,
+        actor_email=actor_email,
+        reason=reason,
+        metadata=metadata or {},
+    ).model_dump()
+    await db.webstore_lifecycle_events.insert_one(prepare_for_mongo(event))
+    return serialize_doc(event)
 
 
 def _image_reference_for_response(
@@ -814,6 +919,7 @@ def _portal_store(store: dict) -> dict:
         "terms_accepted_at",
         "setup_state",
         "setup_profile",
+        "store_settings",
         "target_launch_at",
         "intended_launch_at",
         "intended_close_at",
@@ -1302,6 +1408,7 @@ async def create_webstore(user: dict, fields: dict[str, Any]) -> dict:
         event_location=fields.get("event_location"),
         setup_profile=fields.get("setup_profile") or {},
         setup_requirements=fields.get("setup_requirements") or {},
+        store_settings=default_store_settings(_normalize_store_type(fields.get("store_type", "general")), fields.get("store_settings") or {}),
         creation_idempotency_key=fields.get("idempotency_key"),
         public_url=f"/p/webstores/{public_slug}",
     ).model_dump()
@@ -1319,6 +1426,18 @@ async def create_webstore(user: dict, fields: dict[str, Any]) -> dict:
         entity_type="webstore",
         entity_id=store["id"],
         summary="Webstore created",
+    )
+    await _record_lifecycle_event(
+        tenant_id=user["tenant_id"],
+        webstore_id=store["id"],
+        from_status=None,
+        to_status=store["status"],
+        from_state=None,
+        to_state=_phase6_state_for_status(store["status"]),
+        actor_id=user["id"],
+        actor_email=user.get("email"),
+        reason="Webstore created",
+        metadata={"store_type": store["store_type"]},
     )
     from .webstore_setup import WebstoreSetupError, initialize_store_setup
 
@@ -1347,9 +1466,21 @@ async def list_webstores(user: dict, *, status: Optional[str] = None) -> dict:
     items = []
     for item in result["items"]:
         safe_item = dict(item)
+        type_requirements = evaluate_type_requirements(safe_item)
         safe_item["checkout_enabled"] = bool(item.get("checkout_enabled")) and provider_authority
         safe_item["checkout_unavailable_reason"] = (
             None if safe_item["checkout_enabled"] else provider_status["reason"]
+        )
+        safe_item["phase6_lifecycle_state"] = _phase6_state_for_status(safe_item.get("status", "draft"))
+        safe_item["type_requirements"] = {
+            "label": type_requirements["label"],
+            "complete": type_requirements["complete"],
+            "missing_count": len(type_requirements["missing"]),
+        }
+        safe_item["manager_action_required"] = (
+            f"Complete {type_requirements['label']} requirements: {type_requirements['missing'][0]['label']}"
+            if type_requirements["missing"]
+            else None
         )
         items.append(safe_item)
     return {**result, "items": items}
@@ -1385,6 +1516,8 @@ async def get_webstore(user: dict, webstore_id: str) -> dict:
         "products": products["items"],
         "launch_packets": packets["items"],
         "change_requests": changes,
+        "phase6_lifecycle_state": _phase6_state_for_status(store.get("status", "draft")),
+        "type_requirements": evaluate_type_requirements(store),
         "terms_acceptance": _portal_terms_acceptance(terms),
         "current_terms_version": terms_version,
     }
@@ -1414,6 +1547,7 @@ async def update_webstore(user: dict, webstore_id: str, updates: dict[str, Any])
             "intended_close_at",
             "launch_timezone",
             "payment_readiness_status",
+            "store_settings",
         }
     }
     if "name" in allowed:
@@ -1437,6 +1571,11 @@ async def update_webstore(user: dict, webstore_id: str, updates: dict[str, Any])
         allowed["launch_timezone"] = _clean_optional_text(allowed.get("launch_timezone"), limit=80)
     if "payment_readiness_status" in allowed:
         allowed["payment_readiness_status"] = _clean_status(allowed.get("payment_readiness_status"), PAYMENT_READINESS_STATES, "not_configured", "payment_readiness_status")
+    if "store_settings" in allowed:
+        allowed["store_settings"] = default_store_settings(
+            allowed.get("store_type") or store_before.get("store_type"),
+            allowed["store_settings"] if isinstance(allowed.get("store_settings"), dict) else {},
+        )
     if "required_terms_version" in allowed:
         allowed["required_terms_version"] = _clean_text(allowed["required_terms_version"], "required_terms_version", limit=80)
         if allowed["required_terms_version"] != store_before.get("required_terms_version", CURRENT_WEBSTORE_TERMS_VERSION):
@@ -1448,6 +1587,8 @@ async def update_webstore(user: dict, webstore_id: str, updates: dict[str, Any])
     if "store_type" in allowed:
         allowed["store_type"] = _normalize_store_type(allowed["store_type"])
         if allowed["store_type"] != store_before.get("store_type"):
+            if "store_settings" not in allowed:
+                allowed["store_settings"] = default_store_settings(allowed["store_type"], store_before.get("store_settings") or {})
             owner_activity_count = sum(
                 [
                     await db.webstore_access_assignments.count_documents({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}),
@@ -1576,6 +1717,20 @@ async def set_webstore_status(user: dict, webstore_id: str, status: str, reason:
         updates["archived_at"] = _now_iso()
         updates["checkout_enabled"] = False
     updated = await stores_repo.update(tenant_id=user["tenant_id"], entity_id=webstore_id, updates=updates)
+    from_state = _phase6_state_for_status(store.get("status", "draft"))
+    to_state = _phase6_state_for_status(status)
+    await _record_lifecycle_event(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        from_status=store.get("status"),
+        to_status=status,
+        from_state=from_state,
+        to_state=to_state,
+        actor_id=user["id"],
+        actor_email=user.get("email"),
+        reason=reason,
+        metadata={"source": "status_route"},
+    )
     await _audit(
         tenant_id=user["tenant_id"],
         webstore_id=webstore_id,
@@ -1589,6 +1744,71 @@ async def set_webstore_status(user: dict, webstore_id: str, status: str, reason:
         metadata={"from": store.get("status"), "to": status, "reason": reason},
     )
     return updated or {}
+
+
+async def transition_webstore_lifecycle(user: dict, webstore_id: str, lifecycle_state: str, reason: Optional[str] = None) -> dict:
+    requested_state = (lifecycle_state or "").strip().lower().replace("-", "_")
+    _require_staff_perm(user, Perm.WEBSTORE_MANAGE if requested_state in {"ready_to_launch", "live", "closed", "archived"} else Perm.WEBSTORE_WRITE)
+    store = await _get_store(user["tenant_id"], webstore_id)
+    current_state = _phase6_state_for_status(store.get("status", "draft"))
+    _validate_phase6_transition(current_state, requested_state)
+    target_status = PHASE6_TO_INTERNAL_STATUS[requested_state]
+    if requested_state in {"ready_to_launch", "live"}:
+        readiness = await launch_readiness(user, webstore_id)
+        if not readiness["ready"]:
+            raise WebstoreError("launch_gates_failed", "Webstore launch gates are not satisfied", 409)
+    updates: dict[str, Any] = {"status": target_status}
+    if target_status == "live":
+        updates["launched_at"] = _now_iso()
+        updates["checkout_enabled"] = True
+    elif target_status in {"launch_ready", "approved"}:
+        updates["checkout_enabled"] = False
+    elif target_status == "closed":
+        updates["closed_at"] = _now_iso()
+        updates["checkout_enabled"] = False
+    elif target_status == "archived":
+        updates["archived_at"] = _now_iso()
+        updates["checkout_enabled"] = False
+    updated = await stores_repo.update(tenant_id=user["tenant_id"], entity_id=webstore_id, updates=updates)
+    event = await _record_lifecycle_event(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        from_status=store.get("status"),
+        to_status=target_status,
+        from_state=current_state,
+        to_state=requested_state,
+        actor_id=user["id"],
+        actor_email=user.get("email"),
+        reason=reason,
+        metadata={"source": "phase6_lifecycle_route"},
+    )
+    await _audit(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        actor_type="staff",
+        actor_id=user["id"],
+        actor_email=user.get("email"),
+        action="webstore.lifecycle.transitioned",
+        entity_type="webstore",
+        entity_id=webstore_id,
+        summary=f"Webstore lifecycle changed from {current_state} to {requested_state}",
+        metadata={"from_state": current_state, "to_state": requested_state, "from_status": store.get("status"), "to_status": target_status, "reason": reason},
+    )
+    return {"webstore": updated or {}, "lifecycle_state": requested_state, "event": event}
+
+
+async def list_lifecycle_events(user: dict, webstore_id: str, *, limit: int = 30) -> dict:
+    _require_staff_perm(user, Perm.WEBSTORE_READ)
+    store = await _get_store(user["tenant_id"], webstore_id)
+    safe_limit = max(1, min(limit, 100))
+    items = [
+        serialize_doc(doc)
+        async for doc in db.webstore_lifecycle_events.find(
+            {"tenant_id": user["tenant_id"], "webstore_id": store["id"]},
+            {"_id": 0},
+        ).sort([("created_at", -1)]).limit(safe_limit)
+    ]
+    return {"items": items}
 
 
 async def create_template(user: dict, fields: dict[str, Any]) -> dict:
@@ -3193,6 +3413,7 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
     terms_version = store.get("required_terms_version") or CURRENT_WEBSTORE_TERMS_VERSION
     terms = await _terms_acceptance(user["tenant_id"], webstore_id, terms_version)
     payment = await _payment_readiness(store)
+    type_requirements = evaluate_type_requirements(store)
     entitlement_ready = await has_entitlement(tenant_id=user["tenant_id"], feature_key=store.get("entitlement_feature_key") or WEBSTORES_FEATURE_KEY)
     delivered = bool(packet and packet.get("status") in {"delivered", "sent_for_approval", "owner_approved"} and packet.get("id") == store.get("launch_packet_id"))
     approved = bool(
@@ -3298,6 +3519,17 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
             "blocking": bool(open_changes),
         },
         {
+            "key": "type_requirements",
+            "state": "ready" if type_requirements["complete"] else "blocked",
+            "reason": "Store-type settings and requirements are complete." if type_requirements["complete"] else "Complete required store-type settings before launch.",
+            "severity": "blocking",
+            "action": "Review the Store Type Rules panel and complete missing settings.",
+            "resource": {"type": "webstore_type_requirements", "id": webstore_id},
+            "owner_wording": f"{type_requirements['label']} store details are still being completed.",
+            "blocking": not type_requirements["complete"],
+            "requirements": type_requirements["items"],
+        },
+        {
             "key": "payment_ready",
             "state": payment["state"],
             "reason": payment["reason"],
@@ -3341,6 +3573,7 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
         "terms_acceptance": _portal_terms_acceptance(terms),
         "open_change_request_count": len(open_changes),
         "payment_readiness": payment,
+        "type_requirements": type_requirements,
         "payment_readiness_source": "provider_boundary",
         "payment_unavailable_reason": payment["reason"],
         "public_launch_blocked_until_batch_3": True,

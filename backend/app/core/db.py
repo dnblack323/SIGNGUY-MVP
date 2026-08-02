@@ -1038,6 +1038,9 @@ async def ensure_indexes() -> None:
     await db.webstore_activity_events.create_index("id", unique=True)
     await db.webstore_activity_events.create_index([("tenant_id", 1), ("webstore_id", 1), ("created_at", -1)])
     await db.webstore_activity_events.create_index([("tenant_id", 1), ("action", 1), ("created_at", -1)])
+    await db.webstore_lifecycle_events.create_index("id", unique=True)
+    await db.webstore_lifecycle_events.create_index([("tenant_id", 1), ("webstore_id", 1), ("created_at", -1)])
+    await db.webstore_lifecycle_events.create_index([("tenant_id", 1), ("to_state", 1), ("created_at", -1)])
 
     await db.webstore_ai_usage_events.create_index("id", unique=True)
     await db.webstore_ai_usage_events.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])

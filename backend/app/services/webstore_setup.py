@@ -27,6 +27,7 @@ from . import storage
 from .activity import record_activity_with_audit
 from .email import record_processed_activity, send_email
 from .notifications import notify_tenant_owners
+from .webstore_type_requirements import default_store_settings, evaluate_type_requirements
 
 WEBSTORE_SETUP_STATES = (
     "not_started",
@@ -601,6 +602,7 @@ async def initialize_store_setup(user: dict, store: dict, owner: dict, fields: d
                 "setup_state": "not_started",
                 "setup_profile": fields.get("setup_profile") or {},
                 "setup_requirements": fields.get("setup_requirements") or {},
+                "store_settings": default_store_settings(store.get("store_type"), fields.get("store_settings") or store.get("store_settings") or {}),
                 "target_launch_at": fields.get("target_launch_at"),
                 "event_start_at": fields.get("event_start_at"),
                 "event_location": fields.get("event_location"),
@@ -1182,6 +1184,7 @@ def _owner_safe_store(store: dict) -> dict:
         "launch_packet_id",
         "setup_state",
         "setup_profile",
+        "store_settings",
         "target_launch_at",
         "event_start_at",
         "event_location",
@@ -1223,17 +1226,19 @@ async def _setup_progress(store: dict, *, staff: bool) -> dict:
     )
     file_count = await db.webstore_setup_files.count_documents({"tenant_id": tenant_id, "webstore_id": webstore_id, "status": "active"})
     state = await _derive_setup_state(store, invited_count, active_owner_count, draft_count, submitted_count, reviewed_count, file_count)
+    type_requirements = evaluate_type_requirements(store)
     steps = [
         {"key": "primary_owner", "label": "Primary Store Owner assigned", "status": "complete" if active_owner_count else "blocked"},
         {"key": "invitations", "label": "Owner and manager invitations", "status": "waiting" if invited_count else "complete"},
         {"key": "questionnaire", "label": "Owner intake questionnaire", "status": "review" if submitted_count else "complete" if reviewed_count else "in_progress" if draft_count else "not_started"},
         {"key": "files", "label": "Setup files", "status": "complete" if file_count else "not_started"},
+        {"key": "type_requirements", "label": f"{type_requirements['label']} requirements", "status": "complete" if type_requirements["complete"] else "blocked"},
         {"key": "staff_review", "label": "Staff setup review", "status": "complete" if reviewed_count else "not_started"},
         {"key": "branding", "label": "Branding editor", "status": "deferred"},
         {"key": "products", "label": "Product catalog buildout", "status": "deferred"},
         {"key": "stripe", "label": "Verified Stripe checkout", "status": "deferred"},
     ]
-    response = {"webstore_id": webstore_id, "setup_state": state, "steps": steps, "read_only": True}
+    response = {"webstore_id": webstore_id, "setup_state": state, "steps": steps, "type_requirements": type_requirements, "read_only": True}
     if staff:
         response["counts"] = {
             "invited_assignments": invited_count,

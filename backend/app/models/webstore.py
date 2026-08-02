@@ -225,6 +225,7 @@ class Webstore(BaseDoc):
     setup_state: WebstoreSetupState = "not_started"
     setup_profile: dict[str, Any] = Field(default_factory=dict)
     setup_requirements: dict[str, Any] = Field(default_factory=dict)
+    store_settings: dict[str, Any] = Field(default_factory=dict)
     target_launch_at: Optional[str] = None
     event_start_at: Optional[str] = None
     event_location: Optional[str] = None
@@ -704,6 +705,19 @@ class WebstoreActivity(BaseDoc):
     entity_type: str
     entity_id: str
     summary: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class WebstoreLifecycleEvent(BaseDoc):
+    tenant_id: str
+    webstore_id: str
+    from_status: Optional[str] = None
+    to_status: str
+    from_state: Optional[str] = None
+    to_state: str
+    reason: Optional[str] = None
+    actor_id: Optional[str] = None
+    actor_email: Optional[str] = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

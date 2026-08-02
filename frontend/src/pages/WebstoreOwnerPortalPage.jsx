@@ -139,6 +139,19 @@ export default function WebstoreOwnerPortalPage() {
               <span className="text-muted-foreground">{step.status}</span>
             </div>
           ))}
+          {progress?.type_requirements && (
+            <div className="rounded border p-3" data-testid="portal-webstore-type-requirements">
+              <div className="font-medium">{progress.type_requirements.label} requirements</div>
+              <div className="mt-2 grid gap-2">
+                {(progress.type_requirements.items || []).map((item) => (
+                  <div key={item.key} className="flex justify-between gap-3">
+                    <span>{item.owner_wording || item.label}</span>
+                    <span className="text-muted-foreground">{item.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
       <Card>

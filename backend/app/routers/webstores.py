@@ -53,6 +53,7 @@ class WebstoreIn(BaseModel):
     event_location: Optional[str] = None
     setup_profile: dict[str, Any] = Field(default_factory=dict)
     setup_requirements: dict[str, Any] = Field(default_factory=dict)
+    store_settings: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: Optional[str] = None
     send_owner_invitation: bool = True
     additional_owner_emails: list[str] = Field(default_factory=list)
@@ -69,6 +70,7 @@ class WebstorePatchIn(BaseModel):
     direct_owner_payout_required: Optional[bool] = None
     stripe_onboarding_required: Optional[bool] = None
     payment_readiness_status: Optional[str] = None
+    store_settings: Optional[dict[str, Any]] = None
     deadline_at: Optional[str] = None
     target_launch_at: Optional[str] = None
     event_start_at: Optional[str] = None
@@ -83,6 +85,11 @@ class WebstorePatchIn(BaseModel):
 
 class StatusIn(BaseModel):
     status: str
+    reason: Optional[str] = None
+
+
+class LifecycleTransitionIn(BaseModel):
+    state: str
     reason: Optional[str] = None
 
 
@@ -431,6 +438,22 @@ async def update_webstore(webstore_id: str, payload: WebstorePatchIn, user: dict
 async def set_status(webstore_id: str, payload: StatusIn, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.set_webstore_status(user, webstore_id, payload.status, reason=payload.reason)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/lifecycle")
+async def transition_lifecycle(webstore_id: str, payload: LifecycleTransitionIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.transition_webstore_lifecycle(user, webstore_id, payload.state, reason=payload.reason)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.get("/{webstore_id}/lifecycle-events")
+async def lifecycle_events(webstore_id: str, limit: int = Query(30, ge=1, le=100), user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.list_lifecycle_events(user, webstore_id, limit=limit)
     except WebstoreError as e:
         _raise(e)
 
