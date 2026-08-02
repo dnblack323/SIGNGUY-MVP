@@ -451,6 +451,14 @@ async def reports(webstore_id: str, user: dict = Depends(get_current_user)) -> d
         _raise(e)
 
 
+@router.get("/{webstore_id}/activity")
+async def activity(webstore_id: str, limit: int = Query(30, ge=1, le=100), user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.list_activity(user, webstore_id, limit=limit)
+    except WebstoreError as e:
+        _raise(e)
+
+
 @router.get("/{webstore_id}/payment-provider")
 async def payment_provider(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
     try:

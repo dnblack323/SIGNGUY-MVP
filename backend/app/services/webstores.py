@@ -1355,6 +1355,20 @@ async def list_webstores(user: dict, *, status: Optional[str] = None) -> dict:
     return {**result, "items": items}
 
 
+async def list_activity(user: dict, webstore_id: str, *, limit: int = 30) -> dict:
+    _require_staff_perm(user, Perm.WEBSTORE_READ)
+    store = await _get_store(user["tenant_id"], webstore_id)
+    safe_limit = max(1, min(limit, 100))
+    items = [
+        serialize_doc(doc)
+        async for doc in db.webstore_activity_events.find(
+            {"tenant_id": user["tenant_id"], "webstore_id": store["id"]},
+            {"_id": 0},
+        ).sort([("created_at", -1)]).limit(safe_limit)
+    ]
+    return {"items": items}
+
+
 async def get_webstore(user: dict, webstore_id: str) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_READ)
     store = await _ensure_public_slug(await _get_store(user["tenant_id"], webstore_id))

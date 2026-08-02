@@ -10,6 +10,11 @@ export async function getWebstore(id) {
   return r.data;
 }
 
+export async function listWebstoreActivity(id, params = {}) {
+  const r = await api.get(`/webstores/${id}/activity`, { params });
+  return r.data;
+}
+
 export async function createWebstoreOwner(payload) {
   const r = await api.post("/webstores/owners", payload);
   return r.data;

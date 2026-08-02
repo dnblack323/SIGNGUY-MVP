@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, CheckCircle2, Clock, ExternalLink, Eye, FileUp, Lock, Mail, PackagePlus, Palette, RotateCcw, Save, Send, ShieldCheck, Sparkles, UserPlus } from "lucide-react";
+import { AlertCircle, Archive, Bell, CheckCircle2, Clock, ExternalLink, Eye, FileUp, Lock, Mail, PackagePlus, Palette, RotateCcw, Save, Send, ShieldCheck, Sparkles, UserPlus } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,7 @@ import {
   getWebstoreSetupProgress,
   getWebstore,
   getWebstoreReports,
+  listWebstoreActivity,
   listWebstoreAssignments,
   listWebstoreSetupFiles,
   listProductTemplates,
@@ -137,6 +138,7 @@ export default function WebstoreDetailPage() {
   const readiness = useQuery({ queryKey: ["webstore-readiness", id], queryFn: () => getLaunchReadiness(id), enabled: !!id });
   const paymentProvider = useQuery({ queryKey: ["webstore-payment-provider", id], queryFn: () => getWebstorePaymentProviderStatus(id), enabled: !!id });
   const reports = useQuery({ queryKey: ["webstore-reports", id], queryFn: () => getWebstoreReports(id), enabled: !!id });
+  const activity = useQuery({ queryKey: ["webstore-activity", id], queryFn: () => listWebstoreActivity(id, { limit: 20 }), enabled: !!id });
   const setupProgress = useQuery({ queryKey: ["webstore-setup-progress", id], queryFn: () => getWebstoreSetupProgress(id), enabled: !!id });
   const assignments = useQuery({ queryKey: ["webstore-assignments", id], queryFn: () => listWebstoreAssignments(id), enabled: !!id });
   const questionnaire = useQuery({ queryKey: ["webstore-questionnaire", id], queryFn: () => getWebstoreQuestionnaire(id), enabled: !!id });
@@ -153,6 +155,7 @@ export default function WebstoreDetailPage() {
       qc.invalidateQueries({ queryKey: ["webstore-readiness", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-payment-provider", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-reports", id] }),
+      qc.invalidateQueries({ queryKey: ["webstore-activity", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-setup-progress", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-assignments", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-questionnaire-response", id] }),
@@ -458,6 +461,7 @@ export default function WebstoreDetailPage() {
     if (Number.isNaN(date.getTime())) return "Not recorded";
     return date.toLocaleString();
   };
+  const formatActivityLabel = (value) => formatLabel(String(value || "activity").replace(/^webstore\./, ""));
   const ownerAssignment = (assignments.data || []).find((item) => item.role === "owner")
     || (assignments.data || [])[0];
   const questionnaireSubmission = questionnaireResponse.data?.submission;
@@ -484,6 +488,20 @@ export default function WebstoreDetailPage() {
     { label: "Owner Approval", state: "future", note: "Coming in a later stage" },
     { label: "Launch & Manage", state: "future", note: "Coming in a later stage" },
   ];
+  const paymentNeedsAttention = store && !store.checkout_enabled && ["launch_ready", "owner_approved", "live"].includes(store.status)
+    ? readiness.data?.payment_unavailable_reason || store.checkout_unavailable_reason || "Payment setup is incomplete."
+    : "";
+  const feedItems = [
+    ...(paymentNeedsAttention ? [{
+      id: "payment-readiness",
+      action: "stripe_incomplete",
+      summary: "Stripe/payment setup needs attention",
+      created_at: store.updated_at || store.created_at,
+      metadata: { detail: paymentNeedsAttention },
+      synthetic: true,
+    }] : []),
+    ...(activity.data?.items || []),
+  ].slice(0, 8);
   const getProductSetupItems = (product) => [
     { label: "Basic information", done: Boolean(product?.name && product?.product_type) },
     { label: "Image or mockup", done: Boolean(staffProductImageUrl(product, "primary")) },
@@ -505,20 +523,20 @@ export default function WebstoreDetailPage() {
   return (
     <div className="space-y-4" data-testid="webstore-detail-page">
       <PageHeader
-        title="Webstore Builder"
-        subtitle={`${store.name} - ${formatLabel(store.webstore_type || store.store_type || "general")} webstore - ${formatLabel(store.status)}`}
+        title={store.name}
+        subtitle={`Webstores setup - ${formatLabel(store.webstore_type || store.store_type || "general")} - ${formatLabel(store.status)}`}
         actions={(
           <div className="flex items-center gap-2 flex-wrap">
             {ownerAssignment ? (
-              <Button asChild variant="outline" size="sm"><Link to={`/portal/webstores/${id}`}><ExternalLink className="size-4 mr-2" />View Webstore Owner Portal</Link></Button>
+              <Button asChild variant="outline" size="sm"><Link to={`/portal/webstores/${id}`}><ExternalLink className="size-4 mr-2" />View Owner Setup Portal</Link></Button>
             ) : (
-              <Button variant="outline" size="sm" disabled><ExternalLink className="size-4 mr-2" />Webstore Owner Portal Not Ready</Button>
+              <Button variant="outline" size="sm" disabled><ExternalLink className="size-4 mr-2" />Owner Setup Portal Not Ready</Button>
             )}
             <Button variant="outline" size="sm" disabled={sendQuestionnaire.isPending || !ownerAssignment} onClick={() => sendQuestionnaire.mutate()} data-testid="webstore-send-questionnaire">
               <Mail className="size-4 mr-2" />Send Questionnaire
             </Button>
             {store.status === "live" && (store.public_url || store.public_slug || store.slug) ? (
-              <Button asChild variant="outline" size="sm"><Link to={store.public_url || `/p/webstores/${store.public_slug || store.slug}`}><Eye className="size-4 mr-2" />Preview Webstore</Link></Button>
+              <Button asChild variant="outline" size="sm"><Link to={store.public_url || `/p/webstores/${store.public_slug || store.slug}`}><Eye className="size-4 mr-2" />Preview Store</Link></Button>
             ) : (
               <Button variant="outline" size="sm" disabled><Eye className="size-4 mr-2" />Preview Not Ready</Button>
             )}
@@ -1319,6 +1337,26 @@ export default function WebstoreDetailPage() {
                 </div>
               </div>
             ))}
+          </CardContent>
+        </Card>
+        <Card className="border-amber-200">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Bell className="size-4 text-amber-700" />Webstores Feed</CardTitle></CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {feedItems.map((item) => (
+              <div key={item.id} className={`rounded-md border p-3 ${item.synthetic ? "border-amber-200 bg-amber-50" : "bg-white"}`} data-testid={`webstore-feed-${item.id}`}>
+                <div className="flex items-start gap-2">
+                  {item.synthetic ? <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-700" /> : <Bell className="mt-0.5 size-4 shrink-0 text-sky-700" />}
+                  <div className="min-w-0">
+                    <div className="font-medium capitalize">{formatActivityLabel(item.action)}</div>
+                    <div className="mt-1 text-muted-foreground">{item.summary}</div>
+                    {item.metadata?.detail && <div className="mt-1 text-xs text-amber-800">{item.metadata.detail}</div>}
+                    <div className="mt-1 text-xs text-muted-foreground">{formatDateTime(item.created_at)}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {activity.isLoading && <div className="text-muted-foreground">Loading Webstores feed...</div>}
+            {!activity.isLoading && feedItems.length === 0 && <div className="text-muted-foreground">No Webstores activity yet.</div>}
           </CardContent>
         </Card>
       </aside>

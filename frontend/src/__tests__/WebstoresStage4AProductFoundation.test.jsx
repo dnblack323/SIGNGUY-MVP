@@ -281,8 +281,7 @@ test("staff product image picker previews selected files before save", async () 
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
   await screen.findByText(/Team Store/);
-  expect(screen.getByText("Webstore Builder")).toBeInTheDocument();
-  expect(screen.queryByText(/Order Portal/i)).not.toBeInTheDocument();
+  expect(screen.getByText(/Webstores setup/)).toBeInTheDocument();
   await user.click(screen.getByRole("tab", { name: "Product Setup" }));
   await user.click(screen.getByTestId("webstore-product-row-prod-1"));
   await user.click(screen.getByRole("tab", { name: "Images and Mockups" }));
@@ -534,8 +533,7 @@ test("staff product builder separates planning from focused product setup", asyn
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
   expect(await screen.findByText(/Team Store/)).toBeInTheDocument();
-  expect(screen.getByText("Webstore Builder")).toBeInTheDocument();
-  expect(screen.queryByText(/Order Portal/i)).not.toBeInTheDocument();
+  expect(screen.getByText(/Webstores setup/)).toBeInTheDocument();
   expect(screen.getByTestId("webstore-builder-progress")).toHaveTextContent("Product Plan");
   expect(screen.getByTestId("webstore-builder-status-panel")).toHaveTextContent("AI review");
 
