@@ -214,6 +214,9 @@ api_router.include_router(decision_room_review_queue_router_module.router)
 
 from app.routers import templates as templates_router_module
 api_router.include_router(templates_router_module.router)
+from app.routers import forms as forms_router_module
+api_router.include_router(forms_router_module.router)
+api_router.include_router(forms_router_module.public_router)
 
 # EC11 - Phase 11A Production Workflow Definitions and canonical stage contracts.
 from app.routers import production_workflows as production_workflows_router_module

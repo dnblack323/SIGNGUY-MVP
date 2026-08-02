@@ -26,6 +26,8 @@ import DecisionRoomsPage from "@/pages/DecisionRoomsPage";
 import DecisionRoomNewPage from "@/pages/DecisionRoomNewPage";
 import DecisionRoomEditorPage from "@/pages/DecisionRoomEditorPage";
 import DecisionRoomReviewQueuePage from "@/pages/DecisionRoomReviewQueuePage";
+import FormsLibraryPage from "@/pages/FormsLibraryPage";
+import PublicFormRequestPage from "@/pages/PublicFormRequestPage";
 import TemplatesPage from "@/pages/TemplatesPage";
 import PortalApp from "@/portal/PortalApp";
 import PublicApp from "@/public/PublicApp";
@@ -105,7 +107,14 @@ function AppRoutes() {
       <Route path="/kiosk/production" element={<ProductionKioskPage />} />
       <Route path="/portal/*" element={<PortalApp />} />
       <Route path="/p/*" element={<PublicApp />} />
-      <Route element={<RequireAuth><AppShell /></RequireAuth>}>
+      <Route path="/forms/request/:token" element={<PublicFormRequestPage />} />
+      <Route
+        element={
+          <RequireAuth>
+            <AppShell />
+          </RequireAuth>
+        }
+      >
         <Route path="/" element={<DashboardPage />} />
         <Route path="/customers" element={<CustomersPage />} />
         <Route path="/customers/:id" element={<CustomerDetailPage />} />
@@ -120,10 +129,17 @@ function AppRoutes() {
         <Route path="/intake/new" element={<IntakeNewPage />} />
         <Route path="/intake/:id" element={<IntakeDetailPage />} />
         <Route path="/decision-rooms" element={<DecisionRoomsPage />} />
-        <Route path="/decision-room-review-queue" element={<DecisionRoomReviewQueuePage />} />
+        <Route
+          path="/decision-room-review-queue"
+          element={<DecisionRoomReviewQueuePage />}
+        />
+        <Route path="/forms" element={<FormsLibraryPage />} />
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/decision-rooms/new" element={<DecisionRoomNewPage />} />
-        <Route path="/decision-rooms/:id" element={<DecisionRoomEditorPage />} />
+        <Route
+          path="/decision-rooms/:id"
+          element={<DecisionRoomEditorPage />}
+        />
         <Route path="/invoices" element={<InvoicesPage />} />
         <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
         <Route path="/documents" element={<DocumentsPage />} />
@@ -134,7 +150,10 @@ function AppRoutes() {
         <Route path="/materials/:id" element={<MaterialDetailPage />} />
         <Route path="/supply-center" element={<SupplyCenterPage />} />
         <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
-        <Route path="/purchase-orders/:id" element={<PurchaseOrderDetailPage />} />
+        <Route
+          path="/purchase-orders/:id"
+          element={<PurchaseOrderDetailPage />}
+        />
         <Route path="/vendors/:id" element={<VendorDetailPage />} />
         <Route path="/expenses" element={<ExpensesPage />} />
         <Route path="/finance" element={<FinanceDashboardPage />} />
@@ -152,7 +171,10 @@ function AppRoutes() {
         <Route path="/team/announcements" element={<AnnouncementsPage />} />
         <Route path="/team/schedule" element={<TeamSchedulePage />} />
         <Route path="/shop-schedule" element={<ShopSchedulePage />} />
-        <Route path="/team/employee-portal" element={<EmployeePortalAccessPage />} />
+        <Route
+          path="/team/employee-portal"
+          element={<EmployeePortalAccessPage />}
+        />
         <Route path="/team/time-clock" element={<TimeClockPage />} />
         <Route path="/team/timesheets" element={<TimesheetsPage />} />
         <Route path="/team/payroll" element={<PayrollPage />} />
@@ -174,7 +196,10 @@ function AppRoutes() {
         <Route path="/studio/design-image" element={<AIStudioPage />} />
         <Route path="/studio/marketing-brand" element={<AIStudioPage />} />
         <Route path="/studio/writing-documents" element={<AIStudioPage />} />
-        <Route path="/studio/pricing-profitability" element={<AIStudioPage />} />
+        <Route
+          path="/studio/pricing-profitability"
+          element={<AIStudioPage />}
+        />
         <Route path="/studio/prompts" element={<PromptLibraryPage />} />
         <Route path="/studio/assets" element={<GeneratedAssetsPage />} />
         <Route path="/studio/activity" element={<AIActivityPage />} />
@@ -183,9 +208,15 @@ function AppRoutes() {
         <Route path="/settings/integrations" element={<IntegrationsPage />} />
         <Route path="/settings/subscriptions" element={<BillingPage />} />
         <Route path="/settings/ai-credits" element={<AICreditsPage />} />
-        <Route path="/settings/ai-governance" element={<PlatformAIGovernancePage />} />
+        <Route
+          path="/settings/ai-governance"
+          element={<PlatformAIGovernancePage />}
+        />
         <Route path="/settings/features" element={<FeatureAccessPage />} />
-        <Route path="/settings/production-workflows" element={<ProductionWorkflowsPage />} />
+        <Route
+          path="/settings/production-workflows"
+          element={<ProductionWorkflowsPage />}
+        />
         <Route path="/settings/data-security" element={<DataSecurityPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

@@ -23,6 +23,7 @@ from ..models.webstore import (
     WebstoreQuestionnaireTemplate,
     WebstoreSetupFile,
 )
+from ..models.forms import FormTemplate
 from . import storage
 from .activity import record_activity_with_audit
 from .email import record_processed_activity, send_email
@@ -77,6 +78,7 @@ LOCKED_ANSWER_FIELDS = {
     "launch_ready",
     "launch_readiness",
 }
+BLOCKING_QUESTIONNAIRE_REQUIRED_KEYS = {"store_name"}
 SAFE_ANSWER_MAPPING = {
     "store_name": {"target": "name", "label": "Store name"},
     "description": {"target": "description", "label": "Description"},
@@ -138,6 +140,7 @@ SAFE_ANSWER_MAPPING = {
 }
 
 QUESTIONNAIRE_TEMPLATE_SOURCE_ID = "original-signguyai-webstore-questionnaires-2026-08"
+WEBSTORE_FORM_ADAPTER = "webstore_questionnaire"
 
 COMMON_PRODUCT_OPTIONS = [
     {"value": "tshirts", "label": "T-shirts"},
@@ -326,6 +329,82 @@ def _portal_type_for_role(role: str) -> str:
 
 def _portal_perms_for_role(role: str) -> list[str]:
     return list(WEBSTORE_MANAGER_PORTAL_PERMS if role == "manager" else WEBSTORE_OWNER_PORTAL_PERMS)
+
+
+def _shared_form_status(webstore_template_status: str) -> str:
+    if webstore_template_status == "active":
+        return "published"
+    if webstore_template_status == "retired":
+        return "archived"
+    return "draft"
+
+
+def _shared_form_template_name(template: dict[str, Any]) -> str:
+    return str(template.get("title") or template.get("name") or "Webstore Questionnaire").strip()
+
+
+async def _upsert_shared_form_template_for_webstore_template(
+    tenant_id: str,
+    template: dict[str, Any],
+    actor_user_id: Optional[str] = None,
+    *,
+    force: bool = False,
+) -> dict:
+    existing = await db.form_templates.find_one(
+        {"tenant_id": tenant_id, "module": "webstores", "source_template_id": template["id"]},
+        {"_id": 0},
+    )
+    payload = {
+        "name": _shared_form_template_name(template),
+        "module": "webstores",
+        "context_type": "webstore",
+        "description": template.get("description"),
+        "status": _shared_form_status(template.get("status") or "active"),
+        "version": int(template.get("version") or 1),
+        "sections": template.get("sections") or [],
+        "mapping_config": {"safe_answer_mapping": SAFE_ANSWER_MAPPING},
+        "private_config": {
+            "adapter": WEBSTORE_FORM_ADAPTER,
+            "store_type": template.get("store_type") or "general",
+            "legacy_template_id": template["id"],
+        },
+        "source_template_id": template["id"],
+        "updated_by_user_id": actor_user_id,
+        "updated_at": _now_iso(),
+    }
+    if existing:
+        if not force:
+            return serialize_doc(existing)
+        await db.form_templates.update_one(
+            {"tenant_id": tenant_id, "id": existing["id"]},
+            {"$set": prepare_for_mongo(payload)},
+        )
+        current = await db.form_templates.find_one({"tenant_id": tenant_id, "id": existing["id"]}, {"_id": 0})
+        return serialize_doc(current or existing)
+    doc = FormTemplate(
+        tenant_id=tenant_id,
+        created_by_user_id=actor_user_id,
+        **payload,
+    ).model_dump()
+    await db.form_templates.insert_one(prepare_for_mongo(doc))
+    return serialize_doc(doc)
+
+
+def _webstore_template_from_shared_form(form: dict[str, Any], fallback: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    private_config = form.get("private_config") or {}
+    fallback = fallback or {}
+    return {
+        **fallback,
+        "id": fallback.get("id") or private_config.get("legacy_template_id") or form["id"],
+        "title": form.get("name") or fallback.get("title") or "Webstore Questionnaire",
+        "sections": form.get("sections") or fallback.get("sections") or [],
+        "version": form.get("version") or fallback.get("version") or 1,
+        "status": "active" if form.get("status") == "published" else "inactive",
+        "store_type": private_config.get("store_type") or fallback.get("store_type") or "general",
+        "source_template_id": fallback.get("source_template_id") or form.get("source_template_id"),
+        "shared_form_template_id": form["id"],
+        "shared_form_adapter": "forms_v1",
+    }
 
 
 def _token_response(invitation: dict, raw_token: str) -> dict:
@@ -940,59 +1019,87 @@ async def ensure_default_questionnaire_templates(tenant_id: str) -> None:
             source_template_id=QUESTIONNAIRE_TEMPLATE_SOURCE_ID,
         ).model_dump()
         await db.webstore_questionnaire_templates.insert_one(prepare_for_mongo(doc))
+    await _seed_shared_webstore_form_templates(tenant_id)
+
+
+async def _seed_shared_webstore_form_templates(tenant_id: str) -> None:
+    async for template in db.webstore_questionnaire_templates.find(
+        {"tenant_id": tenant_id, "source_template_id": QUESTIONNAIRE_TEMPLATE_SOURCE_ID},
+        {"_id": 0},
+    ):
+        await _upsert_shared_form_template_for_webstore_template(tenant_id, serialize_doc(template))
+
+
+async def _webstore_templates_for_store_types(tenant_id: str, template_types: list[str]) -> list[dict[str, Any]]:
+    legacy_templates = [
+        serialize_doc(d)
+        async for d in db.webstore_questionnaire_templates.find(
+            {"tenant_id": tenant_id, "store_type": {"$in": template_types}, "status": "active"},
+            {"_id": 0},
+        ).sort([("store_type", 1), ("version", -1)])
+    ]
+    shared_forms = [
+        serialize_doc(d)
+        async for d in db.form_templates.find(
+            {
+                "tenant_id": tenant_id,
+                "module": "webstores",
+                "context_type": "webstore",
+                "status": "published",
+                "$or": [
+                    {"private_config.store_type": {"$in": template_types}},
+                    {"private_config.store_type": {"$exists": False}},
+                ],
+            },
+            {"_id": 0},
+        ).sort([("updated_at", -1)])
+    ]
+    shared_by_source = {form.get("source_template_id"): form for form in shared_forms if form.get("source_template_id")}
+    resolved = [
+        _webstore_template_from_shared_form(shared_by_source[template["id"]], template)
+        if template["id"] in shared_by_source
+        else template
+        for template in legacy_templates
+    ]
+    legacy_ids = {template["id"] for template in legacy_templates}
+    for form in shared_forms:
+        if form.get("source_template_id") in legacy_ids:
+            continue
+        private_config = form.get("private_config") or {}
+        if private_config.get("adapter") and private_config.get("adapter") != WEBSTORE_FORM_ADAPTER:
+            continue
+        resolved.append(_webstore_template_from_shared_form(form))
+    return resolved
+
+
+async def _webstore_templates_for_store(store: dict) -> list[dict[str, Any]]:
+    return await _webstore_templates_for_store_types(store["tenant_id"], ["base", store.get("store_type") or "general"])
 
 
 async def list_questionnaire_templates(user: dict, *, store_type: Optional[str] = None, active_only: bool = False) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_READ)
     await ensure_default_questionnaire_templates(user["tenant_id"])
-    filters: dict[str, Any] = {}
-    if store_type:
-        filters["store_type"] = store_type
+    template_types = [store_type] if store_type else ["base", *WEBSTORE_TYPES]
+    items = await _webstore_templates_for_store_types(user["tenant_id"], template_types)
     if active_only:
-        filters["status"] = "active"
-    items = [serialize_doc(d) async for d in db.webstore_questionnaire_templates.find({"tenant_id": user["tenant_id"], **filters}, {"_id": 0}).sort([("store_type", 1), ("version", -1)])]
+        items = [item for item in items if item.get("status") == "active"]
     return {"items": items}
 
 
 async def save_questionnaire_template(user: dict, fields: dict[str, Any], template_id: Optional[str] = None) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_MANAGE)
-    store_type = fields.get("store_type", "general")
-    if store_type not in {"base", *WEBSTORE_TYPES}:
-        raise WebstoreSetupError("invalid_template_store_type", "Unsupported questionnaire store type", 400)
-    if template_id:
-        existing = await db.webstore_questionnaire_templates.find_one({"tenant_id": user["tenant_id"], "id": template_id}, {"_id": 0})
-        if not existing:
-            raise WebstoreSetupError("questionnaire_template_not_found", "Questionnaire template not found", 404)
-        updates = {k: v for k, v in fields.items() if k in {"title", "sections", "status"}}
-        updates["updated_at"] = _now_iso()
-        await db.webstore_questionnaire_templates.update_one({"tenant_id": user["tenant_id"], "id": template_id}, {"$set": updates})
-        updated = await db.webstore_questionnaire_templates.find_one({"tenant_id": user["tenant_id"], "id": template_id}, {"_id": 0})
-        return serialize_doc(updated or {})
-    doc = WebstoreQuestionnaireTemplate(
-        tenant_id=user["tenant_id"],
-        scope="tenant",
-        store_type=store_type,
-        version=int(fields.get("version") or 1),
-        title=_clean_text(fields.get("title"), "title"),
-        sections=fields.get("sections") or [],
-        status=fields.get("status", "active"),
-    ).model_dump()
-    await db.webstore_questionnaire_templates.insert_one(prepare_for_mongo(doc))
-    return serialize_doc(doc)
+    raise WebstoreSetupError(
+        "form_maker_is_questionnaire_authority",
+        "Webstore questionnaires are edited in Library/DocuLink Form Maker. Legacy Webstore questionnaire templates are migration-only.",
+        409,
+    )
 
 
 async def bind_questionnaire_templates(user: dict, webstore_id: str) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_WRITE)
     store = await _get_store(user["tenant_id"], webstore_id)
     await ensure_default_questionnaire_templates(user["tenant_id"])
-    template_types = ["base", store.get("store_type") or "general"]
-    templates = [
-        serialize_doc(d)
-        async for d in db.webstore_questionnaire_templates.find(
-            {"tenant_id": user["tenant_id"], "store_type": {"$in": template_types}, "status": "active"},
-            {"_id": 0},
-        ).sort([("store_type", 1), ("version", -1)])
-    ]
+    templates = await _webstore_templates_for_store(store)
     await db.webstores.update_one(
         {"tenant_id": user["tenant_id"], "id": webstore_id},
         {"$set": {"setup_requirements.questionnaire_template_ids": [t["id"] for t in templates], "updated_at": _now_iso()}},
@@ -1014,15 +1121,26 @@ async def _bound_templates(store: dict) -> list[dict]:
     tenant_id = store["tenant_id"]
     ids = ((store.get("setup_requirements") or {}).get("questionnaire_template_ids") or [])
     if ids:
-        return [serialize_doc(d) async for d in db.webstore_questionnaire_templates.find({"tenant_id": tenant_id, "id": {"$in": ids}, "status": "active"}, {"_id": 0})]
+        legacy = [serialize_doc(d) async for d in db.webstore_questionnaire_templates.find({"tenant_id": tenant_id, "id": {"$in": ids}, "status": "active"}, {"_id": 0})]
+        forms = [
+            serialize_doc(d)
+            async for d in db.form_templates.find(
+                {"tenant_id": tenant_id, "module": "webstores", "context_type": "webstore", "status": "published", "$or": [{"source_template_id": {"$in": ids}}, {"id": {"$in": ids}}]},
+                {"_id": 0},
+            )
+        ]
+        forms_by_source = {form.get("source_template_id"): form for form in forms if form.get("source_template_id")}
+        resolved = [
+            _webstore_template_from_shared_form(forms_by_source[item["id"]], item)
+            if item["id"] in forms_by_source
+            else item
+            for item in legacy
+        ]
+        legacy_ids = {item["id"] for item in legacy}
+        resolved.extend(_webstore_template_from_shared_form(form) for form in forms if form["id"] in ids and form.get("source_template_id") not in legacy_ids)
+        return resolved
     await ensure_default_questionnaire_templates(tenant_id)
-    return [
-        serialize_doc(d)
-        async for d in db.webstore_questionnaire_templates.find(
-            {"tenant_id": tenant_id, "store_type": {"$in": ["base", store.get("store_type") or "general"]}, "status": "active"},
-            {"_id": 0},
-        )
-    ]
+    return await _webstore_templates_for_store(store)
 
 
 async def save_questionnaire_draft(identity: dict, webstore_id: str, fields: dict[str, Any]) -> dict:
@@ -1072,16 +1190,26 @@ async def submit_questionnaire(identity: dict, webstore_id: str, fields: dict[st
     missing_required = _missing_required_answers(draft.get("template_snapshot", {}).get("templates") or [], draft.get("answers") or {})
     if missing_required:
         raise WebstoreSetupError("questionnaire_required_answers_missing", f"Missing required answers: {', '.join(missing_required)}", 400)
+    missing_info_flags = _missing_required_answer_flags(draft.get("template_snapshot", {}).get("templates") or [], draft.get("answers") or {})
     now = _now_iso()
     snapshot = {
         "answers": draft.get("answers") or {},
         "known_products": draft.get("known_products") or [],
+        "missing_info_flags": missing_info_flags,
         "template_snapshot": draft.get("template_snapshot") or {},
         "submitted_at": now,
     }
     await db.webstore_questionnaire_submissions.update_one(
         {"tenant_id": identity["tenant_id"], "id": draft["id"]},
-        {"$set": {"status": "submitted", "submitted_at": now, "submitted_snapshot": snapshot, "updated_at": now}},
+        {
+            "$set": {
+                "status": "submitted",
+                "submitted_at": now,
+                "submitted_snapshot": snapshot,
+                "missing_info_flags": missing_info_flags,
+                "updated_at": now,
+            }
+        },
     )
     await db.webstores.update_one(
         {"tenant_id": identity["tenant_id"], "id": webstore_id},
@@ -1116,6 +1244,21 @@ async def submit_questionnaire(identity: dict, webstore_id: str, fields: dict[st
 
 
 def _missing_required_answers(templates: list[dict], answers: dict[str, Any]) -> list[str]:
+    missing: list[str] = []
+    for template in templates:
+        for section in template.get("sections") or []:
+            for question in section.get("questions") or []:
+                key = question.get("key")
+                if (
+                    question.get("required")
+                    and (question.get("blocking_required") or key in BLOCKING_QUESTIONNAIRE_REQUIRED_KEYS)
+                    and (answers.get(key) in (None, "", []))
+                ):
+                    missing.append(key)
+    return missing
+
+
+def _missing_required_answer_flags(templates: list[dict], answers: dict[str, Any]) -> list[str]:
     missing: list[str] = []
     for template in templates:
         for section in template.get("sections") or []:

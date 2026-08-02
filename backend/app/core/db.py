@@ -1059,6 +1059,19 @@ async def ensure_indexes() -> None:
         unique=True,
         partialFilterExpression={"idempotency_key": {"$type": "string"}},
     )
+
+    await db.form_templates.create_index("id", unique=True)
+    await db.form_templates.create_index([("tenant_id", 1), ("module", 1), ("context_type", 1), ("status", 1), ("updated_at", -1)])
+    await db.form_templates.create_index([("tenant_id", 1), ("source_template_id", 1), ("version", -1)])
+    await db.form_requests.create_index("id", unique=True)
+    await db.form_requests.create_index("token_hash", unique=True)
+    await db.form_requests.create_index([("tenant_id", 1), ("context_type", 1), ("context_id", 1), ("status", 1), ("created_at", -1)])
+    await db.form_requests.create_index([("tenant_id", 1), ("template_id", 1), ("status", 1), ("created_at", -1)])
+    await db.form_responses.create_index("id", unique=True)
+    await db.form_responses.create_index([("tenant_id", 1), ("request_id", 1), ("status", 1)])
+    await db.form_responses.create_index([("tenant_id", 1), ("context_type", 1), ("context_id", 1), ("created_at", -1)])
+    await db.form_responses.create_index([("tenant_id", 1), ("template_id", 1), ("template_version", 1), ("created_at", -1)])
+
     await db.checkout_session_records.create_index(
         "stripe_checkout_session_id",
         unique=True,
