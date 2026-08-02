@@ -1,17 +1,17 @@
-# EC14 / Webstores Stage 6 Implementation Plan
+# Webstores Stage 6 Implementation Plan
 
-**Execution checkpoint:** EC14 follow-on planning checkpoint
 **Product sequence:** Webstores Stage 6
-**Name:** Public Storefront and Server-Priced Cart
+**Stage name:** Public Storefront and Server-Priced Cart
 **Status:** `PLANNED - IMPLEMENTATION NOT STARTED`
 **Baseline commit:** `18b8ad1946c6bfe3b8844d6ab4916ec24670f376`
-**Planning branch:** `plan/ec14-webstores-stage-6-storefront-cart`
+**Planning branch:** `plan/webstores-stage-6-storefront-cart`
 
-## A. Checkpoint Identity and Authority
+## A. Planning Identity and Authority
 
-This document defines the next Webstores implementation checkpoint. It is not
-the older platform stage that used the same number for invoices, payments, or
-other core work. Webstores Stage 6 ends at a complete, server-priced cart.
+This document defines Webstores Stage 6 in the independent Webstores
+product-stage sequence. Webstores Stage 6 is not an EC checkpoint and must not
+be mapped to an older master-build stage with the same number. Webstores Stage 6
+ends at a complete, server-priced cart.
 Checkout, payment collection, paid order creation, payouts, Orders-module
 integration, and Production handoff begin in Webstores Stage 7 or later.
 
@@ -22,11 +22,10 @@ Authority order for this checkpoint:
 3. `preflight/WEBSTORES_PHASE6_REMAINING_APP_PLAN.md` for the staged Webstores roadmap.
 4. `preflight/WEBSTORES_STRIPE_DEFERRED_INTEGRATION_DECISION.md` for the deferred provider boundary.
 5. Current Stage 1-5 implementation, contracts, tests, and issue records.
-6. Historical EC14 documents and donor repositories, used only as evidence.
+6. Historical Webstores documents and donor repositories, used only as evidence.
 
-The existing historical EC14 runtime row may remain COMPLETE/CLOSED. That
-historical closure does not mark this Webstores Stage 6 planning checkpoint
-complete or in progress.
+Historical Webstores runtime records may remain COMPLETE/CLOSED. That
+historical closure does not mark this Webstores Stage 6 plan complete or in progress.
 
 ## B. Stage Objective
 
@@ -525,7 +524,7 @@ Possible migration work:
 
 Planning/tracking files updated by this checkpoint:
 
-- `preflight/EC14_WEBSTORES_PREFLIGHT_AND_IMPLEMENTATION_PLAN.md`
+- `preflight/WEBSTORES_STAGE_6_PUBLIC_STOREFRONT_AND_SERVER_PRICED_CART_PLAN.md`
 - `memory/MASTER_CHECKPOINT_CHECKLIST.md`
 - `memory/PRD.md`
 - `memory/checkpoint_reference_table.md`
