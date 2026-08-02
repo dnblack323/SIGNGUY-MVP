@@ -272,7 +272,7 @@ EC9 closure is **not blocked** by this register — every entry is warned, edita
 - **EC22 Final Integration and Commercial Release Hardening** — closes only after EC9–EC21 are all COMPLETE.
 
 ### Naming corrections registered (2026-02, not yet applied to code)
-- "Order Portal" → **Webstores** / "Webstores Manager". "Portal Owner" (Webstores context) → **Webstore Owner**.
+- Legacy portal naming → **Webstores** / "Webstores Manager". "Portal Owner" (Webstores context) → **Webstore Owner**.
 - "Wrap Command Center" → **Wrap Lab**.
 - See `/app/memory/documentation_authority_register.md` for details. No file/route/model/label has been renamed yet — renaming is deferred to the owning checkpoint (EC14, EC15).
 
@@ -324,3 +324,6 @@ Branch `feature/webstores-phase-6` implements the owner-approved security founda
 ## Webstores Stage 2 Setup and Owner Intake (2026-07-30)
 
 Branch `feature/webstores-stage-2-setup` implements the owner-approved setup and owner-intake foundation for review. It adds setup workflow states separate from lifecycle/status, tenant-scoped Store Owner and Store Manager assignments, primary Store Owner handling, hashed 48-hour one-time invitations, invitation resend/revoke, portal identity linking without staff permissions, tenant-scoped questionnaire templates and bound snapshots, owner draft/save/submit/return-for-changes flow, immutable submitted answer snapshots, setup-file upload/storage/validation/versioning/removal, safe answer-application preview/apply/reversal, computed setup progress, and owner/staff response allowlists. Evidence: `/app/evidence/WEBSTORES_STAGE2_SETUP_OWNER_INTAKE_EVIDENCE.md`. Stage 1 payment and checkout safety remains intact. Real Stripe Checkout/webhooks/Connect/payouts/refunds/disputes, donations, storefront branding/redesign, product catalog buildout, AI actions, Launch Packet expansion, Stage 3, EC4, and unrelated EC9 work remain deferred.
+## Webstores Stage 6 Planning Checkpoint (2026-08-02)
+
+EC14/Webstores Stage 6 is planned but not started on baseline `18b8ad1946c6bfe3b8844d6ab4916ec24670f376`. The approved boundary is **Public Storefront and Server-Priced Cart**. Checkout, payment collection, Stripe Connect, paid Webstore Orders, Orders-module integration, Production handoff, payouts, and reporting remain Stage 7 or later. Only B2B, Fundraiser, Event, Promotional, and General are supported for new Webstores. Fulfillment is configured per product as pickup, shipping, or both. Stage 6 includes fundraiser goals, optional donations, and fixed/percentage promo-code validation in server-priced cart previews. No implementation, migration, test change, or provider change begins in this documentation checkpoint.

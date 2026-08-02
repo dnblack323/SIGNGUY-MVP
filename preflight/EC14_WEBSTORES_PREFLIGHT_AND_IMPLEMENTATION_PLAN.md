@@ -1,339 +1,641 @@
-# EC14 Webstores Preflight and Implementation Plan
+# EC14 / Webstores Stage 6 Implementation Plan
 
-**Status:** PREFLIGHT COMPLETE - IMPLEMENTATION AUTHORIZED  
-**Date:** 2026-07-19  
-**Branch:** `CODEX-EC14-BRANCH`  
-**Starting commit:** `83f51010200e50f04d2c202d2cbc20543ebae6df`  
-**EC13 closed ancestor:** `b76512e0fa907e2ede1b448fcabab3d85336da56`
+**Execution checkpoint:** EC14 follow-on planning checkpoint
+**Product sequence:** Webstores Stage 6
+**Name:** Public Storefront and Server-Priced Cart
+**Status:** `PLANNED - IMPLEMENTATION NOT STARTED`
+**Baseline commit:** `18b8ad1946c6bfe3b8844d6ab4916ec24670f376`
+**Planning branch:** `plan/ec14-webstores-stage-6-storefront-cart`
 
-## Starting Point Verification
+## A. Checkpoint Identity and Authority
 
-- Working tree was clean before EC14 preflight documentation began.
-- Current branch is `CODEX-EC14-BRANCH`, tracking `origin/CODEX-EC14-BRANCH`.
-- Completed EC13 head `b76512e0fa907e2ede1b448fcabab3d85336da56` is an ancestor of the EC14 branch head.
-- EC13 is recorded as COMPLETE - CLOSED in the checkpoint registers.
+This document defines the next Webstores implementation checkpoint. It is not
+the older platform stage that used the same number for invoices, payments, or
+other core work. Webstores Stage 6 ends at a complete, server-priced cart.
+Checkout, payment collection, paid order creation, payouts, Orders-module
+integration, and Production handoff begin in Webstores Stage 7 or later.
 
-## Authority and Scope
+Authority order for this checkpoint:
 
-The current owner prompt explicitly authorizes EC14 Webstores after EC13 closure. This lifts hold H1/H2 for EC14 only. H3-H8 remain active for EC15, EC16, EC17, EC18, and AI/provider-cost work.
+1. The locked owner decisions in the Stage 6 planning authorization.
+2. This document after approval.
+3. `preflight/WEBSTORES_PHASE6_REMAINING_APP_PLAN.md` for the staged Webstores roadmap.
+4. `preflight/WEBSTORES_STRIPE_DEFERRED_INTEGRATION_DECISION.md` for the deferred provider boundary.
+5. Current Stage 1-5 implementation, contracts, tests, and issue records.
+6. Historical EC14 documents and donor repositories, used only as evidence.
 
-Authoritative sources:
+The existing historical EC14 runtime row may remain COMPLETE/CLOSED. That
+historical closure does not mark this Webstores Stage 6 planning checkpoint
+complete or in progress.
 
-1. Current owner prompt authorizing EC14 continuation on `CODEX-ec14-branch`.
-2. `00_Master_Index_and_Owner_Decision_Register.docx`.
-3. `EC14_Webstores_Master_Specification.docx`.
-4. `memory/AGENT_INSTRUCTIONS.md`.
-5. `memory/documentation_authority_register.md`.
-6. EC13 commercial billing contracts and completion records.
+## B. Stage Objective
 
-Naming rule: Webstores is the final product name. Existing "Order Portal" references are historical source terminology or compatibility references only.
+Stage 6 completes this customer workflow without creating a payment or order:
 
-## Authorized EC14 Scope
+1. Staff launches an owner-approved Webstore through the existing backend gates.
+2. A customer visits the canonical public URL or its QR destination.
+3. The customer sees published branding and welcome content.
+4. The customer sees only publicly eligible, owner-approved products.
+5. The customer opens a product, selects valid variants and supported options,
+   and chooses an available product-level fulfillment method.
+6. The customer adds, updates, and removes products in a cart.
+7. Fundraiser progress, optional donations, and fixed or percentage promo codes
+   are available where configured.
+8. The server validates and reprices the cart authoritatively.
+9. The customer reaches a complete cart summary.
 
-EC14 implements Webstores as one shared core with:
+The workflow stops at the cart summary. The interface must not offer an
+actionable checkout control or imply that purchasing is available.
 
-- Staff Webstores manager.
-- Webstore owner portal.
-- Public storefront and buyer checkout preparation.
-- Per-Webstore product catalog copied from reusable templates.
-- Artwork and mockup records with original artwork preservation.
-- Human-reviewed AI suggestion records only; no live AI calls.
-- Launch packets, launch gates, owner approval, and activity/audit trails.
-- Buyer order capture, integer-cent totals, ledger snapshots, and idempotent bridge contract to canonical Orders/Order Items.
-- Stripe Connect boundary records and development-safe checkout/session placeholders, with no provider calls unless explicitly configured in a later approved scope.
-- Reporting projections over Webstore buyer orders and ledger records.
-- Main-app navigation and frontend surfaces for staff, owner portal, and public storefront.
+## C. Entry Conditions
 
-## Explicitly Excluded
+The following Stage 1-5 capabilities are the starting contract:
 
-- EC15 Wrap Lab.
-- EC16-EC18 AI gateway, AI credit ledger, live model/provider use, or generated asset billing.
-- EC19 onboarding/help work.
-- Unapproved standalone annual Webstores pricing.
-- Placeholder zero-priced commercial products.
-- EC4 invoice/payment mutation for buyer checkout.
-- Webstore payout execution outside Webstore ledger records.
-- Broad legacy route renames without compatibility handling.
+| Capability | Entry status | Evidence |
+|---|---|---|
+| Store creation and setup | Accepted, with lifecycle/type corrections still needed | `backend/app/routers/webstores.py`, `backend/app/services/webstores.py` |
+| Canonical Webstore types | Requires Stage 6 correction to five types | `backend/app/models/webstore.py`, `frontend/src/pages/WebstoresPage.jsx` |
+| Shared questionnaires and delivery recovery | Accepted | `backend/app/routers/forms.py`, `backend/app/routers/webstores.py`, Stage 3 tests |
+| Branding | Accepted | `backend/app/services/webstore_branding.py`, `frontend/src/components/webstores/WebstoreBranding.jsx` |
+| Per-Webstore catalog | Accepted for Stage 4 scope | `WebstoreProduct`, `backend/app/services/webstores.py` |
+| Images, variants, and pricing | Present; public fulfillment mapping is incomplete | `backend/app/models/webstore.py` |
+| Owner product review | Accepted for Stage 4 scope | approval service, owner portal routes, Stage 4 tests |
+| Launch packet and owner approval | Accepted for Stage 5 scope | launch packet and approval services, Stage 5 tests |
+| Launch readiness | Backend gate exists; public defense-in-depth is required | `launch_readiness`, `public_webstores.py` |
+| Public slug and URL preparation | Present; final public workflow is incomplete | `public_slug`, `PublicApp.jsx` |
+| Tenant, auth, permissions, portals, audit, notifications | Existing shared foundations | existing platform services and Stage 1-5 tests |
 
-## Phase Plan
+Stage 6 must correct incomplete entry contracts as part of the public boundary,
+without creating duplicate questionnaire, catalog, pricing, portal, auth,
+notification, or order systems.
 
-### Phase 14A - Webstores Foundation
+## D. Included Scope
 
-Create canonical models, repositories, services, indexes, routes, permissions, and audit contracts for:
+Stage 6 includes only:
 
-- Webstore owners.
-- Webstores.
-- Product templates.
-- Portal products.
-- Questionnaire submissions.
-- Artwork files.
-- Mockups.
-- Launch packets.
-- Activity records.
+- Backend-enforced publication and launch eligibility.
+- Public Webstore lookup by canonical globally unique slug.
+- Published custom color, image banner, logo, and greeting/welcome content.
+- Public catalog browsing and product detail.
+- Explicit owner-approved and publicly eligible product filtering.
+- Valid variants and existing supported personalization/customer-input fields.
+- Product-level fulfillment configuration: pickup, shipping, or both.
+- Client cart creation, updates, quantity changes, and item removal.
+- Cart persistence compatible with the current architecture.
+- Server-authoritative cart validation and repricing.
+- Price-change and unavailable-item handling.
+- Fundraiser goal and progress display.
+- Optional customer donations.
+- Fixed-amount and percentage promo-code validation and preview.
+- Mobile, keyboard, screen-reader, and contrast-safe public behavior.
+- Loading, empty, error, unavailable, unpublished, expired, and closed states.
 
-Acceptance:
+The Stage 6 UI must not contain an actionable checkout button, payment form,
+payment link, or order-submit action.
 
-- Tenant-scoped CRUD works for staff users with `webstore:*` permissions.
-- Staff permissions remain separate from portal permissions.
-- Product templates copy into Webstore products; later template edits do not mutate copied products.
-- Internal cost fields are excluded from owner/public views.
-- Status changes write activity/audit records.
+## E. Explicit Exclusions
 
-### Phase 14B - Owner Portal and Launch Workflow
+The following remain outside Stage 6:
 
-Extend the existing Portal Identity system additively for Webstore owner/manager portal identities and implement owner-facing questionnaire, approval, and launch-packet actions.
+- Checkout route or checkout page.
+- Payment collection or payment-provider calls.
+- Stripe Connect implementation, charge-model selection, or payouts.
+- Webstore order creation or paid-order confirmation.
+- Main Orders integration or Production integration.
+- Shipping-label purchasing and carrier-rate shopping.
+- Tax remittance implementation beyond cart-total foundations needed for a
+  clearly labeled pre-checkout estimate.
+- New customer-account requirements.
+- Post-launch analytics and financial reporting.
+- Abandoned-cart automation, refunds, returns, and fulfillment operations.
+- Automatic AI generation or automatic content overwrites.
+- Broad Webstore administration unrelated to the public cart workflow.
 
-Acceptance:
+## F. Supported Type Correction
 
-- Portal tokens still never authorize staff routes.
-- Customer and employee portal routes remain isolated.
-- Webstore owner identities can access only Webstores linked to their owner record and tenant.
-- Launch gates are enforced server-side.
-- Owner approval and change requests are audited.
+The canonical newly-created Webstore types for this plan are exactly:
 
-### Phase 14C - Public Storefront and Buyer Orders
+- `b2b` - B2B
+- `fundraiser` - Fundraiser
+- `event` - Event
+- `promotional` - Promotional
+- `general` - General
 
-Implement public storefront read models and buyer order capture using backend-derived integer-cent totals.
+`Employee` is not a supported Webstore type. Current references that require
+correction are:
 
-Acceptance:
+| Reference | Current meaning | Stage 6 treatment |
+|---|---|---|
+| `backend/app/models/webstore.py:10,74` | Production enum and type literal include `employee` | Reject `employee` for new creates; preserve persisted records safely until a separately approved migration policy exists |
+| `frontend/src/pages/WebstoresPage.jsx` | Create-type list includes the sixth option | Remove from new-create UI during implementation |
+| `backend/app/services/reports_service.py:34,805` | Reporting allowlist treats `employee` as official | Reclassify new reporting authority to the five types; preserve legacy rows as `other_or_legacy` where required |
+| `backend/app/routers/reports.py:238` | Response advertises six official types | Change the new authority response to five types |
+| `backend/tests/test_report_builder_complete_system.py:131,319` | Test asserts six official types | Update the focused authority test; add persisted-legacy compatibility coverage |
+| Stage 1 history and older planning notes | Historical six-type decision | Retain as historical evidence and mark superseded by this locked correction |
 
-- Only Live Webstores with checkout enabled can accept buyer orders.
-- Inactive/unavailable/private products cannot be purchased.
-- Buyer totals are calculated server-side from current portal product records.
-- Ledger entries snapshot buyer payment, subtotal, donation, shipping, tax, processing fee placeholder, platform usage fee, owner/fundraiser share, production cost estimate, and shop gross estimate.
-- Buyer orders do not create EC4 invoices/payments.
+No existing persisted `employee` Webstore may be silently reclassified. Before
+runtime changes, implementation must determine whether such records exist. If
+they do, reads remain safe and tenant-scoped, new creates reject the value, and
+existing records require an explicit compatibility or migration decision. New
+Stage 6 tests must prove all five canonical types create successfully and
+`employee` cannot be newly created.
 
-### Phase 14D - Stripe Connect Boundary and Order Bridge
+## G. Product-Level Fulfillment Contract
 
-Add Webstores-specific Stripe boundary records and idempotent bridge behavior to canonical Orders/Order Items without invoking live Stripe APIs.
+The product is the fulfillment boundary. There is no single store-wide
+fulfillment mode in Stage 6.
 
-Acceptance:
+Proposed product fields, using the existing Webstore product model where safe:
 
-- Stripe Connect account/onboarding/session records remain Webstore-scoped and separate from EC4 and EC13 Stripe Billing.
-- Checkout/session creation is a local contract only in EC14.
-- Buyer order bridge is idempotent and records `bridged_order_id`/bridge status.
-- Repeated bridge requests do not duplicate canonical Orders/Order Items.
+```text
+fulfillment_methods: ["pickup", "shipping"]
+default_fulfillment_method: "pickup" | "shipping" | null
+pickup_instructions: public text, optional
+shipping_cost_cents: non-negative integer, optional fixed pre-checkout amount
+```
 
-### Phase 14E - Frontend Surfaces
-
-Enable the Webstores navigation item and add:
-
-- Staff Webstores workspace.
-- Webstore detail workflow.
-- Owner portal Webstore page.
-- Public storefront page.
-
-Acceptance:
-
-- Staff surfaces use backend APIs and role/permission visibility.
-- Owner portal surfaces use portal APIs only.
-- Public storefront hides internal costs/margins and fails closed when unavailable.
-- Text and controls fit across desktop/mobile constraints.
-
-### Phase 14F - Reporting, Documentation, and Closure
-
-Add reporting endpoints, targeted tests, completion documentation, and final CI validation.
-
-Acceptance:
-
-- Sales, product, fundraiser/donation, ledger, and launch-readiness reports are available.
-- Targeted backend tests cover permission, tenant isolation, launch gates, buyer order ledger behavior, owner portal isolation, and order bridge idempotency.
-- Directly affected tests, compile checks, and `git diff --check` pass locally.
-- GitHub CI passes before EC14 is marked complete.
-
-## Canonical Entities and Relationships
-
-- `webstore_owners`: tenant-scoped external owner/fundraiser/contact account; may link to one portal identity and multiple Webstores.
-- `webstores`: tenant-scoped store record linked to one Webstore owner and containing status, slug, branding, checkout, launch, payout-readiness, and approval state.
-- `webstore_product_templates`: tenant-scoped reusable product templates used by shop staff to seed Webstore products.
-- `webstore_products`: per-Webstore sale products copied from templates or created directly; stores public sale price and private production-cost estimate in integer cents.
-- `webstore_questionnaire_submissions`: owner inputs and setup answers tied to one Webstore/owner.
-- `webstore_artwork_files`: original and processed artwork references; original is never overwritten.
-- `webstore_mockups`: human-reviewable mockup records linked to Webstore, product, and/or artwork.
-- `webstore_launch_packets`: immutable-ish approval snapshot of launch copy, products, pricing, gates, and owner decision.
-- `webstore_buyer_orders`: public buyer order record for storefront commerce; separate from EC4 invoices/payments.
-- `webstore_ledger_entries`: Webstore commerce ledger rows with immutable transaction snapshots and refund/reversal support.
-- `webstore_activity_events`: Webstores-specific activity stream paired with EC2 audit/activity.
-- `webstore_ai_usage_events`: reviewable AI suggestion/action contract records only; no provider execution in EC14.
-
-## Lifecycle and Status Contracts
-
-Webstores use the EC14 status vocabulary:
-
-`draft`, `questionnaire_sent`, `waiting_on_store_owner`, `questionnaire_submitted`, `ai_setup_ready`, `ai_product_suggestions_ready`, `artwork_needs_review`, `mockups_generated`, `mockups_approved`, `products_selected`, `store_packet_generated`, `sent_for_approval`, `changes_requested`, `approved`, `live`, `closing_soon`, `closed`, `in_production`, `completed`, `relaunch_ready`, `archived`.
+If a variant has different fulfillment availability, the variant snapshot may
+override `fulfillment_methods` and the effective shipping amount. Otherwise the
+product-level values apply to every variant. A product with no effective method
+is not publicly eligible and cannot be added to a cart.
 
 Rules:
 
-- Launch is only allowed after server-side readiness checks pass.
-- Checkout requires `live`, entitlement, active public products with integer-cent prices, owner approval, fee acknowledgement, launch packet, and payment readiness.
-- Closed/archived/unavailable stores cannot accept checkout.
-- Product sale price and production cost are integer cents.
-- Internal production cost/margin is staff-only.
-- Platform-fee rows are immutable snapshots; refunds create separate proportional reversal entries.
+- Staff configure fulfillment per product and see validation errors before the
+  product can be made public.
+- Public product detail displays the available methods and pickup instructions
+  or the fixed shipping estimate when configured.
+- A cart line stores the selected method explicitly.
+- If every line supports pickup, the cart defaults to pickup when configured.
+- If every line supports shipping, the cart defaults to shipping when
+  configured.
+- Mixed carts are allowed only when every line has a compatible explicit
+  selection. The cart summary groups lines by fulfillment method and explains
+  the grouping.
+- A line with no compatible method blocks the add/update operation with a
+  customer-safe message and does not silently fall back.
+- Shipping before Stage 7 is a configured fixed estimate in integer cents. It
+  is not a carrier quote, label purchase, or final shipping settlement.
+- Pickup instructions are informational public content; fulfillment operations
+  remain deferred.
 
-## Permission Model
+This contract gives Stage 7 explicit per-line fulfillment data without choosing
+a payment, carrier, or payout architecture.
 
-- Staff routes require `webstore:read`, `webstore:write`, or `webstore:manage`.
-- Staff permissions never authorize portal routes.
-- Portal routes require `portal:webstore_owner_admin` or `portal:webstore_manager_ops` on a portal identity of type `webstore_owner` or `webstore_manager`.
-- Portal identities are tenant-scoped and Webstore-owner scoped.
-- Public storefront routes never expose internal cost, margin, staff notes, or non-public products.
-- All repository/service writes include `tenant_id` filters.
+## H. Server-Priced Cart Contract
 
-## Stripe Boundaries
+The server is authoritative for product eligibility, owner approval, variant
+validity, personalization requirements, unit price, quantity, line subtotal,
+promo eligibility, discount, donation, fulfillment compatibility, configured
+shipping estimate, cart subtotal, and final pre-checkout total.
 
-EC14 may create local Stripe Connect boundary records and test/dev checkout contract records, but must not make live provider calls in this phase.
+The browser may submit only identifiers and customer choices. It must not submit
+authoritative prices, discounts, fees, taxes, donations, or totals.
 
-Boundaries:
+Proposed request shape:
 
-- Separate from EC4 invoice/payment Stripe Core.
-- Separate from EC13 subscription/setup Stripe Billing.
-- No Stripe webhooks are required for EC14 completion.
-- Provider identifiers, if stored, are references only and are never used to authorize client-side success.
-- Checkout success remains server-confirmed.
+```json
+{
+  "webstore_id": "public-store-id",
+  "currency": "usd",
+  "items": [
+    {
+      "product_id": "public-product-id",
+      "variant_id": "public-variant-id",
+      "quantity": 2,
+      "personalization": {"name": "Example"},
+      "fulfillment_method": "pickup"
+    }
+  ],
+  "donation_cents": 0,
+  "promo_code": "TEAM10"
+}
+```
 
-## Entitlement Boundaries
+Proposed response shape:
 
-- Launch and checkout require EC2 entitlement for `webstores`.
-- EC14 derives access from existing EC2/EC13 entitlement contracts but does not mutate subscription entitlements.
-- Existing explicit Founder access is preserved.
-- Webstores standalone and add-on commercial availability must respect EC13 approved active price rules; unapproved standalone annual pricing remains unavailable.
+```json
+{
+  "quote_id": "opaque-quote-id",
+  "quote_version": "webstore_cart_quote_v1",
+  "expires_at": "server-timestamp",
+  "currency": "usd",
+  "items": [],
+  "fulfillment_groups": [],
+  "merchandise_subtotal_cents": 0,
+  "shipping_estimate_cents": 0,
+  "discount_cents": 0,
+  "donation_cents": 0,
+  "total_cents": 0,
+  "warnings": []
+}
+```
 
-## Migration Considerations
+The quote must contain server snapshots of product, variant, fulfillment, and
+price evidence. A later request must revalidate the quote. If a price changes,
+a product is archived/rejected, a store closes, or a selected option becomes
+unavailable, the server returns a stale or unavailable-item result with a fresh
+quote rather than silently accepting old values.
 
-- Extend portal identity additively; do not migrate or rewrite existing customer/employee portal identities.
-- Preserve any legacy route naming compatibility where needed, but present Webstores as the active product name.
-- No broad codebase rename of historical "portal" terminology.
-- Existing Orders/Order Items remain canonical; Webstores buyer-order bridge writes normal orders/items with explicit Webstore source metadata.
-- Original artwork references remain immutable; cleaned/processed outputs use separate fields.
+Recommended behavior:
 
-## Required Indexes
+- Use a client cart for local persistence, with every meaningful change sent to
+  the server quote endpoint.
+- Do not create a second persistent cart or order collection unless inspection
+  proves the existing architecture requires it.
+- Use opaque quote identifiers, short expiration, tenant/Webstore binding, and
+  a request fingerprint for safe replay.
+- Use integer minor units and an explicit currency.
+- Make quote creation deterministic and side-effect free; do not consume promo
+  usage or count fundraising progress.
+- Apply rate limits to public quote requests and normalize all public errors.
+- Record audit events only for meaningful server-side cart/quote events already
+  covered by the existing audit contract.
 
-Create indexes for:
+## I. Fundraiser Goal and Donation Rules
 
-- `webstore_owners`: `id`, `(tenant_id, email)`, `(tenant_id, status)`, `(tenant_id, portal_identity_id)`.
-- `webstores`: `id`, `(tenant_id, slug)` unique, `(tenant_id, owner_id)`, `(tenant_id, status, updated_at)`, `(tenant_id, launched_at)`.
-- `webstore_product_templates`: `id`, `(tenant_id, active, product_category)`, `(tenant_id, template_name)`.
-- `webstore_products`: `id`, `(tenant_id, webstore_id, status)`, `(tenant_id, webstore_id, public)`.
-- `webstore_questionnaire_submissions`: `id`, `(tenant_id, webstore_id, status)`.
-- `webstore_artwork_files`: `id`, `(tenant_id, webstore_id, artwork_status)`.
-- `webstore_mockups`: `id`, `(tenant_id, webstore_id, status)`, `(tenant_id, product_id)`.
-- `webstore_launch_packets`: `id`, `(tenant_id, webstore_id, status)`.
-- `webstore_buyer_orders`: `id`, `(tenant_id, webstore_id, created_at)`, `(tenant_id, webstore_id, status)`, `(tenant_id, idempotency_key)` unique partial.
-- `webstore_ledger_entries`: `id`, `(tenant_id, webstore_id, created_at)`, `(tenant_id, buyer_order_id, entry_type)`, `(tenant_id, source_type, source_id)`.
-- `webstore_activity_events`: `id`, `(tenant_id, webstore_id, created_at)`, `(tenant_id, action, created_at)`.
-- `webstore_ai_usage_events`: `id`, `(tenant_id, webstore_id, status)`.
-- `portal_identities`: add optional Webstore owner/manager lookup indexes without changing existing uniqueness.
+Only Fundraiser Webstores receive fundraiser-specific goal behavior.
 
-## Required Tests
+- A fundraiser may have an optional non-negative integer-cent goal.
+- The goal bar is visible only when configured and publicly approved.
+- Progress is calculated from completed, authoritative paid records only.
+- Stores with no completed sales show zero progress.
+- Progress may display over-goal completion without capping the stored amount.
+- Unpaid carts and cart donations never increase completed progress.
+- An optional donation field may be enabled per Webstore and validated by the
+  server with configured minimum and maximum integer-cent limits.
+- Donation values must be non-negative, cannot be supplied as a negative or
+  client-authoritative total, and can be removed by setting zero.
+- The cart response lists donation separately from merchandise, shipping, and
+  discount values.
+- Stage 6 may show potential contribution in the current cart summary, but it
+  must label it as unpaid and must not add it to the goal progress.
+- Actual donation settlement and accounting begin with Stage 7 paid-order
+  creation.
 
-- Staff permission gates for read/write/manage operations.
-- Staff tenant isolation across Webstore, product, buyer order, and ledger queries.
-- Portal identity type isolation for customer, employee, Webstore owner, and Webstore manager.
-- Webstore owner can only access owned Webstores.
-- Template-to-product copy does not share mutable state.
-- Internal cost fields are hidden from owner/public serializers.
-- Launch gates block missing entitlement, missing products, inactive products, missing prices, missing approval, missing fee acknowledgement, and payment-readiness failure.
-- Live store checkout accepts only active public products.
-- Buyer order totals and ledger entries use integer cents and server-side pricing.
-- EC4 invoices/payments are not mutated by buyer order creation.
-- Platform-fee refund reversal creates a separate proportional ledger entry and never edits original fee rows.
-- Stripe boundary creates local records only and does not call provider APIs.
-- Buyer order bridge creates canonical Orders/Order Items idempotently.
-- `git diff --check` and Python compile checks pass.
+## J. Promo-Code Rules
 
-## Expected Files to Create or Modify
+Promo codes are owned by one Webstore and tenant. They are normalized by the
+server, with whitespace removed and a case-insensitive comparison. The stored
+canonical form is uppercase.
 
-Backend:
+Each code may define:
+
+- Active/inactive status.
+- Start and expiration timestamps.
+- Fixed integer-cent discount or percentage discount.
+- Percentage constrained to `0 < percentage <= 100`.
+- Optional minimum merchandise subtotal.
+- Optional maximum discount cap.
+- Optional product or category scope.
+- Optional usage limit, validated in Stage 6 but not consumed until Stage 7.
+
+Rules:
+
+- A code is never read across tenant or Webstore boundaries.
+- Validation uses merchandise subtotal before the discount; donations do not
+  satisfy a minimum-cart requirement.
+- Donations are not discounted unless a future approved contract explicitly
+  says so.
+- Shipping estimates are not discounted by default.
+- A discount cannot reduce merchandise subtotal below zero.
+- Invalid, inactive, future, expired, exhausted, cross-tenant, or inapplicable
+  codes return distinct customer-safe validation messages.
+- Stage 6 records the validated result in the quote snapshot but does not
+  permanently redeem or increment usage.
+- Stage 7 must revalidate and atomically finalize usage after successful payment.
+- Code validation must be indexed by tenant, Webstore, normalized code, status,
+  and validity window.
+
+## K. Backend Implementation Plan
+
+Prefer extending existing Webstores services, serializers, permissions, and
+money helpers. Do not add a duplicate catalog, pricing, questionnaire, portal,
+authentication, notification, or order system.
+
+Likely work:
+
+- Extend `backend/app/models/webstore.py` for the five-type authority,
+  product-level fulfillment, fundraiser settings, donation limits, and promo
+  definitions only where existing fields cannot safely carry the contract.
+- Add request/response schemas in `backend/app/routers/public_webstores.py` or
+  an existing shared schema location.
+- Extend `backend/app/services/webstores.py` or a narrowly scoped cart helper
+  for public eligibility, quote validation, repricing, fulfillment grouping,
+  donation validation, and promo validation.
+- Reuse existing pricing and integer-cent contracts; do not create a parallel
+  pricing engine.
+- Require live status, launch readiness, public approval, active/public
+  products, and tenant/Webstore scope before public serialization.
+- Add a public cart-quote route. Existing purchase-intent aliases must remain
+  payment-gated and must not become the Stage 6 cart authority.
+- Keep purchase intents, canonical Orders, Payments, and Work Orders outside
+  this checkpoint.
+- Preserve public DTO redaction for cost, margin, owner share, fees, supplier,
+  internal notes, and provider details.
+- Add indexes for canonical public slug, tenant/Webstore/product visibility,
+  promo lookup, and any persisted quote record only if the existing design
+  proves persistence is necessary.
+- Preserve legacy `employee` records without silently changing their type;
+  reject new values and record compatibility behavior explicitly.
+- Write lifecycle, visibility, quote, and validation audit events through the
+  existing activity/audit services.
+
+## L. Frontend Implementation Plan
+
+Reuse the existing public adapter and branding components. The public route
+remains under `/p/webstores/:slug`; nested product and cart views may be added
+under that route family.
+
+Likely surfaces:
+
+- Storefront page with branding and catalog.
+- Product detail view with images, variants, personalization, and fulfillment.
+- Cart panel or cart page with line-level fulfillment selections.
+- Server quote refresh after every material cart change.
+- Donation input only when the Webstore enables it.
+- Promo-code input with clear validation feedback.
+- Fundraiser goal and progress display.
+- Unpublished, closed, expired, late-order, empty, unavailable, loading, and
+  network-error states.
+
+The interface must not show an actionable checkout control. A future message
+may say that purchasing is unavailable while payment setup is pending, but it
+must not imply that an order can be completed.
+
+Accessibility requirements include keyboard operation, visible focus, labels
+for every input, screen-reader announcements for quote changes and errors,
+appropriate image alt text, contrast-safe branding fallbacks, responsive
+mobile layouts, and focus management when cart or product panels open.
+
+## M. Store-Type Behavior
+
+| Capability | B2B | Fundraiser | Event | Promotional | General |
+|---|---:|---:|---:|---:|---:|
+| Public branding | Yes | Yes | Yes | Yes | Yes |
+| Public catalog | Yes | Yes | Yes | Yes | Yes |
+| Cart | Yes | Yes | Yes | Yes | Yes |
+| Product-level pickup | Yes, if configured | Yes, if configured | Yes, if configured | Yes, if configured | Yes, if configured |
+| Product-level shipping | Yes, if configured | Yes, if configured | Yes, if configured | Yes, if configured | Yes, if configured |
+| Fundraiser goal | No | Yes, when configured | No | No | No |
+| Optional donation | No by default | Yes, when configured | No by default | No by default | No by default |
+| Promo codes | Yes, if configured | Yes, if configured | Yes, if configured | Yes, if configured | Yes, if configured |
+| Event dates or closure behavior | Not applicable unless configured | Not applicable unless configured | Yes, subject to existing deadline rules | Not applicable unless configured | Not applicable unless configured |
+
+The table intentionally contains no Employee type. Any further type-specific
+fulfillment or deadline rules require an approved contract rather than inferred
+behavior.
+
+## N. Security and Data Boundaries
+
+- Every authenticated write remains tenant- and Webstore-scoped.
+- Public slug lookup resolves only the canonical globally unique public slug.
+- Non-live, unpublished, private, closed, archived, and unavailable stores
+  return a safe unavailable response without metadata leakage.
+- Draft, rejected, archived, non-public, and unapproved products are excluded.
+- Public serializers exclude internal costs, margins, shares, fees, suppliers,
+  production details, internal notes, and provider details.
+- Product, variant, promo, file, and quote identifiers are rechecked against
+  the resolved tenant and Webstore.
+- The browser cannot set prices, discounts, donations, fees, shipping, or
+  totals.
+- Promo validation is normalized, tenant-scoped, rate-limited, and never
+  permanently redeemed before Stage 7 payment.
+- Donations are bounded, non-negative, server-calculated, and separated from
+  completed fundraiser progress.
+- Branding and image URLs use existing public allowlists and storage boundaries.
+- Staff, owner, manager, and public access continue using separate existing
+  permission and portal contracts.
+- Public error responses reveal only whether the requested public resource is
+  unavailable, invalid, expired, or stale; they do not reveal private state.
+- Customer contact collection remains limited to fields already required by
+  the accepted public Webstore contract.
+
+## O. Focused Test Plan
+
+Do not run tests during this documentation checkpoint. Implementation should
+use focused verification only:
+
+Existing files to extend where applicable:
+
+- `backend/tests/test_webstores_stage1_foundation.py`
+- `backend/tests/test_webstores_stage2_setup.py`
+- `backend/tests/test_webstores_stage3_branding.py`
+- `backend/tests/test_webstores_stage4a_product_foundation.py`
+- `backend/tests/test_webstores_stage4b_owner_approval.py`
+- `backend/tests/test_webstores_stage5_launch_packet_owner_approval.py`
+- `backend/tests/test_ec14_webstores.py`
+- `frontend/src/__tests__/WebstoresStage1.test.jsx`
+- `frontend/src/__tests__/WebstoresStage3Branding.test.jsx`
+- New focused public storefront/cart tests only if existing suites cannot hold
+  the cases without duplication.
+
+Required cases:
+
+- Five canonical types are accepted for new creates.
+- New `employee` creation is rejected.
+- Existing `employee` records are preserved and handled safely if present.
+- Canonical slug lookup is tenant-safe.
+- Unpublished, non-live, closed, and unapproved stores do not leak data.
+- Approved active public products are included; draft, rejected, archived, and
+  unavailable products are excluded.
+- Variant and personalization validation works.
+- Pickup, shipping, both, no-method, and mixed-fulfillment carts behave as
+  specified.
+- Server prices, integer cents, quantity, repricing, stale quotes, and deleted
+  products are authoritative.
+- Fixed and percentage promo codes validate correctly across tenant boundaries,
+  validity windows, limits, floors, and product scope.
+- Donations are bounded and do not increase unpaid fundraiser progress.
+- Goal display is correct with zero sales, no goal, and over-goal progress.
+- Empty, closed, expired, missing, and unavailable states are safe.
+- Frontend cart behavior is responsive and accessible.
+- Stage 1-5 launch and owner-approval regressions remain covered.
+- No checkout, payment, Webstore Order, Orders-module, or Production flow is
+  introduced by Stage 6.
+
+## P. Acceptance Criteria
+
+### Code-complete
+
+- A live, ready Webstore displays published branding and eligible products.
+- Only the five approved types can be newly created.
+- Product detail supports supported images, variants, personalization, and
+  product-level fulfillment.
+- Cart operations are complete and server-priced.
+- Donation, fundraiser, promo, deadline, and unavailable behavior matches this
+  contract.
+- No actionable checkout or payment behavior exists.
+- No duplicate order, pricing, catalog, or fulfillment subsystem is created.
+
+### Focused automated verification
+
+- Backend tests prove tenant isolation, launch-state filtering, product
+  approval, fulfillment, quote authority, promos, donations, and type safety.
+- Frontend tests prove public browsing, cart updates, errors, unavailable
+  states, responsive structure, and absence of an actionable checkout control.
+- Relevant Stage 1-5 focused tests pass when rerun for changed contracts.
+
+### Build verification
+
+- Changed backend files compile/import successfully.
+- Changed frontend files pass the parser/build check.
+- `git diff --check` passes.
+
+### Manual/live acceptance
+
+- Desktop and mobile browsing works for each applicable store type.
+- Product selection, mixed fulfillment, donation, promo, repricing, and closed
+  state messaging are understandable to a customer.
+- Public output contains no internal financial or production fields.
+- No payment, order, payout, or production record is created.
+
+### Deferred gate
+
+Stage 6 cannot be declared payment-complete. Stage 7 remains responsible for
+Stripe Connect, checkout, verified payment, paid Orders, promo redemption,
+payout routing, Orders integration, and Production handoff.
+
+## Q. Proposed File Scope
+
+Proposed production files, subject to implementation inspection:
 
 - `backend/app/models/webstore.py`
-- `backend/app/repositories/webstores.py`
-- `backend/app/services/webstores.py`
-- `backend/app/services/webstore_stripe_connect.py`
-- `backend/app/routers/webstores.py`
-- `backend/app/routers/webstore_owner_portal.py`
 - `backend/app/routers/public_webstores.py`
-- `backend/app/models/portal_identity.py`
-- `backend/app/services/portal_identity.py`
-- `backend/app/deps_portal.py`
-- `backend/app/core/db.py`
-- `backend/server.py`
-
-Frontend:
-
-- `frontend/src/lib/webstores.js`
-- `frontend/src/pages/WebstoresPage.jsx`
-- `frontend/src/pages/WebstoreDetailPage.jsx`
-- `frontend/src/pages/WebstoreOwnerPortalPage.jsx`
+- `backend/app/routers/webstores.py`
+- `backend/app/services/webstores.py`
+- Existing shared pricing, audit, notification, and storage services only when
+  an extension is required.
+- `frontend/src/public/PublicApp.jsx`
 - `frontend/src/pages/PublicWebstorePage.jsx`
-- `frontend/src/App.js`
-- `frontend/src/PortalApp.jsx`
-- `frontend/src/PublicApp.jsx`
-- `frontend/src/lib/navigation.js`
+- A new public product/cart component only if reuse cannot keep one storefront
+  authority.
 
-Tests and documentation:
+Proposed test files:
 
-- `backend/tests/test_ec14_webstores.py`
-- `docs/modules/ec14_webstores.md`
-- `evidence/EC14_COMPLETION_REPORT.md`
+- Existing Stage 1-5 and EC14 Webstores focused suites listed above.
+- One new focused public cart suite only if needed.
+
+Possible migration work:
+
+- A narrowly scoped compatibility migration may be required if persisted
+  `employee` Webstores exist. It must preserve records and must not silently
+  reclassify them.
+- No migration is authorized during this planning checkpoint.
+
+Planning/tracking files updated by this checkpoint:
+
+- `preflight/EC14_WEBSTORES_PREFLIGHT_AND_IMPLEMENTATION_PLAN.md`
 - `memory/MASTER_CHECKPOINT_CHECKLIST.md`
+- `memory/PRD.md`
 - `memory/checkpoint_reference_table.md`
 - `memory/progress_register.md`
-- `memory/owner_specification_hold_register.md`
 
-## Risks and Open Questions
+Protected files and systems:
 
-- Webstores has broad product scope. The implementation should bias toward complete contracts and tested server behavior over decorative UI.
-- Annual standalone Webstores pricing remains unapproved and must stay unavailable.
-- Live Stripe Connect provider integration may require credentials and approval outside EC14 local boundary work.
-- AI suggestions are a human-reviewable contract only in EC14 because EC16/EC17 remain held.
-- The public storefront route shape may require compatibility aliases if older "order portal" URLs are later found in external references.
+- No production code or tests during planning.
+- No donor repository changes.
+- No Stage 7 payment, checkout, order, payout, or Production implementation.
+- No duplicate questionnaire, catalog, pricing, portal, auth, notification,
+  or order system.
 
-## Stop Confirmation
+## R. Implementation Checkpoints
 
-This document is planning/preflight only. No EC14 implementation code is introduced by this document.
+Use separate implementation checkpoints rather than one oversized commit.
 
-## Stage 1 Security Foundation Correction
+### 1. Type and publication enforcement
 
-Status: IMPLEMENTED FOR REVIEW on `feature/webstores-phase-6`.
+- Branch: `feature/webstores-stage-6-type-publication`
+- Include five-type creation authority, legacy Employee compatibility handling,
+  explicit approval/publication filtering, and backend tests.
+- Exclude cart, promo, donations, fulfillment, checkout, payment, and orders.
+- Commit: `feat: enforce webstore stage 6 types and publication`
+- Gate: focused backend tests and diff review show no public data leakage.
 
-Owner decisions recorded for this correction:
+### 2. Public storefront and approved catalog
 
-- New public purchases create `webstore_purchase_intents`; new unpaid `webstore_buyer_orders` are stopped.
-- Legacy `webstore_buyer_orders` remain read-only compatibility records and cannot become canonical Orders without verified payment evidence.
-- Public Webstore routing uses a globally unique `public_slug`; the existing tenant-local/internal `slug` is preserved.
-- Donations are disabled during Stage 1.
-- Verified-payment processing is an internal provider-neutral service only. It has no public fake-payment route and no real Stripe Checkout/webhook/Connect/refund/payout implementation.
-- Official Webstore types are `B2B`, `Fundraiser`, `Event`, `Promotional`, `Employee`, and `General`.
+- Branch: `feature/webstores-stage-6-public-storefront`
+- Include branding, public catalog, product detail, images, empty/loading/error
+  states, and approved-product filtering.
+- Exclude checkout, payment, order creation, and fulfillment operations.
+- Commit: `feat: add approved public webstore storefront`
+- Gate: focused public backend/frontend tests and build check pass.
 
-Stage 1 adds server-side purchase-intent totals, computed payment readiness that remains false until a real provider is connected, Store Owner and Store Manager scope enforcement, lifecycle transition validation, explicit public/portal response allowlists, checkout placeholder disabling, and replay-safe verified-payment foundations. Later storefront, Stripe, donation, payout, branding, setup wizard, AI, and catalog expansion work remains deferred.
+### 3. Product detail and fulfillment
 
-## Stage 2 Setup and Owner Intake
+- Branch: `feature/webstores-stage-6-product-fulfillment`
+- Include variants, personalization, product-level pickup/shipping, mixed-cart
+  compatibility rules, and public instructions.
+- Exclude carrier rates, labels, payment, and fulfillment operations.
+- Commit: `feat: add product-level webstore fulfillment choices`
+- Gate: all fulfillment and variant cases pass.
 
-Status: IMPLEMENTED FOR REVIEW on `feature/webstores-stage-2-setup`.
+### 4. Server-priced cart
 
-Stage 2 is limited to Webstore setup workflow and owner intake. It preserves Stage 1 commerce safety and does not create checkout, donations, Stripe webhooks, payouts, storefront redesign, product catalog buildout, AI actions, or Launch Packet expansion.
+- Branch: `feature/webstores-stage-6-server-priced-cart`
+- Include cart persistence compatible with the existing architecture, quote
+  request/response, repricing, stale handling, and removal/update behavior.
+- Exclude checkout and any order or payment side effect.
+- Commit: `feat: add server-priced webstore cart`
+- Gate: price-authority, tenant-isolation, and stale-cart tests pass.
 
-Implemented Stage 2 contracts:
+### 5. Fundraiser, donation, and promo behavior
 
-- Keeps Webstore lifecycle/status separate from setup workflow state.
-- Adds setup workflow states: `not_started`, `invitation_pending`, `questionnaire_in_progress`, `questionnaire_submitted`, `staff_review`, `changes_requested`, `setup_in_progress`, `blocked`, and `setup_complete`.
-- Creates Store Owner and Store Manager assignments scoped by tenant and Webstore.
-- Requires one primary Store Owner assignment per Webstore and records explicit primary-owner change confirmation/reason.
-- Uses hashed 48-hour invitation tokens only; raw tokens are returned only when generated or regenerated.
-- Invitation acceptance is one-time, expires, and links to a portal identity without granting staff permissions.
-- Resending an invitation supersedes prior pending tokens.
-- Adds tenant-scoped questionnaire templates, bound template snapshots, draft save, submit, return-for-changes, and immutable submitted answer snapshots.
-- Adds setup-file upload/download using application-owned object storage, file size/type/content validation, version replacement, and allowlisted owner/staff responses with storage keys hidden.
-- Adds safe answer-application preview/apply/reversal contracts that reject locked financial, payment, fee, Stripe, and launch-readiness fields.
-- Computes setup progress from assignments, invitations, questionnaire state, reviewed responses, and setup files.
-- Maintains public, Store Owner, and Store Manager response allowlists and tenant boundaries.
+- Branch: `feature/webstores-stage-6-cart-extras`
+- Include goal/progress display, optional donation validation, fixed and
+  percentage promo validation, and unpaid-progress protection.
+- Exclude promo redemption finalization, payment, payouts, and reports.
+- Commit: `feat: add webstore cart donations and promotions`
+- Gate: focused extras tests and public UI checks pass.
 
-Deferred after Stage 2:
+### 6. Final verification and live acceptance
 
-- Real Stripe Checkout, webhooks, Connect, payouts, refunds, disputes, and donation transactions.
-- Storefront branding editor and storefront redesign.
-- Product catalog buildout and catalog AI.
-- Launch Packet expansion.
-- Stage 3 and later Webstore phases.
-- EC4 invoice/payment changes and unrelated EC9 work.
+- Branch: `feature/webstores-stage-6-public-storefront-cart`
+- Include only corrections required by the completed focused verification.
+- Exclude all Stage 7 and Stage 8 work.
+- Commit: `docs: record webstores stage 6 acceptance` or a narrowly scoped fix
+  commit as appropriate.
+- Gate: manual acceptance confirms the workflow ends at the cart summary.
+
+Each checkpoint must be reviewed before the next begins. No broad repository
+test marathon is required for a narrow change; use the focused verification
+policy and touched-module checks.
+
+## S. Stage 7 Handoff Contract
+
+Stage 6 must provide a validated cart representation containing:
+
+- Tenant and Webstore identifiers.
+- Canonical public slug evidence.
+- Eligible product and variant identifiers.
+- Product and variant price snapshots.
+- Quantities and personalization values.
+- Product-level fulfillment selections and fulfillment groups.
+- Validated promo result without permanent redemption.
+- Donation amount, separately represented.
+- Merchandise, shipping estimate, discount, donation, and total cents.
+- Currency and quote version.
+- Quote expiration and integrity/replay protection.
+- Warnings for stale or changed items.
+
+Stage 7 decides and implements Stripe Connect charge model, payment
+collection, checkout, successful-payment handling, Webstore Order creation,
+promo redemption finalization, payout routing, Orders-module integration, and
+Production handoff. Stage 6 must not depend on an unapproved charge model.
+
+## Contradiction and Risk Review
+
+| Risk | Severity | Resolution |
+|---|---|---|
+| Current code and historical records include Employee | BLOCKER for type implementation | Reject new values, preserve existing records, and handle compatibility explicitly |
+| Older Stage 6 plan includes checkout screens | HIGH | This plan ends at cart summary and prohibits actionable checkout UI |
+| Existing purchase-intent/cart-quote aliases overlap | HIGH | Add a true server-priced cart contract; keep purchase intents payment-gated |
+| Existing public filtering does not visibly require approval status | HIGH | Add explicit owner-approved filtering before public serialization |
+| Store-level fulfillment appears in older gap notes | HIGH | Use product-level fulfillment only |
+| Donations and promos were previously deferred | HIGH | Include only server-priced preview behavior; no payment redemption |
+| Unpaid carts could be mistaken for fundraiser revenue | HIGH | Progress uses completed paid records only |
+| Historical EC14 documents describe broader commerce | MEDIUM | Treat them as historical evidence; use current Stage 6 boundary |
+| Donor storefronts use incompatible auth/order/payment systems | MEDIUM | Adapt UX ideas only; do not copy donor backend |
+
+This plan is documentation only. No Stage 6 or Stage 7 implementation has
+started.
