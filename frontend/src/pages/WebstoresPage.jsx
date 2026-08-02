@@ -90,12 +90,18 @@ export default function WebstoresPage() {
       return { store, questionnaire };
     },
     onSuccess: async ({ store, questionnaire }) => {
-      toast.success(questionnaire?.email_sent ? "Webstore created and questionnaire sent" : "Webstore created; questionnaire link is ready");
+      if (questionnaire?.email_sent) {
+        toast.success("Webstore created and questionnaire sent");
+      } else {
+        toast.error(
+          `Webstore created, but the questionnaire email was not sent (${questionnaire?.delivery_error || "delivery unavailable"}). The link is available on the Webstore page.`,
+        );
+      }
       setForm(emptyForm);
       setStoreNameAutoFilled(true);
       setWizardStep(0);
       await qc.invalidateQueries({ queryKey: ["webstores"] });
-      navigate(`/webstores/${store.id}`);
+      navigate(`/webstores/${store.id}`, { state: { questionnaireDelivery: questionnaire } });
     },
     onError: (err) => toast.error(extractError(err)),
   });

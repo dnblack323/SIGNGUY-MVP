@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useLocation } from "react-router-dom";
 import { renderWithProviders } from "../test-utils";
 import PublicWebstorePage from "@/pages/PublicWebstorePage";
 import WebstoreDetailPage from "@/pages/WebstoreDetailPage";
@@ -51,8 +52,10 @@ import {
   listWebstoreProductCategories,
   updateWebstoreProductCategory,
   requestWebstorePaymentProviderAction,
+  sendWebstoreQuestionnaire,
 } from "@/lib/webstores";
 import { useAuth } from "@/auth/AuthContext";
+import { toast } from "sonner";
 
 jest.mock("axios", () => ({
   get: jest.fn(),
@@ -104,6 +107,7 @@ jest.mock("@/lib/webstores", () => ({
   listWebstoreProductCategories: jest.fn(),
   updateWebstoreProductCategory: jest.fn(),
   requestWebstorePaymentProviderAction: jest.fn(),
+  sendWebstoreQuestionnaire: jest.fn(),
 }));
 
 jest.mock("@/auth/AuthContext", () => ({
@@ -174,6 +178,7 @@ beforeEach(() => {
   listWebstoreMockups.mockResolvedValue([]);
   updateWebstoreProductCategory.mockResolvedValue({});
   requestWebstorePaymentProviderAction.mockResolvedValue({});
+  sendWebstoreQuestionnaire.mockResolvedValue({ email_sent: true, request_url: "/forms/request-1" });
   getWebstoreBranding.mockResolvedValue({
     webstore: { id: "ws-1", name: "Team Store", store_type: "general" },
     branding: {
@@ -200,6 +205,11 @@ beforeEach(() => {
   listWebstores.mockResolvedValue({ items: [] });
   listProductTemplates.mockResolvedValue([]);
 });
+
+function NavigationStateProbe() {
+  const location = useLocation();
+  return <div data-testid="navigation-state">{JSON.stringify(location.state || {})}</div>;
+}
 
 test("public storefront creates a checkout intent with provider evidence authority", async () => {
   const user = userEvent.setup();
@@ -305,6 +315,56 @@ test("authenticated Webstores creation supports the six official store types", a
     idempotency_key: "webstore-create-owner@example.com-employee store",
     send_owner_invitation: false,
   }));
+});
+
+test("successful questionnaire delivery is reported and passed to the Webstore detail route", async () => {
+  const user = userEvent.setup();
+  const questionnaire = {
+    email_sent: true,
+    request_url: "/forms/request-success",
+    recipient: "owner@example.com",
+  };
+  sendWebstoreQuestionnaire.mockResolvedValueOnce(questionnaire);
+
+  renderWithProviders(<><WebstoresPage /><NavigationStateProbe /></>);
+
+  await user.type(screen.getByTestId("webstore-owner-name"), "Owner Name");
+  await user.type(screen.getByTestId("webstore-owner-email"), "owner@example.com");
+  await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.click(screen.getByTestId("webstore-create"));
+
+  await waitFor(() => expect(sendWebstoreQuestionnaire).toHaveBeenCalledTimes(1));
+  expect(sendWebstoreQuestionnaire).toHaveBeenCalledWith("ws-new", { email: "owner@example.com", name: "Owner Name" });
+  expect(toast.success).toHaveBeenCalledWith("Webstore created and questionnaire sent");
+  expect(toast.error).not.toHaveBeenCalled();
+  expect(screen.getByTestId("navigation-state")).toHaveTextContent(JSON.stringify({ questionnaireDelivery: questionnaire }));
+});
+
+test("questionnaire delivery failures are truthful and preserve the manual recovery link", async () => {
+  const user = userEvent.setup();
+  const questionnaire = {
+    email_sent: false,
+    delivery_error: "sendgrid_not_configured",
+    request_url: "/forms/request-recovery",
+    recipient: "owner@example.com",
+  };
+  sendWebstoreQuestionnaire.mockResolvedValueOnce(questionnaire);
+
+  renderWithProviders(<><WebstoresPage /><NavigationStateProbe /></>);
+
+  await user.type(screen.getByTestId("webstore-owner-name"), "Owner Name");
+  await user.type(screen.getByTestId("webstore-owner-email"), "owner@example.com");
+  await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.click(screen.getByTestId("webstore-create"));
+
+  await waitFor(() => expect(toast.error).toHaveBeenCalled());
+  expect(toast.error.mock.calls[0][0]).toEqual(expect.stringContaining("sendgrid_not_configured"));
+  expect(toast.error.mock.calls[0][0]).toEqual(expect.stringContaining("link is available on the Webstore page"));
+  expect(toast.success).not.toHaveBeenCalled();
+  expect(sendWebstoreQuestionnaire).toHaveBeenCalledTimes(1);
+  expect(screen.getByTestId("navigation-state")).toHaveTextContent(JSON.stringify({ questionnaireDelivery: questionnaire }));
 });
 
 test("webstore detail shows setup intake, assignments, files, and answer preview", async () => {
