@@ -105,44 +105,50 @@ function CommandButton({ command, permissions, compact = false, testPrefix = "sh
   const label = command.workspaceAction === "dockAndNew" && workspace.isCurrentRouteDocked
     ? command.dockedLabel
     : command.label;
-  if (command.workspaceAction === "dockAndNew") {
-    return (
+  const content = command.workspaceAction === "dockAndNew" ? (
       <Button
         type="button"
         variant="ghost"
         size="sm"
         className={cn(
           "h-11 shrink-0 rounded-md px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-950",
-          compact && "h-10 px-2",
+          compact && "size-9 px-0",
         )}
         data-testid={`${testPrefix}-${command.key}`}
         aria-label={label}
-        title={command.tooltip}
+        title={compact ? undefined : command.tooltip}
         onClick={workspace.dockCurrentAndNew}
       >
-        <span className="flex flex-col items-center gap-0.5">
+        <span className="flex items-center justify-center gap-0.5">
           <Icon className="size-4" aria-hidden="true" />
-          <span className={cn("leading-tight", compact && "hidden xl:inline")}>{label}</span>
+          <span className={cn("leading-tight", compact && "sr-only")}>{label}</span>
         </span>
       </Button>
-    );
-  }
-  return (
+    ) : (
     <Button
       asChild
       variant="ghost"
       size="sm"
       className={cn(
         "h-11 shrink-0 rounded-md px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-950",
-        compact && "h-10 px-2",
+        compact && "size-9 px-0",
       )}
       data-testid={`${testPrefix}-${command.key}`}
     >
-      <Link to={command.to} aria-label={label} className="flex flex-col items-center gap-0.5">
+      <Link to={command.to} aria-label={label} title={compact ? undefined : label} className="flex items-center justify-center gap-0.5">
         <Icon className="size-4" aria-hidden="true" />
-        <span className={cn("leading-tight", compact && "hidden xl:inline")}>{label}</span>
+        <span className={cn("leading-tight", compact && "sr-only")}>{label}</span>
       </Link>
     </Button>
+  );
+
+  if (!compact) return content;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{content}</TooltipTrigger>
+      <TooltipContent side="bottom">{command.tooltip || label}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -332,9 +338,11 @@ function ContextualRibbon({ area, module, permissions }) {
       className="border-b border-slate-200 bg-slate-50 px-4 py-2 md:px-6"
     >
       <div className="flex min-h-12 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="mr-2 hidden shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:block">
-          {module?.label || area?.label}
-        </div>
+        {module?.key !== "webstores" && (
+          <div className="mr-2 hidden shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:block">
+            {module?.label || area?.label}
+          </div>
+        )}
         {commands.map((command) => (
           <CommandButton key={command.key} command={command} permissions={permissions} testPrefix="ribbon-command" />
         ))}
@@ -345,30 +353,33 @@ function ContextualRibbon({ area, module, permissions }) {
 
 function QuickAccessToolbar({ permissions, onOpenMobileNav }) {
   return (
-    <div
-      className="border-b border-slate-200 bg-white px-4 py-1.5 md:px-6"
-      data-testid="quick-access-toolbar"
-      aria-label="Quick access toolbar"
-    >
-      <div className="flex min-w-0 items-center gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0 lg:hidden"
-          data-testid="sidebar-open-mobile"
-          aria-label="Open navigation"
-          onClick={onOpenMobileNav}
-        >
-          <Menu className="size-4" />
-        </Button>
-        <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" data-testid="quick-access-actions">
-          {QUICK_ACCESS_KEYS.map((key) => (
-            <CommandButton key={key} command={COMMANDS[key]} permissions={permissions} compact testPrefix="qat-command" />
-          ))}
+    <TooltipProvider delayDuration={200}>
+      <div
+        className="border-b border-slate-200 bg-white px-4 py-1.5 md:px-6"
+        data-testid="quick-access-toolbar"
+        aria-label="Quick access toolbar"
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0 lg:hidden"
+            data-testid="sidebar-open-mobile"
+            aria-label="Open navigation"
+            title="Open navigation"
+            onClick={onOpenMobileNav}
+          >
+            <Menu className="size-4" />
+          </Button>
+          <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" data-testid="quick-access-actions">
+            {QUICK_ACCESS_KEYS.map((key) => (
+              <CommandButton key={key} command={COMMANDS[key]} permissions={permissions} compact testPrefix="qat-command" />
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
 
@@ -415,6 +426,7 @@ function AppShellFrame() {
   const pathArea = useMemo(() => findAreaForPath(location.pathname), [location.pathname]);
   const selectedArea = PRIMARY_NAV_AREAS.find((area) => area.key === (selectedAreaKey || pathArea.key)) || pathArea;
   const activeModule = activeModuleForPath(selectedArea, location.pathname, permissions, user);
+  const isWebstoreDetailRoute = activeModule?.key === "webstores" && location.pathname.startsWith("/webstores/");
 
   useEffect(() => {
     setSelectedAreaKey(pathArea.key);
@@ -543,7 +555,7 @@ function AppShellFrame() {
             <QuickAccessToolbar permissions={permissions} onOpenMobileNav={() => setMobileOpen(true)} />
           </header>
 
-          <ShellPageHeading area={selectedArea} module={activeModule} />
+          {!isWebstoreDetailRoute && <ShellPageHeading area={selectedArea} module={activeModule} />}
           <main className="px-4 md:px-6 py-5 pb-24 max-w-[1400px]" data-testid="app-shell-content" data-active-path={location.pathname}>
             <Outlet />
           </main>

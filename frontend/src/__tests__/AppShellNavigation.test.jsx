@@ -80,7 +80,11 @@ function LocationProbe() {
 }
 
 function Page({ name }) {
-  return <div data-testid={`${name}-route`}>{name} route</div>;
+  return (
+    <div data-testid={`${name}-route`}>
+      {name === "webstore-detail" ? <h1>Team Store</h1> : `${name} route`}
+    </div>
+  );
 }
 
 function renderShell(initialPath = "/", authOverrides = {}) {
@@ -253,6 +257,14 @@ test("webstore and non-webstore pages use the same shared sidebar offset", async
   expect(orderMainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("260px");
 });
 
+test("Webstore detail removes duplicate shell heading and ribbon label", async () => {
+  await renderShellReady("/webstores/ws-1");
+
+  expect(screen.queryByTestId("shell-page-heading")).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Team Store" })).toBeInTheDocument();
+  expect(screen.getByTestId("contextual-ribbon")).not.toHaveTextContent("Webstores");
+});
+
 test("desktop sidebar aligns to the measured development banner height", async () => {
   const getBoundingClientRect = jest.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function mockRect() {
     if (this.getAttribute("data-testid") === "dev-bypass-banner") {
@@ -325,10 +337,17 @@ test("contextual ribbon is visible and changes with the active module", async ()
 });
 
 test("quick access toolbar renders once and uses the shared command definitions", async () => {
+  const user = userEvent.setup();
   await renderShellReady("/orders");
 
   expect(screen.getAllByTestId("quick-access-toolbar")).toHaveLength(1);
-  expect(screen.getByTestId("qat-command-newCustomer")).toBeInTheDocument();
+  const newCustomer = screen.getByTestId("qat-command-newCustomer");
+  expect(newCustomer).toBeInTheDocument();
+  expect(newCustomer).toHaveAttribute("aria-label", "Customer");
+  expect(newCustomer).toHaveClass("size-9");
+  expect(within(newCustomer).getByText("Customer")).toHaveClass("sr-only");
+  await user.hover(newCustomer);
+  expect(await screen.findByRole("tooltip")).toHaveTextContent("Customer");
   expect(screen.getByTestId("qat-command-newOrder")).toBeInTheDocument();
   expect(screen.getByTestId("qat-command-assistant")).toBeInTheDocument();
 });
