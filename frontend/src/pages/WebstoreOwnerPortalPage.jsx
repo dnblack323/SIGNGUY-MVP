@@ -7,6 +7,7 @@ import {
   MessageSquare,
   Save,
   Send,
+  XCircle,
 } from "lucide-react";
 import portalApi, { portalExtractError } from "@/portal/portalApi";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ export default function WebstoreOwnerPortalPage() {
     category: "general",
     comment: "",
   });
+  const [packetComment, setPacketComment] = useState("");
   const [productComments, setProductComments] = useState({});
   function load() {
     Promise.all([
@@ -100,8 +102,24 @@ export default function WebstoreOwnerPortalPage() {
     try {
       await portalApi.post(
         `/portal/webstores/${webstoreId}/launch-packets/${data.launch_packet.id}/approve`,
+        { comment: packetComment },
       );
       toast.success("Launch approved");
+      setPacketComment("");
+      load();
+    } catch (e) {
+      toast.error(portalExtractError(e));
+    }
+  }
+  async function rejectPacket() {
+    if (!packetComment.trim()) return;
+    try {
+      await portalApi.post(
+        `/portal/webstores/${webstoreId}/launch-packets/${data.launch_packet.id}/reject`,
+        { comment: packetComment },
+      );
+      toast.success("Launch packet rejected");
+      setPacketComment("");
       load();
     } catch (e) {
       toast.error(portalExtractError(e));
@@ -504,6 +522,53 @@ export default function WebstoreOwnerPortalPage() {
               {data.launch_packet.promotion_copy ||
                 "Launch packet is ready for approval."}
             </div>
+            {data.launch_packet.snapshot?.owner_preview && (
+              <div
+                className="rounded border p-3 space-y-2"
+                data-testid="portal-launch-packet-preview"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-medium">
+                      {data.launch_packet.snapshot.owner_preview.display_name}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {data.launch_packet.snapshot.owner_preview.headline}
+                    </div>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    style={{
+                      borderColor:
+                        data.launch_packet.snapshot.owner_preview
+                          .accent_color || undefined,
+                    }}
+                  >
+                    {data.launch_packet.snapshot.owner_preview.accent_color ||
+                      "Accent set"}
+                  </Badge>
+                </div>
+                {data.launch_packet.snapshot.owner_preview.greeting && (
+                  <div className="text-xs text-muted-foreground">
+                    {data.launch_packet.snapshot.owner_preview.greeting}
+                  </div>
+                )}
+              </div>
+            )}
+            {data.launch_packet.snapshot?.qr_reference && (
+              <div
+                className="rounded border p-3 text-xs"
+                data-testid="portal-launch-packet-share"
+              >
+                <div className="font-medium">Store link and QR</div>
+                <div className="break-all">
+                  {data.launch_packet.snapshot.qr_reference.destination}
+                </div>
+                <div className="text-muted-foreground">
+                  {data.launch_packet.snapshot.qr_reference.warning}
+                </div>
+              </div>
+            )}
             <div
               className="rounded border p-3 space-y-2"
               data-testid="portal-launch-packet-products"
@@ -525,6 +590,21 @@ export default function WebstoreOwnerPortalPage() {
                 </div>
               ))}
             </div>
+            {(data.launch_packet.approval_history || []).length > 0 && (
+              <div
+                className="rounded border p-3 text-xs"
+                data-testid="portal-launch-packet-approval-history"
+              >
+                {(data.launch_packet.approval_history || []).map((entry) => (
+                  <div key={entry.id} className="flex justify-between gap-3">
+                    <span>{String(entry.action).replace(/_/g, " ")}</span>
+                    <span className="text-muted-foreground">
+                      {entry.reason || entry.actor_display || "No comment"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div
               className="rounded border p-3 text-xs"
               data-testid="portal-readiness-summary"
@@ -541,13 +621,38 @@ export default function WebstoreOwnerPortalPage() {
               ))}
             </div>
             <div className="flex flex-wrap gap-2">
+              <Textarea
+                rows={2}
+                value={packetComment}
+                onChange={(e) => setPacketComment(e.target.value)}
+                placeholder="Optional approval comment, or required reason for rejection."
+                data-testid="portal-packet-decision-comment"
+              />
               <Button
-                disabled={data.launch_packet.status === "owner_approved"}
+                disabled={
+                  ["owner_approved", "rejected", "superseded", "invalidated"].includes(
+                    data.launch_packet.status,
+                  )
+                }
                 onClick={approve}
                 data-testid="portal-approve-packet"
               >
                 <CheckCircle2 className="size-4 mr-2" />
                 Approve packet v{data.launch_packet.version || 1}
+              </Button>
+              <Button
+                variant="outline"
+                disabled={
+                  !packetComment.trim() ||
+                  ["owner_approved", "rejected", "superseded", "invalidated"].includes(
+                    data.launch_packet.status,
+                  )
+                }
+                onClick={rejectPacket}
+                data-testid="portal-reject-packet"
+              >
+                <XCircle className="size-4 mr-2" />
+                Reject packet
               </Button>
             </div>
             <div

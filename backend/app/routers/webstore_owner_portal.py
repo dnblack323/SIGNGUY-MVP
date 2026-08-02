@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from ..deps_portal import get_current_portal_identity
@@ -61,6 +61,10 @@ class PacketChangeRequestIn(BaseModel):
     category: str = "general"
     affected_item_ref: str | None = None
     comment: str
+
+
+class PacketDecisionIn(BaseModel):
+    comment: str | None = None
 
 
 class ProductApprovalDecisionIn(BaseModel):
@@ -233,9 +237,9 @@ async def download_setup_file(webstore_id: str, file_id: str, identity: dict = D
 
 
 @router.post("/{webstore_id}/launch-packets/{packet_id}/approve")
-async def approve_launch(webstore_id: str, packet_id: str, identity: dict = Depends(_webstore_identity)) -> dict:
+async def approve_launch(webstore_id: str, packet_id: str, payload: PacketDecisionIn | None = Body(default=None), identity: dict = Depends(_webstore_identity)) -> dict:
     try:
-        return await svc.owner_approve_launch_packet(identity, webstore_id, packet_id)
+        return await svc.owner_approve_launch_packet(identity, webstore_id, packet_id, (payload or PacketDecisionIn()).model_dump(exclude_none=True))
     except WebstoreError as e:
         _raise(e)
 
@@ -260,6 +264,14 @@ async def decide_mockup_approval(webstore_id: str, mockup_id: str, payload: Prod
 async def request_launch_changes(webstore_id: str, packet_id: str, payload: PacketChangeRequestIn, identity: dict = Depends(_webstore_identity)) -> dict:
     try:
         return await svc.owner_request_launch_packet_changes(identity, webstore_id, packet_id, payload.model_dump(exclude_none=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/launch-packets/{packet_id}/reject")
+async def reject_launch(webstore_id: str, packet_id: str, payload: PacketDecisionIn, identity: dict = Depends(_webstore_identity)) -> dict:
+    try:
+        return await svc.owner_reject_launch_packet(identity, webstore_id, packet_id, payload.model_dump(exclude_none=True))
     except WebstoreError as e:
         _raise(e)
 

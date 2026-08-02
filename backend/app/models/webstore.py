@@ -110,7 +110,7 @@ ArtworkStatus = Literal[
     "rejected",
 ]
 MockupStatus = Literal["draft", "generated", "shop_approved", "owner_approved", "changes_requested"]
-LaunchPacketStatus = Literal["draft", "generated", "sent_for_approval", "delivered", "changes_requested", "owner_approved", "superseded", "invalidated"]
+LaunchPacketStatus = Literal["draft", "generated", "sent_for_approval", "delivered", "changes_requested", "owner_approved", "rejected", "superseded", "invalidated"]
 WebstoreChangeRequestStatus = Literal["open", "answered", "resolved", "declined", "superseded"]
 BuyerOrderStatus = Literal[
     "new",

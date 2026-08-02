@@ -129,6 +129,8 @@ MATERIAL_STORE_FIELDS = {
     "intended_launch_at",
     "intended_close_at",
     "launch_timezone",
+    "required_terms_version",
+    "store_settings",
     "direct_owner_payout_required",
     "stripe_onboarding_required",
 }
@@ -393,6 +395,40 @@ def _clean_optional_text(value: Any, *, limit: int = 2000) -> Optional[str]:
         return None
     text = str(value).strip()
     return text[:limit] if text else None
+
+
+def _collect_nested_file_ids(value: Any) -> set[str]:
+    file_ids: set[str] = set()
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key == "file_id" and child not in (None, ""):
+                file_ids.add(str(child))
+            else:
+                file_ids.update(_collect_nested_file_ids(child))
+    elif isinstance(value, list):
+        for child in value:
+            file_ids.update(_collect_nested_file_ids(child))
+    return file_ids
+
+
+async def _validate_webstore_asset_refs(tenant_id: str, webstore_id: str, value: Any, *, field: str) -> None:
+    file_ids = _collect_nested_file_ids(value)
+    if not file_ids:
+        return
+    found = {
+        doc["id"]
+        async for doc in db.webstore_setup_files.find(
+            {"tenant_id": tenant_id, "webstore_id": webstore_id, "id": {"$in": sorted(file_ids)}, "status": "active"},
+            {"_id": 0, "id": 1},
+        )
+    }
+    missing = sorted(file_ids - found)
+    if missing:
+        raise WebstoreError(
+            "webstore_asset_scope_mismatch",
+            f"{field} references files that do not belong to this Webstore.",
+            400,
+        )
 
 
 def _clean_money(value: Any, *, default: int = 0) -> int:
@@ -1111,6 +1147,14 @@ def _portal_launch_packet(packet: Optional[dict]) -> Optional[dict]:
     return {k: v for k, v in packet.items() if k in allowed}
 
 
+async def _portal_launch_packet_with_history(tenant_id: str, packet: Optional[dict]) -> Optional[dict]:
+    safe = _portal_launch_packet(packet)
+    if not safe:
+        return None
+    safe["approval_history"] = await _approval_history(tenant_id, "webstore_launch_packet", safe["id"])
+    return safe
+
+
 def _portal_change_request(item: dict) -> dict:
     allowed = {
         "id",
@@ -1668,6 +1712,11 @@ async def get_webstore(user: dict, webstore_id: str) -> dict:
         product["approval_history"] = await _approval_history(user["tenant_id"], "webstore_product", product["id"])
         detail_products.append(product)
     packets = await packets_repo.list(tenant_id=user["tenant_id"], filters={"webstore_id": webstore_id}, sort=[("created_at", -1)], limit=10)
+    packet_items = []
+    for packet in packets["items"]:
+        safe_packet = dict(packet)
+        safe_packet["approval_history"] = await _approval_history(user["tenant_id"], "webstore_launch_packet", packet["id"])
+        packet_items.append(safe_packet)
     terms_version = store.get("required_terms_version") or CURRENT_WEBSTORE_TERMS_VERSION
     terms = await _terms_acceptance(user["tenant_id"], webstore_id, terms_version)
     changes = [
@@ -1677,7 +1726,7 @@ async def get_webstore(user: dict, webstore_id: str) -> dict:
     return {
         "webstore": store,
         "products": detail_products,
-        "launch_packets": packets["items"],
+        "launch_packets": packet_items,
         "change_requests": changes,
         "phase6_lifecycle_state": _phase6_state_for_status(store.get("status", "draft")),
         "type_requirements": evaluate_type_requirements(store),
@@ -1717,6 +1766,8 @@ async def update_webstore(user: dict, webstore_id: str, updates: dict[str, Any])
         allowed["name"] = _clean_text(allowed["name"], "name")
     if "description" in allowed:
         allowed["description"] = _clean_optional_text(allowed["description"])
+    if "branding" in allowed:
+        await _validate_webstore_asset_refs(user["tenant_id"], webstore_id, allowed.get("branding") or {}, field="branding")
     for date_key in ("deadline_at", "target_launch_at", "event_start_at", "intended_launch_at", "intended_close_at"):
         if date_key in allowed:
             allowed[date_key] = _require_timezone_iso(allowed.get(date_key), date_key)
@@ -1858,6 +1909,12 @@ async def set_webstore_status(user: dict, webstore_id: str, status: str, reason:
     _require_staff_perm(user, Perm.WEBSTORE_MANAGE if status in {"live", "launch_ready", "scheduled", "closed", "archived"} else Perm.WEBSTORE_WRITE)
     store = await _get_store(user["tenant_id"], webstore_id)
     _validate_transition(store.get("status", "draft"), status)
+    if status in {"live", "scheduled"}:
+        raise WebstoreError(
+            "public_commerce_deferred",
+            "Stage 5 stops at ready to launch. Public storefront activation, scheduling, and buyer checkout are handled in a later Webstores stage.",
+            409,
+        )
     if status in {"launch_ready", "scheduled", "live"}:
         readiness = await launch_readiness(user, webstore_id)
         if not readiness["ready"]:
@@ -1916,6 +1973,12 @@ async def transition_webstore_lifecycle(user: dict, webstore_id: str, lifecycle_
     current_state = _phase6_state_for_status(store.get("status", "draft"))
     _validate_phase6_transition(current_state, requested_state)
     target_status = PHASE6_TO_INTERNAL_STATUS[requested_state]
+    if requested_state == "live" or target_status == "live":
+        raise WebstoreError(
+            "public_commerce_deferred",
+            "Stage 5 stops at ready to launch. Public storefront activation and buyer checkout are handled in a later Webstores stage.",
+            409,
+        )
     if requested_state in {"ready_to_launch", "live"}:
         readiness = await launch_readiness(user, webstore_id)
         if not readiness["ready"]:
@@ -3180,10 +3243,6 @@ async def _included_packet_products(tenant_id: str, webstore_id: str, public_slu
         safe_product["packet_ref"] = product["id"]
         safe_product["revision"] = product.get("revision")
         safe_product["launch_packet_eligible"] = eligible
-        safe_product["readiness"] = {
-            "status": "ready" if eligible and all(item["complete"] for item in requirements) else "blocked",
-            "requirements": requirements,
-        }
         safe_product["owner_visible_financial_summary"] = {
             "store_owner_share_cents": int(product.get("store_owner_share_cents") or 0),
             "fundraiser_share_cents": int(product.get("fundraiser_share_cents") or 0),
@@ -3212,10 +3271,31 @@ async def _included_packet_products(tenant_id: str, webstore_id: str, public_slu
                     "purpose": mockup.get("purpose"),
                     "alt_text": mockup.get("alt_text"),
                     "status": mockup.get("status"),
+                    "approval_status": mockup.get("approval_status"),
                     "owner_visible": bool(mockup.get("owner_visible")),
                 }
             )
         safe_product["mockups"] = mockups
+        product_approval_current = (
+            product.get("approval_status") == "approved"
+            and int(product.get("approval_revision") or 0) == int(product.get("revision") or 1)
+            and not product.get("approval_invalidated_at")
+        )
+        included_mockups_approved = all(
+            mockup.get("approval_status") == "approved" or mockup.get("status") == "owner_approved"
+            for mockup in mockups
+        )
+        requirements = [
+            *requirements,
+            {"key": "product_owner_approval", "label": "Product owner approval", "complete": product_approval_current},
+            {"key": "mockup_owner_approval", "label": "Mockup owner approval", "complete": included_mockups_approved},
+        ]
+        safe_product["approval_status"] = product.get("approval_status")
+        safe_product["approval_revision"] = product.get("approval_revision")
+        safe_product["readiness"] = {
+            "status": "ready" if eligible and all(item["complete"] for item in requirements) else "blocked",
+            "requirements": requirements,
+        }
         products.append({k: v for k, v in safe_product.items() if v not in (None, "")})
     return products
 
@@ -3278,6 +3358,21 @@ async def _assemble_launch_packet_snapshot(user: dict, store: dict, fields: dict
         "store_owner_share_cents": sum(int((p.get("owner_visible_financial_summary") or {}).get("store_owner_share_cents") or 0) for p in products),
         "fundraiser_share_cents": sum(int((p.get("owner_visible_financial_summary") or {}).get("fundraiser_share_cents") or 0) for p in products),
     }
+    branding_source = published_branding or store.get("branding") or {}
+    await _validate_webstore_asset_refs(user["tenant_id"], store["id"], branding_source, field="branding")
+    brand_basics = branding_source.get("brand_basics") or {}
+    colors_fonts = branding_source.get("colors_fonts") or {}
+    hero = branding_source.get("hero") or {}
+    store_information = branding_source.get("store_information") or {}
+    owner_preview = {
+        "display_name": brand_basics.get("display_name") or store.get("name"),
+        "logo": brand_basics.get("primary_logo") or {},
+        "banner_image": hero.get("image") or {},
+        "accent_color": colors_fonts.get("accent_color") or colors_fonts.get("primary_color"),
+        "headline": hero.get("headline") or brand_basics.get("display_name") or store.get("name"),
+        "greeting": store_information.get("welcome_text") or store_information.get("store_instructions") or "",
+        "catalog_product_count": len(products),
+    }
     snapshot = {
         "schema": "webstore_launch_packet_v2",
         "webstore": {
@@ -3297,7 +3392,8 @@ async def _assemble_launch_packet_snapshot(user: dict, store: dict, fields: dict
             "email": owner.get("email"),
             "organization": owner.get("organization"),
         },
-        "branding": published_branding or store.get("branding") or {},
+        "branding": branding_source,
+        "owner_preview": {k: v for k, v in owner_preview.items() if v not in (None, "", {})},
         "products": products,
         "pricing_summary": pricing_summary,
         "terms": _owner_safe_terms_snapshot(store, owner),
@@ -3334,6 +3430,10 @@ async def _invalidate_packet_approval_if_needed(
         {"tenant_id": tenant_id, "webstore_id": webstore_id, "packet_id": store.get("owner_approved_packet_id"), "status": "current"},
         {"$set": {"status": "invalidated", "invalidated_at": now, "invalidated_reason": reason, "updated_at": now}},
     )
+    await db.approvals.update_many(
+        {"tenant_id": tenant_id, "parent_type": "webstore_launch_packet", "parent_id": store.get("owner_approved_packet_id"), "status": "current"},
+        {"$set": {"status": "superseded", "superseded_at": now, "superseded_reason": reason, "updated_at": now}},
+    )
     await db.webstore_launch_packets.update_one(
         {"tenant_id": tenant_id, "id": store.get("owner_approved_packet_id")},
         {"$set": {"status": "invalidated", "invalidated_at": now, "invalidated_reason": reason, "updated_at": now}},
@@ -3348,7 +3448,7 @@ async def _invalidate_packet_approval_if_needed(
                 "owner_approved_packet_version": None,
                 "owner_approval_invalidated_at": now,
                 "owner_approval_invalidated_reason": reason,
-                "status": "store_packet_generated" if store.get("status") == "approved" else store.get("status"),
+                "status": "store_packet_generated" if store.get("status") in {"approved", "launch_ready", "scheduled"} else store.get("status"),
                 "updated_at": now,
             }
         },
@@ -3372,6 +3472,20 @@ async def generate_launch_packet(user: dict, webstore_id: str, fields: Optional[
     fields = fields or {}
     store = await _ensure_public_slug(await _get_store(user["tenant_id"], webstore_id))
     assembled = await _assemble_launch_packet_snapshot(user, store, fields)
+    products = assembled["snapshot"].get("products") or []
+    if not products or any((product.get("readiness") or {}).get("status") != "ready" for product in products):
+        raise WebstoreError(
+            "launch_packet_products_not_ready",
+            "Finish product setup and current product/mockup owner approvals before generating the final launch packet.",
+            409,
+        )
+    branding_validation = branding_svc.validation_for_branding(store, assembled["snapshot"].get("branding") or {})
+    if branding_validation["errors"]:
+        raise WebstoreError(
+            "launch_packet_branding_not_ready",
+            "Publish owner-safe branding before generating the final launch packet.",
+            409,
+        )
     last = await db.webstore_launch_packets.find_one(
         {"tenant_id": user["tenant_id"], "webstore_id": webstore_id},
         {"_id": 0, "version": 1, "status": 1},
@@ -3380,7 +3494,7 @@ async def generate_launch_packet(user: dict, webstore_id: str, fields: Optional[
     version = int((last or {}).get("version") or 0) + 1
     now = _now_iso()
     await db.webstore_launch_packets.update_many(
-        {"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "status": {"$in": ["generated", "sent_for_approval", "delivered", "changes_requested"]}},
+        {"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "status": {"$in": ["generated", "sent_for_approval", "delivered", "changes_requested", "rejected"]}},
         {"$set": {"status": "superseded", "superseded_at": now, "updated_at": now}},
     )
     packet = WebstoreLaunchPacket(
@@ -3532,7 +3646,31 @@ async def send_launch_packet(user: dict, webstore_id: str, packet_id: str) -> di
     return packet
 
 
-async def owner_approve_launch_packet(identity: dict, webstore_id: str, packet_id: str) -> dict:
+async def _record_launch_packet_decision(
+    *,
+    identity: dict,
+    packet: dict,
+    decision: str,
+    reason: Optional[str] = None,
+) -> dict:
+    action = "decline" if decision == "reject" else decision
+    return await record_approval(
+        tenant_id=identity["tenant_id"],
+        parent_type="webstore_launch_packet",
+        parent_id=packet["id"],
+        parent_version=int(packet.get("version") or 1),
+        action=action,
+        reason=reason,
+        actor_type="portal_webstore_owner",
+        actor_ref=identity["id"],
+        actor_display=identity.get("full_name") or identity.get("name") or identity.get("email"),
+        snapshot_hash=packet.get("snapshot_hash") or _json_hash(packet.get("snapshot") or {}),
+        snapshot=packet.get("snapshot") or {},
+    )
+
+
+async def owner_approve_launch_packet(identity: dict, webstore_id: str, packet_id: str, fields: Optional[dict[str, Any]] = None) -> dict:
+    fields = fields or {}
     store = await _owner_portal_store(identity, webstore_id)
     packet = await packets_repo.get(tenant_id=identity["tenant_id"], entity_id=packet_id)
     if not packet or packet["webstore_id"] != webstore_id:
@@ -3553,6 +3691,13 @@ async def owner_approve_launch_packet(identity: dict, webstore_id: str, packet_i
     if existing and existing.get("status") == "current":
         return packet
     now = _now_iso()
+    comment = _clean_optional_text(fields.get("comment"), limit=2000)
+    shared_approval = await _record_launch_packet_decision(
+        identity=identity,
+        packet=packet,
+        decision="approve",
+        reason=comment,
+    )
     approval = WebstorePacketApproval(
         tenant_id=identity["tenant_id"],
         webstore_id=webstore_id,
@@ -3567,6 +3712,7 @@ async def owner_approve_launch_packet(identity: dict, webstore_id: str, packet_i
             "portal_identity_id": identity["id"],
             "portal_type": identity.get("portal_type"),
             "packet_status_at_approval": packet.get("status"),
+            "approval_id": shared_approval.get("id"),
         },
     ).model_dump()
     try:
@@ -3608,7 +3754,10 @@ async def owner_approve_launch_packet(identity: dict, webstore_id: str, packet_i
         entity_id=packet_id,
         summary="Webstore owner approved launch packet",
     )
-    return packet or {}
+    result = packet or {}
+    if result:
+        result["approval_history"] = await _approval_history(identity["tenant_id"], "webstore_launch_packet", packet_id)
+    return result
 
 
 async def owner_request_launch_packet_changes(identity: dict, webstore_id: str, packet_id: str, fields: dict[str, Any]) -> dict:
@@ -3625,6 +3774,12 @@ async def owner_request_launch_packet_changes(identity: dict, webstore_id: str, 
     if len(comment.strip()) < 5:
         raise WebstoreError("change_request_comment_required", "Add a meaningful change-request comment", 400)
     now = _now_iso()
+    await _record_launch_packet_decision(
+        identity=identity,
+        packet=packet,
+        decision="request_changes",
+        reason=comment,
+    )
     request = WebstoreChangeRequest(
         tenant_id=identity["tenant_id"],
         webstore_id=webstore_id,
@@ -3663,6 +3818,47 @@ async def owner_request_launch_packet_changes(identity: dict, webstore_id: str, 
         metadata={"packet_id": packet_id, "packet_version": packet.get("version"), "category": category},
     )
     return _portal_change_request(serialize_doc(request))
+
+
+async def owner_reject_launch_packet(identity: dict, webstore_id: str, packet_id: str, fields: dict[str, Any]) -> dict:
+    store = await _owner_portal_store(identity, webstore_id)
+    packet = await packets_repo.get(tenant_id=identity["tenant_id"], entity_id=packet_id)
+    if not packet or packet["webstore_id"] != webstore_id:
+        raise WebstoreError("launch_packet_not_found", "Launch packet not found", 404)
+    if packet.get("id") != store.get("launch_packet_id") or packet.get("status") in {"superseded", "invalidated", "rejected"}:
+        raise WebstoreError("launch_packet_superseded", "Only the current packet version can be rejected", 409)
+    if packet.get("status") not in {"sent_for_approval", "delivered", "changes_requested"}:
+        raise WebstoreError("launch_packet_not_sent", "Launch packet must be delivered before rejection", 409)
+    comment = _clean_text(fields.get("comment"), "comment", limit=2000)
+    now = _now_iso()
+    await _record_launch_packet_decision(
+        identity=identity,
+        packet=packet,
+        decision="reject",
+        reason=comment,
+    )
+    packet = await packets_repo.update(
+        tenant_id=identity["tenant_id"],
+        entity_id=packet_id,
+        updates={"status": "rejected", "owner_decision_at": now, "owner_decision_by_portal_identity_id": identity["id"], "change_request_reason": comment},
+    )
+    await stores_repo.update(tenant_id=identity["tenant_id"], entity_id=webstore_id, updates={"status": "changes_requested"})
+    await _audit(
+        tenant_id=identity["tenant_id"],
+        webstore_id=webstore_id,
+        actor_type="portal",
+        actor_id=identity["id"],
+        actor_email=identity.get("email"),
+        action="webstore.launch_packet_rejected",
+        entity_type="webstore_launch_packet",
+        entity_id=packet_id,
+        summary="Store Owner rejected Webstore launch packet",
+        metadata={"packet_version": (packet or {}).get("version")},
+    )
+    result = packet or {}
+    if result:
+        result["approval_history"] = await _approval_history(identity["tenant_id"], "webstore_launch_packet", packet_id)
+    return result
 
 
 async def staff_update_change_request(user: dict, webstore_id: str, request_id: str, fields: dict[str, Any]) -> dict:
@@ -3741,6 +3937,8 @@ async def owner_accept_terms(identity: dict, webstore_id: str, fields: Optional[
         "store_owner_share_cents": ((packet or {}).get("pricing_summary") or {}).get("store_owner_share_cents", 0),
         "fundraiser_share_cents": ((packet or {}).get("pricing_summary") or {}).get("fundraiser_share_cents", 0),
     }
+    authority_snapshot = {"terms": terms_snapshot, "fee_summary": fee_summary}
+    authority_snapshot_hash = _json_hash(authority_snapshot)
     acceptance = WebstoreTermsAcceptance(
         tenant_id=identity["tenant_id"],
         webstore_id=webstore_id,
@@ -3753,7 +3951,11 @@ async def owner_accept_terms(identity: dict, webstore_id: str, fields: Optional[
         packet_version=(packet or {}).get("version"),
         terms_snapshot=terms_snapshot,
         fee_summary_snapshot=fee_summary,
-        audit_evidence={"portal_identity_id": identity["id"], "portal_type": identity.get("portal_type")},
+        audit_evidence={
+            "portal_identity_id": identity["id"],
+            "portal_type": identity.get("portal_type"),
+            "terms_snapshot_hash": authority_snapshot_hash,
+        },
     ).model_dump()
     try:
         await db.webstore_terms_acceptances.insert_one(prepare_for_mongo(acceptance))
@@ -3762,6 +3964,23 @@ async def owner_accept_terms(identity: dict, webstore_id: str, fields: Optional[
         if existing:
             return _portal_terms_acceptance(existing) or existing
         raise
+    shared_approval = await record_approval(
+        tenant_id=identity["tenant_id"],
+        parent_type="webstore_terms_acceptance",
+        parent_id=acceptance["id"],
+        action="approve",
+        reason=f"Accepted Webstore Terms version {version}",
+        actor_type="portal_webstore_owner",
+        actor_ref=identity["id"],
+        actor_display=identity.get("full_name") or identity.get("name") or identity.get("email"),
+        snapshot_hash=authority_snapshot_hash,
+        snapshot=authority_snapshot,
+    )
+    acceptance["audit_evidence"]["approval_id"] = shared_approval.get("id")
+    await db.webstore_terms_acceptances.update_one(
+        {"tenant_id": identity["tenant_id"], "id": acceptance["id"]},
+        {"$set": {"audit_evidence": acceptance["audit_evidence"], "updated_at": _now_iso()}},
+    )
     await stores_repo.update(
         tenant_id=identity["tenant_id"],
         entity_id=webstore_id,
@@ -3795,10 +4014,21 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
     packet = await packets_repo.get(tenant_id=user["tenant_id"], entity_id=store["launch_packet_id"]) if store.get("launch_packet_id") else None
     included_products = await _included_packet_products(user["tenant_id"], webstore_id, store.get("public_slug"))
     open_changes = await _open_change_requests(user["tenant_id"], webstore_id)
+    questionnaire = await submissions_repo.find_one(
+        {"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "status": {"$in": ["submitted", "reviewed"]}}
+    )
     terms_version = store.get("required_terms_version") or CURRENT_WEBSTORE_TERMS_VERSION
     terms = await _terms_acceptance(user["tenant_id"], webstore_id, terms_version)
     payment = await _payment_readiness(store)
     type_requirements = evaluate_type_requirements(store)
+    branding = await branding_svc.published_branding_for_store(store)
+    branding_source = branding or store.get("branding") or {}
+    branding_validation = (
+        branding_svc.validation_for_branding(store, branding_source)
+        if branding_source
+        else {"errors": ["Publish owner-safe branding with logo/color/greeting content before launch readiness."], "warnings": []}
+    )
+    branding_complete = bool(branding_source) and not branding_validation["errors"]
     entitlement_ready = await has_entitlement(tenant_id=user["tenant_id"], feature_key=store.get("entitlement_feature_key") or WEBSTORES_FEATURE_KEY)
     delivered = bool(packet and packet.get("status") in {"delivered", "sent_for_approval", "owner_approved"} and packet.get("id") == store.get("launch_packet_id"))
     approved = bool(
@@ -3844,14 +4074,35 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
             "blocking": not (store.get("name") and store.get("slug") and store.get("public_slug")),
         },
         {
+            "key": "questionnaire_complete",
+            "state": "ready" if questionnaire else "blocked",
+            "reason": "Store Owner questionnaire has been submitted." if questionnaire else "Store Owner questionnaire must be submitted before launch readiness.",
+            "severity": "blocking",
+            "action": "Send or complete the Webstore questionnaire.",
+            "resource": {"type": "webstore_questionnaire_submission", "id": (questionnaire or {}).get("id")},
+            "owner_wording": "Store questionnaire answers are still needed.",
+            "blocking": not bool(questionnaire),
+        },
+        {
             "key": "included_products_ready",
             "state": "ready" if included_products and all((p.get("readiness") or {}).get("status") == "ready" for p in included_products) else "blocked",
-            "reason": "Included products are ready for owner review." if included_products and all((p.get("readiness") or {}).get("status") == "ready" for p in included_products) else "Include at least one ready product with price, variants/SKU, and customer-facing media.",
+            "reason": "Included products, product approvals, and mockup approvals are ready for owner review." if included_products and all((p.get("readiness") or {}).get("status") == "ready" for p in included_products) else "Include at least one ready product with price, variants/SKU, customer-facing media, and current product/mockup approvals.",
             "severity": "blocking",
             "action": "Finish Product Setup and packet inclusion.",
             "resource": {"type": "webstore_products", "id": webstore_id},
             "owner_wording": "Products are still being prepared.",
             "blocking": not (included_products and all((p.get("readiness") or {}).get("status") == "ready" for p in included_products)),
+        },
+        {
+            "key": "branding_preview_complete",
+            "state": "ready" if branding_complete else "blocked",
+            "reason": "Owner-safe branding preview content is complete." if branding_complete else "Complete owner-visible branding display content.",
+            "severity": "blocking",
+            "action": "Review the Branding tab and complete the owner-safe preview.",
+            "resource": {"type": "webstore_branding", "id": webstore_id},
+            "owner_wording": "Store branding and welcome content are still being prepared.",
+            "blocking": not branding_complete,
+            "requirements": branding_validation,
         },
         {
             "key": "packet_generated",
@@ -3918,21 +4169,23 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
             "key": "payment_ready",
             "state": payment["state"],
             "reason": payment["reason"],
-            "severity": "blocking" if payment["required"] else "advisory",
+            "severity": "advisory",
             "action": "Complete existing payment-readiness prerequisites when available.",
             "resource": {"type": "payment_readiness", "id": webstore_id},
             "owner_wording": "Payment setup is not ready yet.",
-            "blocking": bool(payment["required"] and not payment["ready"]),
+            "blocking": False,
+            "stage5_deferred": True,
         },
         {
             "key": "buyer_commerce_connected",
             "state": "blocked",
-            "reason": "Provider checkout, webhooks, and connected-account reconciliation are deferred by owner decision.",
-            "severity": "blocking",
-            "action": "Complete the later Stripe integration before enabling public commerce.",
+            "reason": "Provider checkout, webhooks, and connected-account reconciliation are deferred to the later public commerce stages.",
+            "severity": "advisory",
+            "action": "Complete Stage 6/7 before enabling public buyer commerce.",
             "resource": {"type": "batch_scope", "id": "batch_3"},
             "owner_wording": "Public commerce is not enabled in this foundation build.",
-            "blocking": True,
+            "blocking": False,
+            "stage5_deferred": True,
         },
     ]
     checks = {gate["key"]: not gate["blocking"] for gate in gates}
@@ -3940,11 +4193,13 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
         {
             "not_closed_or_archived": store.get("status") not in LIVE_BLOCKING_STATUSES,
             "active_public_products_with_prices": active_public_count > 0,
-            "public_branding": bool(store.get("name") and store.get("slug") and store.get("public_slug")),
+            "public_branding": branding_complete,
+            "questionnaire_complete": bool(questionnaire),
             "launch_packet": bool(packet),
             "owner_approved": approved,
             "terms_fee_acknowledged": bool(terms),
             "payment_ready": bool(payment["ready"]),
+            "buyer_commerce_connected": False,
         }
     )
     ready = all(not gate["blocking"] for gate in gates)
@@ -3953,7 +4208,7 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
         "ready": ready,
         "checks": checks,
         "gates": gates,
-        "current_packet": _portal_launch_packet(packet),
+        "current_packet": await _portal_launch_packet_with_history(user["tenant_id"], packet),
         "current_terms_version": terms_version,
         "terms_acceptance": _portal_terms_acceptance(terms),
         "open_change_request_count": len(open_changes),
@@ -4669,7 +4924,7 @@ async def owner_portal_detail(identity: dict, webstore_id: str) -> dict:
     return {
         "webstore": _portal_store(store),
         "products": products,
-        "launch_packet": _portal_launch_packet(packet),
+        "launch_packet": await _portal_launch_packet_with_history(identity["tenant_id"], packet),
         "change_requests": changes,
         "current_terms_version": terms_version,
         "terms_acceptance": _portal_terms_acceptance(terms),
@@ -4682,7 +4937,7 @@ async def owner_portal_detail(identity: dict, webstore_id: str) -> dict:
             "dispute_hold_cents": owner_report["dispute_hold_cents"],
             "product_quantities": owner_report["product_quantities"],
         },
-        "public_launch_blocked_until_batch_3": False,
+        "public_launch_blocked_until_batch_3": True,
     }
 
 

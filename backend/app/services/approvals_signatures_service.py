@@ -13,7 +13,7 @@ from ..services.sequence import next_number
 ALLOWED_APPROVAL_PARENTS = {
     "quote_revision", "proof_version", "contract",
     "order_item", "work_order_summary",
-    "webstore_product", "webstore_mockup",
+    "webstore_product", "webstore_mockup", "webstore_launch_packet", "webstore_terms_acceptance",
 }
 
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -7,6 +7,7 @@ import {
   Bell,
   CheckCircle2,
   Clock,
+  Copy,
   ExternalLink,
   Eye,
   FileUp,
@@ -158,7 +159,11 @@ function editableAnswerValue(value) {
 
 export default function WebstoreDetailPage() {
   const { id } = useParams();
+  const location = useLocation();
   const qc = useQueryClient();
+  const [questionnaireDelivery, setQuestionnaireDelivery] = useState(
+    () => location.state?.questionnaireDelivery || null,
+  );
   const [templateId, setTemplateId] = useState("");
   const [promo, setPromo] = useState("");
   const [assignment, setAssignment] = useState({
@@ -546,9 +551,14 @@ export default function WebstoreDetailPage() {
   const sendQuestionnaire = useMutation({
     mutationFn: () => sendWebstoreQuestionnaire(id),
     onSuccess: async (data) => {
-      toast.success(
-        data?.email_sent ? "Questionnaire sent" : "Questionnaire link is ready",
-      );
+      setQuestionnaireDelivery(data);
+      if (data?.email_sent) {
+        toast.success("Questionnaire sent");
+      } else {
+        toast.error(
+          `Questionnaire email was not sent (${data?.delivery_error || "delivery unavailable"}). Use the link shown below.`,
+        );
+      }
       await refresh();
     },
     onError: (err) => toast.error(extractError(err)),
@@ -659,10 +669,10 @@ export default function WebstoreDetailPage() {
       setWebstoreStatus(
         id,
         "launch_ready",
-        "All Batch 2 owner approval gates passed",
+        "All Stage 5 owner approval gates passed",
       ),
     onSuccess: async () => {
-      toast.success("Marked launch-ready");
+      toast.success("Marked ready to launch");
       await refresh();
     },
     onError: (err) => toast.error(extractError(err)),
@@ -987,6 +997,10 @@ export default function WebstoreDetailPage() {
   if (!store)
     return <div className="p-6 text-sm text-rose-700">Webstore not found.</div>;
 
+  const questionnaireLink = questionnaireDelivery?.link
+    ? new URL(questionnaireDelivery.link, window.location.origin).toString()
+    : "";
+
   return (
     <div className="space-y-4" data-testid="webstore-detail-page">
       <PageHeader
@@ -1039,6 +1053,54 @@ export default function WebstoreDetailPage() {
           </div>
         }
       />
+
+      {questionnaireDelivery && (
+        <Alert
+          variant={questionnaireDelivery.email_sent ? "default" : "destructive"}
+          data-testid="webstore-questionnaire-delivery"
+        >
+          <Mail className="size-4" />
+          <AlertTitle>
+            {questionnaireDelivery.email_sent
+              ? "Questionnaire sent"
+              : "Questionnaire email was not sent"}
+          </AlertTitle>
+          <AlertDescription className="space-y-2">
+            <div>
+              {questionnaireDelivery.email_sent
+                ? `Sent to ${questionnaireDelivery.email}.`
+                : `Delivery error: ${questionnaireDelivery.delivery_error || "delivery unavailable"}.`}
+            </div>
+            {questionnaireLink && (
+              <div className="flex flex-wrap items-center gap-2">
+                <a
+                  className="break-all underline"
+                  href={questionnaireLink}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {questionnaireLink}
+                </a>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(questionnaireLink);
+                    toast.success("Questionnaire link copied");
+                  }}
+                >
+                  <Copy className="size-4 mr-2" />
+                  Copy link
+                </Button>
+              </div>
+            )}
+            <div className="text-xs">
+              This owner link expires after 48 hours. Send it to the store owner only.
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div
         className="grid gap-3 rounded-lg border bg-white p-4 shadow-sm md:grid-cols-[1fr_280px]"
@@ -1774,7 +1836,7 @@ export default function WebstoreDetailPage() {
                     data-testid="webstore-launch-ready"
                   >
                     <ShieldCheck className="size-4 mr-2" />
-                    Mark launch-ready
+                    Mark ready to launch
                   </Button>
                   <Button
                     className="w-full"
@@ -1784,7 +1846,7 @@ export default function WebstoreDetailPage() {
                     data-testid="webstore-launch"
                   >
                     <Lock className="size-4 mr-2" />
-                    Buyer launch waits for Batch 3
+                    Public commerce waits for Stage 6/7
                   </Button>
                 </CardContent>
               </Card>
