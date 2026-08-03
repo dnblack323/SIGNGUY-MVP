@@ -89,6 +89,9 @@ async def _seed_store(ctx: dict, *, store_type: str = "general", setup_state: st
             "status": "active",
             "public": True,
             "featured": True,
+            "approval_status": "approved",
+            "approval_revision": 1,
+            "revision": 1,
         }
     )
     return store

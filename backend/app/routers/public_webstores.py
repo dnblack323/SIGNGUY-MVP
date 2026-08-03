@@ -27,6 +27,13 @@ class BuyerLineIn(BaseModel):
     quantity: int = Field(ge=1)
     variant: dict[str, Any] = Field(default_factory=dict)
     personalization: dict[str, Any] = Field(default_factory=dict)
+    fulfillment_method: Optional[str] = None
+
+
+class CartQuoteIn(BaseModel):
+    line_items: list[BuyerLineIn] = Field(default_factory=list)
+    donation_cents: int = Field(default=0, ge=0)
+    promo_code: Optional[str] = None
 
 
 class BuyerOrderIn(BaseModel):
@@ -43,6 +50,14 @@ class BuyerOrderIn(BaseModel):
 async def storefront(slug: str) -> dict:
     try:
         return await svc.public_storefront(slug)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.get("/{slug}/products/{product_id}")
+async def product_detail(slug: str, product_id: str) -> dict:
+    try:
+        return await svc.public_product_detail(slug, product_id)
     except WebstoreError as e:
         _raise(e)
 
@@ -81,10 +96,10 @@ async def create_buyer_order(slug: str, payload: BuyerOrderIn) -> dict:
         _raise(e)
 
 
-@router.post("/{slug}/cart-quote", status_code=201)
-async def create_cart_quote(slug: str, payload: BuyerOrderIn) -> dict:
+@router.post("/{slug}/cart-quote")
+async def create_cart_quote(slug: str, payload: CartQuoteIn) -> dict:
     try:
-        return await svc.create_purchase_intent(slug, payload.model_dump(exclude_none=True))
+        return await svc.quote_public_cart(slug, payload.model_dump(exclude_none=True))
     except WebstoreError as e:
         _raise(e)
 

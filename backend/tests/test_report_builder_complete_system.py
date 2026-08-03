@@ -128,7 +128,8 @@ async def test_report_catalog_is_pdf_governed_and_exposes_buildable_surfaces(rep
     assert body["authority"]["title"] == "SIGNGUY AI | REPORT CATALOG & CUSTOM REPORT BUILDER SPEC"
     assert body["authority"]["pages"] == 11
     assert body["authority"]["location"] == "Business & Finance -> Reports"
-    assert body["official_webstore_types"] == ["B2B", "Fundraiser", "Event", "Promotional", "Employee", "General"]
+    assert body["official_webstore_types"] == ["B2B", "Fundraiser", "Event", "Promotional", "General"]
+    assert "Employee" not in body["reports"][[report["key"] for report in body["reports"]].index("webstores.sales_by_store")]["limitations"][0]
     keys = {report["key"] for report in body["reports"]}
     assert "overview.executive_summary" in keys
     assert "orders.by_status" in keys
@@ -309,11 +310,11 @@ async def test_schedules_revalidate_permissions_and_record_run_history(report_bu
 
 
 @pytest.mark.asyncio
-async def test_webstore_employee_type_is_official(report_builder_ctx):
+async def test_webstore_employee_type_is_legacy(report_builder_ctx):
     async with await _client(report_builder_ctx["owner_a"]) as client:
         run = await client.post("/api/reports/webstores.sales_by_store/run", json={"filters": {}, "preview_limit": 100})
 
     assert run.status_code == 200
     rows = run.json()["rows"]
     assert rows
-    assert rows[0]["store_type"] == "employee"
+    assert rows[0]["store_type"] == "other_or_legacy"

@@ -15,6 +15,7 @@ from ..core.portal_security import create_portal_token, generate_raw_token, hash
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.portal_identity import WEBSTORE_MANAGER_PORTAL_PERMS, WEBSTORE_OWNER_PORTAL_PERMS
 from ..models.webstore import (
+    LEGACY_WEBSTORE_TYPES,
     WEBSTORE_TYPES,
     WebstoreAccessAssignment,
     WebstoreAnswerApplication,
@@ -986,7 +987,7 @@ async def accept_invitation(raw_token: str) -> dict:
 
 
 async def ensure_default_questionnaire_templates(tenant_id: str) -> None:
-    for store_type in ("base", *WEBSTORE_TYPES):
+    for store_type in ("base", *WEBSTORE_TYPES, *LEGACY_WEBSTORE_TYPES):
         exists = await db.webstore_questionnaire_templates.find_one(
             {"tenant_id": tenant_id, "scope": "tenant_default", "store_type": store_type},
             {"_id": 0, "id": 1, "source_template_id": 1},
@@ -1079,7 +1080,7 @@ async def _webstore_templates_for_store(store: dict) -> list[dict[str, Any]]:
 async def list_questionnaire_templates(user: dict, *, store_type: Optional[str] = None, active_only: bool = False) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_READ)
     await ensure_default_questionnaire_templates(user["tenant_id"])
-    template_types = [store_type] if store_type else ["base", *WEBSTORE_TYPES]
+    template_types = [store_type] if store_type else ["base", *WEBSTORE_TYPES, *LEGACY_WEBSTORE_TYPES]
     items = await _webstore_templates_for_store_types(user["tenant_id"], template_types)
     if active_only:
         items = [item for item in items if item.get("status") == "active"]

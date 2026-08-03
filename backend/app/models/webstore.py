@@ -7,7 +7,8 @@ from pydantic import Field, StrictInt
 
 from .base import BaseDoc
 
-WEBSTORE_TYPES = ("b2b", "fundraiser", "event", "promotional", "employee", "general")
+WEBSTORE_TYPES = ("b2b", "fundraiser", "event", "promotional", "general")
+LEGACY_WEBSTORE_TYPES = ("employee",)
 WEBSTORE_TYPE_LABELS = {
     "b2b": "B2B",
     "fundraiser": "Fundraiser",
@@ -71,6 +72,8 @@ WebstoreStatus = Literal[
     "archived",
 ]
 WebstoreOwnerStatus = Literal["active", "disabled", "archived"]
+# Keep employee readable for persisted legacy records, but do not include it in
+# WEBSTORE_TYPES, which is the authority for new Webstore creation.
 WebstoreType = Literal["b2b", "fundraiser", "event", "promotional", "employee", "general"]
 WebstoreProductStatus = Literal["draft", "planned", "incomplete", "ready", "active", "inactive", "archived"]
 WebstoreTemplateScope = Literal["tenant", "platform"]
@@ -287,6 +290,10 @@ class WebstoreProduct(BaseDoc):
     store_owner_share_cents: StrictInt = Field(default=0, ge=0)
     fundraiser_share_cents: StrictInt = Field(default=0, ge=0)
     platform_fee_basis_points: StrictInt = Field(default=0, ge=0, le=10000)
+    fulfillment_methods: list[str] = Field(default_factory=list)
+    default_fulfillment_method: Optional[str] = None
+    pickup_instructions: Optional[str] = None
+    shipping_cost_cents: StrictInt = Field(default=0, ge=0)
     variants: list[dict[str, Any]] = Field(default_factory=list)
     personalization_enabled: bool = False
     personalization_fields: list[dict[str, Any]] = Field(default_factory=list)

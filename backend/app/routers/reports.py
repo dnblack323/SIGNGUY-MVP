@@ -16,6 +16,7 @@ from ..core.db import db
 from ..core.permissions import Perm, permissions_for_role
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..deps import require_permission
+from ..models.webstore import WEBSTORE_TYPE_LABELS, WEBSTORE_TYPES
 from ..models.reporting import (
     ReportDefinition,
     ReportExport,
@@ -235,7 +236,7 @@ async def list_reports(user: dict = Depends(require_permission(Perm.REPORT_READ)
             "pages": 11,
             "location": "Business & Finance -> Reports",
         },
-        "official_webstore_types": ["B2B", "Fundraiser", "Event", "Promotional", "Employee", "General"],
+        "official_webstore_types": [WEBSTORE_TYPE_LABELS[store_type] for store_type in WEBSTORE_TYPES],
         "reports": reports,
         "custom_datasets": datasets,
         "blocked_requirements": reports_service.BLOCKED_REPORT_REQUIREMENTS,

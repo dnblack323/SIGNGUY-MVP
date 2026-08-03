@@ -179,6 +179,10 @@ class ProductIn(BaseModel):
     store_owner_share_cents: Optional[StrictInt] = Field(default=None, ge=0)
     fundraiser_share_cents: Optional[StrictInt] = Field(default=None, ge=0)
     platform_fee_basis_points: Optional[StrictInt] = Field(default=None, ge=0, le=10000)
+    fulfillment_methods: Optional[list[str]] = None
+    default_fulfillment_method: Optional[str] = None
+    pickup_instructions: Optional[str] = None
+    shipping_cost_cents: Optional[StrictInt] = Field(default=None, ge=0)
     variants: Optional[list[dict[str, Any]]] = None
     personalization_enabled: bool = False
     personalization_fields: list[dict[str, Any]] = Field(default_factory=list)
@@ -219,6 +223,10 @@ class ProductPatchIn(BaseModel):
     store_owner_share_cents: Optional[StrictInt] = Field(default=None, ge=0)
     fundraiser_share_cents: Optional[StrictInt] = Field(default=None, ge=0)
     platform_fee_basis_points: Optional[StrictInt] = Field(default=None, ge=0, le=10000)
+    fulfillment_methods: Optional[list[str]] = None
+    default_fulfillment_method: Optional[str] = None
+    pickup_instructions: Optional[str] = None
+    shipping_cost_cents: Optional[StrictInt] = Field(default=None, ge=0)
     variants: Optional[list[dict[str, Any]]] = None
     personalization_enabled: Optional[bool] = None
     personalization_fields: Optional[list[dict[str, Any]]] = None

@@ -28,7 +28,7 @@ const catalog = {
     pages: 11,
     location: "Business & Finance -> Reports",
   },
-  official_webstore_types: ["B2B", "Fundraiser", "Event", "Promotional", "Employee", "General"],
+  official_webstore_types: ["B2B", "Fundraiser", "Event", "Promotional", "General"],
   blocked_requirements: [{ id: "blocked-1", name: "Dashboard widget publishing", reason: "Dashboard Customizer contract is deferred." }],
   reports: [
     {
@@ -163,7 +163,7 @@ test("renders the PDF-governed report catalog and runs a standard report", async
   renderWithProviders(<ReportsPage />);
 
   expect(await screen.findByText(/SIGNGUY AI \| REPORT CATALOG/)).toBeInTheDocument();
-  expect(screen.getByText(/B2B, Fundraiser, Event, Promotional, Employee, General/)).toBeInTheDocument();
+  expect(screen.getByText(/B2B, Fundraiser, Event, Promotional, General/)).toBeInTheDocument();
   expect(screen.getByTestId("tab-overview")).toBeInTheDocument();
   expect(screen.getByTestId("tab-webstores")).toBeInTheDocument();
 

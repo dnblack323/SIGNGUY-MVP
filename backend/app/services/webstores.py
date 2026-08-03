@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 import hashlib
 import json
@@ -65,6 +65,7 @@ CATALOG_PRODUCT_STATUSES = {"planned", "incomplete", "ready", "active", "archive
 CATEGORY_STATUSES = {"active", "archived"}
 CUSTOMER_IMAGE_SLOTS = {"primary", "secondary"}
 PRODUCT_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "svg"}
+FULFILLMENT_METHODS = {"pickup", "shipping"}
 STAGE4A_PUBLICATION_FIELDS = {"public", "featured"}
 PRODUCT_APPROVAL_DECISIONS = {"approve", "request_changes", "reject"}
 PRODUCT_APPROVAL_STATUSES = {"not_submitted", "pending_owner_approval", "approved", "rejected", "changes_requested", "superseded"}
@@ -144,6 +145,10 @@ MATERIAL_PRODUCT_FIELDS = {
     "category",
     "product_type",
     "fulfillment_notes",
+    "fulfillment_methods",
+    "default_fulfillment_method",
+    "pickup_instructions",
+    "shipping_cost_cents",
     "sku",
     "selling_price_cents",
     "store_owner_share_cents",
@@ -451,6 +456,49 @@ def _clean_basis_points(value: Any, *, default: int = 0) -> int:
     if amount < 0 or amount > 10000:
         raise WebstoreError("basis_points_out_of_range", "Fee basis points must be between 0 and 10000", 400)
     return amount
+
+
+def _normalize_fulfillment_methods(value: Any, *, default: Optional[list[str]] = None) -> list[str]:
+    if value is None:
+        return list(default or [])
+    if not isinstance(value, list):
+        raise WebstoreError("fulfillment_methods_must_be_list", "Fulfillment methods must be a list", 400)
+    methods = []
+    for raw in value:
+        method = str(raw or "").strip().lower()
+        if method not in FULFILLMENT_METHODS:
+            raise WebstoreError("invalid_fulfillment_method", "Fulfillment methods must be pickup or shipping", 400)
+        if method not in methods:
+            methods.append(method)
+    return methods
+
+
+def _effective_fulfillment_methods(product: dict[str, Any]) -> list[str]:
+    if "fulfillment_methods" in product:
+        return _normalize_fulfillment_methods(product.get("fulfillment_methods"))
+    # Older accepted product records predate product-level fulfillment. Keep
+    # them readable with a conservative pickup default until staff configures
+    # an explicit Stage 6 fulfillment list.
+    legacy_method = product.get("fulfillment_method")
+    return _normalize_fulfillment_methods([legacy_method] if legacy_method else ["pickup"])
+
+
+def _public_cart_config(store: dict[str, Any]) -> dict[str, Any]:
+    setup = store.get("setup_profile") or {}
+    settings = store.get("store_settings") or {}
+    cart = settings.get("cart") or {}
+    donation = settings.get("donations") or settings.get("donation") or {}
+    fundraiser_goal = setup.get("fundraiser_goal_amount") or cart.get("fundraiser_goal_cents") or 0
+    donation_enabled = donation.get("enabled", cart.get("donation_enabled", setup.get("allow_checkout_donations")))
+    if isinstance(donation_enabled, str):
+        donation_enabled = donation_enabled.strip().lower() in {"yes", "true", "1", "on"}
+    return {
+        "fundraiser_goal_cents": int(fundraiser_goal or 0) if store.get("store_type") == "fundraiser" else 0,
+        "donation_enabled": bool(donation_enabled) if store.get("store_type") == "fundraiser" else False,
+        "donation_min_cents": int(donation.get("minimum_cents", cart.get("donation_min_cents", 0)) or 0),
+        "donation_max_cents": int(donation.get("maximum_cents", cart.get("donation_max_cents", 0)) or 0),
+        "promo_codes_enabled": bool(settings.get("promo_codes") or cart.get("promo_codes")),
+    }
 
 
 def _clean_quantity(value: Any, *, default: Optional[int] = None, minimum: int = 0) -> Optional[int]:
@@ -852,6 +900,18 @@ def _image_slot_change_events(before: dict[str, Any], after: dict[str, Any]) -> 
     return events
 
 
+def _public_product_is_eligible(product: dict) -> bool:
+    if product.get("status") != "active" or product.get("public") is not True:
+        return False
+    if product.get("approval_status") != "approved":
+        return False
+    if product.get("approval_invalidated_at"):
+        return False
+    if int(product.get("approval_revision") or 0) != int(product.get("revision") or 1):
+        return False
+    return bool(_effective_fulfillment_methods(product))
+
+
 def _public_product(product: dict, *, public_slug: Optional[str] = None) -> dict:
     public_variants = [
         variant
@@ -880,6 +940,10 @@ def _public_product(product: dict, *, public_slug: Optional[str] = None) -> dict
         "public": bool(product.get("public")),
         "featured": bool(product.get("featured")),
         "status": product.get("status"),
+        "fulfillment_methods": _effective_fulfillment_methods(product),
+        "default_fulfillment_method": product.get("default_fulfillment_method") or (_effective_fulfillment_methods(product) or [None])[0],
+        "pickup_instructions": product.get("pickup_instructions"),
+        "shipping_cost_cents": int(product.get("shipping_cost_cents") or 0),
     }
     if public_variants:
         result["variants"] = public_variants
@@ -1056,7 +1120,11 @@ async def _invalidate_product_approval_if_needed(
     )
 
 
-def _public_store(store: dict, published_branding: Optional[dict[str, Any]] = None) -> dict:
+def _public_store(
+    store: dict,
+    published_branding: Optional[dict[str, Any]] = None,
+    fundraiser_progress: Optional[dict[str, Any]] = None,
+) -> dict:
     allowed = {
         "id",
         "name",
@@ -1074,6 +1142,15 @@ def _public_store(store: dict, published_branding: Optional[dict[str, Any]] = No
     provider_status = provider_configuration_status(get_settings())
     result["checkout_enabled"] = bool(result.get("checkout_enabled")) and PUBLIC_CHECKOUT_ENABLED and provider_status["provider_authority"]
     result["checkout_unavailable_reason"] = None if result["checkout_enabled"] else provider_status["reason"]
+    result["cart_config"] = _public_cart_config(store)
+    if store.get("store_type") == "fundraiser":
+        result["fundraiser_progress"] = fundraiser_progress or {
+            "goal_cents": result["cart_config"]["fundraiser_goal_cents"],
+            "completed_sales_cents": 0,
+            "percent": 0,
+            "over_goal": False,
+            "paid_only": True,
+        }
     return result
 
 
@@ -1909,10 +1986,10 @@ async def set_webstore_status(user: dict, webstore_id: str, status: str, reason:
     _require_staff_perm(user, Perm.WEBSTORE_MANAGE if status in {"live", "launch_ready", "scheduled", "closed", "archived"} else Perm.WEBSTORE_WRITE)
     store = await _get_store(user["tenant_id"], webstore_id)
     _validate_transition(store.get("status", "draft"), status)
-    if status in {"live", "scheduled"}:
+    if status == "scheduled":
         raise WebstoreError(
-            "public_commerce_deferred",
-            "Stage 5 stops at ready to launch. Public storefront activation, scheduling, and buyer checkout are handled in a later Webstores stage.",
+            "webstore_scheduling_deferred",
+            "Webstore scheduling is handled after the public storefront checkpoint.",
             409,
         )
     if status in {"launch_ready", "scheduled", "live"}:
@@ -1922,7 +1999,9 @@ async def set_webstore_status(user: dict, webstore_id: str, status: str, reason:
     updates: dict[str, Any] = {"status": status}
     if status == "live":
         updates["launched_at"] = _now_iso()
-        updates["checkout_enabled"] = True
+        # Stage 6 exposes the approved public catalog, but payment and checkout
+        # remain unavailable until the later commerce checkpoint.
+        updates["checkout_enabled"] = False
     elif status == "launch_ready":
         updates["checkout_enabled"] = False
     elif status == "scheduled":
@@ -2392,6 +2471,10 @@ async def create_product(user: dict, webstore_id: str, fields: dict[str, Any]) -
         store_owner_share_cents=store_owner_share_cents,
         fundraiser_share_cents=fundraiser_share_cents,
         platform_fee_basis_points=_clean_basis_points(fields.get("platform_fee_basis_points"), default=int((template or {}).get("platform_fee_basis_points") or 0)),
+        fulfillment_methods=_normalize_fulfillment_methods(fields.get("fulfillment_methods")),
+        default_fulfillment_method=(str(fields.get("default_fulfillment_method")).strip().lower() if fields.get("default_fulfillment_method") else None),
+        pickup_instructions=_clean_optional_text(fields.get("pickup_instructions"), limit=2000),
+        shipping_cost_cents=_clean_money(fields.get("shipping_cost_cents"), default=0),
         variants=[],
         personalization_enabled=bool(fields.get("personalization_enabled", False)),
         personalization_fields=[],
@@ -2412,6 +2495,8 @@ async def create_product(user: dict, webstore_id: str, fields: dict[str, Any]) -
     ).model_dump()
     variant_source = fields.get("variants") if "variants" in fields else (template or {}).get("default_variants")
     product["variants"] = _normalize_variants(variant_source, base_selling_price_cents=selling_price_cents)
+    if product.get("default_fulfillment_method") and product["default_fulfillment_method"] not in product.get("fulfillment_methods"):
+        raise WebstoreError("invalid_default_fulfillment_method", "The default fulfillment method must be enabled for this product", 400)
     product["personalization_fields"] = _normalize_personalization_fields(
         fields.get("personalization_fields"),
         enabled=bool(product.get("personalization_enabled")),
@@ -2745,6 +2830,15 @@ async def update_product(user: dict, webstore_id: str, product_id: str, fields: 
         updates["fundraiser_share_cents"] = _clean_money(fields.get("fundraiser_share_cents"), default=int(product.get("fundraiser_share_cents") or 0))
     if "platform_fee_basis_points" in fields:
         updates["platform_fee_basis_points"] = _clean_basis_points(fields.get("platform_fee_basis_points"), default=int(product.get("platform_fee_basis_points") or 0))
+    if "fulfillment_methods" in fields:
+        updates["fulfillment_methods"] = _normalize_fulfillment_methods(fields.get("fulfillment_methods"))
+    if "default_fulfillment_method" in fields:
+        default_method = str(fields.get("default_fulfillment_method") or "").strip().lower() or None
+        updates["default_fulfillment_method"] = default_method
+    if "pickup_instructions" in fields:
+        updates["pickup_instructions"] = _clean_optional_text(fields.get("pickup_instructions"), limit=2000)
+    if "shipping_cost_cents" in fields:
+        updates["shipping_cost_cents"] = _clean_money(fields.get("shipping_cost_cents"), default=int(product.get("shipping_cost_cents") or 0))
     if "variants" in fields:
         updates["variants"] = _normalize_variants(fields.get("variants"), base_selling_price_cents=selling_price_cents)
     personalization_enabled = bool(product.get("personalization_enabled"))
@@ -2786,6 +2880,8 @@ async def update_product(user: dict, webstore_id: str, product_id: str, fields: 
     if "status" in fields:
         updates["status"] = _clean_status(fields.get("status"), PRODUCT_STATUSES, product.get("status", "draft"), "product_status")
     projected = {**product, **updates}
+    if projected.get("default_fulfillment_method") and projected["default_fulfillment_method"] not in _normalize_fulfillment_methods(projected.get("fulfillment_methods")):
+        raise WebstoreError("invalid_default_fulfillment_method", "The default fulfillment method must be enabled for this product", 400)
     if projected.get("status") in {"ready", "active"}:
         missing = [item["label"] for item in _product_setup_requirements(projected) if not item["complete"]]
         if missing:
@@ -4281,6 +4377,39 @@ async def payment_provider_action(user: dict, webstore_id: str, action: str) -> 
     return {"status": status, "result": {"ok": True, "code": result.code}}
 
 
+async def _fundraiser_progress(store: dict[str, Any]) -> dict[str, Any]:
+    """Expose only completed, verified Webstore sales as fundraiser progress."""
+    settings = store.get("store_settings") or {}
+    setup = store.get("setup_profile") or {}
+    cart = settings.get("cart") or {}
+    donation = settings.get("donations") or settings.get("donation") or {}
+    goal = int(
+        setup.get("fundraiser_goal_amount")
+        or cart.get("fundraiser_goal_cents")
+        or donation.get("goal_amount_cents")
+        or 0
+    )
+    paid_sales = 0
+    async for intent in db.webstore_purchase_intents.find(
+        {
+            "tenant_id": store["tenant_id"],
+            "webstore_id": store["id"],
+            "status": "paid_order_created",
+            "canonical_payment_id": {"$exists": True, "$ne": None},
+        },
+        {"_id": 0, "total_cents": 1},
+    ):
+        paid_sales += max(0, int(intent.get("total_cents") or 0))
+    percent = int((Decimal(paid_sales) * Decimal(100) / Decimal(goal)).quantize(Decimal("1"))) if goal else 0
+    return {
+        "goal_cents": goal,
+        "completed_sales_cents": paid_sales,
+        "percent": percent,
+        "over_goal": bool(goal and paid_sales > goal),
+        "paid_only": True,
+    }
+
+
 async def _storefront_by_slug(slug: str) -> dict:
     store = await db.webstores.find_one({"public_slug": slug}, {"_id": 0})
     if not store:
@@ -4288,19 +4417,43 @@ async def _storefront_by_slug(slug: str) -> dict:
     store = await _ensure_public_slug(serialize_doc(store))
     if store.get("status") != "live":
         raise WebstoreError("webstore_not_live", "Webstore is not available", 404)
-    products = [
-        _public_product(doc, public_slug=store.get("public_slug"))
-        async for doc in db.webstore_products.find(
-            {"tenant_id": store["tenant_id"], "webstore_id": store["id"], "status": "active", "public": True},
-            {"_id": 0},
-        ).sort([("featured", -1), ("name", 1)])
-    ]
+    close_at = store.get("deadline_at") or store.get("intended_close_at")
+    if close_at:
+        try:
+            closing = datetime.fromisoformat(str(close_at).replace("Z", "+00:00"))
+            if closing.tzinfo and closing <= datetime.now(timezone.utc):
+                raise WebstoreError("webstore_closed", "Webstore is not available", 404)
+        except ValueError:
+            pass
+    access_mode = ((store.get("store_settings") or {}).get("access_policy") or {}).get("mode") or "open"
+    if access_mode == "restricted":
+        raise WebstoreError("webstore_not_public", "Webstore is not available", 404)
+    products = []
+    async for doc in db.webstore_products.find(
+        {"tenant_id": store["tenant_id"], "webstore_id": store["id"], "status": "active", "public": True},
+        {"_id": 0},
+    ).sort([("featured", -1), ("name", 1)]):
+        product = serialize_doc(doc)
+        if _public_product_is_eligible(product):
+            products.append(_public_product(product, public_slug=store.get("public_slug")))
     published_branding = await branding_svc.published_branding_for_store(store)
-    return {"webstore": _public_store(serialize_doc(store), published_branding), "products": products}
+    fundraiser_progress = await _fundraiser_progress(store)
+    return {
+        "webstore": _public_store(serialize_doc(store), published_branding, fundraiser_progress),
+        "products": products,
+    }
 
 
 async def public_storefront(slug: str) -> dict:
     return await _storefront_by_slug(slug)
+
+
+async def public_product_detail(slug: str, product_id: str) -> dict:
+    storefront = await _storefront_by_slug(slug)
+    product = next((item for item in storefront["products"] if item.get("id") == product_id), None)
+    if not product:
+        raise WebstoreError("product_not_available", "Product is not available", 404)
+    return {"webstore": storefront["webstore"], "product": product}
 
 
 async def public_product_image(slug: str, product_id: str, slot: str) -> tuple[dict, bytes, str]:
@@ -4319,7 +4472,7 @@ async def public_product_image(slug: str, product_id: str, slot: str) -> tuple[d
         },
         {"_id": 0},
     )
-    if not product:
+    if not product or not _public_product_is_eligible(product):
         raise WebstoreError("product_image_not_found", "Product image was not found", 404)
     image = _product_image_map(serialize_doc(product)).get(slot)
     if not image or not image.get("file_id"):
@@ -4337,6 +4490,180 @@ async def public_product_image(slug: str, product_id: str, slot: str) -> tuple[d
     except FileNotFoundError:
         raise WebstoreError("product_image_not_found", "Product image was not found", 404)
     return serialize_doc(file_doc), data, file_doc.get("detected_content_type") or content_type
+
+
+def _parse_public_time(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone(timezone.utc) if parsed.tzinfo else None
+
+
+def _promo_codes_for_store(store: dict[str, Any]) -> list[dict[str, Any]]:
+    settings = store.get("store_settings") or {}
+    configured = settings.get("promo_codes") or (settings.get("cart") or {}).get("promo_codes") or []
+    return [item for item in configured if isinstance(item, dict)]
+
+
+def _calculate_public_discount(store: dict[str, Any], code: Optional[str], subtotal: int, lines: list[dict[str, Any]]) -> tuple[int, Optional[str]]:
+    normalized = str(code or "").strip().upper()
+    if not normalized:
+        return 0, None
+    now = datetime.now(timezone.utc)
+    promo = next((item for item in _promo_codes_for_store(store) if str(item.get("code") or "").strip().upper() == normalized), None)
+    if not promo:
+        raise WebstoreError("promo_code_invalid", "That promo code is not available for this Webstore", 409)
+    if str(promo.get("status") or "active").lower() != "active":
+        raise WebstoreError("promo_code_inactive", "That promo code is not available", 409)
+    starts_at = _parse_public_time(promo.get("starts_at"))
+    expires_at = _parse_public_time(promo.get("expires_at"))
+    if starts_at and starts_at > now:
+        raise WebstoreError("promo_code_not_started", "That promo code is not active yet", 409)
+    if expires_at and expires_at <= now:
+        raise WebstoreError("promo_code_expired", "That promo code has expired", 409)
+    usage_limit = int(promo.get("usage_limit") or 0)
+    if usage_limit and int(promo.get("times_validated") or 0) >= usage_limit:
+        raise WebstoreError("promo_code_exhausted", "That promo code is no longer available", 409)
+    minimum = int(promo.get("minimum_subtotal_cents") or 0)
+    if subtotal < minimum:
+        raise WebstoreError("promo_code_minimum_not_met", "Add more merchandise to use that promo code", 409)
+    product_ids = {str(item) for item in promo.get("product_ids") or []}
+    category_ids = {str(item) for item in promo.get("category_ids") or []}
+    eligible_subtotal = subtotal
+    if product_ids or category_ids:
+        eligible_subtotal = sum(
+            int(line["line_total_cents"])
+            for line in lines
+            if (not product_ids or line["product_id"] in product_ids)
+            and (not category_ids or str(line.get("category_id") or "") in category_ids)
+        )
+        if eligible_subtotal <= 0:
+            raise WebstoreError("promo_code_not_applicable", "That promo code does not apply to the selected products", 409)
+    if str(promo.get("discount_type") or "fixed").lower() == "percentage":
+        basis_points = int(promo.get("discount_basis_points") or 0)
+        if basis_points <= 0 or basis_points > 10000:
+            raise WebstoreError("promo_code_invalid", "That promo code is not configured correctly", 409)
+        discount = int((Decimal(eligible_subtotal) * Decimal(basis_points) / Decimal(10000)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    else:
+        discount = int(promo.get("discount_cents") or 0)
+    maximum = promo.get("maximum_discount_cents")
+    if maximum not in (None, ""):
+        discount = min(discount, int(maximum))
+    return max(0, min(discount, eligible_subtotal)), normalized
+
+
+async def quote_public_cart(slug: str, fields: dict[str, Any]) -> dict:
+    storefront = await _storefront_by_slug(slug)
+    store_view = storefront["webstore"]
+    full_store = await db.webstores.find_one({"public_slug": slug, "id": store_view["id"]}, {"_id": 0})
+    if not full_store:
+        raise WebstoreError("webstore_not_found", "Webstore not found", 404)
+    product_ids = [str(item.get("product_id")) for item in fields.get("line_items") or [] if item.get("product_id")]
+    full_products = {
+        doc["id"]: serialize_doc(doc)
+        async for doc in db.webstore_products.find(
+            {"tenant_id": full_store["tenant_id"], "webstore_id": full_store["id"], "id": {"$in": product_ids}},
+            {"_id": 0},
+        )
+        if _public_product_is_eligible(doc)
+    }
+    public_products = {item["id"]: item for item in storefront["products"]}
+    line_items: list[dict[str, Any]] = []
+    subtotal = 0
+    shipping = 0
+    fulfillment_groups: dict[str, int] = {"pickup": 0, "shipping": 0}
+    for raw in fields.get("line_items") or []:
+        product_id = str(raw.get("product_id") or "")
+        full_product = full_products.get(product_id)
+        public_product = public_products.get(product_id)
+        if not full_product or not public_product:
+            raise WebstoreError("product_not_available", "Product is not available", 409)
+        quantity = int(raw.get("quantity") or 0)
+        if quantity < 1 or quantity > 99:
+            raise WebstoreError("invalid_quantity", "Quantity must be between 1 and 99", 400)
+        variant = raw.get("variant") or {}
+        if full_product.get("variants") and not variant:
+            raise WebstoreError("variant_required", "Choose an available product option", 400)
+        if not _variant_allowed(full_product.get("variants") or [], variant):
+            raise WebstoreError("variant_not_available", "That product option is not available", 409)
+        _validate_personalization(full_product, raw.get("personalization") or {})
+        methods = _effective_fulfillment_methods(full_product)
+        selected_method = str(raw.get("fulfillment_method") or full_product.get("default_fulfillment_method") or (methods[0] if len(methods) == 1 else "")).lower()
+        if selected_method not in methods:
+            raise WebstoreError("fulfillment_method_required", "Choose an available fulfillment method for each product", 400)
+        matched_variant = next((item for item in full_product.get("variants") or [] if _variant_allowed([item], variant)), None)
+        unit_price = int(full_product.get("selling_price_cents") or 0)
+        if matched_variant:
+            if matched_variant.get("selling_price_cents") not in (None, ""):
+                unit_price = int(matched_variant["selling_price_cents"])
+            else:
+                unit_price += int(matched_variant.get("price_delta_cents") or 0)
+        line_total = unit_price * quantity
+        line_shipping = int(full_product.get("shipping_cost_cents") or 0) * quantity if selected_method == "shipping" else 0
+        subtotal += line_total
+        shipping += line_shipping
+        fulfillment_groups[selected_method] += line_total
+        line_items.append({
+            "product_id": product_id,
+            "category_id": full_product.get("category_id"),
+            "name": public_product.get("name"),
+            "variant": variant,
+            "personalization": raw.get("personalization") or {},
+            "quantity": quantity,
+            "fulfillment_method": selected_method,
+            "unit_price_cents": unit_price,
+            "line_total_cents": line_total,
+            "shipping_cents": line_shipping,
+        })
+    donation = int(fields.get("donation_cents") or 0)
+    cart_config = _public_cart_config(full_store)
+    if donation < 0:
+        raise WebstoreError("invalid_donation", "Donation cannot be negative", 400)
+    if donation and not cart_config["donation_enabled"]:
+        raise WebstoreError("donation_not_enabled", "Donations are not enabled for this Webstore", 409)
+    if cart_config["donation_min_cents"] and donation and donation < cart_config["donation_min_cents"]:
+        raise WebstoreError("donation_below_minimum", "Donation is below the configured minimum", 400)
+    if cart_config["donation_max_cents"] and donation > cart_config["donation_max_cents"]:
+        raise WebstoreError("donation_above_maximum", "Donation exceeds the configured maximum", 400)
+    discount, applied_promo = _calculate_public_discount(full_store, fields.get("promo_code"), subtotal, line_items)
+    total = max(0, subtotal + shipping + donation - discount)
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    snapshot = {
+        "webstore_id": full_store["id"],
+        "public_slug": slug,
+        "line_items": line_items,
+        "subtotal_cents": subtotal,
+        "shipping_cents": shipping,
+        "donation_cents": donation,
+        "discount_cents": discount,
+        "total_cents": total,
+        "promo_code": applied_promo,
+        "currency": "usd",
+        "expires_at": expires_at,
+    }
+    return {
+        "quote_version": "webstore_cart_quote_v1",
+        "quote_id": _json_hash(snapshot),
+        "webstore_id": full_store["id"],
+        "public_slug": slug,
+        "line_items": line_items,
+        "fulfillment_groups": {key: value for key, value in fulfillment_groups.items() if value},
+        "subtotal_cents": subtotal,
+        "shipping_cents": shipping,
+        "donation_cents": donation,
+        "discount_cents": discount,
+        "total_cents": total,
+        "currency": "usd",
+        "expires_at": expires_at,
+        "warnings": [],
+        "applied_promo_code": applied_promo,
+        "payment_status": "not_requested",
+        "order_creation": "deferred_to_stage_7",
+        "unpaid_progress_excluded": True,
+    }
 
 
 UNAUTHORIZED_PUBLIC_MONEY_FIELDS = {

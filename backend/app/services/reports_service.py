@@ -28,10 +28,11 @@ from typing import Any, Callable, Optional
 from ..core.db import db
 from ..core.time_utils import serialize_doc
 from ..core.permissions import Perm
+from ..models.webstore import WEBSTORE_TYPE_LABELS, WEBSTORE_TYPES
 from . import finance_service, tax_service
 
 
-APPROVED_WEBSTORE_TYPES = {"b2b", "fundraiser", "event", "promotional", "employee", "general"}
+APPROVED_WEBSTORE_TYPES = set(WEBSTORE_TYPES)
 DEFAULT_LIMIT = 25000
 
 
@@ -1435,7 +1436,9 @@ REPORTS.update({
         "data_source": "webstores+webstore_buyer_orders",
         "date_basis": "created_at",
         "calc_basis": "stored_webstore_order_totals",
-        "limitations": ["Official Webstore types are B2B, Fundraiser, Event, Promotional, Employee, and General; other legacy values are grouped as other_or_legacy."],
+        "limitations": [
+            f"Official Webstore types are {', '.join(WEBSTORE_TYPE_LABELS[store_type] for store_type in WEBSTORE_TYPES)}; persisted legacy or unknown values are grouped as other_or_legacy."
+        ],
         "columns": [
             {"key": "store_name", "label": "Store"},
             {"key": "store_type", "label": "Type"},

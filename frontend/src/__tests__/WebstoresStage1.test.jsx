@@ -211,7 +211,7 @@ function NavigationStateProbe() {
   return <div data-testid="navigation-state">{JSON.stringify(location.state || {})}</div>;
 }
 
-test("public storefront creates a checkout intent with provider evidence authority", async () => {
+test("public storefront adds to a server-priced cart without offering checkout", async () => {
   const user = userEvent.setup();
   axios.get.mockResolvedValue({
     data: {
@@ -219,42 +219,41 @@ test("public storefront creates a checkout intent with provider evidence authori
         id: "ws-1",
         name: "Team Store",
         description: "",
-        checkout_enabled: true,
-        checkout_unavailable_reason: null,
+        checkout_enabled: false,
+        checkout_unavailable_reason: "Payment setup is not available yet.",
+        cart_config: {},
       },
-      products: [{ id: "prod-1", name: "Team Shirt", product_type: "shirt", selling_price_cents: 2500 }],
+      products: [{ id: "prod-1", name: "Team Shirt", product_type: "shirt", selling_price_cents: 2500, fulfillment_methods: ["pickup"] }],
     },
   });
   axios.post.mockResolvedValue({
     data: {
-      purchase_intent: { id: "pi-1", status: "pending_payment", product_subtotal_cents: 5000, total_cents: 5000 },
-      checkout_available: true,
-      checkout: { payment_authority: "verified_provider_event" },
+      quote_version: "webstore_cart_quote_v1",
+      line_items: [{ product_id: "prod-1", quantity: 2 }],
+      subtotal_cents: 5000,
+      shipping_cents: 0,
+      donation_cents: 0,
+      discount_cents: 0,
+      total_cents: 5000,
     },
   });
 
   renderWithProviders(<PublicWebstorePage />, { route: "/p/webstores/team-store", path: "/p/webstores/:slug" });
 
   expect(await screen.findByText(/Team Store/)).toBeInTheDocument();
-  expect(screen.queryByTestId("webstore-checkout-disabled")).not.toBeInTheDocument();
-  fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "2" } });
-  const buyerFields = screen.getAllByRole("textbox");
-  await user.type(buyerFields[0], "Casey Buyer");
-  await user.type(buyerFields[1], "casey@example.com");
-  await user.click(screen.getByRole("button", { name: /Create checkout/ }));
+  expect(screen.getByTestId("webstore-checkout-disabled")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /Add$/ }));
 
   await waitFor(() => expect(axios.post).toHaveBeenCalledWith(
-    "/api/public/webstores/team-store/purchase-intents",
+    "/api/public/webstores/team-store/cart-quote",
     {
-      buyer_name: "Casey Buyer",
-      buyer_email: "casey@example.com",
-      buyer_phone: "",
-      line_items: [{ product_id: "prod-1", quantity: 2 }],
-      idempotency_key: "intent-key-1",
+      line_items: [{ product_id: "prod-1", quantity: 1, variant: {}, personalization: {}, fulfillment_method: "pickup" }],
+      donation_cents: 0,
     },
   ));
-  expect(await screen.findByText("Checkout intent created")).toBeInTheDocument();
-  expect(screen.getByText(/verified_provider_event/)).toBeInTheDocument();
+  expect(await screen.findByTestId("public-cart-total")).toHaveTextContent("$50.00");
+  expect(screen.getByText(/Payment and order creation are unavailable/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /checkout/i })).not.toBeInTheDocument();
 });
 
 test("webstore detail exposes computed payment readiness without a manual ready toggle", async () => {

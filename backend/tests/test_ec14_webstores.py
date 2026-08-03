@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core.db import db
 from app.core.portal_security import create_portal_token
 from app.deps import get_current_user
+from app.models.webstore import WebstoreBrandingPublishedVersion
 from app.services.entitlements import _upsert_entitlement_for_tests
 from server import app
 
@@ -67,6 +68,23 @@ async def _build_launchable_store(client: AsyncClient, suffix: str) -> dict:
     )
     assert store_resp.status_code == 201, store_resp.text
     store = store_resp.json()
+    await db.webstores.update_one(
+        {"tenant_id": store["tenant_id"], "id": store["id"]},
+        {"$set": {
+            "setup_profile.fundraiser_goal_amount": 10000,
+            "setup_profile.profit_allocation_type": "fundraiser",
+            "store_settings.deadlines.order_deadline_at": "2099-12-31T23:59:59+00:00",
+        }},
+    )
+    await db.webstore_questionnaire_submissions.insert_one({
+        "id": f"questionnaire-{suffix}",
+        "tenant_id": store["tenant_id"],
+        "webstore_id": store["id"],
+        "owner_id": store["owner_id"],
+        "status": "submitted",
+        "answers": {"fundraiser_goal_amount": 10000},
+        "submitted_snapshot": {"answers": {"fundraiser_goal_amount": 10000}},
+    })
 
     template_resp = await client.post(
         "/api/webstores/product-templates",
@@ -101,6 +119,8 @@ async def _build_launchable_store(client: AsyncClient, suffix: str) -> dict:
                 "sku": f"TEE-{suffix}",
                 "launch_packet_eligible": True,
                 "launch_packet_include": True,
+                "approval_status": "approved",
+                "approval_revision": product["revision"],
                 "mockup_associations": [{"mockup_id": f"mockup-{suffix}"}],
                 "selling_price_cents": template["suggested_selling_price_cents"],
                 "production_cost_cents": template["suggested_production_cost_cents"],
@@ -118,6 +138,8 @@ async def _build_launchable_store(client: AsyncClient, suffix: str) -> dict:
             "sku": f"TEE-{suffix}",
             "launch_packet_eligible": True,
             "launch_packet_include": True,
+            "approval_status": "approved",
+            "approval_revision": product["revision"],
             "mockup_associations": [{"mockup_id": f"mockup-{suffix}"}],
             "selling_price_cents": template["suggested_selling_price_cents"],
             "production_cost_cents": template["suggested_production_cost_cents"],
@@ -140,6 +162,21 @@ async def _build_launchable_store(client: AsyncClient, suffix: str) -> dict:
             "owner_visible": True,
             "owner_approved": True,
         }
+    )
+    await db.webstore_branding_versions.insert_one(
+        WebstoreBrandingPublishedVersion(
+            tenant_id=store["tenant_id"],
+            webstore_id=store["id"],
+            version=1,
+            branding={
+                "brand_basics": {"display_name": store["name"]},
+                "colors_fonts": {"primary_color": "#0f172a", "accent_color": "#2563eb"},
+                "store_type_content": {"fundraiser_name": "Boosters", "campaign_message": "Support the team."},
+            },
+            content_hash=f"stage6-ec14-{suffix}",
+            published_by_user_id="stage6-test",
+            published_by_email="stage6@example.com",
+        ).model_dump()
     )
 
     packet_resp = await client.post(f"/api/webstores/{store['id']}/launch-packets", json={"promotion_copy": "Order by Friday"})
@@ -189,7 +226,7 @@ async def test_webstore_permission_tenant_and_owner_portal_scope(ctx):
 
 
 @pytest.mark.asyncio
-async def test_launch_readiness_blocks_public_commerce_until_provider_authority(ctx, monkeypatch):
+async def test_public_storefront_can_launch_before_provider_checkout_authority(ctx, monkeypatch):
     monkeypatch.setenv("AUTH_DEV_BYPASS", "true")
     suffix = uuid.uuid4().hex[:6]
 
@@ -221,11 +258,16 @@ async def test_launch_readiness_blocks_public_commerce_until_provider_authority(
             app.dependency_overrides[get_current_user] = _override(ctx["owner"])
             ready = await owner_client_again.get(f"/api/webstores/{store['id']}/launch-readiness")
             assert ready.status_code == 200
-            assert ready.json()["ready"] is False, ready.text
+            assert ready.json()["ready"] is True, ready.text
             assert ready.json()["checks"]["payment_ready"] is False
             assert ready.json()["public_launch_blocked_until_batch_3"] is True
             assert ready.json()["payment_readiness_source"] == "provider_boundary"
             launched = await owner_client_again.post(f"/api/webstores/{store['id']}/status", json={"status": "live"})
-            assert launched.status_code == 409, launched.text
-            assert (await db.webstores.find_one({"tenant_id": ctx["tenant_id"], "id": store["id"]}, {"_id": 0}))["status"] != "live"
+            assert launched.status_code == 200, launched.text
+            launched_store = await db.webstores.find_one({"tenant_id": ctx["tenant_id"], "id": store["id"]}, {"_id": 0})
+            assert launched_store["status"] == "live"
+            assert launched_store["checkout_enabled"] is False
+            public = await owner_client_again.get(f"/api/public/webstores/{store['public_slug']}")
+            assert public.status_code == 200, public.text
+            assert public.json()["webstore"]["checkout_enabled"] is False
             return

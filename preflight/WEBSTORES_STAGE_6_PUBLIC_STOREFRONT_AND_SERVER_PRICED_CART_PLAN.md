@@ -2,7 +2,7 @@
 
 **Product sequence:** Webstores Stage 6
 **Stage name:** Public Storefront and Server-Priced Cart
-**Status:** `PLANNED - IMPLEMENTATION NOT STARTED`
+**Status:** `COMPLETE - IMPLEMENTED AND VERIFIED`
 **Baseline commit:** `18b8ad1946c6bfe3b8844d6ab4916ec24670f376`
 **Planning branch:** `plan/webstores-stage-6-storefront-cart`
 
@@ -599,6 +599,15 @@ Use separate implementation checkpoints rather than one oversized commit.
 Each checkpoint must be reviewed before the next begins. No broad repository
 test marathon is required for a narrow change; use the focused verification
 policy and touched-module checks.
+
+## T. Completion Record
+
+Stage 6 was implemented and verified on `feature/webstores-stage-6-type-publication`.
+The completed workflow is a live, owner-approved public Webstore with published
+branding, eligible products, product choices and fulfillment, fundraiser and
+promo previews, and a server-priced cart summary. No actionable checkout,
+payment collection, paid Order creation, payouts, or Production handoff was
+introduced. Stage 7 remains not started.
 
 ## S. Stage 7 Handoff Contract
 
