@@ -2,8 +2,8 @@
 
 The Stripe adapter lives behind this module so the rest of the application only
 receives typed, provider-authoritative results. Configuration and connected
-account verification remain fail-closed; no provider result creates an Order
-or Production record by itself.
+account verification remain fail-closed; only a verified provider result may
+enter the canonical Order and Production bridge.
 """
 from __future__ import annotations
 

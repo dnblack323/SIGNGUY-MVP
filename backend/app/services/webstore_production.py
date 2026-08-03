@@ -7,7 +7,7 @@ from ..core.db import db
 from ..core.permissions import Perm
 from ..core.time_utils import serialize_doc
 from . import work_order_service
-from .webstores import WebstoreError, _audit, _get_store, _require_staff_perm
+from .webstores import WebstoreError, _audit, _get_store, _require_staff_perm, _require_webstore_assignment_scope
 
 
 async def handoff_webstore_order_to_production(
@@ -18,6 +18,7 @@ async def handoff_webstore_order_to_production(
     """Create or reuse the current canonical Work Order for one paid order."""
     _require_staff_perm(user, Perm.WEBSTORE_MANAGE)
     _require_staff_perm(user, Perm.WORK_ORDER_WRITE)
+    await _require_webstore_assignment_scope(user, webstore_id)
     await _get_store(user["tenant_id"], webstore_id)
 
     intent = await db.webstore_purchase_intents.find_one(
@@ -73,6 +74,7 @@ async def handoff_webstore_order_to_production(
             actor_user_id=user["id"],
             actor_email=user.get("email") or "",
             production_instructions=f"Generated from Webstore purchase intent {intent['id']}",
+            source_context={"webstore_id": webstore_id, "purchase_intent_id": intent["id"]},
         )
     except ValueError as exc:
         if str(exc) == "no_production_required_items":

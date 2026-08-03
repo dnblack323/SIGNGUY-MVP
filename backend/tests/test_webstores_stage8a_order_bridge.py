@@ -9,7 +9,8 @@ from httpx import ASGITransport, AsyncClient
 from app.core.db import db, ensure_indexes
 from app.deps import get_current_user
 from app.services import webstore_payments
-from app.services.webstore_payments import complete_verified_payment_handoff
+from app.services.webstore_payments import complete_verified_payment_handoff, process_verified_payment_event
+from app.services.webstore_payment_provider import ProviderAuthority, VerifiedProviderPayment
 from app.services.webstores import WebstoreError
 from server import app
 
@@ -124,6 +125,40 @@ async def test_verified_handoff_is_idempotent_and_preserves_checkout_snapshot():
     assert intent["fulfillment_status"] == "awaiting_production_handoff"
     assert event["reconciliation_state"] == "canonical_records_created"
     assert event["processing_state"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_verified_provider_event_completes_canonical_bridge_automatically():
+    await ensure_indexes()
+    ctx = await _seed_handoff(uuid.uuid4().hex[:8])
+    await db.webstore_payment_events.delete_one({"id": ctx["event_id"]})
+    await db.webstore_purchase_intents.update_one(
+        {"id": ctx["intent_id"]},
+        {"$set": {"status": "pending_payment"}, "$unset": {"verified_payment_event_id": 1}},
+    )
+
+    result = await process_verified_payment_event(
+        verified_payment=VerifiedProviderPayment(
+            provider="test-fixture",
+            provider_mode="test",
+            provider_account_reference="acct-stage8a",
+            provider_event_id=f"evt-auto-{ctx['intent_id']}",
+            provider_payment_id=f"pi-auto-{ctx['intent_id']}",
+            purchase_intent_id=ctx["intent_id"],
+            tenant_id=ctx["tenant_id"],
+            webstore_id=ctx["webstore_id"],
+            amount_cents=3000,
+            currency="usd",
+        ),
+        provider_authority=ProviderAuthority("test-fixture", "test", "acct-stage8a", "destination", True, True),
+    )
+
+    assert result["payment_event"]["reconciliation_state"] == "canonical_records_created"
+    assert result["order"]["id"]
+    intent = await db.webstore_purchase_intents.find_one({"id": ctx["intent_id"]}, {"_id": 0})
+    assert intent["status"] == "paid_order_created"
+    assert intent["canonical_order_id"] == result["order"]["id"]
+    assert intent["canonical_payment_id"] == result["payment"]["id"]
 
 
 @pytest.mark.asyncio

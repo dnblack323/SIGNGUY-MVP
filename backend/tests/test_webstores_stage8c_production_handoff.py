@@ -33,6 +33,10 @@ async def test_paid_webstore_order_handoff_is_idempotent_and_preserves_snapshot(
     assert await db.work_orders.count_documents({"tenant_id": ctx["tenant_id"], "order_id": ctx["order_id"], "current_version": True}) == 1
     work_order = await db.work_orders.find_one({"tenant_id": ctx["tenant_id"], "order_id": ctx["order_id"], "current_version": True}, {"_id": 0})
     assert work_order["items_snapshot"][0]["description"] == "Projection Shirt"
+    assert work_order["items_snapshot"][0]["webstore_id"] == ctx["webstore_id"]
+    assert work_order["items_snapshot"][0]["product_id"] == "product-1"
+    assert work_order["items_snapshot"][0]["variant_id"] == "large"
+    assert work_order["items_snapshot"][0]["production_mapping"] == {"method": "screen_print", "material": "cotton"}
 
     await db.order_items.update_one(
         {"tenant_id": ctx["tenant_id"], "order_id": ctx["order_id"]},

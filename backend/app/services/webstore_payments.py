@@ -375,6 +375,7 @@ async def _bridge_to_production(intent: dict, order: dict) -> tuple[str, Optiona
             actor_user_id="webstore-payment",
             actor_email="webstore-payment",
             production_instructions=f"Generated from Webstore purchase intent {intent['id']}",
+            source_context={"webstore_id": intent["webstore_id"], "purchase_intent_id": intent["id"]},
         )
         return "bridged", work_order["id"]
     except ValueError as exc:
@@ -422,12 +423,11 @@ async def complete_verified_payment_handoff(
     actor_user_id: str,
     actor_email: str,
 ) -> dict[str, Any]:
-    """Resume one signed, verified Webstore payment into canonical records.
+    """Recover one verified Webstore payment into canonical records.
 
-    The Stripe webhook intentionally stops before downstream creation. This
-    permissioned internal action resumes from the stored verified event and is
-    safe to repeat after a partial write. Work Order creation remains a later
-    Stage 8 checkpoint.
+    Normal webhook processing completes this bridge automatically. This
+    permissioned action remains as an audited, replay-safe recovery path for a
+    payment event interrupted after verification or during downstream writes.
     """
     intent = await db.webstore_purchase_intents.find_one(
         {"tenant_id": tenant_id, "webstore_id": webstore_id, "id": purchase_intent_id},
@@ -739,6 +739,8 @@ async def process_verified_payment_event(
             "canonical_order_id": order["id"],
             "canonical_payment_id": payment["id"],
             "checkout_status": "verified_payment_processed",
+            "reconciliation_state": "canonical_records_created",
+            "processing_state": "completed",
             "production_bridge_status": production_bridge_status,
             "work_order_id": work_order_id,
             "fulfillment_status": "ready_for_production" if work_order_id else "not_required",
@@ -755,6 +757,8 @@ async def process_verified_payment_event(
                     "canonical_customer_id": customer["id"],
                     "canonical_order_id": order["id"],
                     "canonical_payment_id": payment["id"],
+                    "reconciliation_state": "canonical_records_created",
+                    "processing_state": "completed",
                     "processed_at": _now_iso(),
                     "updated_at": _now_iso(),
                 }
