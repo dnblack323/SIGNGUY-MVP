@@ -284,37 +284,44 @@ test("webstore detail exposes computed payment readiness without a manual ready 
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
   expect(await screen.findByText(/Team Store/)).toBeInTheDocument();
+  await userEvent.setup().click(screen.getByTestId("webstore-advanced-setup-toggle"));
   expect(screen.getByTestId("webstore-payment-readiness")).toHaveTextContent("Payment readiness: Not connected");
   expect(screen.queryByLabelText("Payment boundary ready")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Preview Not Ready/ })).toBeDisabled();
   expect(screen.queryByRole("link", { name: /Preview Portal/ })).not.toBeInTheDocument();
 });
 
-test("authenticated Webstores creation supports the six official store types", async () => {
+test("authenticated Webstores creation uses the five approved types and opens a guided setup", async () => {
   const user = userEvent.setup();
   renderWithProviders(<WebstoresPage />);
 
-  expect(await screen.findByText("Create Webstore")).toBeInTheDocument();
+  expect(screen.queryByTestId("new-webstore-dialog")).not.toBeInTheDocument();
+  await user.click(screen.getByTestId("new-webstore-button"));
+  expect(await screen.findByTestId("new-webstore-dialog")).toBeInTheDocument();
+  expect(screen.getByText("Create a Webstore")).toBeInTheDocument();
+  await user.click(screen.getByTestId("webstore-type"));
+  expect(screen.queryByText("Employee")).not.toBeInTheDocument();
+  await user.click(await screen.findByText("Event"));
+  await user.click(screen.getByTestId("webstore-setup-next"));
   await user.type(screen.getByTestId("webstore-owner-name"), "Owner Name");
   await user.type(screen.getByTestId("webstore-owner-email"), "owner@example.com");
-  await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.click(screen.getByTestId("webstore-setup-next"));
+  expect(screen.getByTestId("webstore-type-specific")).toBeInTheDocument();
   await user.clear(screen.getByTestId("webstore-name"));
-  await user.type(screen.getByTestId("webstore-name"), "Employee Store");
-  await user.click(screen.getByTestId("webstore-type"));
-  await user.click(await screen.findByText("Employee"));
-  await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.type(screen.getByTestId("webstore-name"), "Event Store");
+  await user.click(screen.getByTestId("webstore-setup-next"));
   await user.click(screen.getByTestId("webstore-create"));
 
-  await waitFor(() => expect(createWebstore).toHaveBeenCalledWith({
+  await waitFor(() => expect(createWebstore).toHaveBeenCalledWith(expect.objectContaining({
     owner_id: "owner-new",
-    name: "Employee Store",
-    slug: undefined,
-    store_type: "employee",
-    manager_emails: [],
-    additional_owner_emails: [],
-    idempotency_key: "webstore-create-owner@example.com-employee store",
+    name: "Event Store",
+    store_type: "event",
+    target_launch_at: undefined,
+    deadline_at: undefined,
+    setup_profile: expect.objectContaining({ store_purpose: "", audience: "" }),
+    store_settings: expect.objectContaining({ access_policy: { mode: "open" } }),
     send_owner_invitation: false,
-  }));
+  })));
 });
 
 test("successful questionnaire delivery is reported and passed to the Webstore detail route", async () => {
@@ -328,10 +335,13 @@ test("successful questionnaire delivery is reported and passed to the Webstore d
 
   renderWithProviders(<><WebstoresPage /><NavigationStateProbe /></>);
 
+  await user.click(screen.getByTestId("new-webstore-button"));
+  await user.click(screen.getByTestId("webstore-setup-next"));
   await user.type(screen.getByTestId("webstore-owner-name"), "Owner Name");
   await user.type(screen.getByTestId("webstore-owner-email"), "owner@example.com");
-  await user.click(screen.getByRole("button", { name: "Next" }));
-  await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.click(screen.getByTestId("webstore-setup-next"));
+  await user.click(screen.getByTestId("webstore-setup-next"));
+  await user.click(screen.getByTestId("webstore-continuation-questionnaire"));
   await user.click(screen.getByTestId("webstore-create"));
 
   await waitFor(() => expect(sendWebstoreQuestionnaire).toHaveBeenCalledTimes(1));
@@ -339,6 +349,28 @@ test("successful questionnaire delivery is reported and passed to the Webstore d
   expect(toast.success).toHaveBeenCalledWith("Webstore created and questionnaire sent");
   expect(toast.error).not.toHaveBeenCalled();
   expect(screen.getByTestId("navigation-state")).toHaveTextContent(JSON.stringify({ questionnaireDelivery: questionnaire }));
+});
+
+test("blank draft path creates only the required Webstore information", async () => {
+  const user = userEvent.setup();
+  renderWithProviders(<WebstoresPage />);
+
+  await user.click(screen.getByTestId("new-webstore-button"));
+  await user.click(screen.getByTestId("webstore-setup-next"));
+  await user.type(screen.getByTestId("webstore-owner-name"), "Blank Owner");
+  await user.type(screen.getByTestId("webstore-owner-email"), "blank@example.com");
+  await user.click(screen.getByTestId("webstore-setup-next"));
+  await user.click(screen.getByTestId("webstore-setup-next"));
+  await user.click(screen.getByTestId("webstore-continuation-blank"));
+  await user.click(screen.getByTestId("webstore-create"));
+
+  await waitFor(() => expect(createWebstore).toHaveBeenCalledWith(expect.objectContaining({
+    name: "Blank Owner Store",
+    setup_profile: {},
+    store_settings: {},
+    branding: {},
+  })));
+  expect(sendWebstoreQuestionnaire).not.toHaveBeenCalled();
 });
 
 test("questionnaire delivery failures are truthful and preserve the manual recovery link", async () => {
@@ -353,10 +385,13 @@ test("questionnaire delivery failures are truthful and preserve the manual recov
 
   renderWithProviders(<><WebstoresPage /><NavigationStateProbe /></>);
 
+  await user.click(screen.getByTestId("new-webstore-button"));
+  await user.click(screen.getByTestId("webstore-setup-next"));
   await user.type(screen.getByTestId("webstore-owner-name"), "Owner Name");
   await user.type(screen.getByTestId("webstore-owner-email"), "owner@example.com");
-  await user.click(screen.getByRole("button", { name: "Next" }));
-  await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.click(screen.getByTestId("webstore-setup-next"));
+  await user.click(screen.getByTestId("webstore-setup-next"));
+  await user.click(screen.getByTestId("webstore-continuation-questionnaire"));
   await user.click(screen.getByTestId("webstore-create"));
 
   await waitFor(() => expect(toast.error).toHaveBeenCalled());
@@ -379,6 +414,7 @@ test("webstore detail shows setup intake, assignments, files, and answer preview
       status: "draft",
       setup_state: "staff_review",
       terms_fee_acknowledged: false,
+      setup_profile: { starting_products: ["Team Shirts"] },
     },
     launch_packets: [],
     products: [],
@@ -407,6 +443,26 @@ test("webstore detail shows setup intake, assignments, files, and answer preview
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-2", path: "/webstores/:id" });
 
   expect(await screen.findByText(/Setup Store/)).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Products" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Storefront" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Review & Launch" })).toBeInTheDocument();
+  expect(screen.queryByText("Setup Timeline")).not.toBeInTheDocument();
+  expect(screen.getByTestId("webstore-setup-checklist")).toBeInTheDocument();
+  expect(screen.queryByTestId("webstore-setup-state")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "Products" }));
+  expect(screen.getByTestId("webstore-starting-product-ideas")).toHaveTextContent("Team Shirts");
+  expect(screen.getByTestId("webstore-starting-product-ideas")).toHaveTextContent("Idea only - not yet a configured product.");
+  createProductFromTemplate.mockResolvedValueOnce({ id: "prod-team-shirts", name: "Team Shirts", status: "draft" });
+  await user.click(screen.getByRole("button", { name: "Start Product" }));
+  await waitFor(() => expect(createProductFromTemplate).toHaveBeenCalledWith("ws-2", {
+    name: "Team Shirts",
+    product_type: "general",
+  }));
+  expect(screen.getByTestId("webstore-starting-product-ideas")).toHaveTextContent("Idea only - not yet a configured product.");
+  await user.click(screen.getByRole("tab", { name: "Overview" }));
+  await user.click(screen.getByTestId("webstore-advanced-setup-toggle"));
+  expect(screen.getByTestId("webstore-advanced-setup")).toBeInTheDocument();
   expect(screen.getByTestId("webstore-setup-state")).toHaveTextContent("staff_review");
   expect(await screen.findAllByText("owner@example.com")).toHaveLength(2);
   expect(await screen.findByTestId("webstore-assignment-resend-assign-2")).toBeInTheDocument();
@@ -419,4 +475,82 @@ test("webstore detail shows setup intake, assignments, files, and answer preview
     proposed_values: expect.objectContaining({ store_name: "New Name" }),
   })));
   expect(await screen.findByTestId("webstore-answer-preview")).toHaveTextContent("Store name");
+});
+
+test("guided setup branding files and appearance carry into Storefront without publishing", async () => {
+  const user = userEvent.setup();
+  getWebstore.mockResolvedValue({
+    webstore: {
+      id: "ws-3",
+      name: "Brand Setup Store",
+      slug: "brand-setup-store",
+      public_slug: "brand-setup-store",
+      public_url: "/p/webstores/brand-setup-store",
+      store_type: "general",
+      status: "draft",
+      setup_state: "not_started",
+      setup_profile: {},
+    },
+    launch_packets: [],
+    products: [],
+  });
+  getLaunchReadiness.mockResolvedValue({ ready: false, checks: { payment_ready: false }, payment_unavailable_reason: "Real verified provider checkout is not connected yet." });
+  getWebstoreReports.mockResolvedValue({ order_count: 0, gross_sales_cents: 0, ledger_totals_cents: {} });
+  listWebstoreSetupFiles.mockResolvedValue([
+    {
+      id: "logo-file",
+      category: "logo",
+      status: "active",
+      file_name: "setup-logo.png",
+      detected_content_type: "image/png",
+      preview_url: "/api/webstores/ws-3/setup-files/logo-file/preview",
+    },
+    {
+      id: "banner-file",
+      category: "banner",
+      status: "active",
+      file_name: "setup-banner.png",
+      detected_content_type: "image/png",
+      preview_url: "/api/webstores/ws-3/setup-files/banner-file/preview",
+    },
+  ]);
+  getWebstoreBranding.mockResolvedValueOnce({
+    webstore: { id: "ws-3", name: "Brand Setup Store", store_type: "general" },
+    branding: {
+      status: "draft",
+      draft: {
+        brand_basics: { display_name: "Brand Setup Store", primary_logo: {} },
+        colors_fonts: { primary_color: "#123456", accent_color: "#abcdef" },
+        header: { show_header: true, display_mode: "name" },
+        hero: { show_hero: true, image: {} },
+        store_information: { show_section: true, welcome_heading: "Welcome setup" },
+        store_type_content: {},
+        catalog_introduction: { show_catalog_area: true },
+        footer: { show_footer: true },
+      },
+      validation: { errors: [], warnings: [] },
+    },
+    permissions: { can_save_draft: true, can_request_review: true, can_publish: true, can_control_whole_sections: true },
+    history: [],
+    activity: [],
+  });
+
+  renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-3", path: "/webstores/:id" });
+
+  await user.click(await screen.findByRole("tab", { name: "Storefront" }));
+  expect(screen.getByTestId("branding-image-primary-logo")).toHaveValue("/api/webstores/ws-3/setup-files/logo-file/preview");
+  expect(screen.getByAltText("Primary logo")).toHaveAttribute("src", "/api/webstores/ws-3/setup-files/logo-file/preview");
+  await user.click(screen.getByRole("button", { name: "Hero Section" }));
+  expect(screen.getByTestId("branding-image-hero-image")).toHaveValue("/api/webstores/ws-3/setup-files/banner-file/preview");
+  expect(screen.getByAltText("Hero image")).toHaveAttribute("src", "/api/webstores/ws-3/setup-files/banner-file/preview");
+  await user.click(screen.getByRole("button", { name: "Colors & Fonts" }));
+  expect(screen.getByTestId("branding-field-colors_fonts.primary_color")).toHaveValue("#123456");
+  expect(screen.getByTestId("branding-field-colors_fonts.accent_color")).toHaveValue("#abcdef");
+  await user.click(screen.getByRole("button", { name: "Store Information" }));
+  expect(screen.getByTestId("branding-field-store_information.welcome_heading")).toHaveValue("Welcome setup");
+  expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
+  expect(publishWebstoreBranding).not.toHaveBeenCalled();
+  expect(screen.getAllByRole("tab")).toHaveLength(4);
+  await user.click(screen.getByRole("tab", { name: "Overview" }));
+  expect(screen.getByTestId("webstore-setup-checklist")).toBeInTheDocument();
 });

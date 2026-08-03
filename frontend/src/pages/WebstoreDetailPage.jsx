@@ -14,7 +14,6 @@ import {
   Lock,
   Mail,
   PackagePlus,
-  Palette,
   RotateCcw,
   Save,
   Send,
@@ -55,7 +54,6 @@ import {
   getWebstore,
   getWebstoreReports,
   listWebstoreActivity,
-  listWebstoreLifecycleEvents,
   listWebstoreAssignments,
   listWebstoreSetupFiles,
   listProductTemplates,
@@ -188,6 +186,8 @@ export default function WebstoreDetailPage() {
   const [categoryEditDraft, setCategoryEditDraft] = useState({});
   const [editingCategoryId, setEditingCategoryId] = useState("");
   const [changeResponses, setChangeResponses] = useState({});
+  const [activeTab, setActiveTab] = useState("overview");
+  const [advancedSetupOpen, setAdvancedSetupOpen] = useState(false);
   const detail = useQuery({
     queryKey: ["webstore", id],
     queryFn: () => getWebstore(id),
@@ -220,11 +220,6 @@ export default function WebstoreDetailPage() {
   const activity = useQuery({
     queryKey: ["webstore-activity", id],
     queryFn: () => listWebstoreActivity(id, { limit: 20 }),
-    enabled: !!id,
-  });
-  const lifecycleEvents = useQuery({
-    queryKey: ["webstore-lifecycle-events", id],
-    queryFn: () => listWebstoreLifecycleEvents(id, { limit: 5 }),
     enabled: !!id,
   });
   const setupProgress = useQuery({
@@ -283,7 +278,6 @@ export default function WebstoreDetailPage() {
       qc.invalidateQueries({ queryKey: ["webstore-payment-provider", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-reports", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-activity", id] }),
-      qc.invalidateQueries({ queryKey: ["webstore-lifecycle-events", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-setup-progress", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-assignments", id] }),
       qc.invalidateQueries({
@@ -353,9 +347,9 @@ export default function WebstoreDetailPage() {
     [detail.data, selectedProductId],
   );
   const createBlankProduct = useMutation({
-    mutationFn: () =>
+    mutationFn: (productName = "New draft product") =>
       createProductFromTemplate(id, {
-        name: "New draft product",
+        name: productName,
         product_type: "general",
       }),
     onSuccess: async (product) => {
@@ -877,59 +871,30 @@ export default function WebstoreDetailPage() {
   const activeProducts = (detail.data?.products || []).filter(
     (product) => product.status !== "archived",
   );
+  const startingProductIdeas = Array.isArray(store?.setup_profile?.starting_products)
+    ? store.setup_profile.starting_products.filter((idea) => String(idea || "").trim())
+    : [];
   const selectedProductsCount = activeProducts.length;
   const uploadCount = setupFileItems.length;
-  const phase6LifecycleState = detail.data?.phase6_lifecycle_state || "draft";
-  const typeRequirements =
-    detail.data?.type_requirements ||
-    setupProgress.data?.type_requirements ||
-    readiness.data?.type_requirements;
-  const currentBuilderStep = selectedProductId
-    ? "Product Setup"
-    : selectedProductsCount
-      ? "Product Setup"
-      : "Product Plan";
   const nextRequiredAction = selectedProductsCount
     ? "Continue setup on selected draft products before launch preparation."
-    : "Review the product plan, then add a custom product or copy from a template.";
-  const workflowSteps = [
-    { label: "Webstore Details", state: "complete" },
-    {
-      label: "Owner & Questionnaire",
-      state: questionnaireSubmission ? "complete" : "waiting",
-      note: questionnaireSubmission ? "Complete" : "Waiting on owner",
-    },
-    {
-      label: "Branding & Artwork",
-      state: uploadCount ? "complete" : "waiting",
-      note: uploadCount
-        ? `${uploadCount} upload${uploadCount === 1 ? "" : "s"}`
-        : "Waiting on owner",
-    },
-    {
-      label: "Product Plan",
-      state: selectedProductsCount ? "complete" : "current",
-      note: selectedProductsCount ? "Products selected" : "Current",
-    },
-    {
-      label: "Product Setup",
-      state: selectedProductsCount ? "current" : "waiting",
-      note: selectedProductsCount
-        ? `${selectedProductsCount} draft${selectedProductsCount === 1 ? "" : "s"}`
-        : "Not ready yet",
-    },
-    { label: "Launch Setup", state: "future", note: "Coming in a later stage" },
-    {
-      label: "Owner Approval",
-      state: "future",
-      note: "Coming in a later stage",
-    },
-    {
-      label: "Launch & Manage",
-      state: "future",
-      note: "Coming in a later stage",
-    },
+    : startingProductIdeas.length
+      ? "Review your starting product ideas under Products."
+      : "Add a custom product or copy one from a template.";
+  const setupChecklist = [
+    { key: "information", label: "Store information", complete: Boolean(store?.name && (store.store_type || store.webstore_type)) },
+    { key: "products", label: "Products", complete: selectedProductsCount > 0 },
+    { key: "appearance", label: "Store appearance", complete: uploadCount > 0 || Boolean(detail.data?.branding?.draft) },
+    { key: "review", label: "Owner review", complete: ["owner_approved", "launch_ready", "live"].includes(store?.status) },
+    { key: "launch", label: "Launch", complete: store?.status === "live" },
   ];
+  const recommendedTab = !setupChecklist[1].complete
+    ? "products"
+    : !setupChecklist[2].complete
+      ? "storefront"
+      : !setupChecklist[3].complete
+        ? "review-launch"
+        : "overview";
   const paymentNeedsAttention =
     store &&
     !store.checkout_enabled &&
@@ -1156,147 +1121,10 @@ export default function WebstoreDetailPage() {
         </div>
       </div>
 
-      <div
-        className="grid gap-3 md:grid-cols-4"
-        data-testid="webstore-builder-status-panel"
-      >
-        <Card>
-          <CardContent className="p-3 text-sm">
-            <div className="text-xs font-medium uppercase text-muted-foreground">
-              Current step
-            </div>
-            <div className="font-semibold">{currentBuilderStep}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3 text-sm">
-            <div className="text-xs font-medium uppercase text-muted-foreground">
-              Owner questionnaire
-            </div>
-            <div className="font-semibold">
-              {questionnaireSubmission ? "Submitted" : "Waiting on owner"}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3 text-sm">
-            <div className="text-xs font-medium uppercase text-muted-foreground">
-              AI review
-            </div>
-            <div className="font-semibold">Coming in a later stage</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3 text-sm">
-            <div className="text-xs font-medium uppercase text-muted-foreground">
-              Products selected
-            </div>
-            <div className="font-semibold">{selectedProductsCount}</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div
-        className="grid gap-4 xl:grid-cols-[1.1fr_1fr]"
-        data-testid="webstore-stage2-rules"
-      >
-        <Card className="border-sky-200">
-          <CardHeader>
-            <CardTitle className="text-base">Phase 6 Lifecycle</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <div className="text-xs font-medium uppercase text-muted-foreground">
-                  Current Phase 6 state
-                </div>
-                <div className="font-semibold capitalize">
-                  {formatLabel(phase6LifecycleState)}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs font-medium uppercase text-muted-foreground">
-                  Internal status
-                </div>
-                <div className="font-semibold capitalize">
-                  {formatLabel(store.status)}
-                </div>
-              </div>
-            </div>
-            <div className="rounded-md border divide-y">
-              {(lifecycleEvents.data?.items || []).slice(0, 3).map((event) => (
-                <div key={event.id} className="p-2">
-                  <div className="font-medium capitalize">
-                    {formatLabel(event.from_state || "created")} to{" "}
-                    {formatLabel(event.to_state)}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {event.reason || "Lifecycle transition"} -{" "}
-                    {formatDateTime(event.created_at)}
-                  </div>
-                </div>
-              ))}
-              {!lifecycleEvents.isLoading &&
-                (lifecycleEvents.data?.items || []).length === 0 && (
-                  <div className="p-2 text-muted-foreground">
-                    No lifecycle events recorded yet.
-                  </div>
-                )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-emerald-200">
-          <CardHeader>
-            <CardTitle className="text-base">Store Type Rules</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="text-xs font-medium uppercase text-muted-foreground">
-                  Type
-                </div>
-                <div className="font-semibold">
-                  {typeRequirements?.label ||
-                    formatLabel(store.store_type || "general")}
-                </div>
-              </div>
-              <Badge
-                variant={typeRequirements?.complete ? "secondary" : "outline"}
-              >
-                {typeRequirements?.complete ? "Complete" : "Needs setup"}
-              </Badge>
-            </div>
-            <div className="rounded-md border divide-y">
-              {(typeRequirements?.items || []).map((item) => (
-                <div
-                  key={item.key}
-                  className="flex items-center justify-between gap-3 p-2"
-                >
-                  <div>
-                    <div className="font-medium">{item.label}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {item.owner_wording}
-                    </div>
-                  </div>
-                  <Badge variant={item.complete ? "secondary" : "outline"}>
-                    {item.status}
-                  </Badge>
-                </div>
-              ))}
-              {(typeRequirements?.items || []).length === 0 && (
-                <div className="p-2 text-muted-foreground">
-                  No type requirements loaded yet.
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Tabs
-          defaultValue="overview"
+          value={activeTab}
+          onValueChange={setActiveTab}
           className="space-y-4 min-w-0"
           data-testid="webstore-detail-tabs"
         >
@@ -1309,44 +1137,48 @@ export default function WebstoreDetailPage() {
             </TabsTrigger>
             <TabsTrigger
               className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow"
-              value="product-plan"
+              value="products"
             >
-              Product Plan
+              Products
             </TabsTrigger>
             <TabsTrigger
               className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow"
-              value="product-setup"
+              value="storefront"
             >
-              Product Setup
+              Storefront
             </TabsTrigger>
             <TabsTrigger
               className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow"
-              value="setup"
+              value="review-launch"
             >
-              Store Setup
-            </TabsTrigger>
-            <TabsTrigger
-              className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow"
-              value="branding"
-            >
-              <Palette className="size-4 mr-1" />
-              Branding
-            </TabsTrigger>
-            <TabsTrigger
-              className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow"
-              value="preview"
-            >
-              Preview
-            </TabsTrigger>
-            <TabsTrigger
-              className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow"
-              value="approval"
-            >
-              Approval
+              Review & Launch
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4">
+            <Card className="border-sky-200 bg-sky-50/40" data-testid="webstore-simple-overview">
+              <CardHeader className="pb-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-base">Your Webstore has been created</CardTitle>
+                    <p className="mt-1 text-sm text-muted-foreground">Add products now or continue through the recommended setup.</p>
+                  </div>
+                  <Button type="button" onClick={() => setActiveTab(recommendedTab)} data-testid="webstore-continue-setup">Continue Setup</Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid gap-2 sm:grid-cols-5" data-testid="webstore-setup-checklist">
+                  {setupChecklist.map((item, index) => <div key={item.key} className={`rounded-md border p-2 text-sm ${item.complete ? "border-emerald-200 bg-emerald-50" : index === setupChecklist.findIndex((entry) => !entry.complete) ? "border-sky-300 bg-white" : "bg-white"}`}><div className="flex items-center gap-2">{item.complete ? <CheckCircle2 className="size-4 text-emerald-700" /> : <span className="flex size-4 items-center justify-center rounded-full border text-[10px] text-muted-foreground">{index + 1}</span>}<span className="font-medium">{item.label}</span></div></div>)}
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button type="button" variant="link" className="h-auto p-0 text-sm" onClick={() => setAdvancedSetupOpen((open) => !open)} data-testid="webstore-advanced-setup-toggle">{advancedSetupOpen ? "Hide Advanced Setup" : "Advanced Setup"}</Button>
+                  <span className="text-xs text-muted-foreground">Detailed settings, permissions, lifecycle history, and questionnaire controls remain available when you need them.</span>
+                </div>
+                {advancedSetupOpen && <div className="grid gap-2 rounded-md border bg-white p-3 text-sm sm:grid-cols-3" data-testid="webstore-advanced-setup"><Button type="button" variant="outline" onClick={() => setActiveTab("products")}>Product details</Button><Button type="button" variant="outline" onClick={() => setActiveTab("storefront")}>Store settings and branding</Button><Button type="button" variant="outline" onClick={() => setActiveTab("review-launch")}>Preview and approval</Button></div>}
+              </CardContent>
+            </Card>
+            {advancedSetupOpen ? (
+              <>
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
               <Card>
                 <CardHeader>
@@ -2059,13 +1891,37 @@ export default function WebstoreDetailPage() {
                 </div>
               </CardContent>
             </Card>
+              </>
+            ) : (
+              <Card data-testid="webstore-overview-status">
+                <CardHeader><CardTitle className="text-base">At a glance</CardTitle></CardHeader>
+                <CardContent className="grid gap-3 text-sm sm:grid-cols-3">
+                  <div><div className="text-xs font-medium uppercase text-muted-foreground">Owner questionnaire</div><div className="font-semibold">{questionnaireSubmission ? "Submitted" : "Waiting on owner"}</div></div>
+                  <div><div className="text-xs font-medium uppercase text-muted-foreground">Workflow status</div><div className="font-semibold capitalize">{formatLabel(store.setup_state || store.status)}</div></div>
+                  <div><div className="text-xs font-medium uppercase text-muted-foreground">Products</div><div className="font-semibold">{selectedProductsCount}</div></div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent
-            value="product-plan"
+            value="products"
             className="space-y-4"
             data-testid="webstore-product-plan"
           >
+            {startingProductIdeas.length > 0 && (
+              <Card data-testid="webstore-starting-product-ideas" className="border-sky-200 bg-sky-50/40">
+                <CardHeader><CardTitle className="text-base">Starting Product Ideas</CardTitle></CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <p className="text-muted-foreground">These are ideas recorded during setup. They are not configured products yet, so start a draft when you are ready.</p>
+                  {startingProductIdeas.map((idea) => {
+                    const name = String(idea).trim();
+                    const draft = activeProducts.find((product) => String(product.name || "").trim().toLowerCase() === name.toLowerCase());
+                    return <div key={name} className="flex flex-wrap items-center justify-between gap-3 rounded border bg-white p-3" data-testid={`webstore-starting-product-idea-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}><div><div className="font-medium">{name}</div><div className="text-xs text-muted-foreground">{draft ? "Draft product created - continue configuration below." : "Idea only - not yet a configured product."}</div></div><Button type="button" size="sm" variant={draft ? "outline" : "default"} disabled={Boolean(draft) || createBlankProduct.isPending} onClick={() => createBlankProduct.mutate(name)}>{draft ? "Draft Created" : "Start Product"}</Button></div>;
+                  })}
+                </CardContent>
+              </Card>
+            )}
             <div className="grid grid-cols-1 xl:grid-cols-[1fr_1.1fr] gap-4">
               <Card>
                 <CardHeader>
@@ -2243,7 +2099,7 @@ export default function WebstoreDetailPage() {
           </TabsContent>
 
           <TabsContent
-            value="product-setup"
+            value="products"
             className="space-y-4"
             data-testid="webstore-product-foundation"
           >
@@ -3459,7 +3315,7 @@ export default function WebstoreDetailPage() {
                 <CardContent className="space-y-3 text-sm">
                   <div className="text-muted-foreground">
                     Templates are reusable shop resources. Copy one into this
-                    Webstore from Product Plan, then edit the private product
+                    Webstore from Products, then edit the private product
                     draft here.
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -3608,33 +3464,36 @@ export default function WebstoreDetailPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="setup" className="space-y-4">
+          <TabsContent value="storefront" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Store Setup</CardTitle>
+                <CardTitle className="text-base">Storefront Setup</CardTitle>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground">
-                Setup intake, assignments, files, and launch gates remain on the
-                Overview tab while Stage 3 adds Branding.
+                Store information, owner assignments, setup files, and type-specific settings remain available from Overview. Use Advanced Setup there when you need the detailed controls.
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="branding" className="space-y-4">
+          <TabsContent value="storefront" className="space-y-4">
             <WebstoreBrandingEditor
               webstoreId={id}
               products={detail.data?.products || []}
             />
           </TabsContent>
 
-          <TabsContent value="preview" className="space-y-4">
+          <TabsContent value="review-launch" className="space-y-4">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Storefront Preview</CardTitle></CardHeader>
+              <CardContent className="text-sm text-muted-foreground">Review the customer-facing appearance before requesting approval. Changes remain drafts until they are reviewed and published.</CardContent>
+            </Card>
             <WebstoreBrandingEditor
               webstoreId={id}
               products={detail.data?.products || []}
             />
           </TabsContent>
 
-          <TabsContent value="approval" className="space-y-4">
+          <TabsContent value="review-launch" className="space-y-4">
             <Card data-testid="webstore-product-approval-panel">
               <CardHeader>
                 <CardTitle className="text-base">
@@ -3715,40 +3574,6 @@ export default function WebstoreDetailPage() {
           className="space-y-3 xl:sticky xl:top-4 xl:self-start"
           data-testid="webstore-builder-progress"
         >
-          <Card className="border-sky-200">
-            <CardHeader>
-              <CardTitle className="text-base">Setup Timeline</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-0">
-              {workflowSteps.map((step, index) => (
-                <div
-                  key={step.label}
-                  className="relative flex gap-3 pb-4 last:pb-0"
-                >
-                  {index < workflowSteps.length - 1 && (
-                    <div className="absolute left-[15px] top-8 bottom-0 w-px bg-slate-200" />
-                  )}
-                  <div
-                    className={`z-10 mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${step.state === "complete" ? "border-emerald-300 bg-emerald-50 text-emerald-700" : step.state === "current" ? "border-sky-500 bg-sky-700 text-white" : "border-slate-200 bg-slate-50 text-slate-500"}`}
-                  >
-                    {step.state === "complete" ? (
-                      <CheckCircle2 className="size-4" />
-                    ) : (
-                      index + 1
-                    )}
-                  </div>
-                  <div
-                    className={`min-w-0 rounded-md border p-2 text-sm ${step.state === "current" ? "border-sky-200 bg-sky-50" : step.state === "complete" ? "border-emerald-100 bg-emerald-50/60" : "bg-white"}`}
-                  >
-                    <div className="font-medium">{step.label}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {step.note || formatLabel(step.state)}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
           <Card className="border-amber-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">

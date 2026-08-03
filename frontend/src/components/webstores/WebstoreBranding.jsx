@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { extractError } from "@/lib/api";
 import {
   getWebstoreBranding,
+  listWebstoreSetupFiles,
   publishWebstoreBranding,
   requestWebstoreBrandingReview,
   saveWebstoreBrandingDraft,
@@ -560,8 +561,35 @@ export default function WebstoreBrandingEditor({ webstoreId, portal = false, pro
     },
     enabled: !!webstoreId,
   });
+  const setupFiles = useQuery({
+    queryKey: ["webstore-branding-setup-files", webstoreId],
+    queryFn: () => listWebstoreSetupFiles(webstoreId),
+    enabled: !!webstoreId,
+  });
   const [draftOverride, setDraftOverride] = useState(null);
-  const draft = draftOverride || branding.data?.branding?.draft || {};
+  const storedDraft = branding.data?.branding?.draft;
+  const setupAwareDraft = useMemo(() => {
+    const items = setupFiles.data?.items || setupFiles.data || [];
+    const baseDraft = storedDraft || {};
+    const activeFile = (category) => items.find((item) => item.status === "active" && item.category === category);
+    const imageForFile = (file) => file ? {
+      file_id: file.id,
+      file_name: file.file_name,
+      content_type: file.detected_content_type || file.content_type,
+      ...(file.preview_url ? { url: file.preview_url } : {}),
+    } : {};
+    const logo = activeFile("logo");
+    const banner = activeFile("banner");
+    let next = baseDraft;
+    if (logo && !baseDraft.brand_basics?.primary_logo?.file_id && !baseDraft.brand_basics?.primary_logo?.url) {
+      next = setPath(next, "brand_basics.primary_logo", imageForFile(logo));
+    }
+    if (banner && !baseDraft.hero?.image?.file_id && !baseDraft.hero?.image?.url) {
+      next = setPath(next, "hero.image", imageForFile(banner));
+    }
+    return next;
+  }, [storedDraft, setupFiles.data]);
+  const draft = draftOverride || setupAwareDraft;
   const webstore = branding.data?.webstore || {};
   const permissions = branding.data?.permissions || {};
   const validation = branding.data?.branding?.validation || { errors: [], warnings: [] };
