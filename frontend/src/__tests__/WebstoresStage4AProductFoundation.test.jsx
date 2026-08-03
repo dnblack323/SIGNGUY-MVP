@@ -21,6 +21,7 @@ import {
   getWebstoreQuestionnaire,
   getWebstoreQuestionnaireResponse,
   getWebstoreReports,
+  getWebstoreOrders,
   getWebstoreSetupProgress,
   listProductTemplates,
   listWebstoreArtwork,
@@ -67,6 +68,8 @@ jest.mock("@/lib/webstores", () => ({
   getWebstoreQuestionnaire: jest.fn(),
   getWebstoreQuestionnaireResponse: jest.fn(),
   getWebstoreReports: jest.fn(),
+  getWebstoreOrders: jest.fn(),
+  handoffWebstoreOrderToProduction: jest.fn(),
   getWebstoreSetupProgress: jest.fn(),
   listProductTemplates: jest.fn(),
   listWebstoreArtwork: jest.fn(),
@@ -168,6 +171,8 @@ beforeEach(() => {
   getLaunchReadiness.mockResolvedValue({ ready: false, checks: { payment_ready: false }, payment_unavailable_reason: "Real verified provider checkout is not connected yet." });
   getWebstorePaymentProviderStatus.mockResolvedValue({ status: { label: "Not configured", reason: "Stripe integration is disabled." }, actions: {} });
   getWebstoreReports.mockResolvedValue({ order_count: 0, gross_sales_cents: 0, ledger_totals_cents: {} });
+  getWebstoreOrders.mockResolvedValue({ items: [], total: 0 });
+  handoffWebstoreOrderToProduction.mockResolvedValue({});
   getWebstoreSetupProgress.mockResolvedValue({ setup_state: "not_started", steps: [] });
   listWebstoreAssignments.mockResolvedValue([]);
   listWebstoreSetupFiles.mockResolvedValue([

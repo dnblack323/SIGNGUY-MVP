@@ -263,8 +263,8 @@ WEBSTORE_TRANSITIONS: dict[str, set[str]] = {
     "launch_ready": {"scheduled", "paused", "live", "archived"},
     "scheduled": {"launch_ready", "paused", "live", "closed", "archived"},
     "paused": {"launch_ready", "scheduled", "closed", "archived"},
-    "live": {"closing_soon", "closed", "in_production", "completed", "archived"},
-    "closing_soon": {"closed", "archived"},
+    "live": {"closing_soon", "paused", "closed", "in_production", "completed", "archived"},
+    "closing_soon": {"paused", "closed", "archived"},
     "closed": {"relaunch_ready", "archived"},
     "in_production": {"completed", "closed", "archived"},
     "completed": {"relaunch_ready", "archived"},
@@ -1742,7 +1742,9 @@ async def create_webstore(user: dict, fields: dict[str, Any]) -> dict:
 
 async def list_webstores(user: dict, *, status: Optional[str] = None) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_READ)
-    filters = {"status": status} if status else {}
+    # Archived history remains queryable explicitly, but does not clutter the
+    # default active Webstores list.
+    filters = {"status": status} if status else {"status": {"$ne": "archived"}}
     result = await stores_repo.list(tenant_id=user["tenant_id"], filters=filters, sort=[("updated_at", -1)])
     items = []
     for item in result["items"]:
@@ -1985,7 +1987,7 @@ async def update_webstore(user: dict, webstore_id: str, updates: dict[str, Any])
 
 
 async def set_webstore_status(user: dict, webstore_id: str, status: str, reason: Optional[str] = None) -> dict:
-    _require_staff_perm(user, Perm.WEBSTORE_MANAGE if status in {"live", "launch_ready", "scheduled", "closed", "archived"} else Perm.WEBSTORE_WRITE)
+    _require_staff_perm(user, Perm.WEBSTORE_MANAGE if status in {"live", "launch_ready", "scheduled", "paused", "closed", "archived"} else Perm.WEBSTORE_WRITE)
     store = await _get_store(user["tenant_id"], webstore_id)
     _validate_transition(store.get("status", "draft"), status)
     if status == "scheduled":
@@ -2043,6 +2045,74 @@ async def set_webstore_status(user: dict, webstore_id: str, status: str, reason:
         metadata={"from": store.get("status"), "to": status, "reason": reason},
     )
     return updated or {}
+
+
+async def relaunch_webstore(user: dict, webstore_id: str, reason: Optional[str] = None) -> dict:
+    """Re-check current launch evidence before reopening a completed store."""
+    _require_staff_perm(user, Perm.WEBSTORE_MANAGE)
+    store = await _get_store(user["tenant_id"], webstore_id)
+    current_status = store.get("status", "draft")
+    if current_status not in {"closed", "completed", "relaunch_ready"}:
+        raise WebstoreError(
+            "invalid_relaunch_status",
+            "Only closed or completed Webstores can be relaunched",
+            409,
+        )
+    close_at = store.get("deadline_at") or store.get("intended_close_at")
+    if close_at:
+        try:
+            close_time = datetime.fromisoformat(str(close_at).replace("Z", "+00:00"))
+            if close_time.tzinfo and close_time <= datetime.now(timezone.utc):
+                raise WebstoreError(
+                    "relaunch_deadline_passed",
+                    "Update the Webstore closing date before relaunching it",
+                    409,
+                )
+        except ValueError:
+            pass
+    readiness = await launch_readiness(user, webstore_id)
+    if not readiness["ready"]:
+        raise WebstoreError(
+            "launch_gates_failed",
+            "Current catalog, branding, approval, payment, and date gates must pass before relaunch",
+            409,
+        )
+    if current_status != "relaunch_ready":
+        _validate_transition(current_status, "relaunch_ready")
+    updated = await stores_repo.update(
+        tenant_id=user["tenant_id"],
+        entity_id=webstore_id,
+        updates={
+            "status": "relaunch_ready",
+            "checkout_enabled": False,
+            "relaunch_requested_at": _now_iso(),
+        },
+    )
+    await _record_lifecycle_event(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        from_status=current_status,
+        to_status="relaunch_ready",
+        from_state=_phase6_state_for_status(current_status),
+        to_state="closed",
+        actor_id=user["id"],
+        actor_email=user.get("email"),
+        reason=reason,
+        metadata={"source": "relaunch_route", "readiness_rechecked": True},
+    )
+    await _audit(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        actor_type="staff",
+        actor_id=user["id"],
+        actor_email=user.get("email"),
+        action="webstore.relaunch.requested",
+        entity_type="webstore",
+        entity_id=webstore_id,
+        summary="Webstore relaunch readiness passed",
+        metadata={"from_status": current_status, "to_status": "relaunch_ready"},
+    )
+    return {"webstore": updated or {}, "readiness": readiness, "lifecycle_state": "closed"}
 
 
 async def transition_webstore_lifecycle(user: dict, webstore_id: str, lifecycle_state: str, reason: Optional[str] = None) -> dict:
@@ -4882,6 +4952,10 @@ def _checkout_response(intent: dict, *, created: bool) -> dict:
 
 async def create_purchase_intent(slug: str, fields: dict[str, Any], *, allow_internal_draft: bool = False) -> dict:
     _reject_public_money_authority(fields)
+    storefront = await _storefront_by_slug(slug)
+    store = storefront["webstore"]
+    if not allow_internal_draft and not store.get("checkout_enabled"):
+        raise WebstoreError("checkout_paused", "Checkout is currently paused for this Webstore", 409)
     provider_status = provider_configuration_status(get_settings())
     if not allow_internal_draft and not provider_status["provider_authority"]:
         raise WebstoreError(
@@ -4889,10 +4963,6 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any], *, allow_int
             "Online checkout is unavailable until the Webstore payment provider is configured and verified.",
             503,
         )
-    storefront = await _storefront_by_slug(slug)
-    store = storefront["webstore"]
-    if not allow_internal_draft and not store.get("checkout_enabled"):
-        raise WebstoreError("checkout_paused", "Checkout is currently paused for this Webstore", 409)
     full_store = await db.webstores.find_one({"public_slug": slug, "id": store["id"]}, {"_id": 0})
     tenant_id = full_store["tenant_id"]
     if fields.get("idempotency_key"):
@@ -5136,13 +5206,15 @@ async def create_buyer_order(
 
 
 async def public_confirmation(slug: str, confirmation_token: str) -> dict:
-    storefront = await _storefront_by_slug(slug)
-    store = storefront["webstore"]
-    full_store = await db.webstores.find_one({"public_slug": slug, "id": store["id"]}, {"_id": 0})
+    # Historical receipts remain available after close/archive, but only with
+    # the token issued for that purchase. No arbitrary Order ID is accepted.
+    full_store = await db.webstores.find_one({"public_slug": slug}, {"_id": 0})
+    if not full_store:
+        raise WebstoreError("confirmation_not_found", "Webstore confirmation was not found", 404)
     intent = await db.webstore_purchase_intents.find_one(
         {
             "tenant_id": full_store["tenant_id"],
-            "webstore_id": store["id"],
+            "webstore_id": full_store["id"],
             "public_slug": slug,
             "confirmation_token": confirmation_token,
             "canonical_order_id": {"$type": "string"},
@@ -5151,13 +5223,18 @@ async def public_confirmation(slug: str, confirmation_token: str) -> dict:
     )
     if not intent:
         raise WebstoreError("confirmation_not_found", "Webstore confirmation was not found", 404)
-    public_intent = serialize_doc(intent)
-    public_intent.pop("immutable_snapshot", None)
     order = await db.orders.find_one({"tenant_id": full_store["tenant_id"], "id": intent.get("canonical_order_id")}, {"_id": 0})
     return {
-        "purchase_intent": public_intent,
+        "purchase_intent": {
+            "id": intent.get("id"),
+            "buyer_name": intent.get("buyer_name"),
+            "buyer_email": intent.get("buyer_email"),
+            "total_cents": int(intent.get("total_cents") or 0),
+            "currency": intent.get("currency") or "usd",
+            "status": intent.get("status"),
+            "fulfillment_status": intent.get("fulfillment_status"),
+        },
         "order": {
-            "id": intent.get("canonical_order_id"),
             "number": (order or {}).get("number"),
             "status": (order or {}).get("status"),
             "total_cents": int(intent.get("total_cents") or 0),
@@ -5347,38 +5424,9 @@ async def bridge_buyer_order_to_order(user: dict, buyer_order_id: str) -> dict:
 
 
 async def reports(user: dict, webstore_id: str) -> dict:
-    _require_staff_perm(user, Perm.WEBSTORE_READ)
-    await _get_store(user["tenant_id"], webstore_id)
-    legacy_orders = [doc async for doc in db.webstore_buyer_orders.find({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}, {"_id": 0})]
-    purchase_intents = [
-        serialize_doc(doc)
-        async for doc in db.webstore_purchase_intents.find(
-            {"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "canonical_order_id": {"$type": "string"}},
-            {"_id": 0, "immutable_snapshot": 0},
-        )
-    ]
-    ledger = [doc async for doc in db.webstore_ledger_entries.find({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}, {"_id": 0})]
-    by_entry: dict[str, int] = {}
-    for row in ledger:
-        by_entry[row["entry_type"]] = by_entry.get(row["entry_type"], 0) + int(row.get("amount_cents") or 0)
-    product_qty: dict[str, int] = {}
-    for order in [*legacy_orders, *purchase_intents]:
-        for line in order.get("line_items") or []:
-            product_qty[line["product_id"]] = product_qty.get(line["product_id"], 0) + int(line.get("quantity") or 0)
-    gross = sum(int(o.get("total_cents") or 0) for o in purchase_intents) + sum(int(o.get("total_cents") or 0) for o in legacy_orders)
-    return {
-        "webstore_id": webstore_id,
-        "order_count": len(purchase_intents) + len(legacy_orders),
-        "canonical_order_count": len(purchase_intents),
-        "legacy_order_count": len(legacy_orders),
-        "gross_sales_cents": gross,
-        "refund_total_cents": abs(by_entry.get("refund", 0)),
-        "payout_total_cents": by_entry.get("payout", 0),
-        "dispute_hold_cents": abs(by_entry.get("dispute_hold", 0)),
-        "ledger_totals_cents": by_entry,
-        "product_quantities": product_qty,
-        "purchase_intents": purchase_intents,
-    }
+    from . import webstore_reports
+
+    return await webstore_reports.staff_report(user, webstore_id)
 
 
 async def refund_webstore_payment(user: dict, webstore_id: str, payment_id: str, fields: dict[str, Any], idempotency_key: Optional[str] = None) -> dict:
@@ -5446,10 +5494,11 @@ async def owner_portal_list(identity: dict) -> dict:
         assignments = [doc["webstore_id"] for doc in assignment_records if doc.get("status") == "active"]
         return await stores_repo.list(
             tenant_id=identity["tenant_id"],
-            filters={"id": {"$in": assignments}},
+            filters={"id": {"$in": assignments}, "status": {"$ne": "archived"}},
             sort=[("updated_at", -1)],
         )
     filters = {"owner_id": identity["webstore_owner_id"]}
+    filters["status"] = {"$ne": "archived"}
     if identity.get("portal_type") == "webstore_manager":
         if not identity.get("webstore_id"):
             raise WebstoreError("webstore_manager_assignment_required", "Webstore manager scope is required", 403)
@@ -5504,7 +5553,9 @@ async def owner_portal_detail(identity: dict, webstore_id: str) -> dict:
             "owner_wording": "Payment setup is not live yet.",
         },
     ]
-    owner_report = await reports({"tenant_id": identity["tenant_id"], "role": "owner", "id": identity.get("id"), "email": identity.get("email")}, webstore_id)
+    from . import webstore_reports
+
+    owner_report = await webstore_reports.owner_summary(identity["tenant_id"], webstore_id)
     return {
         "webstore": _portal_store(store),
         "products": products,

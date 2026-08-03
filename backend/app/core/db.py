@@ -64,11 +64,21 @@ async def ensure_indexes() -> None:
     await db.quotes.create_index([("tenant_id", 1), ("number", 1)], unique=True, sparse=True)
     await db.orders.create_index([("tenant_id", 1), ("number", 1)], unique=True, sparse=True)
     await db.work_orders.create_index([("tenant_id", 1), ("number", 1)], unique=True, sparse=True)
+    await db.work_orders.create_index(
+        [("tenant_id", 1), ("current_order_key", 1)],
+        unique=True,
+        partialFilterExpression={"current_order_key": {"$type": "string"}},
+    )
     await db.invoices.create_index([("tenant_id", 1), ("number", 1)], unique=True, sparse=True)
     await db.customers.create_index(
         [("tenant_id", 1), ("number", 1)],
         unique=True,
         partialFilterExpression={"number": {"$type": "int"}},
+    )
+    await db.customers.create_index(
+        [("tenant_id", 1), ("email", 1)],
+        unique=True,
+        partialFilterExpression={"email": {"$type": "string"}},
     )
 
     # One invoice per order (enforced) — user preference

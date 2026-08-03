@@ -8,6 +8,7 @@ from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.work_order import WorkOrder, effective_status
 from ..services.audit import record_audit
 from ..services.sequence import next_number
+from pymongo.errors import DuplicateKeyError
 
 
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
@@ -72,6 +73,7 @@ async def generate(
     wo = WorkOrder(
         tenant_id=tenant_id, number=number,
         order_id=order_id, customer_id=order["customer_id"],
+        current_order_key=f"{tenant_id}:{order_id}" if not allow_duplicate else None,
         production_status="draft", priority=priority,  # type: ignore[arg-type]
         due_date=due_date, production_instructions=production_instructions,
         internal_notes=internal_notes,
@@ -79,7 +81,16 @@ async def generate(
         assigned_to=(assigned_user_ids or [None])[0],
         items_snapshot=items, created_by=actor_user_id,
     )
-    await db.work_orders.insert_one(prepare_for_mongo(wo.model_dump()))
+    try:
+        await db.work_orders.insert_one(prepare_for_mongo(wo.model_dump()))
+    except DuplicateKeyError:
+        existing = await db.work_orders.find_one(
+            {"tenant_id": tenant_id, "order_id": order_id, "current_version": True},
+            {"_id": 0},
+        )
+        if existing:
+            return serialize_doc(existing), True
+        raise
     await record_audit(
         tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
         action="work_order.create", entity_type="work_order", entity_id=wo.id,

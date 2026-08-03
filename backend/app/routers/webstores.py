@@ -6,7 +6,12 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
-from ..deps import get_current_user
+from ..core.permissions import Perm
+from ..deps import get_current_user, require_permission
+from ..services import webstore_payments
+from ..services import webstore_orders as webstore_orders_svc
+from ..services import webstore_production
+from ..services import webstore_reports
 from ..services import webstore_setup as setup_svc
 from ..services import webstore_branding as branding_svc
 from ..services import webstores as svc
@@ -93,6 +98,10 @@ class LifecycleTransitionIn(BaseModel):
     reason: Optional[str] = None
 
 
+class RelaunchIn(BaseModel):
+    reason: Optional[str] = None
+
+
 class QuestionnaireSendIn(BaseModel):
     email: Optional[str] = None
     name: Optional[str] = None
@@ -100,6 +109,10 @@ class QuestionnaireSendIn(BaseModel):
 
 class LifecycleRevisionIn(BaseModel):
     expected_revision: StrictInt = Field(ge=1)
+
+
+class VerifiedPaymentHandoffIn(BaseModel):
+    purchase_intent_id: str = Field(min_length=1, max_length=120)
 
 
 class TemplateIn(BaseModel):
@@ -478,6 +491,14 @@ async def transition_lifecycle(webstore_id: str, payload: LifecycleTransitionIn,
         _raise(e)
 
 
+@router.post("/{webstore_id}/relaunch")
+async def relaunch(webstore_id: str, payload: RelaunchIn, user: dict = Depends(require_permission(Perm.WEBSTORE_MANAGE))) -> dict:
+    try:
+        return await svc.relaunch_webstore(user, webstore_id, reason=payload.reason)
+    except WebstoreError as e:
+        _raise(e)
+
+
 @router.get("/{webstore_id}/lifecycle-events")
 async def lifecycle_events(webstore_id: str, limit: int = Query(30, ge=1, le=100), user: dict = Depends(get_current_user)) -> dict:
     try:
@@ -494,10 +515,58 @@ async def launch_readiness(webstore_id: str, user: dict = Depends(get_current_us
         _raise(e)
 
 
+@router.post("/{webstore_id}/orders/handoff")
+async def complete_verified_payment_handoff(
+    webstore_id: str,
+    payload: VerifiedPaymentHandoffIn,
+    user: dict = Depends(require_permission(Perm.WEBSTORE_MANAGE)),
+) -> dict:
+    try:
+        return await webstore_payments.complete_verified_payment_handoff(
+            tenant_id=user["tenant_id"],
+            webstore_id=webstore_id,
+            purchase_intent_id=payload.purchase_intent_id,
+            actor_user_id=user["id"],
+            actor_email=user["email"],
+        )
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.get("/{webstore_id}/orders")
+async def webstore_orders(
+    webstore_id: str,
+    status: Optional[str] = Query(None, min_length=1, max_length=40),
+    limit: int = Query(50, ge=1, le=100),
+    user: dict = Depends(require_permission(Perm.WEBSTORE_READ)),
+) -> dict:
+    try:
+        return await webstore_orders_svc.list_webstore_orders(
+            user,
+            webstore_id,
+            status=status,
+            limit=limit,
+        )
+    except WebstoreError as e:
+        _raise(e)
+
+
 @router.get("/{webstore_id}/reports")
 async def reports(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
     try:
-        return await svc.reports(user, webstore_id)
+        return await webstore_reports.staff_report(user, webstore_id)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/orders/{order_id}/production-handoff")
+async def production_handoff(
+    webstore_id: str,
+    order_id: str,
+    user: dict = Depends(require_permission(Perm.WEBSTORE_MANAGE)),
+) -> dict:
+    try:
+        return await webstore_production.handoff_webstore_order_to_production(user, webstore_id, order_id)
     except WebstoreError as e:
         _raise(e)
 
