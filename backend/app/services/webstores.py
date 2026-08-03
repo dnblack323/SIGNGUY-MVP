@@ -406,6 +406,13 @@ def _clean_optional_text(value: Any, *, limit: int = 2000) -> Optional[str]:
     return text[:limit] if text else None
 
 
+def _clean_public_email(value: Any) -> str:
+    email = str(value or "").strip().lower()
+    if len(email) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise WebstoreError("buyer_email_invalid", "Enter a valid email address", 400)
+    return email
+
+
 def _collect_nested_file_ids(value: Any) -> set[str]:
     file_ids: set[str] = set()
     if isinstance(value, dict):
@@ -4866,7 +4873,7 @@ async def quote_public_cart(slug: str, fields: dict[str, Any]) -> dict:
         quantity = int(raw.get("quantity") or 0)
         if quantity < 1 or quantity > 99:
             raise WebstoreError("invalid_quantity", "Quantity must be between 1 and 99", 400)
-        variant = raw.get("variant") or {}
+        variant = raw.get("variant") if isinstance(raw.get("variant"), dict) else {}
         if full_product.get("variants") and not variant:
             raise WebstoreError("variant_required", "Choose an available product option", 400)
         if not _variant_allowed(full_product.get("variants") or [], variant):
@@ -4884,6 +4891,11 @@ async def quote_public_cart(slug: str, fields: dict[str, Any]) -> dict:
             else:
                 unit_price += int(matched_variant.get("price_delta_cents") or 0)
         line_total = unit_price * quantity
+        inventory_policy = str(full_product.get("inventory_policy") or "not_tracked").lower()
+        if inventory_policy in {"track", "tracked", "finite"}:
+            available = matched_variant.get("inventory_quantity") if matched_variant else full_product.get("inventory_quantity")
+            if available not in (None, "") and quantity > int(available):
+                raise WebstoreError("insufficient_inventory", "That product option does not have enough inventory", 409)
         line_shipping = int(full_product.get("shipping_cost_cents") or 0) * quantity if selected_method == "shipping" else 0
         subtotal += line_total
         shipping += line_shipping
@@ -4949,7 +4961,6 @@ async def quote_public_cart(slug: str, fields: dict[str, Any]) -> dict:
 
 
 UNAUTHORIZED_PUBLIC_MONEY_FIELDS = {
-    "donation_cents",
     "shipping_cents",
     "tax_cents",
     "discount_cents",
@@ -4973,6 +4984,11 @@ def _variant_allowed(configured: list[dict[str, Any]], supplied: dict[str, Any])
     if not supplied:
         return True
     for option in configured or []:
+        option_status = str(option.get("status") or "active").lower()
+        if option_status in {"inactive", "archived", "unavailable"} or option.get("available") is False:
+            continue
+        if option.get("inventory_quantity") not in (None, "") and int(option["inventory_quantity"]) <= 0:
+            continue
         if all(str(option.get(k)) == str(v) for k, v in supplied.items()):
             return True
     return False
@@ -4981,11 +4997,41 @@ def _variant_allowed(configured: list[dict[str, Any]], supplied: dict[str, Any])
 def _validate_personalization(product: dict, supplied: dict[str, Any]) -> None:
     if not product.get("personalization_enabled"):
         return
+    if not isinstance(supplied, dict) or len(supplied) > 20:
+        raise WebstoreError("personalization_invalid", "Personalization details are invalid", 400)
     missing: list[str] = []
+    allowed_keys: set[str] = set()
     for field in product.get("personalization_fields") or []:
         key = field.get("key") or field.get("name") or field.get("id")
+        if not key:
+            continue
+        key = str(key)
+        allowed_keys.add(key)
+        value = supplied.get(key)
         if bool(field.get("required")) and key and not str(supplied.get(key) or "").strip():
             missing.append(str(key))
+        if value in (None, ""):
+            continue
+        field_type = str(field.get("type") or "text").lower()
+        if field_type in {"text", "textarea", "date"} and not isinstance(value, str):
+            raise WebstoreError("personalization_invalid", f"Personalization field {key} is invalid", 400)
+        if field_type in {"text", "textarea"} and len(value) > int(field.get("max_length") or (2000 if field_type == "textarea" else 500)):
+            raise WebstoreError("personalization_too_long", f"Personalization field {key} is too long", 400)
+        if field_type in {"number", "numeric"}:
+            try:
+                float(value)
+            except (TypeError, ValueError) as exc:
+                raise WebstoreError("personalization_invalid", f"Personalization field {key} must be a number", 400) from exc
+        if field_type in {"select", "dropdown", "radio"}:
+            options = {str(item.get("value", item.get("id", item.get("label", item)))) for item in field.get("options") or []}
+            if options and str(value) not in options:
+                raise WebstoreError("personalization_invalid", f"Personalization field {key} has an invalid choice", 400)
+        if field_type in {"multi_select", "multiselect", "checkboxes"}:
+            if not isinstance(value, list) or len(value) > 20:
+                raise WebstoreError("personalization_invalid", f"Personalization field {key} must be a list", 400)
+    unknown = set(supplied) - allowed_keys
+    if unknown:
+        raise WebstoreError("personalization_invalid", "Unknown personalization fields were supplied", 400)
     if missing:
         raise WebstoreError("personalization_required", "Required personalization fields are missing", 400)
 
@@ -5002,7 +5048,7 @@ def _checkout_response(intent: dict, *, created: bool) -> dict:
             "provider_checkout_id": intent.get("provider_checkout_id"),
             "payment_required": True,
             "payment_authority": "none",
-            "verified_payment_creates_order": False,
+            "verified_payment_creates_order": True,
             "unavailable_reason": "Provider checkout is unavailable until this Webstore's payment authority is enabled.",
         },
         "created": created,
@@ -5013,7 +5059,7 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any], *, allow_int
     _reject_public_money_authority(fields)
     storefront = await _storefront_by_slug(slug)
     store = storefront["webstore"]
-    if not allow_internal_draft and not store.get("checkout_enabled"):
+    if not allow_internal_draft and store.get("status") in LIVE_BLOCKING_STATUSES | {"paused"}:
         raise WebstoreError("checkout_paused", "Checkout is currently paused for this Webstore", 409)
     provider_status = provider_configuration_status(get_settings())
     if not allow_internal_draft and not provider_status["provider_authority"]:
@@ -5022,6 +5068,8 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any], *, allow_int
             "Online checkout is unavailable until the Webstore payment provider is configured and verified.",
             503,
         )
+    if not allow_internal_draft and not store.get("checkout_enabled"):
+        raise WebstoreError("checkout_paused", "Checkout is currently paused for this Webstore", 409)
     full_store = await db.webstores.find_one({"public_slug": slug, "id": store["id"]}, {"_id": 0})
     tenant_id = full_store["tenant_id"]
     if fields.get("idempotency_key"):
@@ -5031,25 +5079,27 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any], *, allow_int
         )
         if existing:
             return _checkout_response(existing, created=False)
-    product_map = {p["id"]: p for p in storefront["products"]}
+    quote = await quote_public_cart(slug, fields)
     line_items: list[dict[str, Any]] = []
     financial_lines: list[dict[str, Any]] = []
-    subtotal = 0
-    for raw in fields.get("line_items") or []:
-        product_id = raw.get("product_id")
-        product = product_map.get(product_id)
-        if not product:
-            raise WebstoreError("product_not_available", "Product is not available for checkout", 409)
-        qty = int(raw.get("quantity") or 0)
-        if qty <= 0:
-            raise WebstoreError("invalid_quantity", "Quantity must be at least 1", 400)
+    for line in quote["line_items"]:
+        product_id = line["product_id"]
+        qty = int(line["quantity"])
         full_product = await _get_product(tenant_id, product_id, store["id"])
-        if not _variant_allowed(full_product.get("variants") or [], raw.get("variant") or {}):
-            raise WebstoreError("variant_not_available", "Selected product variant is not available for checkout", 409)
-        _validate_personalization(full_product, raw.get("personalization") or {})
-        unit = int(full_product["selling_price_cents"])
-        line_total = unit * qty
-        subtotal += line_total
+        line_items.append(
+            {
+                **line,
+                "product_snapshot": {
+                    "id": product_id,
+                    "name": full_product["name"],
+                    "description": full_product.get("description"),
+                    "category": full_product.get("category"),
+                    "product_type": full_product.get("product_type"),
+                    "sku": full_product.get("sku"),
+                },
+            }
+        )
+        line_total = int(line["line_total_cents"])
         fee_bps = int(full_product.get("platform_fee_basis_points") or 0)
         financial_lines.append(
             {
@@ -5062,37 +5112,20 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any], *, allow_int
                 "production_cost_cents": int(full_product.get("production_cost_cents") or 0) * qty,
             }
         )
-        line_items.append(
-            {
-                "product_id": product_id,
-                "product_snapshot": {
-                    "id": product_id,
-                    "name": full_product["name"],
-                    "description": full_product.get("description"),
-                    "category": full_product.get("category"),
-                    "product_type": full_product.get("product_type"),
-                    "sku": full_product.get("sku"),
-                },
-                "name": full_product["name"],
-                "variant": raw.get("variant") or {},
-                "quantity": qty,
-                "unit_price_cents": unit,
-                "line_total_cents": line_total,
-                "personalization": raw.get("personalization") or {},
-            }
-        )
-    if not line_items:
-        raise WebstoreError("line_items_required", "At least one line item is required", 400)
-    total = subtotal
+    subtotal = int(quote["subtotal_cents"])
+    total = int(quote["total_cents"])
     intent = WebstorePurchaseIntent(
         tenant_id=tenant_id,
         webstore_id=store["id"],
         public_slug=slug,
         buyer_name=_clean_text(fields.get("buyer_name"), "buyer_name"),
-        buyer_email=_clean_text(fields.get("buyer_email"), "buyer_email", limit=254).lower(),
+        buyer_email=_clean_public_email(fields.get("buyer_email")),
         buyer_phone=_clean_optional_text(fields.get("buyer_phone"), limit=40),
         line_items=line_items,
         product_subtotal_cents=subtotal,
+        donation_cents=int(quote["donation_cents"]),
+        shipping_cents=int(quote["shipping_cents"]),
+        discount_cents=int(quote["discount_cents"]),
         total_cents=total,
         idempotency_key=fields.get("idempotency_key"),
         immutable_snapshot={
@@ -5100,10 +5133,10 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any], *, allow_int
             "line_items": line_items,
             "server_calculated_totals": {
                 "product_subtotal_cents": subtotal,
-                "donation_cents": 0,
-                "shipping_cents": 0,
+                "donation_cents": int(quote["donation_cents"]),
+                "shipping_cents": int(quote["shipping_cents"]),
                 "tax_cents": 0,
-                "discount_cents": 0,
+                "discount_cents": int(quote["discount_cents"]),
                 "fee_cents": 0,
                 "total_cents": total,
                 "currency": "usd",
@@ -5152,7 +5185,7 @@ def _provider_checkout_response(intent: dict, provider_data: dict[str, Any], *, 
             "checkout_url": intent.get("checkout_url"),
             "payment_required": True,
             "payment_authority": "verified_provider_event",
-            "verified_payment_creates_order": False,
+            "verified_payment_creates_order": True,
             "status": provider_data.get("checkout_status") or "open",
         },
         "created": created,
