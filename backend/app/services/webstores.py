@@ -99,6 +99,7 @@ PHASE6_LIFECYCLE_STATES = (
     "payment_setup_pending",
     "ready_to_launch",
     "live",
+    "paused",
     "closed",
     "archived",
 )
@@ -262,7 +263,7 @@ WEBSTORE_TRANSITIONS: dict[str, set[str]] = {
     "approved": {"launch_ready", "scheduled", "live", "archived"},
     "launch_ready": {"scheduled", "paused", "live", "archived"},
     "scheduled": {"launch_ready", "paused", "live", "closed", "archived"},
-    "paused": {"launch_ready", "scheduled", "closed", "archived"},
+    "paused": {"launch_ready", "scheduled", "live", "closed", "archived"},
     "live": {"closing_soon", "paused", "closed", "in_production", "completed", "archived"},
     "closing_soon": {"paused", "closed", "archived"},
     "closed": {"relaunch_ready", "archived"},
@@ -277,8 +278,9 @@ PHASE6_LIFECYCLE_TRANSITIONS: dict[str, set[str]] = {
     "setup_in_progress": {"owner_review", "archived"},
     "owner_review": {"setup_in_progress", "payment_setup_pending", "archived"},
     "payment_setup_pending": {"owner_review", "ready_to_launch", "archived"},
-    "ready_to_launch": {"payment_setup_pending", "live", "closed", "archived"},
-    "live": {"closed", "archived"},
+    "ready_to_launch": {"payment_setup_pending", "live", "paused", "closed", "archived"},
+    "live": {"paused", "closed", "archived"},
+    "paused": {"ready_to_launch", "live", "closed", "archived"},
     "closed": {"archived"},
     "archived": set(),
 }
@@ -290,6 +292,7 @@ PHASE6_TO_INTERNAL_STATUS = {
     "payment_setup_pending": "approved",
     "ready_to_launch": "launch_ready",
     "live": "live",
+    "paused": "paused",
     "closed": "closed",
     "archived": "archived",
 }
@@ -310,7 +313,7 @@ INTERNAL_STATUS_TO_PHASE6 = {
     "approved": "payment_setup_pending",
     "launch_ready": "ready_to_launch",
     "scheduled": "ready_to_launch",
-    "paused": "ready_to_launch",
+    "paused": "paused",
     "live": "live",
     "closing_soon": "live",
     "in_production": "live",
@@ -679,9 +682,65 @@ def _validate_phase6_transition(current: str, requested: str) -> None:
         raise WebstoreError("invalid_lifecycle_transition", f"Cannot move Webstore from {current} to {requested}", 409)
 
 
+def _validate_status_change(current_status: str, requested_status: str) -> None:
+    """Apply the canonical Phase 6 gate plus internal setup-state rules."""
+    _validate_transition(current_status, requested_status)
+    current_phase = _phase6_state_for_status(current_status)
+    requested_phase = _phase6_state_for_status(requested_status)
+    if current_phase != requested_phase:
+        _validate_phase6_transition(current_phase, requested_phase)
+
+
 def _require_staff_perm(user: dict, perm: Perm) -> None:
     if perm.value not in set(permissions_for_role(user.get("role", "staff"))):
         raise WebstoreError("permission_denied", f"Missing permission: {perm.value}", 403)
+
+
+async def _require_webstore_assignment_scope(user: dict, webstore_id: str) -> None:
+    """Enforce explicit active Webstore assignments when they exist for a user.
+
+    Tenant owners/admins without an assignment remain tenant-wide. A user with
+    an active assignment is restricted to the stores assigned to that account;
+    this keeps staff routes consistent with the portal assignment authority.
+    """
+    assigned_store_id = user.get("webstore_id")
+    assigned_store_ids = {str(value) for value in (user.get("webstore_ids") or [])}
+    if assigned_store_id and str(assigned_store_id) != webstore_id:
+        raise WebstoreError(
+            "webstore_assignment_scope_forbidden",
+            "Webstore access is limited to the assigned Webstore",
+            403,
+        )
+    if assigned_store_ids and webstore_id not in assigned_store_ids:
+        raise WebstoreError(
+            "webstore_assignment_scope_forbidden",
+            "Webstore access is limited to assigned Webstores",
+            403,
+        )
+
+    identity_filters = [{"portal_identity_id": str(user.get("id"))}]
+    email = str(user.get("email") or "").strip().lower()
+    if email:
+        identity_filters.append({"email": email})
+    assignments = [
+        doc
+        async for doc in db.webstore_access_assignments.find(
+            {
+                "tenant_id": user["tenant_id"],
+                "status": "active",
+                "$or": identity_filters,
+            },
+            {"_id": 0, "webstore_id": 1},
+        )
+    ]
+    if assignments:
+        allowed_store_ids = {str(doc["webstore_id"]) for doc in assignments if doc.get("webstore_id")}
+        if webstore_id not in allowed_store_ids:
+            raise WebstoreError(
+                "webstore_assignment_scope_forbidden",
+                "Webstore access is limited to assigned Webstores",
+                403,
+            )
 
 
 def _require_platform_creator(user: dict) -> None:
@@ -1989,7 +2048,7 @@ async def update_webstore(user: dict, webstore_id: str, updates: dict[str, Any])
 async def set_webstore_status(user: dict, webstore_id: str, status: str, reason: Optional[str] = None) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_MANAGE if status in {"live", "launch_ready", "scheduled", "paused", "closed", "archived"} else Perm.WEBSTORE_WRITE)
     store = await _get_store(user["tenant_id"], webstore_id)
-    _validate_transition(store.get("status", "draft"), status)
+    _validate_status_change(store.get("status", "draft"), status)
     if status == "scheduled":
         raise WebstoreError(
             "webstore_scheduling_deferred",
@@ -2078,7 +2137,7 @@ async def relaunch_webstore(user: dict, webstore_id: str, reason: Optional[str] 
             409,
         )
     if current_status != "relaunch_ready":
-        _validate_transition(current_status, "relaunch_ready")
+        _validate_status_change(current_status, "relaunch_ready")
     updated = await stores_repo.update(
         tenant_id=user["tenant_id"],
         entity_id=webstore_id,
@@ -2120,8 +2179,8 @@ async def transition_webstore_lifecycle(user: dict, webstore_id: str, lifecycle_
     _require_staff_perm(user, Perm.WEBSTORE_MANAGE if requested_state in {"ready_to_launch", "live", "closed", "archived"} else Perm.WEBSTORE_WRITE)
     store = await _get_store(user["tenant_id"], webstore_id)
     current_state = _phase6_state_for_status(store.get("status", "draft"))
-    _validate_phase6_transition(current_state, requested_state)
     target_status = PHASE6_TO_INTERNAL_STATUS[requested_state]
+    _validate_status_change(store.get("status", "draft"), target_status)
     if requested_state in {"ready_to_launch", "live"}:
         readiness = await launch_readiness(user, webstore_id)
         if not readiness["ready"]:

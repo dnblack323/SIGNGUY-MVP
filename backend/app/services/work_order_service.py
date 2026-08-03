@@ -1,6 +1,7 @@
 """EC5 — Work Order service: generation, transitions, versioning, summary."""
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, Optional
 
 from ..core.db import db
@@ -24,14 +25,23 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
 }
 
 
-async def _snapshot_items(tenant_id: str, order_id: str) -> list[dict]:
+async def _snapshot_items(
+    tenant_id: str,
+    order_id: str,
+    *,
+    source_context: Optional[dict[str, Any]] = None,
+) -> list[dict]:
     items = []
+    source_context = source_context or {}
     async for it in db.order_items.find(
         {"tenant_id": tenant_id, "order_id": order_id}, {"_id": 0}
     ).sort("position", 1):
         if not it.get("production_required", True):
             continue
-        items.append({
+        pricing_snapshot = it.get("pricing_snapshot") or {}
+        line = pricing_snapshot.get("line_item") if isinstance(pricing_snapshot, dict) else {}
+        line = line if isinstance(line, dict) else {}
+        snapshot = {
             "order_item_id": it["id"],
             "description": it["description"],
             "quantity": int(it.get("quantity", 1)),
@@ -44,7 +54,25 @@ async def _snapshot_items(tenant_id: str, order_id: str) -> list[dict]:
             "material_key": it.get("material_key"),
             "notes": it.get("notes"),
             "production_required": True,
-        })
+            "source_type": it.get("source_type"),
+            "source_id": it.get("source_id"),
+        }
+        if source_context.get("webstore_id"):
+            snapshot.update(
+                {
+                    "webstore_id": source_context["webstore_id"],
+                    "purchase_intent_id": source_context.get("purchase_intent_id"),
+                    "product_id": line.get("product_id") or it.get("saved_item_id"),
+                    "variant_id": line.get("variant_id"),
+                    "public_title": line.get("name") or it.get("description"),
+                    "selected_options": deepcopy(line.get("selected_options") or {}),
+                    "fulfillment_method": line.get("fulfillment_method"),
+                    "image_reference": deepcopy(line.get("image_reference")),
+                    "production_mapping": deepcopy(line.get("production_mapping") or {}),
+                    "production_instructions": deepcopy(line.get("production_instructions")),
+                }
+            )
+        items.append(snapshot)
     return items
 
 
@@ -53,6 +81,7 @@ async def generate(
     priority: str = "normal", due_date: Optional[str] = None,
     production_instructions: Optional[str] = None, internal_notes: Optional[str] = None,
     assigned_user_ids: Optional[list[str]] = None, allow_duplicate: bool = False,
+    source_context: Optional[dict[str, Any]] = None,
 ) -> tuple[dict, bool]:
     order = await db.orders.find_one({"id": order_id, "tenant_id": tenant_id})
     if not order:
@@ -65,7 +94,7 @@ async def generate(
         if existing:
             return serialize_doc({k: v for k, v in existing.items() if k != "_id"}), True
 
-    items = await _snapshot_items(tenant_id, order_id)
+    items = await _snapshot_items(tenant_id, order_id, source_context=source_context)
     if not items:
         raise ValueError("no_production_required_items")
 

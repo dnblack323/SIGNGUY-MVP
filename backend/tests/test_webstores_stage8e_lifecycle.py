@@ -63,6 +63,26 @@ async def test_close_pause_and_archive_block_checkout_but_preserve_history():
 
 
 @pytest.mark.asyncio
+async def test_phase6_lifecycle_route_uses_canonical_pause_and_reopen_gate(monkeypatch: pytest.MonkeyPatch):
+    await ensure_indexes()
+    ctx = await _seed_store(uuid.uuid4().hex[:8])
+    user = _user(ctx["tenant_id"])
+
+    async def ready_readiness(_user: dict, _webstore_id: str) -> dict:
+        return {"ready": True, "gates": [], "payment_readiness": {"provider_authority": True}}
+
+    monkeypatch.setattr(svc, "launch_readiness", ready_readiness)
+
+    paused = await svc.transition_webstore_lifecycle(user, ctx["webstore_id"], "paused", reason="Temporarily paused")
+    assert paused["webstore"]["status"] == "paused"
+    assert paused["lifecycle_state"] == "paused"
+
+    reopened = await svc.transition_webstore_lifecycle(user, ctx["webstore_id"], "live", reason="Reopened")
+    assert reopened["webstore"]["status"] == "live"
+    assert reopened["lifecycle_state"] == "live"
+
+
+@pytest.mark.asyncio
 async def test_closed_and_archived_confirmation_uses_token_and_safe_receipt_only():
     await ensure_indexes()
     suffix = uuid.uuid4().hex[:8]
