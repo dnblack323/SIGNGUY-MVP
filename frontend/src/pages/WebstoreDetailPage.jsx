@@ -50,6 +50,8 @@ import {
   generateLaunchPacket,
   getLaunchReadiness,
   getWebstorePaymentProviderStatus,
+  getWebstoreOrders,
+  handoffWebstoreOrderToProduction,
   getWebstoreSetupProgress,
   getWebstore,
   getWebstoreReports,
@@ -82,6 +84,7 @@ import {
   submitWebstoreMockupApproval,
   submitWebstoreProductApproval,
   requestWebstorePaymentProviderAction,
+  relaunchWebstore,
 } from "@/lib/webstores";
 import { toast } from "sonner";
 
@@ -390,6 +393,11 @@ export default function WebstoreDetailPage() {
     queryFn: () => getWebstoreReports(id),
     enabled: !!id,
   });
+  const orders = useQuery({
+    queryKey: ["webstore-orders", id],
+    queryFn: () => getWebstoreOrders(id, { limit: 20 }),
+    enabled: !!id,
+  });
   const activity = useQuery({
     queryKey: ["webstore-activity", id],
     queryFn: () => listWebstoreActivity(id, { limit: 20 }),
@@ -450,6 +458,7 @@ export default function WebstoreDetailPage() {
       qc.invalidateQueries({ queryKey: ["webstore-readiness", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-payment-provider", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-reports", id] }),
+      qc.invalidateQueries({ queryKey: ["webstore-orders", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-activity", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-setup-progress", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-assignments", id] }),
@@ -461,6 +470,14 @@ export default function WebstoreDetailPage() {
       qc.invalidateQueries({ queryKey: ["webstore-product-templates"] }),
     ]);
   };
+  const productionHandoff = useMutation({
+    mutationFn: (orderId) => handoffWebstoreOrderToProduction(id, orderId),
+    onSuccess: async (data) => {
+      toast.success(data?.not_required ? "No production handoff is required" : "Order sent to production");
+      await refresh();
+    },
+    onError: (err) => toast.error(extractError(err)),
+  });
   const addAssignment = useMutation({
     mutationFn: () => createWebstoreAssignment(id, assignment),
     onSuccess: async (data) => {
@@ -812,6 +829,14 @@ export default function WebstoreDetailPage() {
     },
     onError: (err) => toast.error(extractError(err)),
   });
+  const relaunch = useMutation({
+    mutationFn: () => relaunchWebstore(id, "Staff requested Webstore relaunch"),
+    onSuccess: async () => {
+      toast.success("Relaunch gates passed; review and launch the Webstore");
+      await refresh();
+    },
+    onError: (err) => toast.error(extractError(err)),
+  });
   const paymentProviderAction = useMutation({
     mutationFn: (action) => requestWebstorePaymentProviderAction(id, action),
     onSuccess: async (result, action) => {
@@ -1014,10 +1039,13 @@ export default function WebstoreDetailPage() {
     (assignments.data || []).find((item) => item.role === "owner") ||
     (assignments.data || [])[0];
   const questionnaireSubmission = questionnaireResponse.data?.submission;
-  const questionnaireAnswers =
-    questionnaireSubmission?.submitted_snapshot?.answers ||
-    questionnaireSubmission?.answers ||
-    {};
+  const questionnaireAnswers = useMemo(
+    () =>
+      questionnaireSubmission?.submitted_snapshot?.answers ||
+      questionnaireSubmission?.answers ||
+      {},
+    [questionnaireSubmission],
+  );
   const questionnaireReviewTemplate = useMemo(
     () => ({
       sections: (questionnaire.data?.templates || []).flatMap(
@@ -1159,6 +1187,18 @@ export default function WebstoreDetailPage() {
               <Mail className="size-4 mr-2" />
               Send Questionnaire
             </Button>
+            {["closed", "completed"].includes(store.status) && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={relaunch.isPending}
+                onClick={() => relaunch.mutate()}
+                data-testid="webstore-relaunch"
+              >
+                <RotateCcw className="size-4 mr-2" />
+                {relaunch.isPending ? "Checking..." : "Prepare Relaunch"}
+              </Button>
+            )}
             {store.status === "live" &&
             (store.public_url || store.public_slug || store.slug) ? (
               <Button asChild variant="outline" size="sm">
@@ -2072,6 +2112,76 @@ export default function WebstoreDetailPage() {
                 </CardContent>
               </Card>
             )}
+            <Card data-testid="webstore-orders-panel">
+              <CardHeader className="flex flex-row items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">Orders</CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Paid Webstore purchases from the canonical Orders system.
+                  </p>
+                </div>
+                <Badge variant="outline">
+                  {orders.data?.total ?? orders.data?.items?.length ?? 0}
+                </Badge>
+              </CardHeader>
+              <CardContent>
+                {orders.isLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading orders...</p>
+                ) : orders.isError ? (
+                  <p className="text-sm text-destructive">Orders could not be loaded.</p>
+                ) : (orders.data?.items || []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No paid Webstore orders yet.</p>
+                ) : (
+                  <div className="space-y-2" data-testid="webstore-orders-list">
+                    {(orders.data?.items || []).map((order) => (
+                      <div
+                        key={order.id}
+                        className="grid gap-2 rounded-md border p-3 text-sm md:grid-cols-[1fr_auto_auto_auto] md:items-center"
+                        data-testid={`webstore-order-${order.id}`}
+                      >
+                        <div>
+                          <div className="font-medium">
+                            Order #{order.number ?? order.id}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {order.customer?.name || order.customer?.email || "Customer"}
+                            {order.created_at ? ` · ${formatDateTime(order.created_at)}` : ""}
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="w-fit capitalize">
+                          {formatLabel(order.payment?.status || order.status)}
+                        </Badge>
+                        <Badge variant="outline" className="w-fit capitalize">
+                          {formatLabel(order.fulfillment?.status || "awaiting production")}
+                        </Badge>
+                        <div className="font-semibold md:text-right">
+                          {centsToDollarsString(order.total_cents)}
+                        </div>
+                        {(order.fulfillment?.production_bridge_status === "not_started" ||
+                          order.fulfillment?.status === "awaiting_production_handoff") && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="md:col-start-4 md:justify-self-end"
+                            disabled={productionHandoff.isPending}
+                            onClick={() => productionHandoff.mutate(order.id)}
+                            data-testid={`webstore-production-handoff-${order.id}`}
+                          >
+                            {productionHandoff.isPending ? "Sending..." : "Send to Production"}
+                          </Button>
+                        )}
+                        {order.items?.length > 0 && (
+                          <div className="text-xs text-muted-foreground md:col-span-4">
+                            {order.items.map((item) => `${item.quantity} × ${item.description}`).join(", ")}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent

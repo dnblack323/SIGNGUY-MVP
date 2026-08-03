@@ -20,6 +20,8 @@ import {
   getWebstoreSetupProgress,
   getWebstore,
   getWebstoreReports,
+  getWebstoreOrders,
+  handoffWebstoreOrderToProduction,
   getWebstoreBranding,
   listWebstoreAssignments,
   listWebstoreSetupFiles,
@@ -52,6 +54,7 @@ import {
   listWebstoreProductCategories,
   updateWebstoreProductCategory,
   requestWebstorePaymentProviderAction,
+  relaunchWebstore,
   sendWebstoreQuestionnaire,
 } from "@/lib/webstores";
 import { useAuth } from "@/auth/AuthContext";
@@ -72,6 +75,8 @@ jest.mock("@/lib/webstores", () => ({
   generateLaunchPacket: jest.fn(),
   getLaunchReadiness: jest.fn(),
   getWebstorePaymentProviderStatus: jest.fn(),
+  getWebstoreOrders: jest.fn(),
+  handoffWebstoreOrderToProduction: jest.fn(),
   getWebstoreSetupProgress: jest.fn(),
   getWebstore: jest.fn(),
   getWebstoreReports: jest.fn(),
@@ -107,6 +112,7 @@ jest.mock("@/lib/webstores", () => ({
   listWebstoreProductCategories: jest.fn(),
   updateWebstoreProductCategory: jest.fn(),
   requestWebstorePaymentProviderAction: jest.fn(),
+  relaunchWebstore: jest.fn(),
   sendWebstoreQuestionnaire: jest.fn(),
 }));
 
@@ -147,11 +153,20 @@ beforeEach(() => {
   createWebstoreAssignment.mockResolvedValue({});
   createWebstoreOwner.mockResolvedValue({ id: "owner-new" });
   createProductFromTemplate.mockResolvedValue({});
+  getWebstore.mockResolvedValue({
+    webstore: { id: "ws-1", name: "Team Store", store_type: "general", status: "draft" },
+    launch_packets: [],
+    products: [],
+  });
   getWebstoreQuestionnaire.mockResolvedValue({ templates: [] });
   getWebstoreQuestionnaireResponse.mockResolvedValue({ submission: null });
   generateLaunchPacket.mockResolvedValue({});
+  getLaunchReadiness.mockResolvedValue({ ready: false, checks: {}, payment_unavailable_reason: "Not configured." });
   getWebstoreSetupProgress.mockResolvedValue({ setup_state: "not_started", steps: [] });
   getWebstorePaymentProviderStatus.mockResolvedValue({ status: { label: "Not configured", reason: "Stripe integration is disabled." }, actions: {} });
+  getWebstoreReports.mockResolvedValue({ order_count: 0, gross_sales_cents: 0, ledger_totals_cents: {} });
+  getWebstoreOrders.mockResolvedValue({ items: [], total: 0 });
+  handoffWebstoreOrderToProduction.mockResolvedValue({});
   listWebstoreAssignments.mockResolvedValue([]);
   listWebstoreSetupFiles.mockResolvedValue([]);
   applyWebstoreAnswers.mockResolvedValue({});
@@ -178,6 +193,7 @@ beforeEach(() => {
   listWebstoreMockups.mockResolvedValue([]);
   updateWebstoreProductCategory.mockResolvedValue({});
   requestWebstorePaymentProviderAction.mockResolvedValue({});
+  relaunchWebstore.mockResolvedValue({ webstore: { status: "relaunch_ready" } });
   sendWebstoreQuestionnaire.mockResolvedValue({ email_sent: true, request_url: "/forms/request-1" });
   getWebstoreBranding.mockResolvedValue({
     webstore: { id: "ws-1", name: "Team Store", store_type: "general" },
@@ -578,4 +594,47 @@ test("guided setup branding files and appearance carry into Storefront without p
   expect(screen.getAllByRole("tab")).toHaveLength(4);
   await user.click(screen.getByRole("tab", { name: "Overview" }));
   expect(screen.getByTestId("webstore-setup-checklist")).toBeInTheDocument();
+});
+
+test("Stage 8B shows canonical Webstore Orders inside the existing four-tab workspace", async () => {
+  getWebstoreOrders.mockResolvedValue({
+    source_of_truth: "canonical_orders",
+    total: 1,
+    items: [
+      {
+        id: "order-stage8b-ui",
+        number: 801,
+        status: "confirmed",
+        created_at: "2026-08-03T12:00:00Z",
+        customer: { name: "Projection Buyer", email: "buyer@example.com" },
+        total_cents: 3200,
+        payment: { status: "confirmed" },
+        fulfillment: { status: "awaiting_production_handoff" },
+        items: [{ quantity: 2, description: "Projection Shirt" }],
+      },
+    ],
+  });
+
+  renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
+
+  expect(await screen.findByTestId("webstore-order-order-stage8b-ui")).toHaveTextContent("Order #801");
+  expect(screen.getByTestId("webstore-order-order-stage8b-ui")).toHaveTextContent("Projection Buyer");
+  expect(screen.getByTestId("webstore-order-order-stage8b-ui")).toHaveTextContent("$32.00");
+  expect(screen.getAllByRole("tab")).toHaveLength(4);
+  expect(screen.queryByText(/internal_cost|stripe_payment_intent/i)).not.toBeInTheDocument();
+});
+
+test("Stage 8E offers a readiness-gated relaunch for closed Webstores", async () => {
+  getWebstore.mockResolvedValue({
+    webstore: { id: "ws-closed", name: "Closed Store", store_type: "general", status: "closed" },
+    launch_packets: [],
+    products: [],
+  });
+
+  renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-closed", path: "/webstores/:id" });
+
+  const user = userEvent.setup();
+  await user.click(await screen.findByTestId("webstore-relaunch"));
+  await waitFor(() => expect(relaunchWebstore).toHaveBeenCalledWith("ws-closed", "Staff requested Webstore relaunch"));
+  expect(screen.getAllByRole("tab")).toHaveLength(4);
 });

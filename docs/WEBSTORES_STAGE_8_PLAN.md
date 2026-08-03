@@ -1,12 +1,16 @@
 # Webstores Stage 8 Plan
 
-Status: Planning only. Stage 8 implementation has not started.
+Status: Stage 8A through 8E implemented locally on `main`; a focused completion-fix branch addresses the remaining webhook, assignment, production-snapshot, reporting, and lifecycle review gaps.
 
 Repository: `C:\Users\thesi\Documents\GitHub\SIGNGUY-MVP`
 
 Primary specification: `C:\Users\thesi\OneDrive\ORGANIZED SIGNGUYAI\SignGuy_AI_Phase_6_Webstores_Add_On_Specification.docx`
 
 Stage 8 scope: Orders, Production, reports, and relaunch behavior for Webstores.
+
+Current checkpoint: The Stage 8 checkpoint is implemented locally. The completion
+fix branch is limited to closing the focused review findings below and does not
+authorize Stage 9 work.
 
 This plan follows the Phase 6 Webstores add-on specification and keeps the MVP as
 the implementation authority. It does not authorize Stage 9 work, a new order
@@ -15,10 +19,9 @@ terminology.
 
 ## Current checkpoint
 
-The current checkout is `feature/webstores-stage-7-stripe-commerce` with local,
-uncommitted Stage 7 changes. Stage 8 starts only after Stage 7 is separately
-committed, pushed, and the working tree is clean. This planning document does
-not stage, commit, or modify those changes.
+The Stage 8 implementation was fast-forward merged into local `main` before
+this completion-fix branch began. Stage 7 was integrated before Stage 8. This
+document does not authorize Stage 9 work.
 
 Stage 7 already provides the relevant handoff records and provider evidence:
 
