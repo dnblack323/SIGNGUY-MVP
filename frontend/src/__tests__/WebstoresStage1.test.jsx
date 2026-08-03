@@ -305,7 +305,6 @@ test("authenticated Webstores creation uses the five approved types and opens a 
   await user.type(screen.getByTestId("webstore-owner-name"), "Owner Name");
   await user.type(screen.getByTestId("webstore-owner-email"), "owner@example.com");
   await user.click(screen.getByTestId("webstore-setup-next"));
-  expect(screen.getByTestId("webstore-type-specific")).toBeInTheDocument();
   await user.clear(screen.getByTestId("webstore-name"));
   await user.type(screen.getByTestId("webstore-name"), "Event Store");
   await user.click(screen.getByTestId("webstore-setup-next"));
@@ -317,7 +316,7 @@ test("authenticated Webstores creation uses the five approved types and opens a 
     store_type: "event",
     target_launch_at: undefined,
     deadline_at: undefined,
-    setup_profile: expect.objectContaining({ store_purpose: "", audience: "" }),
+    setup_profile: expect.objectContaining({ store_purpose: "", starting_products: [] }),
     store_settings: expect.objectContaining({ access_policy: { mode: "open" } }),
     send_owner_invitation: false,
   })));
@@ -340,7 +339,6 @@ test("successful questionnaire delivery is reported and passed to the Webstore d
   await user.type(screen.getByTestId("webstore-owner-email"), "owner@example.com");
   await user.click(screen.getByTestId("webstore-setup-next"));
   await user.click(screen.getByTestId("webstore-setup-next"));
-  await user.click(screen.getByTestId("webstore-continuation-questionnaire"));
   await user.click(screen.getByTestId("webstore-create"));
 
   await waitFor(() => expect(sendWebstoreQuestionnaire).toHaveBeenCalledTimes(1));
@@ -350,7 +348,7 @@ test("successful questionnaire delivery is reported and passed to the Webstore d
   expect(screen.getByTestId("navigation-state")).toHaveTextContent(JSON.stringify({ questionnaireDelivery: questionnaire }));
 });
 
-test("blank draft path creates only the required Webstore information", async () => {
+test("guided creation always sends the type-specific questionnaire", async () => {
   const user = userEvent.setup();
   renderWithProviders(<WebstoresPage />);
 
@@ -360,16 +358,15 @@ test("blank draft path creates only the required Webstore information", async ()
   await user.type(screen.getByTestId("webstore-owner-email"), "blank@example.com");
   await user.click(screen.getByTestId("webstore-setup-next"));
   await user.click(screen.getByTestId("webstore-setup-next"));
-  await user.click(screen.getByTestId("webstore-continuation-blank"));
   await user.click(screen.getByTestId("webstore-create"));
 
   await waitFor(() => expect(createWebstore).toHaveBeenCalledWith(expect.objectContaining({
     name: "Blank Owner Store",
-    setup_profile: {},
-    store_settings: {},
-    branding: {},
+    setup_profile: expect.objectContaining({ starting_products: [] }),
+    store_settings: expect.objectContaining({ fulfillment: { method: "decide_later" } }),
+    branding: expect.objectContaining({ colors_fonts: expect.any(Object) }),
   })));
-  expect(sendWebstoreQuestionnaire).not.toHaveBeenCalled();
+  expect(sendWebstoreQuestionnaire).toHaveBeenCalledTimes(1);
 });
 
 test("questionnaire delivery failures are truthful and preserve the manual recovery link", async () => {
@@ -390,7 +387,6 @@ test("questionnaire delivery failures are truthful and preserve the manual recov
   await user.type(screen.getByTestId("webstore-owner-email"), "owner@example.com");
   await user.click(screen.getByTestId("webstore-setup-next"));
   await user.click(screen.getByTestId("webstore-setup-next"));
-  await user.click(screen.getByTestId("webstore-continuation-questionnaire"));
   await user.click(screen.getByTestId("webstore-create"));
 
   await waitFor(() => expect(toast.error).toHaveBeenCalled());
@@ -474,6 +470,36 @@ test("webstore detail shows setup intake, assignments, files, and answer preview
     proposed_values: expect.objectContaining({ store_name: "New Name" }),
   })));
   expect(await screen.findByTestId("webstore-answer-preview")).toHaveTextContent("Store name");
+});
+
+test("webstore overview presents one vertical guided setup module with the next action", async () => {
+  getWebstore.mockResolvedValue({
+    webstore: {
+      id: "ws-guided",
+      name: "Guided Store",
+      store_type: "fundraiser",
+      status: "draft",
+      setup_state: "not_started",
+      setup_profile: {},
+    },
+    launch_packets: [],
+    products: [],
+  });
+  getWebstoreQuestionnaire.mockResolvedValue({ templates: [{ id: "fundraiser-template", sections: [] }] });
+  getWebstoreQuestionnaireResponse.mockResolvedValue({ submission: null });
+  listWebstoreAssignments.mockResolvedValue([{ id: "owner-1", role: "owner", email: "owner@example.com", status: "active" }]);
+  getLaunchReadiness.mockResolvedValue({ ready: false, payment_unavailable_reason: "Payment setup remains separate." });
+  getWebstoreReports.mockResolvedValue({ order_count: 0, gross_sales_cents: 0, ledger_totals_cents: {} });
+
+  const user = userEvent.setup();
+  renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-guided", path: "/webstores/:id" });
+
+  expect(await screen.findByTestId("webstore-guided-setup-module")).toBeInTheDocument();
+  expect(screen.getByTestId("guided-setup-step-questionnaire")).toHaveTextContent("Send the existing questionnaire");
+  expect(screen.getByTestId("guided-setup-step-answers")).toHaveTextContent("Review answers");
+  expect(screen.getByTestId("guided-setup-step-build")).toHaveTextContent("Build products and Storefront");
+  await user.click(screen.getByTestId("guided-send-questionnaire"));
+  await waitFor(() => expect(sendWebstoreQuestionnaire).toHaveBeenCalledWith("ws-guided"));
 });
 
 test("guided setup branding files and appearance carry into Storefront without publishing", async () => {
