@@ -15,6 +15,7 @@ import {
   getWebstoreQuestionnaireResponse,
   getWebstoreReports,
   getWebstoreOrders,
+  handoffWebstoreOrderToProduction,
   getWebstoreSetupProgress,
   listProductTemplates,
   listWebstoreAssignments,
@@ -133,7 +134,7 @@ test("staff Branding tab exposes category cards, preview modes, and ribbon actio
   const user = userEvent.setup();
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
-  await user.click(await screen.findByRole("tab", { name: /Branding/ }));
+  await user.click(await screen.findByRole("tab", { name: "Storefront" }));
   expect(await screen.findByTestId("webstore-branding-editor")).toBeInTheDocument();
   expect(screen.getByTestId("branding-category-cards")).toHaveTextContent("Brand Basics");
   expect(screen.getByTestId("branding-category-cards")).toHaveTextContent("Footer");
@@ -151,7 +152,7 @@ test("branding images can be uploaded, immediately previewed, replaced, removed,
   const user = userEvent.setup();
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
-  await user.click(await screen.findByRole("tab", { name: /Branding/ }));
+  await user.click(await screen.findByRole("tab", { name: "Storefront" }));
   const uploadedLogo = new File(["logo"], "replacement-logo.png", { type: "image/png" });
   fireEvent.change(screen.getByTestId("branding-upload-primary-logo"), { target: { files: [uploadedLogo] } });
   await waitFor(() => expect(uploadWebstoreSetupFile).toHaveBeenCalled());
@@ -280,7 +281,7 @@ test("owner portal separates packet approval, change requests, and Terms accepta
   expect(await screen.findByTestId("portal-launch-packet-products")).toHaveTextContent("Team Shirt");
   expect(screen.getByTestId("portal-readiness-summary")).toHaveTextContent("Packet approval is still needed");
   await userEvent.click(screen.getByTestId("portal-approve-packet"));
-  await waitFor(() => expect(portalApi.post).toHaveBeenCalledWith("/portal/webstores/ws-1/launch-packets/packet-2/approve"));
+  await waitFor(() => expect(portalApi.post).toHaveBeenCalledWith("/portal/webstores/ws-1/launch-packets/packet-2/approve", { comment: "" }));
 
   await userEvent.type(screen.getByTestId("portal-change-request-comment"), "Please use the navy mockup.");
   await userEvent.click(screen.getByTestId("portal-request-changes"));

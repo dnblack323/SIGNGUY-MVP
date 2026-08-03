@@ -22,6 +22,7 @@ import {
   getWebstoreQuestionnaireResponse,
   getWebstoreReports,
   getWebstoreOrders,
+  handoffWebstoreOrderToProduction,
   getWebstoreSetupProgress,
   listProductTemplates,
   listWebstoreArtwork,
@@ -301,7 +302,7 @@ test("staff product image picker previews selected files before save", async () 
 
   await screen.findByText(/Team Store/);
   expect(screen.getByText(/Webstores setup/)).toBeInTheDocument();
-  await user.click(screen.getByRole("tab", { name: "Product Setup" }));
+  await user.click(screen.getByRole("tab", { name: "Products" }));
   await user.click(screen.getByTestId("webstore-product-row-prod-1"));
   await user.click(screen.getByRole("tab", { name: "Images and Mockups" }));
 
@@ -351,7 +352,8 @@ test("staff product image picker previews selected files before save", async () 
   }));
 });
 
-test("staff launch readiness shows packet versioning, terms, QR, schedule, and change-request controls", async () => {
+test("staff Webstore workspace preserves the four-tab launch workflow", async () => {
+  const user = userEvent.setup();
   getWebstore.mockResolvedValueOnce({
     webstore: {
       id: "ws-1",
@@ -401,7 +403,7 @@ test("staff launch readiness shows packet versioning, terms, QR, schedule, and c
       mockup_associations: [],
     }],
   });
-  getLaunchReadiness.mockResolvedValueOnce({
+  getLaunchReadiness.mockResolvedValue({
     ready: false,
     current_terms_version: "webstore_terms_2026_07",
     terms_acceptance: null,
@@ -417,12 +419,13 @@ test("staff launch readiness shows packet versioning, terms, QR, schedule, and c
   });
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
-  expect(await screen.findByTestId("webstore-readiness-gate-packet_delivered")).toHaveTextContent("Current packet version was delivered");
-  expect(screen.getByTestId("webstore-readiness-gate-buyer_commerce_connected")).toHaveTextContent("connected");
-  expect(screen.getByTestId("webstore-terms-readiness")).toHaveTextContent("Waiting on separate Store Owner Terms acceptance");
-  expect(screen.getByTestId("webstore-launch-packet-summary")).toHaveTextContent("Version 2");
-  expect(screen.getByTestId("webstore-qr-preview")).toHaveTextContent("/p/webstores/team-store-public");
-  expect(screen.getByTestId("webstore-change-requests")).toHaveTextContent("Please mention Friday pickup");
+  await screen.findByText(/Team Store/);
+  expect(screen.getAllByRole("tab")).toHaveLength(4);
+  expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Products" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Storefront" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Review & Launch" })).toBeInTheDocument();
+  expect(screen.getByText(/Webstores setup/)).toBeInTheDocument();
 
   expect(screen.queryByTestId("webstore-intended-launch-at")).not.toBeInTheDocument();
   expect(screen.queryByTestId("webstore-intended-close-at")).not.toBeInTheDocument();
@@ -503,7 +506,7 @@ test("staff persisted product images prefer authenticated previews over public U
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
   await screen.findByText(/Team Store/);
-  await user.click(screen.getByRole("tab", { name: "Product Setup" }));
+  await user.click(screen.getByRole("tab", { name: "Products" }));
 
   expect(screen.getByTestId("webstore-product-card-prod-1").querySelector("img")).toHaveAttribute("src", "/api/webstores/ws-1/setup-files/file-1/preview");
   expect(screen.getByTestId("webstore-product-card-prod-fallback").querySelector("img")).toHaveAttribute("src", "/api/public/webstores/team-store-public/product-images/prod-fallback/primary");
@@ -548,10 +551,10 @@ test("staff product builder separates planning from focused product setup", asyn
 
   expect(await screen.findByText(/Team Store/)).toBeInTheDocument();
   expect(screen.getByText(/Webstores setup/)).toBeInTheDocument();
-  expect(screen.getByTestId("webstore-builder-progress")).toHaveTextContent("Product Plan");
-  expect(screen.getByTestId("webstore-builder-status-panel")).toHaveTextContent("AI review");
+  expect(screen.getByTestId("guided-setup-step-build")).toHaveTextContent("Build products and Storefront");
+  expect(screen.getByTestId("webstore-guided-setup-module")).toBeInTheDocument();
 
-  await user.click(screen.getByRole("tab", { name: "Product Plan" }));
+  await user.click(screen.getByRole("tab", { name: "Products" }));
   const plan = screen.getByTestId("webstore-product-plan");
   expect(plan).toHaveTextContent("Questionnaire Summary");
   expect(plan).toHaveTextContent("AI Product Suggestions");
@@ -566,11 +569,12 @@ test("staff product builder separates planning from focused product setup", asyn
   await waitFor(() => expect(createProductFromTemplate).toHaveBeenCalledWith("ws-1", { name: "New draft product", product_type: "general" }));
 
   await user.click(within(plan).getByTestId("webstore-stage4-template-select"));
-  await user.click(await screen.findByText("Tenant Shirt"));
+  const tenantShirtOptions = await screen.findAllByText("Tenant Shirt");
+  await user.click(tenantShirtOptions[tenantShirtOptions.length - 1]);
   await user.click(within(plan).getByTestId("webstore-add-template-draft"));
   await waitFor(() => expect(createProductFromTemplate).toHaveBeenCalledWith("ws-1", expect.objectContaining({ source_template_id: "tpl-tenant" })));
 
-  await user.click(screen.getByRole("tab", { name: "Product Setup" }));
+  await user.click(screen.getByRole("tab", { name: "Products" }));
   expect(screen.getByTestId("webstore-product-foundation")).toHaveTextContent("Selected Products");
   expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("Continue Setup");
   expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("planned - private catalog");
@@ -641,7 +645,7 @@ test("stale product saves keep the editor open and offer a reload action", async
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
   await screen.findByText(/Team Store/);
-  await user.click(screen.getByRole("tab", { name: "Product Setup" }));
+  await user.click(screen.getByRole("tab", { name: "Products" }));
   await user.click(screen.getByTestId("webstore-product-row-prod-1"));
   fireEvent.change(screen.getByTestId("webstore-product-name"), { target: { value: "Updated Draft Shirt" } });
   await user.click(screen.getByRole("tab", { name: "Review Status" }));

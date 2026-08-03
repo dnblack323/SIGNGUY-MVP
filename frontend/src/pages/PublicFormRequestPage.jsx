@@ -50,7 +50,7 @@ export default function PublicFormRequestPage() {
     enabled: Boolean(token),
   });
   const template = request.data?.template || {};
-  const sections = template.sections || [];
+  const sections = useMemo(() => template.sections || [], [template.sections]);
   const missingRequired = useMemo(
     () =>
       visibleQuestions(sections, answers)
