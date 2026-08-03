@@ -58,7 +58,7 @@ async def _wait_for_terminal_event(provider: str, provider_event_id: str) -> Opt
 def _event_response(event: dict) -> dict:
     return {
         "payment_event": event,
-        "already_processed": event.get("status") in {"processed", "duplicate"},
+        "already_processed": event.get("status") in {"processed", "failed", "duplicate"},
         "order_id": event.get("canonical_order_id"),
         "payment_id": event.get("canonical_payment_id"),
     }
@@ -295,6 +295,7 @@ async def process_verified_payment_event(
     *,
     verified_payment: Optional[VerifiedProviderPayment] = None,
     provider_authority: Optional[ProviderAuthority] = None,
+    create_downstream_records: bool = True,
 ) -> dict:
     _require_provider_authority(provider_authority)
     if verified_payment is not None:
@@ -312,7 +313,14 @@ async def process_verified_payment_event(
     provider = str(event_fields.get("provider") or "").strip().lower()
     provider_mode = str(event_fields.get("provider_mode") or "test").strip().lower()
     provider_account_reference = event_fields.get("provider_account_reference")
-    if provider_authority is not None and (provider != provider_authority.provider or provider_mode != provider_authority.mode):
+    if provider_authority is not None and (
+        provider != provider_authority.provider
+        or provider_mode != provider_authority.mode
+        or (
+            provider_authority.account_reference
+            and event_fields.get("provider_account_reference") != provider_authority.account_reference
+        )
+    ):
         raise WebstoreError("provider_event_authority_mismatch", "Provider event does not match provider authority", 409)
     provider_event_id = str(event_fields.get("provider_event_id") or "").strip()
     provider_payment_id = str(event_fields.get("provider_payment_id") or "").strip()
@@ -328,6 +336,11 @@ async def process_verified_payment_event(
     intent = await db.webstore_purchase_intents.find_one({"tenant_id": tenant_id, "id": purchase_intent_id}, {"_id": 0})
     if not intent:
         raise WebstoreError("purchase_intent_not_found", "Webstore purchase intent not found", 404)
+    event_webstore_id = str(event_fields.get("webstore_id") or "").strip()
+    if provider_authority is not None and not event_webstore_id:
+        raise WebstoreError("payment_event_incomplete", "Provider payment event is missing the Webstore reference", 400)
+    if event_webstore_id and event_webstore_id != str(intent.get("webstore_id") or ""):
+        raise WebstoreError("webstore_event_mismatch", "Provider payment event does not match the purchase Webstore", 409)
 
     event = WebstorePaymentEvent(
         tenant_id=tenant_id,
@@ -341,8 +354,12 @@ async def process_verified_payment_event(
         amount_cents=int(event_fields.get("amount_cents") or 0),
         currency=str(event_fields.get("currency") or "usd").lower(),
     )
+    raw_event_snapshot = event_fields.get("raw_event_snapshot")
     try:
-        await db.webstore_payment_events.insert_one(prepare_for_mongo(event.model_dump(exclude={"raw_event_snapshot"})))
+        event_document = event.model_dump(exclude={"raw_event_snapshot"})
+        if isinstance(raw_event_snapshot, dict) and raw_event_snapshot:
+            event_document["raw_event_snapshot"] = raw_event_snapshot
+        await db.webstore_payment_events.insert_one(prepare_for_mongo(event_document))
     except DuplicateKeyError:
         existing_event = await _existing_event(provider, provider_event_id)
         if existing_event:
@@ -403,6 +420,51 @@ async def process_verified_payment_event(
                 duplicate = await db.webstore_payment_events.find_one({"id": event.id}, {"_id": 0})
                 return _event_response(serialize_doc(duplicate))
             raise WebstoreError("purchase_intent_not_processable", "Purchase intent is not available for payment processing", 409)
+
+        if not create_downstream_records:
+            updates = {
+                "status": "payment_verified",
+                "provider": provider,
+                "provider_payment_id": provider_payment_id,
+                "provider_mode": provider_mode,
+                "provider_account_reference": provider_account_reference,
+                "provider_payment_reference": provider_payment_id,
+                "checkout_status": "verified_payment_received",
+                "reconciliation_state": "verified_pending_stage8",
+                "processing_state": "verified",
+                "payout_status": "pending",
+                "updated_at": _now_iso(),
+            }
+            await db.webstore_purchase_intents.update_one(
+                {"tenant_id": tenant_id, "id": purchase_intent_id},
+                {"$set": updates},
+            )
+            await db.webstore_payment_events.update_one(
+                {"id": event.id, "tenant_id": tenant_id},
+                {
+                    "$set": {
+                        "status": "processed",
+                        "reconciliation_state": "verified_pending_stage8",
+                        "processing_state": "verified",
+                        "processed_at": _now_iso(),
+                        "updated_at": _now_iso(),
+                    }
+                },
+            )
+            await _audit(
+                tenant_id=tenant_id,
+                webstore_id=claimed["webstore_id"],
+                actor_type="provider",
+                actor_id=provider,
+                actor_email=provider,
+                action="webstore.verified_payment_received",
+                entity_type="webstore_purchase_intent",
+                entity_id=purchase_intent_id,
+                summary="Verified Webstore payment received and held for Stage 8 order handoff",
+                metadata={"provider": provider, "provider_event_id": provider_event_id, "stage8_handoff": True},
+            )
+            processed = await db.webstore_payment_events.find_one({"id": event.id}, {"_id": 0})
+            return {"payment_event": serialize_doc(processed), "already_processed": False, "stage8_handoff": True}
 
         customer = await _customer_for_intent(claimed, provider_event_id=provider_event_id)
         order, _items = await _create_order_graph(claimed, customer, provider_event_id=provider_event_id)
@@ -476,6 +538,157 @@ async def process_verified_payment_event(
         raise
 
 
+async def reconcile_webstore_payment_status_event(
+    *,
+    tenant_id: str,
+    webstore_id: str,
+    provider_result,
+    provider_authority: Optional[ProviderAuthority] = None,
+) -> dict:
+    """Record signed Stripe pending/failure state without creating commerce records."""
+    _require_provider_authority(provider_authority)
+    if not getattr(provider_result, "ok", False) or not isinstance(provider_result.data, dict):
+        raise WebstoreError("provider_event_invalid", "Provider payment status event is invalid", 400)
+    data = dict(provider_result.data)
+    event_kind = str(data.get("event_kind") or "")
+    if event_kind not in {"payment_failure", "payment_pending"}:
+        raise WebstoreError("provider_event_invalid", "Provider payment status event type is invalid", 400)
+    provider = str(data.get("provider") or "").strip().lower()
+    provider_mode = str(data.get("provider_mode") or "").strip().lower()
+    provider_event_id = str(data.get("provider_event_id") or "").strip()
+    provider_payment_id = str(data.get("provider_payment_id") or "").strip()
+    purchase_intent_id = str(data.get("purchase_intent_id") or "").strip()
+    result_tenant_id = str(data.get("tenant_id") or "").strip()
+    result_webstore_id = str(data.get("webstore_id") or "").strip()
+    if (
+        not all([provider, provider_event_id, provider_payment_id, purchase_intent_id, result_tenant_id, result_webstore_id])
+        or result_tenant_id != tenant_id
+        or result_webstore_id != webstore_id
+        or provider_mode not in {"test", "live"}
+    ):
+        raise WebstoreError("provider_event_incomplete", "Provider payment status event is incomplete", 400)
+    provider_account_reference = data.get("provider_account_reference")
+    if provider_authority is not None and (
+        provider != provider_authority.provider
+        or provider_mode != provider_authority.mode
+        or provider_account_reference != provider_authority.account_reference
+    ):
+        raise WebstoreError("provider_event_authority_mismatch", "Provider event does not match provider authority", 409)
+
+    intent = await db.webstore_purchase_intents.find_one(
+        {"tenant_id": tenant_id, "webstore_id": webstore_id, "id": purchase_intent_id},
+        {"_id": 0},
+    )
+    if not intent:
+        raise WebstoreError("purchase_intent_not_found", "Webstore purchase intent not found", 404)
+    amount_cents = int(data.get("amount_cents") or 0)
+    currency = str(data.get("currency") or "usd").lower()
+    if amount_cents != int(intent.get("total_cents") or 0) or currency != str(intent.get("currency") or "usd").lower():
+        raise WebstoreError("payment_amount_mismatch", "Provider payment status does not match the purchase intent", 409)
+
+    existing_event = await _existing_event(provider, provider_event_id)
+    if existing_event:
+        return _event_response(await _wait_for_terminal_event(provider, provider_event_id) or existing_event)
+    existing_same_payment = await db.webstore_payment_events.find_one(
+        {
+            "tenant_id": tenant_id,
+            "purchase_intent_id": purchase_intent_id,
+            "provider": provider,
+            "provider_payment_id": provider_payment_id,
+        },
+        {"_id": 0},
+    )
+    if existing_same_payment:
+        existing_same_payment = serialize_doc(existing_same_payment)
+        if event_kind == "payment_failure" and existing_same_payment.get("reconciliation_state") == "provider_pending":
+            failure_updates = {
+                "status": "failed",
+                "failure_code": data.get("failure_code") or str(data.get("status") or "payment_failed"),
+                "failure_reason": data.get("failure_reason"),
+                "reconciliation_state": "failed",
+                "processed_at": _now_iso(),
+                "updated_at": _now_iso(),
+            }
+            await db.webstore_payment_events.update_one(
+                {"id": existing_same_payment["id"], "tenant_id": tenant_id},
+                {"$set": failure_updates},
+            )
+            existing_same_payment.update(failure_updates)
+        return _event_response(existing_same_payment)
+
+    event_status = "failed" if event_kind == "payment_failure" else "processing"
+    reconciliation_state = "failed" if event_kind == "payment_failure" else "provider_pending"
+    event = WebstorePaymentEvent(
+        tenant_id=tenant_id,
+        webstore_id=webstore_id,
+        purchase_intent_id=purchase_intent_id,
+        provider=provider,
+        provider_event_id=provider_event_id,
+        provider_payment_id=provider_payment_id,
+        provider_mode=provider_mode,
+        provider_account_reference=provider_account_reference,
+        amount_cents=amount_cents,
+        currency=currency,
+        status=event_status,  # type: ignore[arg-type]
+        failure_code=data.get("failure_code"),
+        failure_reason=data.get("failure_reason"),
+        reconciliation_state=reconciliation_state,
+        processing_state="status_recorded",
+        processed_at=_now_iso(),
+        raw_event_snapshot=data.get("raw_event_snapshot") or {},
+    )
+    try:
+        await db.webstore_payment_events.insert_one(prepare_for_mongo(event.model_dump()))
+    except DuplicateKeyError:
+        existing_event = await _existing_event(provider, provider_event_id)
+        if existing_event:
+            return _event_response(await _wait_for_terminal_event(provider, provider_event_id) or existing_event)
+        existing_same_payment = await db.webstore_payment_events.find_one(
+            {
+                "tenant_id": tenant_id,
+                "purchase_intent_id": purchase_intent_id,
+                "provider": provider,
+                "provider_payment_id": provider_payment_id,
+            },
+            {"_id": 0},
+        )
+        if existing_same_payment:
+            return _event_response(serialize_doc(existing_same_payment))
+        raise
+
+    intent_updates = {
+        "provider": provider,
+        "provider_payment_id": provider_payment_id,
+        "provider_mode": provider_mode,
+        "provider_account_reference": provider_account_reference,
+        "provider_payment_reference": provider_payment_id,
+        "checkout_status": "payment_failed" if event_kind == "payment_failure" else "provider_pending",
+        "reconciliation_state": reconciliation_state,
+        "updated_at": _now_iso(),
+    }
+    if event_kind == "payment_failure" and intent.get("status") in {"pending_payment", "payment_processing"}:
+        failure_status = str(data.get("status") or "payment_failed")
+        intent_updates["status"] = failure_status if failure_status in {"payment_failed", "expired", "canceled"} else "payment_failed"
+    await db.webstore_purchase_intents.update_one(
+        {"tenant_id": tenant_id, "webstore_id": webstore_id, "id": purchase_intent_id},
+        {"$set": intent_updates},
+    )
+    await _audit(
+        tenant_id=tenant_id,
+        webstore_id=webstore_id,
+        actor_type="provider",
+        actor_id=provider,
+        actor_email=provider,
+        action="webstore.payment_status_recorded",
+        entity_type="webstore_purchase_intent",
+        entity_id=purchase_intent_id,
+        summary="Provider payment status recorded without creating commerce records",
+        metadata={"provider_event_id": provider_event_id, "event_kind": event_kind, "status": data.get("status")},
+    )
+    recorded = await db.webstore_payment_events.find_one({"id": event.id, "tenant_id": tenant_id}, {"_id": 0})
+    return {"payment_event": serialize_doc(recorded), "already_processed": False, "commerce_created": False}
+
+
 async def initiate_webstore_refund(
     *,
     tenant_id: str,
@@ -509,6 +722,7 @@ async def initiate_webstore_refund(
     provider_result = await provider_impl.create_refund(
         tenant_id=tenant_id,
         webstore_id=webstore_id,
+        purchase_intent_id=intent["id"],
         provider_payment_reference=source_payment.get("stripe_payment_intent_id"),
         amount_cents=refund_amount,
         currency=str(source_payment.get("currency") or "usd").lower(),
@@ -590,6 +804,176 @@ async def initiate_webstore_refund(
     )
     ledger = await db.webstore_ledger_entries.find_one({"tenant_id": tenant_id, "source_type": "canonical_refund_payment", "source_id": refund["id"]}, {"_id": 0})
     return {"refund": refund, "ledger_entry": serialize_doc(ledger), "refund_status": refund_status}
+
+
+async def reconcile_webstore_refund_event(
+    *,
+    tenant_id: str,
+    webstore_id: str,
+    provider_result,
+    provider_authority: Optional[ProviderAuthority] = None,
+) -> dict:
+    """Reconcile a signed Stripe refund without creating new commerce graphs."""
+    _require_provider_authority(provider_authority)
+    data = dict(provider_result.data or {}) if getattr(provider_result, "ok", False) else {}
+    status = str(data.get("status") or "").lower()
+    provider = str(data.get("provider") or "").strip().lower()
+    provider_mode = str(data.get("provider_mode") or "").strip().lower()
+    provider_event_id = str(data.get("provider_event_id") or "").strip()
+    refund_reference = str(data.get("provider_refund_reference") or "").strip()
+    payment_reference = str(data.get("provider_payment_reference") or "").strip()
+    result_tenant_id = str(data.get("tenant_id") or "").strip()
+    result_webstore_id = str(data.get("webstore_id") or "").strip()
+    provider_account_reference = data.get("provider_account_reference")
+    if (
+        not all([provider, provider_mode, provider_event_id, refund_reference, payment_reference, result_tenant_id, result_webstore_id])
+        or result_tenant_id != tenant_id
+        or result_webstore_id != webstore_id
+        or provider_mode not in {"test", "live"}
+        or int(data.get("amount_cents") or 0) <= 0
+        or not str(data.get("currency") or "").strip()
+    ):
+        raise WebstoreError("provider_refund_invalid", "Provider refund event is incomplete", 400)
+    if provider_authority is not None and (
+        provider != provider_authority.provider
+        or provider_mode != provider_authority.mode
+        or provider_account_reference != provider_authority.account_reference
+    ):
+        raise WebstoreError("provider_refund_authority_mismatch", "Provider refund does not match provider authority", 409)
+    if status in {"failed", "canceled"}:
+        existing_failure = await db.webstore_activity_events.find_one(
+            {
+                "tenant_id": tenant_id,
+                "webstore_id": webstore_id,
+                "action": "webstore.refund_failed",
+                "entity_id": refund_reference,
+            },
+            {"_id": 0},
+        )
+        if existing_failure:
+            return {"accepted": True, "refund_status": status, "already_processed": True}
+        await _audit(
+            tenant_id=tenant_id,
+            webstore_id=webstore_id,
+            actor_type="provider",
+            actor_id="stripe",
+            actor_email="stripe",
+            action="webstore.refund_failed",
+            entity_type="provider_refund",
+            entity_id=refund_reference,
+            summary="Provider refund failed; no refund or ledger record was created",
+            metadata={
+                "provider_event_id": provider_event_id,
+                "provider_payment_reference": payment_reference,
+                "provider_account_reference": provider_account_reference,
+                "status": status,
+                "raw_event_snapshot": data.get("raw_event_snapshot") or {},
+            },
+        )
+        return {"accepted": True, "refund_status": status, "already_processed": False}
+    try:
+        provider_refund = refund_from_provider_result(provider_result)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise WebstoreError("provider_refund_invalid", "Provider refund result failed reconciliation", 502) from exc
+    intent = await db.webstore_purchase_intents.find_one(
+        {
+            "tenant_id": tenant_id,
+            "webstore_id": webstore_id,
+            "provider_payment_id": payment_reference,
+        },
+        {"_id": 0},
+    )
+    if not intent or not intent.get("canonical_payment_id"):
+        raise WebstoreError("paid_purchase_intent_required", "A canonical paid Webstore payment is required for refund reconciliation", 409)
+    source_payment = await db.payments.find_one(
+        {"tenant_id": tenant_id, "id": intent["canonical_payment_id"], "stripe_payment_intent_id": payment_reference},
+        {"_id": 0},
+    )
+    if not source_payment:
+        raise WebstoreError("webstore_payment_not_found", "Canonical Webstore payment was not found", 404)
+    existing_refund = await db.payments.find_one(
+        {"tenant_id": tenant_id, "stripe_refund_id": refund_reference},
+        {"_id": 0},
+    )
+    if existing_refund:
+        refund = existing_refund
+    else:
+        try:
+            from .payment_service import record_provider_refund
+
+            refund = await record_provider_refund(
+                tenant_id=tenant_id,
+                payment_id=source_payment["id"],
+                provider_refund=provider_refund,
+                reason="Provider-confirmed Webstore refund",
+                actor_user_id="stripe-webhook",
+                actor_email="stripe-webhook",
+            )
+        except ValueError as exc:
+            raise WebstoreError(str(exc), str(exc), 409) from exc
+    if status in {"succeeded", "confirmed"}:
+        from .payment_service import confirm_refund_from_webhook
+
+        await confirm_refund_from_webhook(
+            stripe_refund_id=refund_reference,
+            provider_event_id=str(data.get("provider_event_id") or refund_reference),
+        )
+        refund = await db.payments.find_one({"tenant_id": tenant_id, "id": refund["id"]}, {"_id": 0}) or refund
+    ledger = await db.webstore_ledger_entries.find_one(
+        {"tenant_id": tenant_id, "source_type": "canonical_refund_payment", "source_id": refund["id"]},
+        {"_id": 0},
+    )
+    ledger_was_existing = bool(ledger)
+    if not ledger:
+        ledger = WebstoreLedgerEntry(
+            tenant_id=tenant_id,
+            webstore_id=webstore_id,
+            buyer_order_id=intent["id"],
+            entry_type="refund",
+            amount_cents=-int(refund.get("amount_cents") or 0),
+            basis_amount_cents=int(intent.get("total_cents") or 0),
+            source_type="canonical_refund_payment",
+            source_id=refund["id"],
+            provider_event_type="refund",
+            provider_mode=provider_refund.provider_mode,
+            provider_account_reference=provider_refund.provider_account_reference,
+            provider_payment_reference=provider_refund.provider_payment_reference,
+            notes="Provider-confirmed Webstore refund",
+        ).model_dump()
+        await _insert_ledger_entry(ledger)
+    if not ledger_was_existing:
+        await _audit(
+            tenant_id=tenant_id,
+            webstore_id=webstore_id,
+            actor_type="provider",
+            actor_id=provider,
+            actor_email=provider,
+            action="webstore.refund_reconciled",
+            entity_type="provider_refund",
+            entity_id=refund_reference,
+            summary="Provider Webstore refund reconciled into canonical payment and ledger history",
+            metadata={
+                "provider_event_id": provider_event_id,
+                "provider_payment_reference": payment_reference,
+                "amount_cents": provider_refund.amount_cents,
+                "currency": provider_refund.currency,
+                "status": status,
+                "raw_event_snapshot": data.get("raw_event_snapshot") or {},
+            },
+        )
+    refunded_total = 0
+    async for row in db.payments.find(
+        {"tenant_id": tenant_id, "refund_of_payment_id": source_payment["id"], "status": {"$in": ["pending", "confirmed"]}},
+        {"_id": 0, "amount_cents": 1},
+    ):
+        refunded_total += int(row.get("amount_cents") or 0)
+    total = int(source_payment.get("amount_cents") or intent.get("total_cents") or 0)
+    refund_status = "refunded" if refunded_total >= total else "partially_refunded"
+    await db.webstore_purchase_intents.update_one(
+        {"tenant_id": tenant_id, "id": intent["id"]},
+        {"$set": {"refund_status": refund_status, "status": refund_status, "updated_at": _now_iso()}},
+    )
+    return {"refund": serialize_doc(refund), "ledger_entry": serialize_doc(ledger), "refund_status": refund_status, "already_processed": bool(existing_refund)}
 
 
 async def reconcile_webstore_financial_event(
@@ -689,4 +1073,25 @@ async def reconcile_webstore_financial_event(
         intent_updates[sequence_field] = provider_event.sequence
     intent_updates["updated_at"] = _now_iso()
     await db.webstore_purchase_intents.update_one({"tenant_id": tenant_id, "id": intent["id"]}, {"$set": intent_updates})
+    await _audit(
+        tenant_id=tenant_id,
+        webstore_id=webstore_id,
+        actor_type="provider",
+        actor_id=provider_event.provider,
+        actor_email=provider_event.provider,
+        action="webstore.provider_financial_event_reconciled",
+        entity_type=f"provider_{provider_event.event_type}_event",
+        entity_id=provider_event.provider_event_id,
+        summary="Provider financial event reconciled into the Webstore ledger",
+        metadata={
+            "provider_mode": provider_event.provider_mode,
+            "provider_account_reference": provider_event.provider_account_reference,
+            "provider_payment_reference": provider_event.provider_payment_reference,
+            "amount_cents": provider_event.amount_cents,
+            "currency": provider_event.currency,
+            "status": provider_event.status,
+            "sequence": provider_event.sequence,
+            "raw_event_snapshot": provider_event.raw_event_snapshot or {},
+        },
+    )
     return {"ledger_entry": serialize_doc(entry), "already_processed": False}

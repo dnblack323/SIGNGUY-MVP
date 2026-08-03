@@ -814,9 +814,13 @@ export default function WebstoreDetailPage() {
   });
   const paymentProviderAction = useMutation({
     mutationFn: (action) => requestWebstorePaymentProviderAction(id, action),
-    onSuccess: async () => {
+    onSuccess: async (result, action) => {
+      const onboardingUrl = result?.result?.onboarding_url;
+      if (onboardingUrl && (action === "connect" || action === "resume_onboarding")) {
+        window.open(onboardingUrl, "_blank", "noopener,noreferrer");
+      }
       toast.success(
-        "Stripe integration is not enabled in this foundation build",
+        onboardingUrl ? "Stripe Connect setup opened" : "Stripe Connect status updated",
       );
       await refresh();
     },
@@ -1770,7 +1774,7 @@ export default function WebstoreDetailPage() {
                         onClick={() => paymentProviderAction.mutate("connect")}
                       >
                         <Mail className="size-4 mr-2" />
-                        Send Stripe Connect Email
+                        Open Stripe Connect setup
                       </Button>
                       <Button
                         size="sm"
@@ -1806,7 +1810,8 @@ export default function WebstoreDetailPage() {
                     </div>
                     <div className="text-xs text-muted-foreground">
                       Provider authority is required before checkout or launch.
-                      No Stripe calls are made in this build.
+                      Checkout remains blocked until the connected account and
+                      webhook verification are complete.
                     </div>
                   </div>
                   <div

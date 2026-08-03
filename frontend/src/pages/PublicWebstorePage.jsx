@@ -37,12 +37,19 @@ export default function PublicWebstorePage() {
   const [personalization, setPersonalization] = useState({});
   const [selectedFulfillment, setSelectedFulfillment] = useState("");
   const [productChoiceError, setProductChoiceError] = useState(null);
+  const [buyerName, setBuyerName] = useState("");
+  const [buyerEmail, setBuyerEmail] = useState("");
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState(null);
 
   useEffect(() => {
     setData(null);
     setErr(null);
     setCart({});
     setQuote(null);
+    setBuyerName("");
+    setBuyerEmail("");
+    setCheckoutError(null);
     axios.get(`${API}/public/webstores/${slug}`)
       .then((response) => setData(response.data))
       .catch((error) => setErr(error?.response?.data?.detail || "This Webstore is not available."));
@@ -128,6 +135,34 @@ export default function PublicWebstorePage() {
       return;
     }
     setLine({ ...line, quantity: Math.min(99, quantity) });
+  };
+
+  const beginCheckout = async () => {
+    if (!buyerName.trim() || !buyerEmail.trim()) {
+      setCheckoutError("Enter your name and email before checkout.");
+      return;
+    }
+    if (donationCents || promoCode.trim()) {
+      setCheckoutError("Donations and promo codes are not available in this checkout yet.");
+      return;
+    }
+    setCheckoutLoading(true);
+    setCheckoutError(null);
+    try {
+      const response = await axios.post(`${API}/public/webstores/${slug}/checkout-session`, {
+        buyer_name: buyerName.trim(),
+        buyer_email: buyerEmail.trim(),
+        line_items: cartPayload.line_items,
+        idempotency_key: window.crypto?.randomUUID?.() || `checkout-${Date.now()}`,
+      });
+      const checkoutUrl = response.data?.checkout?.checkout_url;
+      if (!checkoutUrl) throw new Error("Checkout URL was not returned.");
+      window.location.assign(checkoutUrl);
+    } catch (error) {
+      setCheckoutError(error?.response?.data?.detail || error.message || "Checkout could not be started.");
+    } finally {
+      setCheckoutLoading(false);
+    }
   };
 
   if (err) return <div className="min-h-screen grid place-items-center p-6 text-sm text-rose-700" data-testid="public-webstore-error">{err}</div>;
@@ -227,7 +262,7 @@ export default function PublicWebstorePage() {
                   {cartConfig.promo_codes_enabled && <div className="grid gap-1.5"><Label htmlFor="public-promo">Promo code</Label><Input id="public-promo" value={promoCode} onChange={(event) => setPromoCode(event.target.value)} placeholder="Optional" /></div>}
                   {quoteError && <p className="text-sm text-rose-700" role="alert">{quoteError}</p>}
                   {quoteLoading && <p className="text-xs text-muted-foreground" aria-live="polite">Updating cart total...</p>}
-                  {quote && <div className="space-y-1 border-t pt-3 text-sm"><div className="flex justify-between"><span>Merchandise</span><span>{centsToDollarsString(quote.subtotal_cents)}</span></div><div className="flex justify-between"><span>Shipping estimate</span><span>{centsToDollarsString(quote.shipping_cents)}</span></div>{quote.donation_cents > 0 && <div className="flex justify-between"><span>Donation</span><span>{centsToDollarsString(quote.donation_cents)}</span></div>}{quote.discount_cents > 0 && <div className="flex justify-between text-emerald-700"><span>Discount</span><span>-{centsToDollarsString(quote.discount_cents)}</span></div>}<div className="flex justify-between border-t pt-2 font-semibold"><span>Current total</span><span data-testid="public-cart-total">{centsToDollarsString(quote.total_cents)}</span></div><p className="pt-2 text-xs text-muted-foreground">Payment and order creation are unavailable until the later commerce stage.</p></div>}
+                  {quote && <div className="space-y-1 border-t pt-3 text-sm"><div className="flex justify-between"><span>Merchandise</span><span>{centsToDollarsString(quote.subtotal_cents)}</span></div><div className="flex justify-between"><span>Shipping estimate</span><span>{centsToDollarsString(quote.shipping_cents)}</span></div>{quote.donation_cents > 0 && <div className="flex justify-between"><span>Donation</span><span>{centsToDollarsString(quote.donation_cents)}</span></div>}{quote.discount_cents > 0 && <div className="flex justify-between text-emerald-700"><span>Discount</span><span>-{centsToDollarsString(quote.discount_cents)}</span></div>}<div className="flex justify-between border-t pt-2 font-semibold"><span>Current total</span><span data-testid="public-cart-total">{centsToDollarsString(quote.total_cents)}</span></div>{data.webstore.checkout_enabled ? <div className="space-y-3 pt-3"><div className="grid gap-1.5"><Label htmlFor="public-buyer-name">Name</Label><Input id="public-buyer-name" value={buyerName} onChange={(event) => setBuyerName(event.target.value)} /></div><div className="grid gap-1.5"><Label htmlFor="public-buyer-email">Email</Label><Input id="public-buyer-email" type="email" value={buyerEmail} onChange={(event) => setBuyerEmail(event.target.value)} /></div>{checkoutError && <p className="text-sm text-rose-700" role="alert">{checkoutError}</p>}<Button type="button" className="w-full" disabled={checkoutLoading} onClick={beginCheckout}>{checkoutLoading ? "Opening checkout..." : "Continue to secure checkout"}</Button><p className="text-xs text-muted-foreground">Payment is processed by Stripe. The Webstore is not marked paid until a verified provider event is received.</p></div> : <p className="pt-2 text-xs text-muted-foreground">Payment and order creation are unavailable until provider setup is verified.</p>}</div>}
                 </div>
               )}
             </CardContent>

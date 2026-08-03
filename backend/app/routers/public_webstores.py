@@ -112,6 +112,14 @@ async def create_purchase_intent(slug: str, payload: BuyerOrderIn) -> dict:
         _raise(e)
 
 
+@router.post("/{slug}/checkout-session", status_code=201)
+async def create_checkout_session(slug: str, payload: BuyerOrderIn) -> dict:
+    try:
+        return await svc.create_checkout_session(slug, payload.model_dump(exclude_none=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
 @router.get("/{slug}/confirmations/{confirmation_token}")
 async def confirmation(slug: str, confirmation_token: str) -> dict:
     try:

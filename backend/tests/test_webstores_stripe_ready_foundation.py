@@ -274,6 +274,7 @@ async def test_payout_and_dispute_reconciliation_accept_only_typed_events_and_re
         "currency": "usd",
         "status": "paid",
         "sequence": 1,
+        "raw_event_snapshot": {"event_type": "transfer.created", "provider_event_id": "evt_payout_fixture"},
     }
     provider = _TypedProviderFixture({}, event_data)
     first = await reconcile_webstore_financial_event(
@@ -284,6 +285,11 @@ async def test_payout_and_dispute_reconciliation_accept_only_typed_events_and_re
     )
     assert first["already_processed"] is False
     assert replay["already_processed"] is True
+    activity = await db.webstore_activity_events.find_one(
+        {"tenant_id": ctx["tenant_id"], "action": "webstore.provider_financial_event_reconciled"},
+        {"_id": 0},
+    )
+    assert activity["metadata"]["raw_event_snapshot"]["event_type"] == "transfer.created"
     conflict = ProviderFinancialEvent(**{**event_data, "amount_cents": 200})
     with pytest.raises(WebstoreError) as error:
         await reconcile_webstore_financial_event(
@@ -324,6 +330,24 @@ def test_provider_status_maps_all_authoritative_states(monkeypatch: pytest.Monke
         assert status["provider_authority"] is True
 
 
+def test_provider_status_rejects_connected_account_mode_mismatch(monkeypatch: pytest.MonkeyPatch):
+    settings = _settings(
+        monkeypatch,
+        STRIPE_ENABLED="true",
+        STRIPE_MODE="live",
+        STRIPE_SECRET_KEY="sk_live_mode_mismatch",
+        STRIPE_PUBLISHABLE_KEY="pk_live_mode_mismatch",
+        STRIPE_CONNECT_CHARGE_MODEL="destination",
+    )
+    authority = ProviderAuthority("stripe", "test", "acct_test", "destination", True, True)
+
+    status = provider_configuration_status(settings, authority)
+
+    assert status["state"] == "connected_verification_required"
+    assert status["provider_authority"] is False
+    assert "webstore_stripe_mode_mismatch" in status["violations"]
+
+
 @pytest.mark.asyncio
 async def test_typed_verified_payment_conversion_is_exactly_once_and_excludes_raw_payload(monkeypatch: pytest.MonkeyPatch):
     suffix = uuid.uuid4().hex[:8]
@@ -361,6 +385,7 @@ async def test_typed_verified_payment_conversion_is_exactly_once_and_excludes_ra
         provider_payment_id=payment_id,
         purchase_intent_id=intent_id,
         tenant_id=tenant_id,
+        webstore_id=webstore_id,
         amount_cents=1000,
         currency="usd",
     )

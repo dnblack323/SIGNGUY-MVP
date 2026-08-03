@@ -131,6 +131,7 @@ BuyerOrderStatus = Literal[
 PurchaseIntentStatus = Literal[
     "pending_payment",
     "payment_processing",
+    "payment_verified",
     "paid_order_created",
     "payment_failed",
     "partially_refunded",
@@ -644,7 +645,9 @@ class WebstorePurchaseIntent(BaseDoc):
     canonical_payment_id: Optional[str] = None
     provider: Optional[str] = None
     provider_payment_id: Optional[str] = None
+    provider_account_reference: Optional[str] = None
     provider_checkout_id: Optional[str] = None
+    checkout_url: Optional[str] = None
     checkout_status: str = "created"
     checkout_attempt_id: Optional[str] = None
     checkout_attempt_state: str = "not_created"
