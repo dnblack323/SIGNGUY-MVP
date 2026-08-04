@@ -4401,6 +4401,7 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
             "resource": {"type": "payment_readiness", "id": webstore_id},
             "owner_wording": "Payment setup is not ready yet.",
             "blocking": False,
+            "stage5_deferred": not bool(payment["provider_authority"]),
             "stage7_provider_authority": bool(payment["provider_authority"]),
         },
         {
@@ -4412,6 +4413,7 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
             "resource": {"type": "batch_scope", "id": "batch_3"},
             "owner_wording": "Buyer checkout is available after provider verification.",
             "blocking": False,
+            "stage5_deferred": not bool(payment["provider_authority"]),
             "stage7_provider_authority": bool(payment["provider_authority"]),
         },
     ]
@@ -5011,10 +5013,6 @@ def _checkout_response(intent: dict, *, created: bool) -> dict:
 
 async def create_purchase_intent(slug: str, fields: dict[str, Any], *, allow_internal_draft: bool = False) -> dict:
     _reject_public_money_authority(fields)
-    storefront = await _storefront_by_slug(slug)
-    store = storefront["webstore"]
-    if not allow_internal_draft and not store.get("checkout_enabled"):
-        raise WebstoreError("checkout_paused", "Checkout is currently paused for this Webstore", 409)
     provider_status = provider_configuration_status(get_settings())
     if not allow_internal_draft and not provider_status["provider_authority"]:
         raise WebstoreError(
@@ -5022,6 +5020,10 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any], *, allow_int
             "Online checkout is unavailable until the Webstore payment provider is configured and verified.",
             503,
         )
+    storefront = await _storefront_by_slug(slug)
+    store = storefront["webstore"]
+    if not allow_internal_draft and not store.get("checkout_enabled"):
+        raise WebstoreError("checkout_paused", "Checkout is currently paused for this Webstore", 409)
     full_store = await db.webstores.find_one({"public_slug": slug, "id": store["id"]}, {"_id": 0})
     tenant_id = full_store["tenant_id"]
     if fields.get("idempotency_key"):
