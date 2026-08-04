@@ -1039,10 +1039,13 @@ export default function WebstoreDetailPage() {
     (assignments.data || []).find((item) => item.role === "owner") ||
     (assignments.data || [])[0];
   const questionnaireSubmission = questionnaireResponse.data?.submission;
-  const questionnaireAnswers =
-    questionnaireSubmission?.submitted_snapshot?.answers ||
-    questionnaireSubmission?.answers ||
-    {};
+  const questionnaireAnswers = useMemo(
+    () =>
+      questionnaireSubmission?.submitted_snapshot?.answers ||
+      questionnaireSubmission?.answers ||
+      {},
+    [questionnaireSubmission],
+  );
   const questionnaireReviewTemplate = useMemo(
     () => ({
       sections: (questionnaire.data?.templates || []).flatMap(
