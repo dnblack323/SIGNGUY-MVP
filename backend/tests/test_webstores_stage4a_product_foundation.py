@@ -765,7 +765,10 @@ async def test_stage4a_product_image_activity_metadata_and_staff_preview(stage4a
         await db.webstores.update_one({"id": store["id"], "tenant_id": stage4a_ctx["tenant_id"]}, {"$set": {"status": "live"}})
         await db.webstore_products.update_one(
             {"id": product["id"], "tenant_id": stage4a_ctx["tenant_id"]},
-            {"$set": {"status": "active", "public": True, "selling_price_cents": 2500, "approval_status": "approved", "approval_revision": product["revision"]}},
+            {
+                "$set": {"status": "active", "public": True, "selling_price_cents": 2500, "approval_status": "approved", "approval_revision": product["revision"]},
+                "$unset": {"approval_invalidated_at": "", "approval_invalidated_reason": ""},
+            },
         )
 
     public = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")

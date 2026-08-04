@@ -58,7 +58,7 @@ def _forbid_recalculation(monkeypatch: pytest.MonkeyPatch) -> None:
         raise AssertionError("9I-H direct consumers must not call pricing calculators")
 
     monkeypatch.setattr(pricing, "calculate_pricing", _blocked)
-    monkeypatch.setattr(order_pricing, "calculate_pricing", _blocked)
+    monkeypatch.setattr(order_pricing, "calculate_pricing_with_cents_first_envelope", _blocked)
     monkeypatch.setattr(pricing_method_comparisons, "calculate_pricing", _blocked)
     monkeypatch.setattr(pricing_saved_calculations, "calculate_pricing", _blocked)
 

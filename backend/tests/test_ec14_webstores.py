@@ -262,6 +262,8 @@ async def test_public_storefront_can_launch_before_provider_checkout_authority(c
             assert ready.json()["checks"]["payment_ready"] is False
             assert ready.json()["public_launch_blocked_until_batch_3"] is True
             assert ready.json()["payment_readiness_source"] == "provider_boundary"
+            launch_ready = await owner_client_again.post(f"/api/webstores/{store['id']}/status", json={"status": "launch_ready"})
+            assert launch_ready.status_code == 200, launch_ready.text
             launched = await owner_client_again.post(f"/api/webstores/{store['id']}/status", json={"status": "live"})
             assert launched.status_code == 200, launched.text
             launched_store = await db.webstores.find_one({"tenant_id": ctx["tenant_id"], "id": store["id"]}, {"_id": 0})

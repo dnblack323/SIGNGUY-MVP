@@ -39,10 +39,11 @@ async def _seed_store(suffix: str, *, status: str = "live") -> dict[str, str]:
 
 
 @pytest.mark.asyncio
-async def test_close_pause_and_archive_block_checkout_but_preserve_history():
+async def test_close_pause_and_archive_block_checkout_but_preserve_history(monkeypatch: pytest.MonkeyPatch):
     await ensure_indexes()
     ctx = await _seed_store(uuid.uuid4().hex[:8])
     user = _user(ctx["tenant_id"])
+    monkeypatch.setattr(svc, "provider_configuration_status", lambda *_args, **_kwargs: {"provider_authority": True})
 
     paused = await svc.set_webstore_status(user, ctx["webstore_id"], "paused", reason="Temporary pause")
     assert paused["status"] == "paused"
