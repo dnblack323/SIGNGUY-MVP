@@ -97,7 +97,10 @@ def build_calculated_snapshot(
     at calculation time — the "effective date" for the Pricing Foundation
     defaults baked into `defaults_snapshot` below (Phase 9B versioning).
     """
-    if PRICING_ENGINE_RESULT_FIELD not in calc_result:
+    if (
+        PRICING_ENGINE_RESULT_FIELD not in calc_result
+        and calc_result.get("pricing_output_contract_version")
+    ):
         calc_result = {
             **calc_result,
             PRICING_ENGINE_RESULT_FIELD: build_legacy_line_result(
