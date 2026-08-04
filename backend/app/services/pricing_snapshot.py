@@ -99,7 +99,10 @@ def build_calculated_snapshot(
     """
     if (
         PRICING_ENGINE_RESULT_FIELD not in calc_result
-        and calc_result.get("pricing_output_contract_version")
+        and (
+            calc_result.get("pricing_output_contract_version")
+            or calc_result.get("pricing_engine_configuration_used")
+        )
     ):
         calc_result = {
             **calc_result,
