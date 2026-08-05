@@ -6,8 +6,10 @@ and only handle HTTP concerns.
 from __future__ import annotations
 
 import uuid
+import asyncio
 from typing import Any, Optional
 
+from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from ..core.db import db
@@ -24,10 +26,118 @@ async def _invoice_balance(tenant_id: str, invoice_id: str) -> tuple[dict, int]:
     inv = await db.invoices.find_one({"id": invoice_id, "tenant_id": tenant_id})
     if not inv:
         raise ValueError("invoice_not_found")
-    # Reconcile-then-read to ensure balance reflects live state.
-    await reconcile(tenant_id=tenant_id, invoice_id=invoice_id)
-    inv = await db.invoices.find_one({"id": invoice_id, "tenant_id": tenant_id})
+    # Older invoice documents may not have the EC4 derived fields yet. Bring
+    # those records forward once; current payment writes maintain the fields
+    # with the atomic guard below so a concurrent reconcile cannot reopen the
+    # read/check/write race.
+    if "balance_due_cents" not in inv or "amount_paid_cents" not in inv:
+        await reconcile(tenant_id=tenant_id, invoice_id=invoice_id)
+        inv = await db.invoices.find_one({"id": invoice_id, "tenant_id": tenant_id})
     return inv, int(inv.get("balance_due_cents") or 0)
+
+
+async def _apply_invoice_payment_guard(*, tenant_id: str, invoice_id: str, amount_cents: int) -> Optional[dict]:
+    """Atomically apply a payment only while the invoice can still collect it."""
+    now = utc_now().isoformat()
+    return await db.invoices.find_one_and_update(
+        {
+            "id": invoice_id,
+            "tenant_id": tenant_id,
+            "balance_due_cents": {"$gte": amount_cents},
+            "document_status": {"$ne": "void"},
+            "status": {"$ne": "void"},
+        },
+        [
+            {
+                "$set": {
+                    "amount_paid_cents": {"$add": [{"$ifNull": ["$amount_paid_cents", 0]}, amount_cents]},
+                    "balance_due_cents": {"$subtract": [{"$ifNull": ["$balance_due_cents", 0]}, amount_cents]},
+                    "updated_at": now,
+                }
+            },
+            {
+                "$set": {
+                    "financial_status": {
+                        "$cond": [
+                            {"$lte": ["$balance_due_cents", 0]},
+                            "paid",
+                            "partial",
+                        ]
+                    }
+                }
+            },
+        ],
+        projection={"_id": 0},
+        return_document=ReturnDocument.AFTER,
+    )
+
+
+async def _mark_payment_failed(payment_id: str, tenant_id: str, reason: str) -> None:
+    now = utc_now().isoformat()
+    await db.payments.update_one(
+        {"id": payment_id, "tenant_id": tenant_id, "status": "pending"},
+        {
+            "$set": {
+                "status": "failed",
+                "failed_at": now,
+                "failure_reason": reason,
+                "updated_at": now,
+            },
+            "$unset": {"confirmation_claim_id": "", "confirmation_claimed_at": ""},
+        },
+    )
+
+
+async def _rollback_invoice_payment_guard(*, tenant_id: str, invoice_id: str, amount_cents: int) -> None:
+    """Undo a guard reservation when the corresponding payment write fails."""
+    result = await db.invoices.update_one(
+        {
+            "id": invoice_id,
+            "tenant_id": tenant_id,
+            "$expr": {
+                "$gte": [{"$ifNull": ["$amount_paid_cents", 0]}, amount_cents]
+            },
+        },
+        {
+            "$inc": {"amount_paid_cents": -amount_cents, "balance_due_cents": amount_cents},
+            "$set": {"updated_at": utc_now().isoformat()},
+        },
+    )
+    if result.modified_count != 1:
+        raise RuntimeError("invoice_guard_rollback_failed")
+    await reconcile(tenant_id=tenant_id, invoice_id=invoice_id)
+
+
+async def _finalize_pending_payment(
+    *, payment_id: str, tenant_id: str, updates: dict[str, Any], claim_id: Optional[str] = None
+) -> bool:
+    payment_filter: dict[str, Any] = {"id": payment_id, "tenant_id": tenant_id, "status": "pending"}
+    if claim_id:
+        payment_filter["confirmation_claim_id"] = claim_id
+    result = await db.payments.update_one(
+        payment_filter,
+        {"$set": updates, "$unset": {"confirmation_claim_id": "", "confirmation_claimed_at": ""}},
+    )
+    return result.modified_count == 1
+
+
+async def _release_payment_claim(*, payment_id: str, tenant_id: str, claim_id: str) -> None:
+    await db.payments.update_one(
+        {"id": payment_id, "tenant_id": tenant_id, "confirmation_claim_id": claim_id},
+        {"$unset": {"confirmation_claim_id": "", "confirmation_claimed_at": ""}},
+    )
+
+
+async def _settle_idempotent_payment(payment: dict) -> dict:
+    """Avoid returning a transient pending row for a concurrent replay."""
+    if payment.get("status") != "pending":
+        return payment
+    for _ in range(20):
+        await asyncio.sleep(0.01)
+        current = await db.payments.find_one({"id": payment["id"], "tenant_id": payment["tenant_id"]}, {"_id": 0})
+        if current and current.get("status") != "pending":
+            return current
+    return payment
 
 
 # ---------------- Manual payments ----------------
@@ -65,7 +175,7 @@ async def record_manual(
             {"_id": 0},
         )
         if prev:
-            return serialize_doc(prev), True
+            return serialize_doc(await _settle_idempotent_payment(prev)), True
 
     if amount_cents <= 0:
         raise ValueError("amount_must_be_positive")
@@ -79,14 +189,13 @@ async def record_manual(
         customer_id=inv["customer_id"],
         order_id=inv.get("order_id"),
         source="manual",
-        status="confirmed",
+        status="pending",
         amount_cents=amount_cents,
         method=method,  # type: ignore[arg-type]
         paid_on=paid_on,
         reference=reference,
         notes=notes,
         idempotency_key=idempotency_key,
-        confirmed_at=utc_now(),
         created_by=actor_user_id,
     )
     allocation = await next_record_number(
@@ -109,15 +218,39 @@ async def record_manual(
             {"_id": 0},
         )
         if prev:
-            return serialize_doc(prev), True
+            return serialize_doc(await _settle_idempotent_payment(prev)), True
         raise
 
-    # Race-safe re-check: if concurrent inserts pushed us above total, roll back.
-    _, new_balance = await _invoice_balance(tenant_id, invoice_id)
-    if new_balance < 0:
-        await db.payments.delete_one({"id": pay.id, "tenant_id": tenant_id})
-        await reconcile(tenant_id=tenant_id, invoice_id=invoice_id)
+    guarded_invoice = await _apply_invoice_payment_guard(
+        tenant_id=tenant_id, invoice_id=invoice_id, amount_cents=amount_cents
+    )
+    if not guarded_invoice:
+        current_invoice = await db.invoices.find_one({"id": invoice_id, "tenant_id": tenant_id}, {"_id": 0})
+        reason = "invoice_void" if current_invoice and (
+            current_invoice.get("document_status") == "void" or current_invoice.get("status") == "void"
+        ) else "overpayment_rejected"
+        await _mark_payment_failed(pay.id, tenant_id, reason)
+        if reason == "invoice_void":
+            raise ValueError(reason)
         raise ValueError("overpayment_rejected")
+
+    try:
+        finalized = await _finalize_pending_payment(
+            payment_id=pay.id,
+            tenant_id=tenant_id,
+            updates={"status": "confirmed", "confirmed_at": utc_now().isoformat(), "updated_at": utc_now().isoformat()},
+        )
+        if not finalized:
+            raise RuntimeError("payment_persistence_failed")
+    except Exception as exc:  # noqa: BLE001 - compensate the prior invoice guard before surfacing failure
+        await _rollback_invoice_payment_guard(
+            tenant_id=tenant_id, invoice_id=invoice_id, amount_cents=amount_cents
+        )
+        await _mark_payment_failed(pay.id, tenant_id, "payment_persistence_failed")
+        if isinstance(exc, RuntimeError) and str(exc) == "invoice_guard_rollback_failed":
+            raise
+        raise ValueError("payment_persistence_failed") from exc
+    pay_doc = await db.payments.find_one({"id": pay.id, "tenant_id": tenant_id}, {"_id": 0})
 
     await record_audit(
         tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
@@ -125,7 +258,7 @@ async def record_manual(
         summary=f"Manual payment ${amount_cents / 100:,.2f} recorded",
         diff={"payment_id": pay.id, "amount_cents": amount_cents, "method": method},
     )
-    return serialize_doc(pay.model_dump()), False
+    return serialize_doc(pay_doc or pay.model_dump()), False
 
 
 async def void_manual(
@@ -309,7 +442,41 @@ async def confirm_stripe_from_webhook(
     doc = await db.payments.find_one({"stripe_payment_intent_id": payment_intent_id})
     if not doc:
         return
-    if doc.get("status") == "confirmed":
+    if doc.get("status") in {"confirmed", "failed", "voided"}:
+        return
+    claim_id = uuid.uuid4().hex
+    claim_now = utc_now().isoformat()
+    claimed = await db.payments.update_one(
+        {
+            "id": doc["id"],
+            "tenant_id": doc["tenant_id"],
+            "status": "pending",
+            "confirmation_claim_id": {"$exists": False},
+        },
+        {"$set": {"confirmation_claim_id": claim_id, "confirmation_claimed_at": claim_now}},
+    )
+    if claimed.modified_count != 1:
+        # Another delivery is already settling this payment. Its eventual
+        # state is authoritative; do not apply the invoice amount twice.
+        return
+
+    guarded_invoice = await _apply_invoice_payment_guard(
+        tenant_id=doc["tenant_id"], invoice_id=doc["invoice_id"], amount_cents=int(doc["amount_cents"])
+    )
+    if not guarded_invoice:
+        current_invoice = await db.invoices.find_one(
+            {"id": doc["invoice_id"], "tenant_id": doc["tenant_id"]}, {"_id": 0}
+        )
+        reason = "invoice_void" if current_invoice and (
+            current_invoice.get("document_status") == "void" or current_invoice.get("status") == "void"
+        ) else "overpayment_rejected"
+        await _mark_payment_failed(doc["id"], doc["tenant_id"], reason)
+        await record_audit(
+            tenant_id=doc["tenant_id"], actor_user_id="webhook", actor_email="stripe",
+            action="payment_rejected_stripe", entity_type="invoice", entity_id=doc["invoice_id"],
+            summary="Stripe payment rejected because the invoice balance was no longer available",
+            diff={"payment_id": doc["id"], "provider_event_id": provider_event_id, "reason": reason},
+        )
         return
     updates: dict[str, Any] = {
         "status": "confirmed",
@@ -320,8 +487,20 @@ async def confirm_stripe_from_webhook(
     }
     if dev_simulated:
         updates["dev_simulated"] = True
-    await db.payments.update_one({"id": doc["id"], "tenant_id": doc["tenant_id"]}, {"$set": updates})
-    await reconcile(tenant_id=doc["tenant_id"], invoice_id=doc["invoice_id"])
+    try:
+        finalized = await _finalize_pending_payment(
+            payment_id=doc["id"], tenant_id=doc["tenant_id"], updates=updates, claim_id=claim_id
+        )
+        if not finalized:
+            raise RuntimeError("payment_confirmation_persistence_failed")
+    except Exception as exc:  # noqa: BLE001 - compensate and make the provider event retryable
+        await _rollback_invoice_payment_guard(
+            tenant_id=doc["tenant_id"], invoice_id=doc["invoice_id"], amount_cents=int(doc["amount_cents"])
+        )
+        await _release_payment_claim(payment_id=doc["id"], tenant_id=doc["tenant_id"], claim_id=claim_id)
+        if isinstance(exc, RuntimeError) and str(exc) == "invoice_guard_rollback_failed":
+            raise
+        raise RuntimeError("payment_confirmation_persistence_failed") from exc
     await record_audit(
         tenant_id=doc["tenant_id"], actor_user_id="webhook", actor_email="stripe",
         action="payment_confirmed_stripe", entity_type="invoice", entity_id=doc["invoice_id"],

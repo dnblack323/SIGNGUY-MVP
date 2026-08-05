@@ -71,6 +71,9 @@ class WorkOrder(BaseDoc):
     superseded_from: Optional[str] = None
     supersede_reason: Optional[str] = None
     snapshot_version: int = 1
+    # Sparse idempotency key for newly generated current Work Orders. Legacy
+    # rows may not have this field and remain readable during migration.
+    current_order_key: Optional[str] = None
 
     # Content
     production_instructions: Optional[str] = None

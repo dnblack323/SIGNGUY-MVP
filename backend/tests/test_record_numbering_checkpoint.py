@@ -341,6 +341,9 @@ async def test_webstore_buyer_order_numbers_are_idempotent_and_do_not_affect_can
             "status": "active",
             "public": True,
             "featured": True,
+            "approval_status": "approved",
+            "approval_revision": 1,
+            "revision": 1,
             "variants": [],
         }
     )

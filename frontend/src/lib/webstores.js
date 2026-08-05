@@ -242,8 +242,23 @@ export async function setWebstoreStatus(webstoreId, status, reason) {
   return r.data;
 }
 
+export async function relaunchWebstore(webstoreId, reason) {
+  const r = await api.post(`/webstores/${webstoreId}/relaunch`, { reason });
+  return r.data;
+}
+
 export async function getWebstoreReports(webstoreId) {
   const r = await api.get(`/webstores/${webstoreId}/reports`);
+  return r.data;
+}
+
+export async function getWebstoreOrders(webstoreId, params = {}) {
+  const r = await api.get(`/webstores/${webstoreId}/orders`, { params });
+  return r.data;
+}
+
+export async function handoffWebstoreOrderToProduction(webstoreId, orderId) {
+  const r = await api.post(`/webstores/${webstoreId}/orders/${orderId}/production-handoff`);
   return r.data;
 }
 

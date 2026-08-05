@@ -4,15 +4,15 @@ This register tracks known code-review issues that should not be lost between st
 
 | ID | Issue | Area | Status | Verification |
 | --- | --- | --- | --- | --- |
-| CIR-001 | Concurrent invoice overpayment | Invoices / payments | Open | Needs focused fix and regression coverage. |
-| CIR-002 | Incomplete Stripe webhook reconciliation | Stripe / payments | Open | Needs focused fix and regression coverage. |
+| CIR-001 | Concurrent invoice overpayment | Invoices / payments | Fixed / Verified | Fixed by routing legacy invoice payments through the shared payment service and applying an atomic tenant-scoped invoice balance guard before confirmation. Rejected attempts are failed, non-collectible payment records, and failed payment persistence rolls back the invoice guard. Verified by `backend\\.venv\\Scripts\\python.exe -m pytest backend/tests/test_cir_001_concurrent_invoice_overpayment.py backend/tests/test_payments_ec4.py backend/tests/test_invoice_reconciliation.py -q` (26 passed). |
+| CIR-002 | Incomplete Stripe webhook reconciliation | Stripe / payments | Fixed / Verified | Verified provider webhooks now complete the canonical Customer/Order/Payment bridge, and provider payout/dispute ledger entries are included in staff and owner reports. Verified by `backend\\.venv\\Scripts\\python.exe -m pytest backend\\tests\\test_webstores_stage8a_order_bridge.py backend\\tests\\test_webstores_stage8d_reports.py -q`. |
 | CIR-003 | Quote total/item disagreement | Quotes / pricing | Open | Needs focused fix and regression coverage. |
 | CIR-004 | Failure-unsafe quote conversion | Quote to Order conversion | Open | Needs focused fix and regression coverage. |
 | CIR-005 | Non-atomic single-use tokens | Token consumption | Open | Needs focused fix and regression coverage. |
 | CIR-006 | Financial edits to completed/cancelled Orders | Orders / financial controls | Open | Needs focused fix and regression coverage. |
-| CIR-007 | Duplicate current Work Orders under concurrency | Work Orders | Open | Needs focused fix and regression coverage. |
-| CIR-008 | Missing restricted-store access enforcement | Public Webstores / access control | Open | Needs focused fix and regression coverage. |
-| CIR-009 | Manufactured lifecycle milestone states | Webstores lifecycle | Open | Needs focused fix and regression coverage. |
+| CIR-007 | Duplicate current Work Orders under concurrency | Work Orders | Fixed / Verified | Verified the existing tenant/order current-key index and concurrent Webstore production handoff preserve one current Work Order. Verified by `backend\\.venv\\Scripts\\python.exe -m pytest backend\\tests\\test_webstores_stage8c_production_handoff.py -q`. |
+| CIR-008 | Missing restricted-store access enforcement | Public Webstores / access control | Fixed / Verified | Staff Webstore orders, production handoff, and reports now resolve active database assignments in addition to explicit user scope fields. Verified by `backend\\.venv\\Scripts\\python.exe -m pytest backend\\tests\\test_webstores_stage8b_orders_projection.py -q`. |
+| CIR-009 | Manufactured lifecycle milestone states | Webstores lifecycle | Fixed / Verified | Phase 6 lifecycle transitions now gate both lifecycle and legacy status routes, including pause and reopen, while internal setup milestones remain compatibility substates. Verified by `backend\\.venv\\Scripts\\python.exe -m pytest backend\\tests\\test_webstores_stage8e_lifecycle.py -q`. |
 | CIR-010 | Committed runtime logs | Repository hygiene | Open | Needs cleanup in a separate housekeeping pass. |
 | CIR-011 | Oversized Webstores files | Webstores maintainability | Open | Needs targeted file split/refactor after current stage acceptance. |
 | CIR-012 | React-version documentation mismatch | Frontend docs / dependencies | Open | Needs docs/dependency reconciliation. |

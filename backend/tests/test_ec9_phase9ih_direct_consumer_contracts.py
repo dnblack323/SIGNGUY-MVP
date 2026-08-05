@@ -27,8 +27,11 @@ WATCHED_COLLECTIONS = [
     "order_items",
     "work_orders",
     "orders",
+    "payments",
     "invoices",
     "webstore_buyer_orders",
+    "webstore_purchase_intents",
+    "webstore_ledger_entries",
     "wrap_projects",
 ]
 
@@ -58,7 +61,7 @@ def _forbid_recalculation(monkeypatch: pytest.MonkeyPatch) -> None:
         raise AssertionError("9I-H direct consumers must not call pricing calculators")
 
     monkeypatch.setattr(pricing, "calculate_pricing", _blocked)
-    monkeypatch.setattr(order_pricing, "calculate_pricing", _blocked)
+    monkeypatch.setattr(order_pricing, "calculate_pricing_with_cents_first_envelope", _blocked)
     monkeypatch.setattr(pricing_method_comparisons, "calculate_pricing", _blocked)
     monkeypatch.setattr(pricing_saved_calculations, "calculate_pricing", _blocked)
 
@@ -273,18 +276,50 @@ async def test_webstore_reports_read_buyer_order_and_ledger_snapshots_without_re
             "status": "live",
         }
     )
-    await db.webstore_buyer_orders.insert_one(
+    intent_id = f"buyer-order-9ih-{suffix}"
+    order_id = f"order-9ih-{suffix}"
+    await db.webstore_purchase_intents.insert_one(
         {
-            "id": f"buyer-order-9ih-{suffix}",
+            "id": intent_id,
             "tenant_id": tenant_id,
             "webstore_id": webstore_id,
+            "status": "paid_order_created",
+            "canonical_order_id": order_id,
+            "total_cents": 6750,
+        }
+    )
+    await db.orders.insert_one(
+        {
+            "id": order_id,
+            "tenant_id": tenant_id,
+            "source_type": "webstore_purchase_intent",
+            "source_id": intent_id,
             "status": "paid",
             "total_cents": 6750,
-            "line_items": [
-                {"product_id": "shirt", "quantity": 2, "unit_price_cents": 2500, "line_total_cents": 5000},
-                {"product_id": "hat", "quantity": 1, "unit_price_cents": 1750, "line_total_cents": 1750},
-            ],
+            "amount_paid_cents": 6750,
         }
+    )
+    await db.order_items.insert_many(
+        [
+            {
+                "id": f"item-shirt-9ih-{suffix}",
+                "tenant_id": tenant_id,
+                "order_id": order_id,
+                "description": "Snapshot Shirt",
+                "quantity": 2,
+                "unit_price_cents": 2500,
+                "pricing_snapshot": {"line_item": {"product_id": "shirt"}},
+            },
+            {
+                "id": f"item-hat-9ih-{suffix}",
+                "tenant_id": tenant_id,
+                "order_id": order_id,
+                "description": "Snapshot Hat",
+                "quantity": 1,
+                "unit_price_cents": 1750,
+                "pricing_snapshot": {"line_item": {"product_id": "hat"}},
+            },
+        ]
     )
     await db.webstore_ledger_entries.insert_many(
         [
@@ -292,6 +327,7 @@ async def test_webstore_reports_read_buyer_order_and_ledger_snapshots_without_re
                 "id": f"ledger-fee-9ih-{suffix}",
                 "tenant_id": tenant_id,
                 "webstore_id": webstore_id,
+                "source_id": intent_id,
                 "entry_type": "platform_fee",
                 "amount_cents": 450,
             },
@@ -299,6 +335,7 @@ async def test_webstore_reports_read_buyer_order_and_ledger_snapshots_without_re
                 "id": f"ledger-payout-9ih-{suffix}",
                 "tenant_id": tenant_id,
                 "webstore_id": webstore_id,
+                "source_id": intent_id,
                 "entry_type": "owner_payout",
                 "amount_cents": 1200,
             },
