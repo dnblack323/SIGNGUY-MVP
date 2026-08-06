@@ -322,6 +322,18 @@ class AIContractIn(BaseModel):
     reviewed_at: Optional[str] = None
 
 
+class ProductAIActionPreviewIn(BaseModel):
+    action: str
+
+
+class ProductAIActionRunIn(BaseModel):
+    action: str
+    confirmed_credit_charge_credits: StrictInt = Field(ge=0)
+    prompt: Optional[str] = None
+    context_notes: Optional[str] = None
+    idempotency_key: Optional[str] = None
+
+
 class LaunchPacketIn(BaseModel):
     promotion_copy: Optional[str] = None
     qr_code_url: Optional[str] = None
@@ -966,6 +978,22 @@ async def list_mockups(webstore_id: str, product_id: Optional[str] = Query(None)
 async def create_ai_contract(webstore_id: str, payload: AIContractIn, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.create_ai_usage_event(user, webstore_id, payload.model_dump(exclude_none=True))
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/products/{product_id}/ai-actions/preview")
+async def preview_product_ai_action(webstore_id: str, product_id: str, payload: ProductAIActionPreviewIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.preview_product_ai_action(user, webstore_id, product_id, payload.action)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/products/{product_id}/ai-actions", status_code=201)
+async def run_product_ai_action(webstore_id: str, product_id: str, payload: ProductAIActionRunIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.run_product_ai_action(user, webstore_id, product_id, payload.model_dump(exclude_none=True))
     except WebstoreError as e:
         _raise(e)
 

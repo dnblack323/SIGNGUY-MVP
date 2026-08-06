@@ -383,6 +383,8 @@ async def public_proof_action(pid: str, payload: ProofApprovalIn, request: Reque
     proof = await db.proofs.find_one({"id": pid, "tenant_id": token["tenant_id"]})
     if not proof:
         raise HTTPException(status_code=404, detail="Proof not found")
+    if not await consume_public_action_token(token["id"], token["tenant_id"]):
+        raise HTTPException(status_code=410, detail="Token already used")
     try:
         approval = await record_approval(
             tenant_id=token["tenant_id"], parent_type="proof_version", parent_id=pid,
@@ -402,7 +404,6 @@ async def public_proof_action(pid: str, payload: ProofApprovalIn, request: Reque
                 tenant_id=token["tenant_id"], proof_id=pid, target="changes_requested",
                 reason=payload.reason, actor_kind="public_token", actor_email=payload.signer_name,
             )
-        await consume_public_action_token(token["id"])
         return approval
     except ValueError as ex:
         raise HTTPException(status_code=400, detail=str(ex))
@@ -438,6 +439,8 @@ async def public_sign(rid: str, payload: PublicSignIn, request: Request, t: str 
     )
     if token.get("audience_email") and token["audience_email"].lower() != payload.signer_email.lower():
         raise HTTPException(status_code=403, detail="Signer email mismatch")
+    if not await consume_public_action_token(token["id"], token["tenant_id"]):
+        raise HTTPException(status_code=410, detail="Token already used")
     try:
         sig = await record_signature(
             tenant_id=token["tenant_id"], request_id=rid,
@@ -448,7 +451,6 @@ async def public_sign(rid: str, payload: PublicSignIn, request: Request, t: str 
             ip=(request.client.host if request.client else None),
             user_agent=request.headers.get("user-agent"),
         )
-        await consume_public_action_token(token["id"])
         return sig
     except ValueError as ex:
         raise HTTPException(status_code=400, detail=str(ex))
@@ -528,6 +530,8 @@ async def submit_customer_intake(intake_id: str, payload: CustomerIntakeSubmitIn
         raise HTTPException(status_code=404, detail="Intake not found")
     if intake.get("status") == "applied":
         raise HTTPException(status_code=410, detail="Intake already applied")
+    if not await consume_public_action_token(token["id"], token["tenant_id"]):
+        raise HTTPException(status_code=410, detail="Token already used")
     # Compute staged changes (diff against authoritative customer — no silent overwrite)
     cust = await db.customers.find_one({"id": intake["customer_id"], "tenant_id": token["tenant_id"]}, {"_id": 0}) or {}
     staged: dict = {}
@@ -548,7 +552,6 @@ async def submit_customer_intake(intake_id: str, payload: CustomerIntakeSubmitIn
             "status": "submitted",
         }},
     )
-    await consume_public_action_token(token["id"])
     await record_audit(
         tenant_id=token["tenant_id"], actor_user_id=f"token:{token['id']}", actor_email=(intake.get("customer_id") or "public@intake"),
         action="customer_intake.submit", entity_type="customer_intake", entity_id=intake_id,

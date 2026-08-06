@@ -15,7 +15,7 @@ import { toast } from "sonner";
 const METHOD_LABELS = {
   per_sqft: "Price by Size / Quantity",
   cost_plus_labor: "Cost + Labor + Profit",
-  common_job_prices: "Use My Common Job Prices",
+  common_job_prices: "Use My Common Project Prices",
 };
 
 function QuestionRow({ q, value, onChange }) {

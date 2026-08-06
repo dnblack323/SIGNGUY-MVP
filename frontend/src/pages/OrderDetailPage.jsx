@@ -297,7 +297,7 @@ export default function OrderDetailPage() {
             <Card>
               <CardHeader><CardTitle>Details</CardTitle></CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-2">
-                <div className="grid gap-1.5"><Label>Job name</Label><Input value={edit.job_name || ""} disabled={!canWrite} onChange={(e) => setForm((f) => ({ ...f, job_name: e.target.value }))} data-testid="order-job-name" /></div>
+                <div className="grid gap-1.5"><Label>Project name</Label><Input value={edit.job_name || ""} disabled={!canWrite} onChange={(e) => setForm((f) => ({ ...f, job_name: e.target.value }))} data-testid="order-job-name" /></div>
                 <div className="grid gap-1.5"><Label>Due date</Label><Input type="date" value={(edit.due_date || "").slice(0, 10)} disabled={!canWrite} onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value || null }))} data-testid="order-due-date" /></div>
                 <div className="md:col-span-2 grid gap-1.5"><Label>Customer notes</Label><Textarea rows={3} value={edit.notes_customer || ""} disabled={!canWrite} onChange={(e) => setForm((f) => ({ ...f, notes_customer: e.target.value }))} data-testid="order-notes-customer" /></div>
                 <div className="md:col-span-2 grid gap-1.5"><Label>Internal notes</Label><Textarea rows={3} value={edit.notes_internal || edit.notes || ""} disabled={!canWrite} onChange={(e) => setForm((f) => ({ ...f, notes_internal: e.target.value }))} data-testid="order-notes-internal" /></div>

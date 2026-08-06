@@ -13,7 +13,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import TableSkeleton from "@/components/common/LoadingSkeleton";
 import EmptyState from "@/components/common/EmptyState";
 import StatusPill from "@/components/common/StatusPill";
-import MoneyInput from "@/components/forms/MoneyInput";
 import { centsToDollarsString, relativeTime } from "@/lib/format";
 import { toast } from "sonner";
 import { Plus, FileText } from "lucide-react";
@@ -24,7 +23,6 @@ function NewQuoteDialog({ onCreated }) {
   const [customerId, setCustomerId] = useState("");
   const [jobName, setJobName] = useState("");
   const [notes, setNotes] = useState("");
-  const [totalCents, setTotalCents] = useState(0);
   const [busy, setBusy] = useState(false);
 
   const { data: cust } = useQuery({
@@ -37,10 +35,10 @@ function NewQuoteDialog({ onCreated }) {
     e.preventDefault();
     setBusy(true);
     try {
-      const { data } = await api.post("/quotes", { customer_id: customerId, job_name: jobName, notes, total_cents: totalCents });
+      const { data } = await api.post("/quotes", { customer_id: customerId, job_name: jobName, notes });
       toast.success(`Quote Q-${data.number} created`);
       setOpen(false);
-      setJobName(""); setNotes(""); setTotalCents(0); setCustomerId("");
+      setJobName(""); setNotes(""); setCustomerId("");
       onCreated?.(data);
     } catch (err) { toast.error(extractError(err)); }
     finally { setBusy(false); }
@@ -50,7 +48,7 @@ function NewQuoteDialog({ onCreated }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild><Button data-testid="quotes-create-button"><Plus className="size-4 mr-1" />New quote</Button></DialogTrigger>
       <DialogContent className="sm:max-w-[520px]">
-        <DialogHeader><DialogTitle>New quote</DialogTitle><DialogDescription>Enter a manually-typed price.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>New quote</DialogTitle><DialogDescription>Add line items after creating the quote.</DialogDescription></DialogHeader>
         <form onSubmit={submit} className="grid gap-3">
           <div className="grid gap-1.5">
             <Label>Customer*</Label>
@@ -61,8 +59,7 @@ function NewQuoteDialog({ onCreated }) {
               </SelectContent>
             </Select>
           </div>
-          <div className="grid gap-1.5"><Label>Job name*</Label><Input required value={jobName} onChange={(e) => setJobName(e.target.value)} data-testid="quote-job-name-input" /></div>
-          <div className="grid gap-1.5"><Label>Total (USD)</Label><MoneyInput value={totalCents} onChange={setTotalCents} testId="quote-total-input" /></div>
+          <div className="grid gap-1.5"><Label>Project name*</Label><Input required value={jobName} onChange={(e) => setJobName(e.target.value)} data-testid="quote-job-name-input" /></div>
           <div className="grid gap-1.5"><Label>Notes</Label><Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
@@ -105,7 +102,7 @@ export default function QuotesPage() {
           <Table data-testid="quotes-table">
             <TableHeader><TableRow>
               <TableHead>#</TableHead>
-              <TableHead>Job</TableHead>
+              <TableHead>Project</TableHead>
               <TableHead className="text-right">Total</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Created</TableHead>

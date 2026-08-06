@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from ..core.config import get_settings
 from ..core.db import db
-from ..core.permissions import PLATFORM_CREATOR_ROLE, PlatformPerm, permissions_for_role
+from ..core.permissions import PLATFORM_CREATOR_ROLE, PlatformPerm, permissions_for_role, platform_permissions
 from ..core.security import (
     create_access_token,
     decode_access_token,
@@ -36,6 +36,10 @@ from ..services.email import send_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _settings = get_settings()
+
+
+def _permissions_for_user(user: dict) -> list[str]:
+    return sorted(set(permissions_for_role(user.get("role", "staff"))) | platform_permissions(user))
 
 
 
@@ -113,7 +117,7 @@ async def register_tenant(payload: RegisterTenantIn) -> TokenOut:
         access_token=token,
         user=user_out,
         tenant=serialize_doc(tenant.model_dump()),
-        permissions=permissions_for_role(user.role),
+        permissions=_permissions_for_user(user.model_dump()),
     )
 
 
@@ -129,6 +133,16 @@ async def login(payload: LoginIn) -> TokenOut:
         doc = await db.users.find_one({"tenant_id": tenant["id"], "email": payload.email})
     if not doc or not verify_password(payload.password, doc["password_hash"]) or not doc.get("is_active", True):
         raise generic_error
+    if tenant.get("is_active") is False and not platform_permissions(doc):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "tenant_suspended",
+                "message": "This shop account is suspended. Contact SignGuy AI support.",
+                "reason": tenant.get("suspension_reason"),
+                "support_email": _settings.sendgrid_from_email or "support@signguy.ai",
+            },
+        )
     await db.users.update_one(
         {"id": doc["id"], "tenant_id": tenant["id"]},
         {"$set": {"last_login_at": utc_now().isoformat()}},
@@ -139,7 +153,7 @@ async def login(payload: LoginIn) -> TokenOut:
         access_token=token,
         user=u,
         tenant=serialize_doc(tenant),
-        permissions=permissions_for_role(doc.get("role", "staff")),
+        permissions=_permissions_for_user(doc),
     )
 
 
@@ -244,7 +258,7 @@ async def _issue_google_token(profile: dict) -> TokenOut:
             access_token=create_access_token(subject=doc["id"], tenant_id=doc["tenant_id"]),
             user=serialize_external_user(doc),
             tenant=serialize_doc(tenant),
-            permissions=permissions_for_role(doc.get("role", "staff")),
+            permissions=_permissions_for_user(doc),
         )
 
     tenant = Tenant(name=f"{name}'s Shop", slug=await _unique_tenant_slug(name or email))
@@ -271,7 +285,7 @@ async def _issue_google_token(profile: dict) -> TokenOut:
         access_token=create_access_token(subject=user.id, tenant_id=tenant.id),
         user=serialize_external_user(user.model_dump()),
         tenant=serialize_doc(tenant.model_dump()),
-        permissions=permissions_for_role(user.role),
+        permissions=_permissions_for_user(user.model_dump()),
     )
 
 
@@ -400,9 +414,8 @@ async def logout(user: dict = Depends(get_current_user)) -> Response:
 @router.get("/me")
 async def me(user: dict = Depends(get_current_user)) -> dict:
     tenant = await db.tenants.find_one({"id": user["tenant_id"]})
-    perms = permissions_for_role(user.get("role", "staff"))
     u = serialize_external_user(user)
-    return {"user": u, "tenant": serialize_doc(tenant), "permissions": perms}
+    return {"user": u, "tenant": serialize_doc(tenant), "permissions": _permissions_for_user(user)}
 
 
 @router.post("/request-password-reset", status_code=202)
@@ -470,11 +483,16 @@ async def reset_password(payload: ResetPasswordIn) -> Response:
         exp_dt = exp
     if exp_dt < utc_now():
         raise HTTPException(status_code=400, detail="Token expired")
+    consumed = await db.password_reset_tokens.update_one(
+        {"id": tok["id"], "used_at": None},
+        {"$set": {"used_at": utc_now().isoformat()}},
+    )
+    if consumed.modified_count == 0:
+        raise HTTPException(status_code=400, detail="Token already used")
     await db.users.update_one(
         {"id": tok["user_id"], "tenant_id": tok["tenant_id"]},
         {"$set": {"password_hash": hash_password(payload.new_password)}},
     )
-    await db.password_reset_tokens.update_one({"id": tok["id"]}, {"$set": {"used_at": utc_now().isoformat()}})
     user = await db.users.find_one({"id": tok["user_id"], "tenant_id": tok["tenant_id"]})
     if user:
         await record_audit(
@@ -557,5 +575,5 @@ async def dev_login() -> TokenOut:
         access_token=token,
         user=u_out,
         tenant=serialize_doc(tenant),
-        permissions=permissions_for_role(user.get("role", "owner")),
+        permissions=_permissions_for_user(user),
     )

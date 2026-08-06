@@ -83,6 +83,35 @@ async def test_quote_line_items_backend_derived_totals(seeded_users):
 
 
 @pytest.mark.asyncio
+async def test_quote_create_and_update_ignore_client_supplied_document_totals(seeded_users):
+    user = seeded_users["user_a"]
+    cust_id = await _seed_customer(user["tenant_id"])
+    async with await _client_as(user) as c:
+        r = await c.post("/api/quotes", json={
+            "customer_id": cust_id,
+            "job_name": "Totals ignored",
+            "total_cents": 999999,
+        })
+        assert r.status_code == 201, r.text
+        quote = r.json()
+        assert quote["total_cents"] == 0
+        assert quote["subtotal_cents"] == 0
+
+        r = await c.patch(f"/api/quotes/{quote['id']}", json={
+            "notes": "Only notes should change",
+            "total_cents": 123456,
+        })
+        assert r.status_code == 200, r.text
+        assert r.json()["notes"] == "Only notes should change"
+        assert r.json()["total_cents"] == 0
+
+        r = await c.patch(f"/api/quotes/{quote['id']}", json={"total_cents": 111})
+        assert r.status_code == 400
+        assert r.json()["detail"] == "No updates"
+    _clear_overrides()
+
+
+@pytest.mark.asyncio
 async def test_sent_quote_edit_creates_revision(seeded_users):
     user = seeded_users["user_a"]
     cust_id = await _seed_customer(user["tenant_id"])
@@ -179,6 +208,39 @@ async def test_convert_idempotent_and_copies_items(seeded_users):
         assert body["order"]["source_quote_id"] == qid
         assert body["order"]["source_quote_revision"] == 1
         assert body["totals"]["subtotal_cents"] == 5000
+    _clear_overrides()
+
+
+@pytest.mark.asyncio
+async def test_conversion_failure_leaves_quote_retryable_and_cleans_candidate(seeded_users, monkeypatch):
+    user = seeded_users["user_a"]
+    cust_id = await _seed_customer(user["tenant_id"])
+    async with await _client_as(user) as c:
+        r = await c.post("/api/quotes", json={"customer_id": cust_id, "job_name": "Retryable"})
+        qid = r.json()["id"]
+        await c.post(f"/api/quotes/{qid}/line-items", json={
+            "description": "Item", "quantity": 1, "unit_price_cents": 2500, "category": "banners",
+        })
+
+        from app.services import quote_conversion
+
+        async def fail_snapshot(*args, **kwargs):
+            raise RuntimeError("forced snapshot failure")
+
+        monkeypatch.setattr(quote_conversion, "create_snapshot_record", fail_snapshot)
+
+        with pytest.raises(RuntimeError, match="forced snapshot failure"):
+            await quote_conversion.convert_quote_to_order(
+                tenant_id=user["tenant_id"],
+                quote_id=qid,
+                actor_user_id=user["id"],
+                actor_email=user["email"],
+            )
+
+        quote = await _db.quotes.find_one({"tenant_id": user["tenant_id"], "id": qid}, {"_id": 0})
+        assert quote["status"] == "draft"
+        assert quote.get("converted_order_id") is None
+        assert await _db.orders.count_documents({"tenant_id": user["tenant_id"], "source_quote_id": qid}) == 0
     _clear_overrides()
 
 

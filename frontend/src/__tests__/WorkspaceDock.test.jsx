@@ -77,7 +77,7 @@ function workspaceAtSlot(index, overrides = {}) {
     id: `workspace-${index}`,
     workspace_key: `order:order-${index}`,
     record_id: `order-${index}`,
-    label: `O-00012${index} - Job ${index}`,
+    label: `O-00012${index} - Project ${index}`,
     pathname: `/orders/order-${index}`,
     active: index === 1,
     dirty: false,
@@ -311,7 +311,7 @@ test("opening a ninth workspace displays the limit workflow", async () => {
 
   expect(await screen.findByTestId("workspace-limit-dialog")).toBeInTheDocument();
   expect(screen.getByText(/Choose one occupied slot/)).toBeInTheDocument();
-  expect(screen.getByText(/Slot 1: O-000121 - Job 1/)).toBeInTheDocument();
+  expect(screen.getByText(/Slot 1: O-000121 - Project 1/)).toBeInTheDocument();
   expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
   await user.click(screen.getByText("Cancel"));
 });
@@ -327,7 +327,7 @@ test("limit chooser can cancel a dirty replacement without closing or reopening"
   const user = userEvent.setup();
   renderShell("/pricing-calculator");
 
-  await user.click(await screen.findByText(/Slot 1: O-000121 - Job 1/));
+  await user.click(await screen.findByText(/Slot 1: O-000121 - Project 1/));
   const dirtyDialog = await screen.findByTestId("workspace-dirty-dialog");
   expect(dirtyDialog).toBeInTheDocument();
   await user.click(within(dirtyDialog).getByText("Cancel"));

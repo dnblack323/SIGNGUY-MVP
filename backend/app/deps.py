@@ -9,12 +9,14 @@ from typing import Callable
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from .core.config import get_settings
 from .core.db import db
-from .core.permissions import Perm, permissions_for_role
+from .core.permissions import Perm, has_platform_admin_access, permissions_for_role
 from .core.security import decode_access_token
 from .core.time_utils import serialize_doc
 
 _bearer = HTTPBearer(auto_error=False)
+_settings = get_settings()
 
 
 async def get_current_user(
@@ -36,6 +38,24 @@ async def get_current_user(
     user = await db.users.find_one({"id": user_id, "tenant_id": tenant_id, "is_active": True})
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User inactive or not found")
+    tenant = await db.tenants.find_one({"id": tenant_id}, {"_id": 0, "is_active": 1, "suspension_reason": 1})
+    if tenant and tenant.get("is_active") is False and not has_platform_admin_access(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "tenant_suspended",
+                "message": "This shop account is suspended. Contact SignGuy AI support.",
+                "reason": tenant.get("suspension_reason"),
+                "support_email": _settings.sendgrid_from_email or "support@signguy.ai",
+            },
+        )
+    if payload.get("impersonating"):
+        user["impersonation"] = {
+            "is_impersonating": True,
+            "impersonation_log_id": payload.get("impersonation_log_id"),
+            "platform_admin_id": payload.get("platform_admin_id"),
+            "platform_admin_email": payload.get("platform_admin_email"),
+        }
     return serialize_doc(user)  # type: ignore[return-value]
 
 

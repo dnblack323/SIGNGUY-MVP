@@ -47,11 +47,15 @@ async def mint_public_action_token(
     return raw, doc
 
 
-async def consume_public_action_token(token_id: str) -> None:
-    await db.public_action_tokens.update_one(
-        {"id": token_id, "consumed_at": None},
+async def consume_public_action_token(token_id: str, tenant_id: Optional[str] = None) -> bool:
+    query = {"id": token_id, "consumed_at": None}
+    if tenant_id:
+        query["tenant_id"] = tenant_id
+    res = await db.public_action_tokens.update_one(
+        query,
         {"$set": {"consumed_at": utc_now().isoformat()}},
     )
+    return res.modified_count > 0
 
 
 async def revoke_public_action_token(token_id: str, tenant_id: str) -> bool:
@@ -99,9 +103,11 @@ async def find_and_consume_magic_link(raw_token: str) -> Optional[dict]:
             exp = None
     if exp and exp < datetime.now(timezone.utc):
         return None
-    await db.magic_link_tokens.update_one(
+    res = await db.magic_link_tokens.update_one(
         {"id": doc["id"], "consumed_at": None},
         {"$set": {"consumed_at": utc_now().isoformat()}},
     )
+    if res.modified_count == 0:
+        return None
     doc.pop("_id", None)
     return doc

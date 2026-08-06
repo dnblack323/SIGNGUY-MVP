@@ -51,7 +51,7 @@ function NewOrderDialog({ onCreated }) {
               <SelectContent>{cust?.items?.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <div className="grid gap-1.5"><Label>Job name*</Label><Input required value={jobName} onChange={(e) => setJobName(e.target.value)} data-testid="order-job-name-input" /></div>
+          <div className="grid gap-1.5"><Label>Project name*</Label><Input required value={jobName} onChange={(e) => setJobName(e.target.value)} data-testid="order-job-name-input" /></div>
           <div className="grid gap-1.5"><Label>Notes</Label><Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)} type="button">Cancel</Button>
@@ -92,7 +92,7 @@ export default function OrdersPage() {
           <Table data-testid="orders-table">
             <TableHeader><TableRow>
               <TableHead>#</TableHead>
-              <TableHead>Job</TableHead>
+              <TableHead>Project</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Created</TableHead>
             </TableRow></TableHeader>

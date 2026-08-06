@@ -1,0 +1,22 @@
+import api from "@/lib/api";
+
+export const platformAdminApi = {
+  tenants: async (search = "") => (await api.get("/platform-admin/tenants", { params: search ? { search } : {} })).data,
+  tenant: async (tenantId) => (await api.get(`/platform-admin/tenants/${tenantId}`)).data,
+  suspend: async (tenantId, reason) => (await api.post(`/platform-admin/tenants/${tenantId}/suspend`, { reason })).data,
+  reactivate: async (tenantId, payload) => (await api.post(`/platform-admin/tenants/${tenantId}/reactivate`, payload)).data,
+  markPaid: async (tenantId, note) => (await api.post(`/platform-admin/tenants/${tenantId}/mark-paid`, { note })).data,
+  setThreshold: async (tenantId, threshold) => (await api.put(`/platform-admin/tenants/${tenantId}/dunning-threshold`, { threshold })).data,
+  impersonate: async (targetUserId) => (await api.post("/platform-admin/impersonate", { target_user_id: targetUserId })).data,
+  endImpersonation: async (logId) => (await api.post(`/platform-admin/impersonation-logs/${logId}/end`)).data,
+  settings: async () => (await api.get("/platform-admin/settings")).data,
+  setAnnouncement: async (payload) => (await api.put("/platform-admin/announcement", payload)).data,
+  setMaintenance: async (payload) => (await api.put("/platform-admin/maintenance", payload)).data,
+  broadcastCounts: async () => (await api.get("/platform-admin/broadcast-email/audience-counts")).data,
+  sendBroadcast: async (payload) => (await api.post("/platform-admin/broadcast-email", payload)).data,
+  emailSummary: async (params = {}) => (await api.get("/platform-admin/email-logs/summary", { params })).data,
+  emailLogs: async (params = {}) => (await api.get("/platform-admin/email-logs", { params })).data,
+  auditActions: async () => (await api.get("/platform-admin/audit-log/actions")).data,
+  auditLog: async (params = {}) => (await api.get("/platform-admin/audit-log", { params })).data,
+  analytics: async (range = "30d") => (await api.get("/platform-admin/analytics", { params: { range } })).data,
+};

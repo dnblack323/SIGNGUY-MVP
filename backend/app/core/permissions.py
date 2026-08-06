@@ -217,6 +217,8 @@ class PlatformPerm(str, Enum):
     PLATFORM_BROADCAST_WRITE = "platform:broadcast_write"
     PLATFORM_SUBSCRIPTION_ADMIN = "platform:subscription_admin"
     PLATFORM_AI_CREDIT_ADMIN = "platform:ai_credit_admin"
+    PLATFORM_SETTINGS_WRITE = "platform:settings_write"
+    PLATFORM_ANALYTICS_READ = "platform:analytics_read"
 
 
 class PortalPerm(str, Enum):

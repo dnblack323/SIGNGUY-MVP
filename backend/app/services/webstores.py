@@ -21,8 +21,6 @@ from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.customer import Customer
 from ..models.order import Order, OrderItem
 from ..models.webstore import (
-    WEBSTORE_LIFECYCLE_STATES,
-    WEBSTORE_TYPES,
     Webstore,
     WebstoreAIUsageEvent,
     WebstoreActivity,
@@ -46,6 +44,8 @@ from ..models.webstore import (
 from ..repositories.webstores import WebstoreRepository
 from .activity import record_activity_with_audit
 from .approvals_signatures_service import record_approval
+from . import ai_gateway
+from . import ai_studio
 from . import webstore_branding as branding_svc
 from .entitlements import has_entitlement
 from .email import record_processed_activity, send_email
@@ -54,274 +54,41 @@ from .sequence import next_number, next_record_number
 from . import storage
 from .webstore_payment_provider import ProviderAuthority, get_webstore_payment_provider, provider_configuration_status
 from .webstore_type_requirements import default_store_settings, evaluate_type_requirements
-
-WEBSTORES_FEATURE_KEY = "webstores"
-LIVE_BLOCKING_STATUSES = {"closed", "archived"}
-PRODUCT_PURCHASABLE_STATUSES = {"active"}
-PLATFORM_TEMPLATE_TENANT_ID = "__platform__"
-TEMPLATE_SCOPES = {"tenant", "platform"}
-TEMPLATE_STATUSES = {"draft", "active", "archived"}
-PRODUCT_STATUSES = {"draft", "planned", "incomplete", "ready", "active", "inactive", "archived"}
-CATALOG_PRODUCT_STATUSES = {"planned", "incomplete", "ready", "active", "archived"}
-CATEGORY_STATUSES = {"active", "archived"}
-CUSTOMER_IMAGE_SLOTS = {"primary", "secondary"}
-PRODUCT_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "svg"}
-FULFILLMENT_METHODS = {"pickup", "shipping"}
-STAGE4A_PUBLICATION_FIELDS = {"public", "featured"}
-PRODUCT_APPROVAL_DECISIONS = {"approve", "request_changes", "reject"}
-PRODUCT_APPROVAL_STATUSES = {"not_submitted", "pending_owner_approval", "approved", "rejected", "changes_requested", "superseded"}
-STAGE4A_FINANCIAL_VARIANT_FIELDS = {
-    "production_cost_cents",
-    "selling_price_cents",
-    "store_owner_share_cents",
-    "platform_fee_basis_points",
-    "margin_cents",
-    "margin_percent",
-    "revenue_cents",
-    "fundraiser_share_cents",
-    "owner_share_cents",
-    "variants",
-    "variant_pricing",
-    "variant_skus",
-    "sku",
-    "personalization_enabled",
-    "image_file_ids",
-}
-SLUG_RE = re.compile(r"[^a-z0-9]+")
-PUBLIC_CHECKOUT_ENABLED = True
-VALID_WEBSTORE_TYPES = set(WEBSTORE_TYPES)
-VALID_WEBSTORE_STATUSES = set(WEBSTORE_LIFECYCLE_STATES)
-PHASE6_LIFECYCLE_STATES = (
-    "draft",
-    "intake_pending",
-    "setup_in_progress",
-    "owner_review",
-    "payment_setup_pending",
-    "ready_to_launch",
-    "live",
-    "paused",
-    "closed",
-    "archived",
+from .webstore_constants import (
+    CATALOG_PRODUCT_STATUSES,
+    CATEGORY_STATUSES,
+    CHANGE_REQUEST_CATEGORIES,
+    CHANGE_REQUEST_STATUSES,
+    CURRENT_WEBSTORE_TERMS_VERSION,
+    CUSTOMER_IMAGE_SLOTS,
+    FULFILLMENT_METHODS,
+    INTERNAL_STATUS_TO_PHASE6,
+    LIVE_BLOCKING_STATUSES,
+    MATERIAL_PRODUCT_FIELDS,
+    MATERIAL_STORE_FIELDS,
+    PAYMENT_READINESS_STATES,
+    PHASE6_LIFECYCLE_STATES,
+    PHASE6_LIFECYCLE_TRANSITIONS,
+    PHASE6_TO_INTERNAL_STATUS,
+    PLATFORM_TEMPLATE_TENANT_ID,
+    PRODUCT_APPROVAL_DECISIONS,
+    PRODUCT_APPROVAL_STATUSES,
+    PRODUCT_IMAGE_EXTENSIONS,
+    PRODUCT_PURCHASABLE_STATUSES,
+    PRODUCT_STATUSES,
+    PUBLIC_CHECKOUT_ENABLED,
+    SLUG_RE,
+    STAGE4A_FINANCIAL_VARIANT_FIELDS,
+    STAGE4A_PUBLICATION_FIELDS,
+    STARTER_PRODUCT_TEMPLATE_MARKER,
+    STARTER_PRODUCT_TEMPLATES,
+    TEMPLATE_SCOPES,
+    TEMPLATE_STATUSES,
+    VALID_WEBSTORE_STATUSES,
+    VALID_WEBSTORE_TYPES,
+    WEBSTORE_TRANSITIONS,
+    WEBSTORES_FEATURE_KEY,
 )
-CURRENT_WEBSTORE_TERMS_VERSION = "webstore_terms_2026_07"
-PAYMENT_READINESS_STATES = {"not_configured", "pending", "restricted", "ready", "unavailable", "not_applicable"}
-CHANGE_REQUEST_CATEGORIES = {
-    "branding",
-    "product",
-    "price",
-    "description",
-    "artwork",
-    "mockup",
-    "variant",
-    "personalization",
-    "fulfillment",
-    "availability",
-    "policy",
-    "general",
-}
-CHANGE_REQUEST_STATUSES = {"open", "answered", "resolved", "declined", "superseded"}
-MATERIAL_STORE_FIELDS = {
-    "name",
-    "description",
-    "branding",
-    "store_type",
-    "deadline_at",
-    "target_launch_at",
-    "event_start_at",
-    "event_location",
-    "intended_launch_at",
-    "intended_close_at",
-    "launch_timezone",
-    "required_terms_version",
-    "store_settings",
-    "direct_owner_payout_required",
-    "stripe_onboarding_required",
-}
-MATERIAL_PRODUCT_FIELDS = {
-    "name",
-    "short_description",
-    "full_description",
-    "description",
-    "category_id",
-    "category_name",
-    "category",
-    "product_type",
-    "fulfillment_notes",
-    "fulfillment_methods",
-    "default_fulfillment_method",
-    "pickup_instructions",
-    "shipping_cost_cents",
-    "sku",
-    "selling_price_cents",
-    "store_owner_share_cents",
-    "fundraiser_share_cents",
-    "platform_fee_basis_points",
-    "variants",
-    "personalization_enabled",
-    "personalization_fields",
-    "bundle_items",
-    "inventory_policy",
-    "inventory_quantity",
-    "launch_packet_include",
-    "customer_images",
-    "artwork_associations",
-    "mockup_associations",
-    "public",
-    "featured",
-    "status",
-}
-
-STARTER_PRODUCT_TEMPLATE_MARKER = "starter_common_webstore_template_2026_08"
-STARTER_PRODUCT_TEMPLATES = [
-    {
-        "template_name": "T-shirt",
-        "product_category": "apparel",
-        "product_type": "tshirt",
-        "default_title": "T-shirt",
-        "default_short_description": "Comfortable custom printed T-shirt.",
-        "default_description": "A classic short-sleeve T-shirt customized with your store artwork. Available in common adult sizes and selected colors.",
-        "suggested_category_name": "Apparel",
-        "production_method": "screen_print_or_dtf",
-        "default_variants": [{"size": size, "color": "", "selling_price_cents": 2500} for size in ["S", "M", "L", "XL", "2XL"]],
-        "suggested_selling_price_cents": 2500,
-    },
-    {
-        "template_name": "Hoodie",
-        "product_category": "apparel",
-        "product_type": "hoodie",
-        "default_title": "Hoodie",
-        "default_short_description": "Warm pullover hoodie with custom artwork.",
-        "default_description": "A soft pullover hoodie decorated with your store artwork. Good for fundraisers, teams, events, and company stores.",
-        "suggested_category_name": "Apparel",
-        "production_method": "screen_print_or_dtf",
-        "default_variants": [{"size": size, "color": "", "selling_price_cents": 4500} for size in ["S", "M", "L", "XL", "2XL"]],
-        "suggested_selling_price_cents": 4500,
-    },
-    {
-        "template_name": "Hat",
-        "product_category": "apparel",
-        "product_type": "hat",
-        "default_title": "Hat",
-        "default_short_description": "Adjustable hat with logo or store artwork.",
-        "default_description": "An adjustable cap decorated with a logo, patch, or printed design for everyday wear.",
-        "suggested_category_name": "Accessories",
-        "production_method": "embroidery_or_patch",
-        "default_variants": [{"size": "One size", "color": "", "selling_price_cents": 2800}],
-        "suggested_selling_price_cents": 2800,
-    },
-    {
-        "template_name": "Decal / Sticker",
-        "product_category": "decals",
-        "product_type": "decal",
-        "default_title": "Decal / Sticker",
-        "default_short_description": "Custom decal or sticker using store artwork.",
-        "default_description": "A durable decal or sticker printed from your approved artwork. Great as an add-on item for events and fundraisers.",
-        "suggested_category_name": "Decals",
-        "production_method": "print_cut",
-        "default_variants": [{"size": "Small", "color": "Full color", "selling_price_cents": 600}, {"size": "Large", "color": "Full color", "selling_price_cents": 1000}],
-        "suggested_selling_price_cents": 600,
-    },
-    {
-        "template_name": "Banner",
-        "product_category": "signs",
-        "product_type": "banner",
-        "default_title": "Banner",
-        "default_short_description": "Custom event or sponsor banner.",
-        "default_description": "A printed banner customized with your store artwork, event information, sponsor logos, or promotional message.",
-        "suggested_category_name": "Signs",
-        "production_method": "digital_print",
-        "default_variants": [{"size": "2x4", "color": "Full color", "selling_price_cents": 6500}, {"size": "3x6", "color": "Full color", "selling_price_cents": 11000}],
-        "suggested_selling_price_cents": 6500,
-    },
-    {
-        "template_name": "Tumbler",
-        "product_category": "promotional",
-        "product_type": "tumbler",
-        "default_title": "Tumbler",
-        "default_short_description": "Drinkware with custom logo or campaign artwork.",
-        "default_description": "A branded tumbler or cup using your approved store artwork. Useful for company stores, fundraisers, and promotional campaigns.",
-        "suggested_category_name": "Drinkware",
-        "production_method": "sublimation_or_vendor",
-        "default_variants": [{"size": "20 oz", "color": "", "selling_price_cents": 3000}],
-        "suggested_selling_price_cents": 3000,
-    },
-]
-WEBSTORE_TRANSITIONS: dict[str, set[str]] = {
-    "draft": {"questionnaire_sent", "waiting_on_store_owner", "questionnaire_submitted", "products_selected", "store_packet_generated", "archived"},
-    "questionnaire_sent": {"waiting_on_store_owner", "questionnaire_submitted", "changes_requested", "archived"},
-    "waiting_on_store_owner": {"questionnaire_submitted", "changes_requested", "archived"},
-    "questionnaire_submitted": {"ai_setup_ready", "artwork_needs_review", "products_selected", "store_packet_generated", "archived"},
-    "ai_setup_ready": {"ai_product_suggestions_ready", "artwork_needs_review", "products_selected", "archived"},
-    "ai_product_suggestions_ready": {"artwork_needs_review", "products_selected", "archived"},
-    "artwork_needs_review": {"mockups_generated", "products_selected", "archived"},
-    "mockups_generated": {"mockups_approved", "changes_requested", "products_selected", "archived"},
-    "mockups_approved": {"products_selected", "store_packet_generated", "archived"},
-    "products_selected": {"store_packet_generated", "sent_for_approval", "archived"},
-    "store_packet_generated": {"sent_for_approval", "changes_requested", "archived"},
-    "sent_for_approval": {"approved", "changes_requested", "archived"},
-    "changes_requested": {"questionnaire_submitted", "store_packet_generated", "sent_for_approval", "archived"},
-    "approved": {"launch_ready", "scheduled", "live", "archived"},
-    "launch_ready": {"scheduled", "paused", "live", "archived"},
-    "scheduled": {"launch_ready", "paused", "live", "closed", "archived"},
-    "paused": {"launch_ready", "scheduled", "live", "closed", "archived"},
-    "live": {"closing_soon", "paused", "closed", "in_production", "completed", "archived"},
-    "closing_soon": {"paused", "closed", "archived"},
-    "closed": {"relaunch_ready", "archived"},
-    "in_production": {"completed", "closed", "archived"},
-    "completed": {"relaunch_ready", "archived"},
-    "relaunch_ready": {"approved", "launch_ready", "scheduled", "live", "archived"},
-    "archived": set(),
-}
-PHASE6_LIFECYCLE_TRANSITIONS: dict[str, set[str]] = {
-    "draft": {"intake_pending", "archived"},
-    "intake_pending": {"setup_in_progress", "archived"},
-    "setup_in_progress": {"owner_review", "archived"},
-    "owner_review": {"setup_in_progress", "payment_setup_pending", "archived"},
-    "payment_setup_pending": {"owner_review", "ready_to_launch", "archived"},
-    "ready_to_launch": {"payment_setup_pending", "live", "paused", "closed", "archived"},
-    "live": {"paused", "closed", "archived"},
-    "paused": {"ready_to_launch", "live", "closed", "archived"},
-    "closed": {"archived"},
-    "archived": set(),
-}
-PHASE6_TO_INTERNAL_STATUS = {
-    "draft": "draft",
-    "intake_pending": "waiting_on_store_owner",
-    "setup_in_progress": "questionnaire_submitted",
-    "owner_review": "store_packet_generated",
-    "payment_setup_pending": "approved",
-    "ready_to_launch": "launch_ready",
-    "live": "live",
-    "paused": "paused",
-    "closed": "closed",
-    "archived": "archived",
-}
-INTERNAL_STATUS_TO_PHASE6 = {
-    "draft": "draft",
-    "questionnaire_sent": "intake_pending",
-    "waiting_on_store_owner": "intake_pending",
-    "questionnaire_submitted": "setup_in_progress",
-    "ai_setup_ready": "setup_in_progress",
-    "ai_product_suggestions_ready": "setup_in_progress",
-    "artwork_needs_review": "setup_in_progress",
-    "mockups_generated": "setup_in_progress",
-    "mockups_approved": "setup_in_progress",
-    "products_selected": "setup_in_progress",
-    "store_packet_generated": "owner_review",
-    "sent_for_approval": "owner_review",
-    "changes_requested": "owner_review",
-    "approved": "payment_setup_pending",
-    "launch_ready": "ready_to_launch",
-    "scheduled": "ready_to_launch",
-    "paused": "paused",
-    "live": "live",
-    "closing_soon": "live",
-    "in_production": "live",
-    "completed": "closed",
-    "closed": "closed",
-    "relaunch_ready": "closed",
-    "archived": "archived",
-}
 
 owners_repo = WebstoreRepository("webstore_owners")
 stores_repo = WebstoreRepository("webstores")
@@ -340,6 +107,27 @@ ledger_repo = WebstoreRepository("webstore_ledger_entries")
 activity_repo = WebstoreRepository("webstore_activity_events")
 lifecycle_events_repo = WebstoreRepository("webstore_lifecycle_events")
 ai_repo = WebstoreRepository("webstore_ai_usage_events")
+
+WEBSTORE_PRODUCT_AI_ACTIONS: dict[str, dict[str, Any]] = {
+    "product_description": {
+        "label": "Product description draft",
+        "tool_key": "product_content_builder",
+        "mode_key": "webstore_product_content",
+        "capability_key": "webstore.product_description",
+        "result_record_type": "editable_draft",
+        "output_kind": "product_content_draft",
+        "usage_note": "Saves an editable AI Studio draft. It never changes product text, pricing, availability, or published storefront content.",
+    },
+    "product_mockup": {
+        "label": "Product mockup concept",
+        "tool_key": "mockup_generator",
+        "mode_key": "product_mockup",
+        "capability_key": "studio.image.mockup",
+        "result_record_type": "generated_asset",
+        "output_kind": "image_concept",
+        "usage_note": "Saves an AI Studio generated asset for review. It never creates, replaces, approves, or publishes a Webstore mockup.",
+    },
+}
 
 
 class WebstoreError(Exception):
@@ -3442,6 +3230,160 @@ async def create_ai_usage_event(user: dict, webstore_id: str, fields: dict[str, 
         summary="Webstore AI suggestion contract recorded without provider call",
     )
     return serialize_doc(event)  # type: ignore[return-value]
+
+
+def _webstore_product_ai_action(action: Any) -> dict[str, Any]:
+    key = str(action or "").strip()
+    config = WEBSTORE_PRODUCT_AI_ACTIONS.get(key)
+    if not config:
+        raise WebstoreError("unsupported_webstore_ai_action", "Unsupported Webstore product AI action", 400)
+    return {"action": key, **config}
+
+
+async def _webstore_product_ai_preview(user: dict, webstore_id: str, product_id: str, action: Any) -> dict[str, Any]:
+    _require_staff_perm(user, Perm.WEBSTORE_WRITE)
+    _require_staff_perm(user, Perm.AI_TOOL_USE)
+    config = _webstore_product_ai_action(action)
+    store = await _get_store(user["tenant_id"], webstore_id)
+    product = await _get_product(user["tenant_id"], product_id, webstore_id)
+    if not await has_entitlement(tenant_id=user["tenant_id"], feature_key=store.get("entitlement_feature_key") or WEBSTORES_FEATURE_KEY):
+        raise WebstoreError("webstores_not_entitled", "Webstores entitlement is required before running Webstore AI actions.", 402)
+    if not await has_entitlement(tenant_id=user["tenant_id"], feature_key=ai_studio.AI_STUDIO_ENTITLEMENT_FEATURE_KEY):
+        raise WebstoreError("ai_studio_not_entitled", "AI Studio entitlement is required before running Webstore AI actions.", 402)
+
+    capability = await db.ai_capabilities.find_one({"capability_key": config["capability_key"], "status": "active"}, {"_id": 0})
+    if not capability:
+        raise WebstoreError(
+            "webstore_ai_capability_not_bootstrapped",
+            "Platform AI admin must bootstrap the EC17 local mock catalog before this Webstore AI action can run.",
+            409,
+        )
+    account = await ai_gateway.get_credit_account(user["tenant_id"])
+    credit_charge = int(capability.get("default_credit_charge") or 0)
+    available = int(account.get("available_credits") or 0)
+    return {
+        "action": config["action"],
+        "label": config["label"],
+        "tool_key": config["tool_key"],
+        "mode_key": config["mode_key"],
+        "capability_key": config["capability_key"],
+        "result_record_type": config["result_record_type"],
+        "output_kind": config["output_kind"],
+        "credit_charge_credits": credit_charge,
+        "available_credits": available,
+        "credit_display": f"{credit_charge} AI credit{'s' if credit_charge != 1 else ''}",
+        "confirmation_required": True,
+        "can_run": available >= credit_charge,
+        "insufficient_credits": available < credit_charge,
+        "usage_note": config["usage_note"],
+        "review_required": True,
+        "auto_apply": False,
+        "manual_setup_available": True,
+        "h7_local_mock": True,
+        "external_provider_calls": 0,
+        "webstore": {"id": store["id"], "name": store.get("name")},
+        "product": {"id": product["id"], "name": product.get("name"), "revision": product.get("revision")},
+    }
+
+
+async def preview_product_ai_action(user: dict, webstore_id: str, product_id: str, action: Any) -> dict[str, Any]:
+    return await _webstore_product_ai_preview(user, webstore_id, product_id, action)
+
+
+def _webstore_product_ai_prompt(product: dict[str, Any], fields: dict[str, Any], config: dict[str, Any]) -> str:
+    supplied = _clean_optional_text(fields.get("prompt"), limit=1000)
+    base = supplied or product.get("full_description") or product.get("short_description") or product.get("name") or "Webstore product"
+    return (
+        f"{base}\n\n"
+        f"Product: {product.get('name') or 'Untitled product'}\n"
+        f"Product type: {product.get('product_type') or 'not set'}\n"
+        f"Category: {product.get('category_name') or product.get('category') or 'not set'}\n"
+        f"Boundary: {config['usage_note']}"
+    )
+
+
+async def run_product_ai_action(user: dict, webstore_id: str, product_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+    preview = await _webstore_product_ai_preview(user, webstore_id, product_id, fields.get("action"))
+    confirmed = fields.get("confirmed_credit_charge_credits")
+    if confirmed is None:
+        raise WebstoreError("ai_credit_confirmation_required", "Confirm the displayed AI credit charge before running this Webstore AI action.", 400)
+    if int(confirmed) != int(preview["credit_charge_credits"]):
+        raise WebstoreError("ai_credit_confirmation_stale", "The AI credit charge changed. Refresh the preview and confirm again.", 409)
+    product = await _get_product(user["tenant_id"], product_id, webstore_id)
+    config = _webstore_product_ai_action(fields.get("action"))
+    idempotency_key = _clean_optional_text(fields.get("idempotency_key"), limit=160)
+    result = await ai_studio.run_tool(
+        user,
+        {
+            "tool_key": config["tool_key"],
+            "mode_key": config["mode_key"],
+            "inputs": {
+                "prompt": _webstore_product_ai_prompt(product, fields, config),
+                "context_notes": _clean_optional_text(fields.get("context_notes"), limit=1000),
+            },
+            "context": {
+                "context_type": "webstore",
+                "context_id": webstore_id,
+                "webstore_product_id": product_id,
+                "webstore_product_revision": product.get("revision"),
+            },
+            "source_links": [{"entity_type": "webstore_product", "entity_id": product_id}],
+            "idempotency_key": idempotency_key,
+            "title": f"{preview['label']} - {product.get('name') or 'Webstore product'}",
+        },
+    )
+    event = WebstoreAIUsageEvent(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        action=config["action"],
+        status="drafted",
+        prompt_source=_clean_optional_text(fields.get("prompt"), limit=1000),
+        output_snapshot={
+            "record_type": result.get("record_type"),
+            "record_id": result.get("id"),
+            "title": result.get("title"),
+            "content_text": result.get("content_text"),
+            "content_json": result.get("content_json") or {},
+            "warnings": result.get("warnings") or [],
+            "action_request_id": result.get("action_request_id"),
+            "credit_charge_credits": preview["credit_charge_credits"],
+            "credit_display": preview["credit_display"],
+            "auto_apply": False,
+            "review_required": True,
+            "external_provider_calls": 0,
+            "h7_local_mock": True,
+            "webstore_product_id": product_id,
+            "webstore_product_revision": product.get("revision"),
+        },
+    ).model_dump()
+    await db.webstore_ai_usage_events.insert_one(prepare_for_mongo(event))
+    await _audit(
+        tenant_id=user["tenant_id"],
+        webstore_id=webstore_id,
+        actor_type="staff",
+        actor_id=user["id"],
+        actor_email=user.get("email"),
+        action="webstore.product_ai_action_recorded",
+        entity_type="webstore_ai_usage_event",
+        entity_id=event["id"],
+        summary="Webstore product AI output saved for staff review without applying changes",
+        metadata={
+            "product_id": product_id,
+            "ai_result_record_type": result.get("record_type"),
+            "ai_result_id": result.get("id"),
+            "action_request_id": result.get("action_request_id"),
+            "credit_charge_credits": preview["credit_charge_credits"],
+            "auto_apply": False,
+        },
+    )
+    return {
+        "preview": preview,
+        "ai_result": result,
+        "webstore_ai_event": serialize_doc(event),
+        "auto_apply": False,
+        "review_required": True,
+        "manual_setup_available": True,
+    }
 
 
 async def _included_packet_products(tenant_id: str, webstore_id: str, public_slug: Optional[str]) -> list[dict[str, Any]]:

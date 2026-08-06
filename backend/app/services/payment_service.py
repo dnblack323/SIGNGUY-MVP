@@ -382,11 +382,32 @@ async def initiate_stripe(
     doc = prepare_for_mongo(pay.model_dump())
     await db.payments.insert_one(doc)
 
+    async def _mark_stripe_initiation_failed(reason: str) -> None:
+        now = utc_now()
+        await db.payments.update_one(
+            {"id": pay.id, "tenant_id": tenant_id},
+            {"$set": {
+                "status": "failed",
+                "failed_at": now.isoformat(),
+                "failure_reason": reason,
+                "updated_at": now.isoformat(),
+            }},
+        )
+        await record_audit(
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            actor_email=actor_email,
+            action="payment_failed_stripe",
+            entity_type="invoice",
+            entity_id=invoice_id,
+            summary=f"Stripe payment initiation failed (${amount_cents / 100:,.2f})",
+            diff={"payment_id": pay.id, "reason": reason},
+        )
+
     # Actually call Stripe.
     if not stripe_core.is_enabled():
-        # Fail-closed for production; test mode may still proceed if key configured
-        # via patched stripe_core.is_enabled(). Delete the pending row and bail.
-        await db.payments.delete_one({"id": pay.id, "tenant_id": tenant_id})
+        # Fail-closed for production while preserving the attempted payment row.
+        await _mark_stripe_initiation_failed("stripe_disabled")
         raise ValueError("stripe_disabled")
     intent = stripe_core.create_payment_intent(
         amount_cents=amount_cents,
@@ -405,9 +426,11 @@ async def initiate_stripe(
         )
     except Exception as ex:  # noqa: BLE001
         import stripe as _stripe
-        await db.payments.delete_one({"id": pay.id, "tenant_id": tenant_id})
         if isinstance(ex, _stripe.error.StripeError):
-            raise ValueError(f"stripe_error:{getattr(ex, 'user_message', None) or str(ex)}")
+            reason = f"stripe_error:{getattr(ex, 'user_message', None) or str(ex)}"
+            await _mark_stripe_initiation_failed(reason)
+            raise ValueError(reason)
+        await _mark_stripe_initiation_failed(f"stripe_exception:{str(ex)}")
         raise
     await db.payments.update_one(
         {"id": pay.id, "tenant_id": tenant_id},

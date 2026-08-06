@@ -40,6 +40,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import WebstoreBrandingEditor from "@/components/webstores/WebstoreBranding";
+import GuidedSetupModule from "@/components/webstores/GuidedSetupModule";
 import { centsToDollarsString } from "@/lib/format";
 import { extractError } from "@/lib/api";
 import {
@@ -78,8 +79,10 @@ import {
   updateWebstoreChangeRequest,
   archiveWebstoreProduct,
   archiveWebstoreProductCategory,
+  previewWebstoreProductAiAction,
   restoreWebstoreProduct,
   restoreWebstoreProductCategory,
+  runWebstoreProductAiAction,
   updateWebstore,
   submitWebstoreMockupApproval,
   submitWebstoreProductApproval,
@@ -158,179 +161,6 @@ function editableAnswerValue(value) {
   return value ?? "";
 }
 
-function GuidedSetupModule({
-  store,
-  questionnaireSubmission,
-  activeProducts,
-  activePacket,
-  setupFiles,
-  branding,
-  readiness,
-  onShowTab,
-  onSendQuestionnaire,
-  onGeneratePacket,
-  onSendPacket,
-  onLaunch,
-  sendingQuestionnaire,
-  generatingPacket,
-  sendingPacket,
-  launching,
-}) {
-  const setupState = store.setup_state || store.status || "not_started";
-  const questionnaireSent = [
-    "questionnaire_sent",
-    "waiting_on_store_owner",
-    "questionnaire_submitted",
-    "staff_review",
-    "setup_in_progress",
-    "setup_complete",
-  ].includes(setupState) || store.status === "questionnaire_sent";
-  const questionnaireSubmitted = Boolean(questionnaireSubmission);
-  const questionnaireReviewed = ["reviewed", "approved"].includes(questionnaireSubmission?.status);
-  const hasBranding = Boolean(
-    branding?.draft ||
-      branding?.published ||
-      setupFiles.some((file) => ["logo", "banner"].includes(file.category)),
-  );
-  const hasProducts = activeProducts.length > 0;
-  const packetSent = Boolean(
-    activePacket?.sent_at ||
-      activePacket?.delivered_at ||
-      ["sent", "delivered", "sent_for_approval"].includes(activePacket?.status) ||
-      ["sent", "delivered"].includes(activePacket?.delivery_status),
-  );
-  const ownerApproved = Boolean(
-    store.owner_approved_at ||
-      ["owner_approved", "launch_ready", "live"].includes(store.status),
-  );
-
-  const steps = [
-    {
-      key: "basics",
-      title: "Store basics",
-      description: "The Webstore type, owner, dates, and short welcome message are recorded.",
-      complete: Boolean(store.name && store.store_type),
-    },
-    {
-      key: "questionnaire",
-      title: "Owner questionnaire",
-      description: questionnaireSubmitted
-        ? "The owner sent answers back. Review them before applying anything."
-        : questionnaireSent
-          ? "The type-specific questionnaire is with the owner."
-          : "Send the existing questionnaire for this Webstore type.",
-      complete: questionnaireSubmitted,
-      waiting: questionnaireSent && !questionnaireSubmitted,
-    },
-    {
-      key: "answers",
-      title: "Review answers",
-      description: questionnaireReviewed
-        ? "The reviewed answers are preserved and ready to guide setup."
-        : questionnaireSubmitted
-          ? "Preview proposed changes, then explicitly apply only what belongs in setup."
-          : "This opens after the owner submits the questionnaire.",
-      complete: questionnaireReviewed,
-      locked: !questionnaireSubmitted,
-    },
-    {
-      key: "build",
-      title: "Build products and Storefront",
-      description: hasProducts && hasBranding
-        ? "Products and draft branding are ready for the launch packet."
-        : "Use the answers to create product drafts, add mockups, and confirm the draft branding.",
-      complete: hasProducts && hasBranding,
-      locked: !questionnaireReviewed,
-    },
-    {
-      key: "packet",
-      title: "Send launch packet",
-      description: activePacket
-        ? packetSent
-          ? "The packet is with the owner for review."
-          : "The packet is ready to send to the owner."
-        : "Create the packet from the current products and draft Storefront.",
-      complete: packetSent,
-      locked: !hasProducts || !hasBranding,
-    },
-    {
-      key: "launch",
-      title: "Owner approval and launch",
-      description: store.status === "live"
-        ? "The Webstore is live."
-        : ownerApproved
-          ? readiness?.ready
-            ? "Owner approval is recorded and the Webstore can be launched."
-            : readiness?.payment_unavailable_reason || "Owner approval is recorded; remaining launch gates are shown in Review & Launch."
-          : "The owner must approve the packet before launch.",
-      complete: store.status === "live",
-      locked: !packetSent,
-    },
-  ];
-  const actionableIndex = steps.findIndex((step) => !step.complete && !step.waiting && !step.locked);
-  const currentIndex = actionableIndex >= 0 ? actionableIndex : steps.findIndex((step) => step.waiting);
-
-  const actionFor = (step) => {
-    if (step.complete || step.waiting || step.locked) return null;
-    if (step.key === "questionnaire") {
-      return <Button size="sm" onClick={onSendQuestionnaire} disabled={sendingQuestionnaire} data-testid="guided-send-questionnaire">{sendingQuestionnaire ? "Sending..." : "Send Questionnaire"}</Button>;
-    }
-    if (step.key === "answers") {
-      return <Button size="sm" onClick={() => onShowTab("review-launch")} data-testid="guided-review-answers">Review Answers</Button>;
-    }
-    if (step.key === "build") {
-      return <Button size="sm" onClick={() => onShowTab(hasProducts ? "storefront" : "products")} data-testid="guided-build-products">{hasProducts ? "Open Storefront" : "Build Products"}</Button>;
-    }
-    if (step.key === "packet") {
-      if (!activePacket) return <Button size="sm" onClick={onGeneratePacket} disabled={generatingPacket} data-testid="guided-generate-packet">{generatingPacket ? "Creating..." : "Create Launch Packet"}</Button>;
-      return <Button size="sm" onClick={onSendPacket} disabled={sendingPacket} data-testid="guided-send-packet">{sendingPacket ? "Sending..." : "Send Launch Packet"}</Button>;
-    }
-    if (step.key === "launch") {
-      if (!ownerApproved || !readiness?.ready) return <Button size="sm" variant="outline" onClick={() => onShowTab("review-launch")} data-testid="guided-open-launch-gates">Open Launch Gates</Button>;
-      return <Button size="sm" onClick={onLaunch} disabled={launching} data-testid="guided-launch-webstore">{launching ? "Launching..." : "Launch Webstore"}</Button>;
-    }
-    return null;
-  };
-
-  return (
-    <Card className="border-sky-200 bg-sky-50/40" data-testid="webstore-guided-setup-module">
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-base">Webstore Setup</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">Follow the next step. The shop handles the setup; the owner only supplies the choices and answers requested.</p>
-          </div>
-          <Badge variant="outline">{steps.filter((step) => step.complete).length}/{steps.length} complete</Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-1">
-        <div data-testid="webstore-setup-checklist">
-        {steps.map((step, index) => {
-          const isCurrent = index === currentIndex;
-          return (
-            <div key={step.key} className="relative flex gap-3" data-testid={`guided-setup-step-${step.key}`}>
-              {index < steps.length - 1 && <div className="absolute left-3 top-7 bottom-0 w-px bg-sky-200" />}
-              <div className={`z-10 mt-1 flex size-6 shrink-0 items-center justify-center rounded-full border text-xs ${step.complete ? "border-emerald-600 bg-emerald-100 text-emerald-700" : step.waiting ? "border-amber-500 bg-amber-100 text-amber-700" : isCurrent ? "border-sky-700 bg-sky-700 text-white" : "border-slate-300 bg-white text-slate-500"}`}>
-                {step.complete ? <CheckCircle2 className="size-4" /> : index + 1}
-              </div>
-              <div className={`min-w-0 flex-1 pb-4 ${step.locked ? "opacity-60" : ""}`}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-medium">{step.title}</div>
-                  {actionFor(step)}
-                </div>
-                <div className="mt-1 text-sm text-muted-foreground">{step.description}</div>
-                {step.waiting && <div className="mt-1 text-xs font-medium text-amber-800">Waiting on owner</div>}
-              </div>
-            </div>
-          );
-        })}
-        </div>
-        <div className="pt-2 text-xs text-muted-foreground">Advanced Setup remains available for staff-only controls. Nothing is published automatically by this module.</div>
-      </CardContent>
-    </Card>
-  );
-}
-
 export default function WebstoreDetailPage() {
   const { id } = useParams();
   const location = useLocation();
@@ -359,6 +189,9 @@ export default function WebstoreDetailPage() {
   const [selectedProductId, setSelectedProductId] = useState("");
   const [productDraft, setProductDraft] = useState({});
   const [productError, setProductError] = useState("");
+  const [productAiPreview, setProductAiPreview] = useState(null);
+  const [productAiResult, setProductAiResult] = useState(null);
+  const [productAiPrompt, setProductAiPrompt] = useState("");
   const [categoryEditDraft, setCategoryEditDraft] = useState({});
   const [editingCategoryId, setEditingCategoryId] = useState("");
   const [changeResponses, setChangeResponses] = useState({});
@@ -536,6 +369,11 @@ export default function WebstoreDetailPage() {
       ),
     [detail.data, selectedProductId],
   );
+  const resetProductAiState = () => {
+    setProductAiPreview(null);
+    setProductAiResult(null);
+    setProductAiPrompt("");
+  };
   const createBlankProduct = useMutation({
     mutationFn: (productName = "New draft product") =>
       createProductFromTemplate(id, {
@@ -546,6 +384,7 @@ export default function WebstoreDetailPage() {
       toast.success("Draft product created");
       setSelectedProductId(product.id);
       setProductDraft(product);
+      resetProductAiState();
       await refresh();
     },
     onError: (err) => toast.error(extractError(err)),
@@ -561,6 +400,7 @@ export default function WebstoreDetailPage() {
       setTemplateId("");
       setSelectedProductId(product.id);
       setProductDraft(product);
+      resetProductAiState();
       await refresh();
     },
     onError: (err) => toast.error(extractError(err)),
@@ -662,6 +502,7 @@ export default function WebstoreDetailPage() {
       toast.success("Product duplicated");
       setSelectedProductId(product.id);
       setProductDraft(product);
+      resetProductAiState();
       await refresh();
     },
     onError: (err) => toast.error(extractError(err)),
@@ -691,6 +532,32 @@ export default function WebstoreDetailPage() {
     onSuccess: async () => {
       toast.success("Mockup sent for owner approval");
       await refresh();
+    },
+    onError: (err) => toast.error(extractError(err)),
+  });
+  const previewProductAi = useMutation({
+    mutationFn: (action) =>
+      previewWebstoreProductAiAction(id, productDraft.id, { action }),
+    onSuccess: (preview) => {
+      setProductAiPreview(preview);
+      setProductAiResult(null);
+      toast.success(`AI credit preview ready: ${preview.credit_display}`);
+    },
+    onError: (err) => toast.error(extractError(err)),
+  });
+  const runProductAi = useMutation({
+    mutationFn: () =>
+      runWebstoreProductAiAction(id, productDraft.id, {
+        action: productAiPreview.action,
+        confirmed_credit_charge_credits:
+          productAiPreview.credit_charge_credits,
+        prompt: productAiPrompt || undefined,
+        idempotency_key: `webstore-ai-${productDraft.id}-${productAiPreview.action}-${Date.now()}`,
+      }),
+    onSuccess: async (result) => {
+      setProductAiResult(result);
+      toast.success("AI output saved for review");
+      await qc.invalidateQueries({ queryKey: ["webstore-activity", id] });
     },
     onError: (err) => toast.error(extractError(err)),
   });
@@ -1146,6 +1013,7 @@ export default function WebstoreDetailPage() {
     setSelectedProductId(product.id);
     setProductDraft(product);
     setProductError("");
+    resetProductAiState();
   };
 
   if (detail.isLoading)
@@ -2659,6 +2527,94 @@ export default function WebstoreDetailPage() {
                           </AlertDescription>
                         </Alert>
                       )}
+                      <div
+                        className="rounded border bg-slate-50 p-3 text-sm"
+                        data-testid="webstore-product-ai-panel"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2 font-medium">
+                              <Sparkles className="size-4" />
+                              AI drafts for this product
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              Outputs are saved for review only and are not applied to product fields or mockups.
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={previewProductAi.isPending}
+                              onClick={() => previewProductAi.mutate("product_description")}
+                              data-testid="webstore-ai-preview-description"
+                            >
+                              Description cost
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={previewProductAi.isPending}
+                              onClick={() => previewProductAi.mutate("product_mockup")}
+                              data-testid="webstore-ai-preview-mockup"
+                            >
+                              Mockup cost
+                            </Button>
+                          </div>
+                        </div>
+                        {productAiPreview && (
+                          <div className="mt-3 space-y-3" data-testid="webstore-ai-preview">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="outline">{productAiPreview.label}</Badge>
+                              <Badge variant={productAiPreview.insufficient_credits ? "destructive" : "secondary"} data-testid="webstore-ai-credit-display">
+                                {productAiPreview.credit_display}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {productAiPreview.available_credits} credits available
+                              </span>
+                            </div>
+                            <Textarea
+                              rows={2}
+                              value={productAiPrompt}
+                              onChange={(e) => setProductAiPrompt(e.target.value)}
+                              placeholder="Optional direction for this AI draft"
+                              data-testid="webstore-ai-prompt"
+                            />
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={runProductAi.isPending || productAiPreview.insufficient_credits}
+                                onClick={() => runProductAi.mutate()}
+                                data-testid="webstore-ai-run-confirmed"
+                              >
+                                Confirm and save draft
+                              </Button>
+                              <span className="text-xs text-muted-foreground">
+                                Manual setup remains available.
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        {productAiResult?.ai_result && (
+                          <div className="mt-3 rounded border bg-white p-3" data-testid="webstore-ai-review-output">
+                            <div className="text-xs font-medium uppercase text-muted-foreground">
+                              Saved review output
+                            </div>
+                            <div className="mt-1 font-medium">
+                              {productAiResult.ai_result.title}
+                            </div>
+                            <div className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+                              {productAiResult.ai_result.content_text}
+                            </div>
+                            <div className="mt-2 text-xs text-muted-foreground">
+                              Record: {productAiResult.ai_result.record_type} - not applied automatically.
+                            </div>
+                          </div>
+                        )}
+                      </div>
                       <Tabs
                         defaultValue="basic"
                         className="space-y-3"

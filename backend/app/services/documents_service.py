@@ -53,7 +53,7 @@ async def add_document_version(
         {"$set": {"version": new_version, "current_file_id": file_id,
                   "updated_at": utc_now().isoformat()}},
     )
-    doc = await db.documents.find_one({"id": document_id}, {"_id": 0})
+    doc = await db.documents.find_one({"id": document_id, "tenant_id": tenant_id}, {"_id": 0})
     return serialize_doc(doc or {})
 
 

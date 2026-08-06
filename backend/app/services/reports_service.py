@@ -1306,7 +1306,7 @@ REPORTS.update({
         "limitations": ["Mode filter may select open, due soon, or late orders."],
         "columns": [
             {"key": "number", "label": "Order #"},
-            {"key": "title", "label": "Job"},
+            {"key": "title", "label": "Project"},
             {"key": "customer_name", "label": "Customer"},
             {"key": "status", "label": "Status"},
             _date_col("due_date", "Due"),
@@ -1361,7 +1361,7 @@ REPORTS.update({
         "limitations": ["Default follow-up age is seven days unless filtered."],
         "columns": [
             {"key": "number", "label": "Quote #"},
-            {"key": "job_name", "label": "Job"},
+            {"key": "job_name", "label": "Project"},
             {"key": "customer_name", "label": "Customer"},
             {"key": "status", "label": "Status"},
             _money_col("total_cents", "Total"),

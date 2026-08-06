@@ -29,6 +29,7 @@ import {
   listWebstoreAssignments,
   listWebstoreMockups,
   listWebstoreProductCategories,
+  previewWebstoreProductAiAction,
   listWebstoreSetupFiles,
   previewWebstoreAnswerApplication,
   reorderWebstoreProducts,
@@ -37,6 +38,7 @@ import {
   restoreWebstoreProduct,
   restoreWebstoreProductCategory,
   reverseWebstoreAnswerApplication,
+  runWebstoreProductAiAction,
   sendLaunchPacket,
   setWebstoreStatus,
   updateProductTemplate,
@@ -77,6 +79,7 @@ jest.mock("@/lib/webstores", () => ({
   listWebstoreAssignments: jest.fn(),
   listWebstoreMockups: jest.fn(),
   listWebstoreProductCategories: jest.fn(),
+  previewWebstoreProductAiAction: jest.fn(),
   listWebstoreSetupFiles: jest.fn(),
   previewWebstoreAnswerApplication: jest.fn(),
   reorderWebstoreProducts: jest.fn(),
@@ -85,6 +88,7 @@ jest.mock("@/lib/webstores", () => ({
   restoreWebstoreProduct: jest.fn(),
   restoreWebstoreProductCategory: jest.fn(),
   reverseWebstoreAnswerApplication: jest.fn(),
+  runWebstoreProductAiAction: jest.fn(),
   sendLaunchPacket: jest.fn(),
   setWebstoreStatus: jest.fn(),
   updateProductTemplate: jest.fn(),
@@ -231,6 +235,27 @@ beforeEach(() => {
     items: [{ id: "cat-1", name: "Team Wear", description: "Team gear", status: "active", revision: 4, product_count: 1 }],
     legacy_categories: ["Legacy / Unknown"],
   });
+  previewWebstoreProductAiAction.mockResolvedValue({
+    action: "product_description",
+    label: "Product description draft",
+    credit_charge_credits: 1,
+    available_credits: 8,
+    credit_display: "1 AI credit",
+    confirmation_required: true,
+    insufficient_credits: false,
+    auto_apply: false,
+    manual_setup_available: true,
+  });
+  runWebstoreProductAiAction.mockResolvedValue({
+    auto_apply: false,
+    review_required: true,
+    ai_result: {
+      id: "draft-1",
+      record_type: "editable_draft",
+      title: "Product description draft - Draft Shirt",
+      content_text: "Local mock draft for Webstore Product Content: booster club shirt",
+    },
+  });
   createProductFromTemplate.mockResolvedValue({ id: "prod-new", name: "New draft product", status: "draft", public: false, revision: 1 });
   updateWebstoreProduct.mockResolvedValue({ id: "prod-1", name: "Updated Draft Shirt", status: "draft", public: false, revision: 4 });
   createProductTemplate.mockResolvedValue({});
@@ -352,6 +377,34 @@ test("staff product image picker previews selected files before save", async () 
       }),
     },
   }));
+});
+
+test("staff previews and confirms Webstore product AI output without applying it", async () => {
+  const user = userEvent.setup();
+  renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
+
+  await screen.findByText(/Team Store/);
+  await user.click(screen.getByRole("tab", { name: "Products" }));
+  await user.click(screen.getByTestId("webstore-product-row-prod-1"));
+
+  await user.click(screen.getByTestId("webstore-ai-preview-description"));
+  expect(await screen.findByTestId("webstore-ai-preview")).toBeInTheDocument();
+  expect(screen.getByTestId("webstore-ai-credit-display")).toHaveTextContent("1 AI credit");
+  expect(screen.getByText(/8 credits available/)).toBeInTheDocument();
+
+  await user.type(screen.getByTestId("webstore-ai-prompt"), "booster club shirt");
+  await user.click(screen.getByTestId("webstore-ai-run-confirmed"));
+
+  await waitFor(() => {
+    expect(runWebstoreProductAiAction).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({
+      action: "product_description",
+      confirmed_credit_charge_credits: 1,
+      prompt: "booster club shirt",
+    }));
+  });
+  expect(await screen.findByTestId("webstore-ai-review-output")).toHaveTextContent("Local mock draft");
+  expect(screen.getByTestId("webstore-ai-review-output")).toHaveTextContent("not applied automatically");
+  expect(updateWebstoreProduct).not.toHaveBeenCalled();
 });
 
 test("staff launch readiness shows packet versioning, terms, QR, schedule, and change-request controls", async () => {

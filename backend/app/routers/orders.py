@@ -62,6 +62,7 @@ class OrderStatusIn(BaseModel):
 
 # EC3 §13 — Reject financial-status impersonation
 FORBIDDEN_STATUSES = {"paid", "partially_paid", "invoiced", "refunded", "overpaid", "unpaid"}
+ORDER_ITEM_EDIT_TERMINAL_STATUSES = {"completed", "cancelled", "archived"}
 
 
 class OrderItemIn(BaseModel):
@@ -143,6 +144,11 @@ async def _recompute_order_totals(tenant_id: str, order_id: str) -> dict[str, in
     updates = {**totals, "balance_cents": totals["total_cents"], "updated_at": utc_now().isoformat()}
     await db.orders.update_one({"id": order_id, "tenant_id": tenant_id}, {"$set": updates})
     return totals
+
+
+def _ensure_order_items_editable(order: dict[str, Any]) -> None:
+    if order.get("status") in ORDER_ITEM_EDIT_TERMINAL_STATUSES:
+        raise HTTPException(status_code=400, detail="Cannot edit items on a completed, cancelled, or archived order")
 
 
 async def _resolve_item_pricing(
@@ -268,7 +274,7 @@ async def update_order(order_id: str, payload: OrderUpdateIn, user: dict = Depen
         action="order.updated", entity_type="order", entity_id=order_id,
         summary="Order updated", diff={"changes": updates},
     )
-    doc = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    doc = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return serialize_doc(doc)
 
 
@@ -298,14 +304,14 @@ async def set_order_status(order_id: str, payload: OrderStatusIn, user: dict = D
     updates: dict[str, Any] = {"status": payload.status, "updated_at": utc_now().isoformat()}
     if payload.status == "archived":
         updates["archived_at"] = utc_now().isoformat()
-    await db.orders.update_one({"id": order_id}, {"$set": updates})
+    await db.orders.update_one({"id": order_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         action=f"order.status.{payload.status}", entity_type="order", entity_id=order_id,
         summary=f"Order O-{doc['number']} → {payload.status}",
         diff={"from": current, "to": payload.status, "reason": payload.reason},
     )
-    doc = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    doc = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return serialize_doc(doc)
 
 
@@ -314,6 +320,7 @@ async def recalculate(order_id: str, user: dict = Depends(require_permission(Per
     order = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    _ensure_order_items_editable(order)
     totals = await _recompute_order_totals(user["tenant_id"], order_id)
     return {"totals": totals}
 
@@ -326,6 +333,7 @@ async def add_item(order_id: str, payload: OrderItemIn, user: dict = Depends(req
     order = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    _ensure_order_items_editable(order)
     position = await db.order_items.count_documents({"tenant_id": user["tenant_id"], "order_id": order_id})
     prod_req = payload.production_required
     if prod_req is None:
@@ -395,6 +403,7 @@ async def update_item(order_id: str, item_id: str, payload: OrderItemPatchIn,
     order = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    _ensure_order_items_editable(order)
     line = await db.order_items.find_one({"id": item_id, "order_id": order_id, "tenant_id": user["tenant_id"]})
     if not line:
         raise HTTPException(status_code=404, detail="Order item not found")
@@ -459,7 +468,7 @@ async def update_item(order_id: str, item_id: str, payload: OrderItemPatchIn,
     )
     updates.update(line_totals)
     updates["updated_at"] = now
-    await db.order_items.update_one({"id": item_id}, {"$set": updates})
+    await db.order_items.update_one({"id": item_id, "order_id": order_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
     await _recompute_order_totals(user["tenant_id"], order_id)
 
     # EC9 Phase 9G — a repriced item gets a NEW immutable snapshot record; the
@@ -475,7 +484,7 @@ async def update_item(order_id: str, item_id: str, payload: OrderItemPatchIn,
         action="order.item_updated", entity_type="order", entity_id=order_id,
         summary="Order item updated", diff={"item_id": item_id, "changes": updates},
     )
-    doc = await db.order_items.find_one({"id": item_id}, {"_id": 0})
+    doc = await db.order_items.find_one({"id": item_id, "order_id": order_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return serialize_doc(doc)
 
 
@@ -519,10 +528,14 @@ async def recalculate_item_preview(
 
 @router.delete("/{order_id}/items/{item_id}", status_code=204, response_class=Response)
 async def delete_item(order_id: str, item_id: str, user: dict = Depends(require_permission(Perm.ORDER_WRITE))) -> Response:
+    order = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    _ensure_order_items_editable(order)
     line = await db.order_items.find_one({"id": item_id, "order_id": order_id, "tenant_id": user["tenant_id"]})
     if not line:
         raise HTTPException(status_code=404, detail="Order item not found")
-    await db.order_items.delete_one({"id": item_id})
+    await db.order_items.delete_one({"id": item_id, "order_id": order_id, "tenant_id": user["tenant_id"]})
     await _recompute_order_totals(user["tenant_id"], order_id)
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
