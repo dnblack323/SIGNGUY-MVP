@@ -150,6 +150,46 @@ async def test_production_required_override_requires_reason(seeded_users):
 
 
 @pytest.mark.asyncio
+async def test_completed_order_rejects_item_mutations(seeded_users):
+    user = seeded_users["user_a"]
+    cust = await _seed_customer(user["tenant_id"])
+    async with await _client_as(user) as c:
+        r = await c.post("/api/orders", json={"customer_id": cust, "job_name": "Terminal"})
+        assert r.status_code == 201
+        oid = r.json()["id"]
+        r = await c.post(f"/api/orders/{oid}/items", json={
+            "description": "Banner", "quantity": 1, "unit_price_cents": 1000,
+            "category": "banners",
+        })
+        assert r.status_code == 201
+        item_id = r.json()["id"]
+
+        await _db.orders.update_one(
+            {"tenant_id": user["tenant_id"], "id": oid},
+            {"$set": {"status": "completed"}},
+        )
+
+        r = await c.post(f"/api/orders/{oid}/items", json={
+            "description": "Second", "quantity": 1, "unit_price_cents": 1000,
+            "category": "banners",
+        })
+        assert r.status_code == 400
+        assert "Cannot edit items" in r.json()["detail"]
+
+        r = await c.patch(f"/api/orders/{oid}/items/{item_id}", json={
+            "unit_price_cents": 2000,
+            "manual_override_reason": "late change",
+        })
+        assert r.status_code == 400
+        assert "Cannot edit items" in r.json()["detail"]
+
+        r = await c.delete(f"/api/orders/{oid}/items/{item_id}")
+        assert r.status_code == 400
+        assert "Cannot edit items" in r.json()["detail"]
+    _clear()
+
+
+@pytest.mark.asyncio
 async def test_work_order_only_snaps_production_items(seeded_users):
     user = seeded_users["user_a"]
     cust = await _seed_customer(user["tenant_id"])

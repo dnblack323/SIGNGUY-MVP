@@ -358,9 +358,10 @@ async def test_owner_packet_terms_change_request_and_invalidation_are_versioned(
         assert launch_ready.status_code == 200, launch_ready.text
         assert launch_ready.json()["status"] == "launch_ready"
         assert launch_ready.json()["checkout_enabled"] is False
-        live_blocked = await client.post(f"/api/webstores/{store['id']}/status", json={"status": "live", "reason": "Try live too soon."})
-        assert live_blocked.status_code == 409
-        assert live_blocked.json()["detail"].startswith("Stage 5 stops at ready to launch.")
+        live = await client.post(f"/api/webstores/{store['id']}/status", json={"status": "live", "reason": "Launch approved store."})
+        assert live.status_code == 200, live.text
+        assert live.json()["status"] == "live"
+        assert live.json()["checkout_enabled"] is False
         nonmaterial = await client.patch(f"/api/webstores/{store['id']}/products/{product['id']}", json={"expected_revision": patched.json()["revision"], "production_notes": "Internal heat press setting."})
         assert nonmaterial.status_code == 200
         still_ready = (await client.get(f"/api/webstores/{store['id']}/launch-readiness")).json()

@@ -39,10 +39,21 @@ async def _seed_store(suffix: str, *, status: str = "live") -> dict[str, str]:
 
 
 @pytest.mark.asyncio
-async def test_close_pause_and_archive_block_checkout_but_preserve_history():
+async def test_close_pause_and_archive_block_checkout_but_preserve_history(monkeypatch: pytest.MonkeyPatch):
     await ensure_indexes()
     ctx = await _seed_store(uuid.uuid4().hex[:8])
     user = _user(ctx["tenant_id"])
+    monkeypatch.setattr(
+        svc,
+        "provider_configuration_status",
+        lambda *_args, **_kwargs: {
+            "state": "ready",
+            "label": "Ready",
+            "reason": None,
+            "violations": [],
+            "provider_authority": True,
+        },
+    )
 
     paused = await svc.set_webstore_status(user, ctx["webstore_id"], "paused", reason="Temporary pause")
     assert paused["status"] == "paused"
@@ -60,6 +71,26 @@ async def test_close_pause_and_archive_block_checkout_but_preserve_history():
     assert ctx["webstore_id"] not in {item["id"] for item in active["items"]}
     archived_list = await svc.list_webstores(user, status="archived")
     assert ctx["webstore_id"] in {item["id"] for item in archived_list["items"]}
+
+
+@pytest.mark.asyncio
+async def test_phase6_lifecycle_route_uses_canonical_pause_and_reopen_gate(monkeypatch: pytest.MonkeyPatch):
+    await ensure_indexes()
+    ctx = await _seed_store(uuid.uuid4().hex[:8])
+    user = _user(ctx["tenant_id"])
+
+    async def ready_readiness(_user: dict, _webstore_id: str) -> dict:
+        return {"ready": True, "gates": [], "payment_readiness": {"provider_authority": True}}
+
+    monkeypatch.setattr(svc, "launch_readiness", ready_readiness)
+
+    paused = await svc.transition_webstore_lifecycle(user, ctx["webstore_id"], "paused", reason="Temporarily paused")
+    assert paused["webstore"]["status"] == "paused"
+    assert paused["lifecycle_state"] == "paused"
+
+    reopened = await svc.transition_webstore_lifecycle(user, ctx["webstore_id"], "live", reason="Reopened")
+    assert reopened["webstore"]["status"] == "live"
+    assert reopened["lifecycle_state"] == "live"
 
 
 @pytest.mark.asyncio

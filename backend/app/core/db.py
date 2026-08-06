@@ -91,10 +91,24 @@ async def ensure_indexes() -> None:
     await db.audit_events.create_index([("tenant_id", 1), ("entity_type", 1), ("entity_id", 1), ("created_at", -1)])
     await db.audit_events.create_index([("tenant_id", 1), ("created_at", -1)])
     await db.audit_events.create_index([("action", 1), ("entity_type", 1), ("entity_id", 1), ("created_at", -1)])
+    await db.audit_events.create_index([("actor_user_id", 1), ("action", 1), ("created_at", -1)])
 
     # Email logs
     await db.email_logs.create_index([("tenant_id", 1), ("customer_id", 1), ("created_at", -1)])
     await db.email_logs.create_index([("tenant_id", 1), ("related_type", 1), ("related_id", 1)])
+    await db.email_logs.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
+    await db.email_logs.create_index([("to_email", 1), ("created_at", -1)])
+
+    # EC20 - Platform Admin support and analytics
+    await db.platform_settings.create_index("id", unique=True)
+    await db.impersonation_logs.create_index("id", unique=True)
+    await db.impersonation_logs.create_index([("tenant_id", 1), ("started_at", -1)])
+    await db.impersonation_logs.create_index([("platform_admin_user_id", 1), ("started_at", -1)])
+    await db.analytics_events.create_index("id", unique=True)
+    await db.analytics_events.create_index([("timestamp", -1)])
+    await db.analytics_events.create_index([("tenant_id", 1), ("timestamp", -1)])
+    await db.analytics_events.create_index([("event_type", 1), ("timestamp", -1)])
+    await db.analytics_events.create_index([("session_id", 1), ("timestamp", -1)])
 
     # Pricing settings \u2014 one doc per tenant
     await db.pricing_settings.create_index("tenant_id", unique=True)

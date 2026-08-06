@@ -6,24 +6,7 @@ from typing import Any, Optional
 from ..core.db import db
 from ..core.permissions import Perm
 from ..core.time_utils import serialize_doc
-from .webstores import WebstoreError, _get_store, _require_staff_perm
-
-
-def _assigned_store_scope(user: dict[str, Any], webstore_id: str) -> None:
-    assigned_store_id = user.get("webstore_id")
-    assigned_store_ids = {str(value) for value in (user.get("webstore_ids") or [])}
-    if assigned_store_id and str(assigned_store_id) != webstore_id:
-        raise WebstoreError(
-            "webstore_assignment_scope_forbidden",
-            "Webstore access is limited to the assigned Webstore",
-            403,
-        )
-    if assigned_store_ids and webstore_id not in assigned_store_ids:
-        raise WebstoreError(
-            "webstore_assignment_scope_forbidden",
-            "Webstore access is limited to assigned Webstores",
-            403,
-        )
+from .webstores import WebstoreError, _get_store, _require_staff_perm, _require_webstore_assignment_scope
 
 
 def _safe_item_snapshot(item: dict[str, Any]) -> dict[str, Any]:
@@ -93,7 +76,7 @@ async def list_webstore_orders(
 ) -> dict[str, Any]:
     """Return staff-safe Webstore orders from canonical records only."""
     _require_staff_perm(user, Perm.WEBSTORE_READ)
-    _assigned_store_scope(user, webstore_id)
+    await _require_webstore_assignment_scope(user, webstore_id)
     await _get_store(user["tenant_id"], webstore_id)
 
     intent_filter: dict[str, Any] = {
@@ -105,7 +88,6 @@ async def list_webstore_orders(
         serialize_doc(doc)
         async for doc in db.webstore_purchase_intents.find(intent_filter, {"_id": 0})
         .sort([("created_at", -1)])
-        .limit(limit)
     ]
     order_ids = [str(intent["canonical_order_id"]) for intent in intents]
     if not order_ids:
@@ -129,6 +111,7 @@ async def list_webstore_orders(
     }
     if status:
         intents = [intent for intent in intents if orders.get(str(intent["canonical_order_id"]), {}).get("status") == status]
+    intents = intents[:limit]
 
     filtered_order_ids = [str(intent["canonical_order_id"]) for intent in intents if str(intent["canonical_order_id"]) in orders]
     item_groups: dict[str, list[dict[str, Any]]] = {order_id: [] for order_id in filtered_order_ids}

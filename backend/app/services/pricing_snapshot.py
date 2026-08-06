@@ -27,6 +27,7 @@ from typing import Any, Optional
 
 from ..core.time_utils import utc_now
 from .starter_defaults import STARTER_DEFAULT_VERSION
+from pricing_engine.adapters import build_legacy_line_result
 from pricing_engine.snapshots import (
     PRICING_ENGINE_RESULT_FIELD,
     PRICING_SNAPSHOT_SCHEMA_FIELD,
@@ -89,14 +90,35 @@ def build_calculated_snapshot(
 ) -> dict[str, Any]:
     """Build a snapshot for a price derived from the pricing calculator.
 
-    `calc_result` is the dict returned by the Phase 9I-L compatibility
-    boundary. It must contain a successful `pricing_engine_result`; legacy
-    dollar fields are preserved for display compatibility but no longer form
-    the authoritative cents boundary.
+    `calc_result` normally comes from the Phase 9I-L compatibility boundary.
+    Older direct callers may still supply the legacy calculator result; adapt
+    that result here before enforcing the cents-first snapshot contract.
     `foundation_effective_at` should be the tenant's `pricing_settings.updated_at`
     at calculation time — the "effective date" for the Pricing Foundation
     defaults baked into `defaults_snapshot` below (Phase 9B versioning).
     """
+    if (
+        PRICING_ENGINE_RESULT_FIELD not in calc_result
+        and (
+            calc_result.get("pricing_output_contract_version")
+            or calc_result.get("pricing_engine_configuration_used")
+        )
+    ):
+        calc_result = {
+            **calc_result,
+            PRICING_ENGINE_RESULT_FIELD: build_legacy_line_result(
+                category_id=str(calc_result.get("category") or ""),
+                legacy_result=calc_result,
+                normalized_input={
+                    "category": calc_result.get("category"),
+                    "width_inches": calc_result.get("width_inches"),
+                    "height_inches": calc_result.get("height_inches"),
+                    "quantity": quantity,
+                    "material_key": calc_result.get("material_key"),
+                    "category_inputs": calc_result.get("category_inputs_used") or {},
+                },
+            ),
+        }
     normalized = normalize_calculated_snapshot_fields(calc_result)
     calc_unit_dollars = calc_result.get("selling_price")
     calc_unit_cents = normalized["calculated_selling_price_cents"]

@@ -115,7 +115,7 @@ async def stripe_event(request: Request, stripe_signature: str | None = Header(N
         return await webstore_payments.process_verified_payment_event(
             verified_payment=verified_payment,
             provider_authority=authority,
-            create_downstream_records=False,
+            create_downstream_records=True,
         )
     except (KeyError, WebstoreError) as e:
         if isinstance(e, WebstoreError):

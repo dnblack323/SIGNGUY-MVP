@@ -1,10 +1,14 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 from app.core.config import get_settings
 from app.core.db import ensure_indexes
+from app.core.permissions import has_platform_admin_access
+from app.core.security import decode_access_token
 from app.core.security_guards import enforce_startup_guards
+from app.core.db import db
 from app.services.storage import initialize as init_storage
 from app.routers import (
     auth as auth_router,
@@ -302,7 +306,60 @@ from app.routers import help_center as help_center_router_module
 api_router.include_router(onboarding_router_module.router)
 api_router.include_router(help_center_router_module.router)
 
+# EC20 - Platform Admin, analytics, dunning/support, broadcasts, and governance.
+from app.routers import platform_admin as platform_admin_router_module
+api_router.include_router(platform_admin_router_module.router)
+api_router.include_router(platform_admin_router_module.public_router)
+api_router.include_router(platform_admin_router_module.analytics_router)
+
 app.include_router(api_router)
+
+
+_MAINTENANCE_BLOCK_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+_MAINTENANCE_ALLOW_PREFIXES = (
+    "/api/platform-admin",
+    "/api/platform/",
+    "/api/auth",
+    "/api/webhook",
+    "/api/webhooks",
+    "/api/health",
+)
+
+
+async def _request_is_platform_admin(request: Request) -> bool:
+    auth = request.headers.get("authorization") or ""
+    if not auth.lower().startswith("bearer "):
+        return False
+    try:
+        payload = decode_access_token(auth.split(" ", 1)[1])
+    except Exception:
+        return False
+    user_id = payload.get("sub")
+    tenant_id = payload.get("tenant_id")
+    if not user_id or not tenant_id:
+        return False
+    user = await db.users.find_one({"id": user_id, "tenant_id": tenant_id, "is_active": True}, {"_id": 0})
+    return has_platform_admin_access(user)
+
+
+@app.middleware("http")
+async def maintenance_mode_middleware(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/") and request.method in _MAINTENANCE_BLOCK_METHODS:
+        if not any(path.startswith(prefix) for prefix in _MAINTENANCE_ALLOW_PREFIXES):
+            settings = await db.platform_settings.find_one({"id": "global"}, {"_id": 0, "maintenance": 1})
+            maintenance = (settings or {}).get("maintenance") or {}
+            if maintenance.get("enabled") is True and not await _request_is_platform_admin(request):
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "detail": {
+                            "code": "maintenance_mode",
+                            "message": maintenance.get("message") or "Scheduled maintenance in progress.",
+                        }
+                    },
+                )
+    return await call_next(request)
 
 app.add_middleware(
     CORSMiddleware,

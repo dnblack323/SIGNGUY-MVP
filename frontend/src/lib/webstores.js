@@ -162,6 +162,16 @@ export async function restoreWebstoreProduct(webstoreId, productId, payload) {
   return r.data;
 }
 
+export async function previewWebstoreProductAiAction(webstoreId, productId, payload) {
+  const r = await api.post(`/webstores/${webstoreId}/products/${productId}/ai-actions/preview`, payload);
+  return r.data;
+}
+
+export async function runWebstoreProductAiAction(webstoreId, productId, payload) {
+  const r = await api.post(`/webstores/${webstoreId}/products/${productId}/ai-actions`, payload);
+  return r.data;
+}
+
 export async function listWebstoreProductCategories(webstoreId, params = {}) {
   const r = await api.get(`/webstores/${webstoreId}/product-categories`, { params });
   return r.data;

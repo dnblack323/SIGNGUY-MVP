@@ -4,7 +4,9 @@ import { AuthProvider, useAuth } from "@/auth/AuthContext";
 import RequireAuth from "@/auth/RequireAuth";
 import GoogleAuthCallback from "@/auth/GoogleAuthCallback";
 import AppShell from "@/components/app-shell/AppShell";
+import GlobalPlatformBanner from "@/components/platform/GlobalPlatformBanner";
 import LoginPage from "@/pages/LoginPage";
+import AccountSuspendedPage from "@/pages/AccountSuspendedPage";
 import RegisterTenantPage from "@/pages/RegisterTenantPage";
 import ForgotPasswordPage from "@/pages/ForgotPasswordPage";
 import ResetPasswordPage from "@/pages/ResetPasswordPage";
@@ -86,6 +88,14 @@ import WebstoresPage from "@/pages/WebstoresPage";
 import WrapLabDetailPage from "@/pages/WrapLabDetailPage";
 import WrapLabPage from "@/pages/WrapLabPage";
 import EmployeePortalApp from "@/portal/employee/EmployeePortalApp";
+import PlatformAdminPage, {
+  PlatformAdminAnalyticsPage,
+  PlatformAdminAuditLogPage,
+  PlatformAdminBroadcastEmailPage,
+  PlatformAdminEmailLogsPage,
+  PlatformAdminSiteSettingsPage,
+  PlatformAdminTenantDetailPage,
+} from "@/pages/PlatformAdminPages";
 import { Toaster } from "sonner";
 
 function LoggedInHome() {
@@ -103,6 +113,7 @@ function AppRoutes() {
       <Route path="/register" element={<RegisterTenantPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/account-suspended" element={<AccountSuspendedPage />} />
       <Route path="/portal/employee/*" element={<EmployeePortalApp />} />
       <Route path="/kiosk/production" element={<ProductionKioskPage />} />
       <Route path="/portal/*" element={<PortalApp />} />
@@ -218,6 +229,13 @@ function AppRoutes() {
           element={<ProductionWorkflowsPage />}
         />
         <Route path="/settings/data-security" element={<DataSecurityPage />} />
+        <Route path="/platform-admin" element={<PlatformAdminPage />} />
+        <Route path="/platform-admin/tenants/:tenantId" element={<PlatformAdminTenantDetailPage />} />
+        <Route path="/platform-admin/broadcast-email" element={<PlatformAdminBroadcastEmailPage />} />
+        <Route path="/platform-admin/site-settings" element={<PlatformAdminSiteSettingsPage />} />
+        <Route path="/platform-admin/email-logs" element={<PlatformAdminEmailLogsPage />} />
+        <Route path="/platform-admin/audit-log" element={<PlatformAdminAuditLogPage />} />
+        <Route path="/platform-admin/analytics" element={<PlatformAdminAnalyticsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
       <Route path="*" element={<LoggedInHome />} />
@@ -229,6 +247,7 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <GlobalPlatformBanner />
         <AppRoutes />
       </BrowserRouter>
       <Toaster richColors position="top-right" />

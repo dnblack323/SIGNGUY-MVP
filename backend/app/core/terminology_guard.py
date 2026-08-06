@@ -48,6 +48,7 @@ PROHIBITED_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bJob\s*Ticket\b"),
     re.compile(r"\bProduction\s*Ticket\b"),
     re.compile(r"\bJob\s*Item\b"),
+    re.compile(r"\bJob\b"),
     re.compile(r"\bjob_ticket_id\b"),
     re.compile(r"\bproduction_ticket_id\b"),
     re.compile(r"\bjob_item_id\b"),

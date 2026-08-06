@@ -8,7 +8,7 @@ from typing import Any, Optional
 from ..core.db import db
 from ..core.permissions import Perm
 from ..core.time_utils import serialize_doc
-from .webstores import _get_store, _require_staff_perm
+from .webstores import _get_store, _require_staff_perm, _require_webstore_assignment_scope
 
 
 async def _canonical_records(
@@ -76,6 +76,7 @@ async def staff_report(
     status: Optional[str] = None,
 ) -> dict[str, Any]:
     _require_staff_perm(user, Perm.WEBSTORE_READ)
+    await _require_webstore_assignment_scope(user, webstore_id)
     await _get_store(user["tenant_id"], webstore_id)
     intents, orders, items, payments = await _canonical_records(user["tenant_id"], webstore_id, status=status)
     intent_ids = [str(intent["id"]) for intent in intents]
@@ -85,7 +86,10 @@ async def staff_report(
             {
                 "tenant_id": user["tenant_id"],
                 "webstore_id": webstore_id,
-                "source_id": {"$in": intent_ids},
+                "$or": [
+                    {"source_id": {"$in": intent_ids}},
+                    {"buyer_order_id": {"$in": intent_ids}},
+                ],
             },
             {"_id": 0},
         )
@@ -152,7 +156,10 @@ async def owner_summary(tenant_id: str, webstore_id: str) -> dict[str, Any]:
             {
                 "tenant_id": tenant_id,
                 "webstore_id": webstore_id,
-                "source_id": {"$in": intent_ids},
+                "$or": [
+                    {"source_id": {"$in": intent_ids}},
+                    {"buyer_order_id": {"$in": intent_ids}},
+                ],
             },
             {"_id": 0},
         )

@@ -361,6 +361,14 @@ export const PRIMARY_NAV_AREAS = [
         testId: "module-nav-settings-overview",
       },
       {
+        key: "platform-admin",
+        label: "Platform Admin",
+        to: "/platform-admin",
+        platformOnly: true,
+        testId: "module-nav-platform-admin",
+        match: ["/platform-admin"],
+      },
+      {
         key: "company",
         label: "Company Settings",
         to: "/settings/company",

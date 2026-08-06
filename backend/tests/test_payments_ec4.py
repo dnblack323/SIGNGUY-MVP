@@ -201,6 +201,36 @@ async def test_stripe_initiate_pending_then_webhook_confirms(seeded_users, monke
 
 
 @pytest.mark.asyncio
+async def test_stripe_disabled_preserves_failed_payment_record(seeded_users):
+    u = seeded_users["user_a"]
+    inv_id = await _seed_invoice(u["tenant_id"], 8000)
+
+    with patch("app.services.stripe_core.is_enabled", return_value=False):
+        async with await _client_as(u) as c:
+            r = await c.post(
+                f"/api/invoices/{inv_id}/stripe-intents",
+                json={"amount_cents": 8000},
+                headers={"Idempotency-Key": "pi-disabled-preserve"},
+            )
+            assert r.status_code == 400
+
+    rows = [
+        row async for row in _db.payments.find(
+            {"tenant_id": u["tenant_id"], "invoice_id": inv_id, "idempotency_key": "pi-disabled-preserve"},
+            {"_id": 0},
+        )
+    ]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "failed"
+    assert rows[0]["failure_reason"] == "stripe_disabled"
+
+    invoice = await _db.invoices.find_one({"tenant_id": u["tenant_id"], "id": inv_id}, {"_id": 0})
+    assert invoice["amount_paid_cents"] == 0
+    assert invoice["balance_due_cents"] == 8000
+    _clear()
+
+
+@pytest.mark.asyncio
 async def test_stripe_refund_idempotency_replays_existing_refund(seeded_users):
     u = seeded_users["user_a"]
     inv_id = await _seed_invoice(u["tenant_id"], 8000)

@@ -412,7 +412,7 @@ export default function QuoteDetailPage() {
               <CardHeader><CardTitle>Quote</CardTitle></CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-2">
                 <div className="grid gap-1.5">
-                  <Label>Job name</Label>
+                  <Label>Project name</Label>
                   <Input value={edit.job_name || ""} disabled={!editable || !canWrite} onChange={(e) => setForm((f) => ({ ...f, job_name: e.target.value }))} data-testid="quote-detail-job-name-input" />
                 </div>
                 <div className="grid gap-1.5">

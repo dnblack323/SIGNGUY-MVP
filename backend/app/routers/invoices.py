@@ -10,9 +10,10 @@ from ..core.db import db
 from ..core.permissions import Perm
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..deps import require_permission
-from ..models.invoice import Invoice, Payment
+from ..models.invoice import Invoice
 from ..services.audit import record_audit
 from ..services.sequence import next_number
+from ..services.payment_service import record_manual
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
@@ -51,7 +52,12 @@ class PaymentIn(BaseModel):
 
 async def _payments_sum(tenant_id: str, invoice_id: str) -> int:
     cursor = db.payments.aggregate([
-        {"$match": {"tenant_id": tenant_id, "invoice_id": invoice_id}},
+        {"$match": {
+            "tenant_id": tenant_id,
+            "invoice_id": invoice_id,
+            "status": {"$in": ["confirmed", "partially_refunded", "refunded"]},
+            "refund_of_payment_id": {"$exists": False},
+        }},
         {"$group": {"_id": None, "s": {"$sum": "$amount_cents"}}}
     ])
     async for row in cursor:
@@ -108,6 +114,7 @@ async def create_invoice(payload: InvoiceCreateIn, user: dict = Depends(require_
         order_id=order["id"], customer_id=order["customer_id"],
         title=payload.title, description=payload.description,
         total_cents=payload.total_cents, due_date=payload.due_date, notes=payload.notes,
+        balance_due_cents=payload.total_cents,
         created_by=user["id"],
     )
     try:
@@ -151,13 +158,13 @@ async def update_invoice(invoice_id: str, payload: InvoiceUpdateIn, user: dict =
     if not updates:
         raise HTTPException(status_code=400, detail="No updates")
     updates["updated_at"] = utc_now().isoformat()
-    await db.invoices.update_one({"id": invoice_id}, {"$set": updates})
+    await db.invoices.update_one({"id": invoice_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         action="invoice.update", entity_type="invoice", entity_id=invoice_id,
         summary=f"Invoice I-{doc['number']} updated", diff={"changes": updates},
     )
-    doc = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    doc = await db.invoices.find_one({"id": invoice_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return serialize_doc(doc)
 
 
@@ -193,7 +200,7 @@ async def set_invoice_status(invoice_id: str, payload: InvoiceStatusIn, user: di
         # EC4 §22 — block void when net confirmed payments remain.
         from ..services.invoice_reconciliation import reconcile
         await reconcile(tenant_id=user["tenant_id"], invoice_id=invoice_id)
-        latest = await db.invoices.find_one({"id": invoice_id})
+        latest = await db.invoices.find_one({"id": invoice_id, "tenant_id": user["tenant_id"]})
         net_paid = int(latest.get("amount_paid_cents") or 0) - int(latest.get("amount_refunded_cents") or 0)
         if net_paid > 0:
             raise HTTPException(status_code=400,
@@ -204,7 +211,7 @@ async def set_invoice_status(invoice_id: str, payload: InvoiceStatusIn, user: di
         extras["void_reason"] = payload.reason.strip()
         extras["status"] = "void"                       # compat mirror
 
-    await db.invoices.update_one({"id": invoice_id}, {"$set": extras})
+    await db.invoices.update_one({"id": invoice_id, "tenant_id": user["tenant_id"]}, {"$set": extras})
     # Re-derive financial fields after any status change.
     from ..services.invoice_reconciliation import reconcile
     await reconcile(tenant_id=user["tenant_id"], invoice_id=invoice_id)
@@ -216,7 +223,7 @@ async def set_invoice_status(invoice_id: str, payload: InvoiceStatusIn, user: di
         summary=f"Invoice I-{doc['number']} document_status → {target}",
         diff={"from": current, "to": target, "reason": payload.reason},
     )
-    doc = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    doc = await db.invoices.find_one({"id": invoice_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return serialize_doc(doc)
 
 
@@ -227,35 +234,34 @@ async def add_payment(
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user: dict = Depends(require_permission(Perm.PAYMENT_WRITE)),
 ) -> dict:
-    inv = await db.invoices.find_one({"id": invoice_id, "tenant_id": user["tenant_id"]})
-    if not inv:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    if inv["status"] == "void":
-        raise HTTPException(status_code=400, detail="Invoice is void")
-    if idempotency_key:
-        prev = await db.payments.find_one(
-            {"tenant_id": user["tenant_id"], "invoice_id": invoice_id, "idempotency_key": idempotency_key},
-            {"_id": 0},
+    method = {
+        "card": "card_external",
+        "bank_transfer": "bank_transfer_external",
+    }.get(payload.method, payload.method)
+    try:
+        payment, already_exists = await record_manual(
+            tenant_id=user["tenant_id"],
+            invoice_id=invoice_id,
+            amount_cents=payload.amount_cents,
+            method=method,
+            paid_on=payload.paid_on,
+            reference=payload.reference,
+            notes=payload.notes,
+            idempotency_key=idempotency_key,
+            actor_user_id=user["id"],
+            actor_email=user["email"],
         )
-        if prev:
-            return {"payment": serialize_doc(prev), "already_exists": True}
-    pay = Payment(
-        tenant_id=user["tenant_id"], invoice_id=invoice_id,
-        amount_cents=payload.amount_cents, method=payload.method, paid_on=payload.paid_on,
-        reference=payload.reference, notes=payload.notes,
-        idempotency_key=idempotency_key, created_by=user["id"],
-    )
-    await db.payments.insert_one(prepare_for_mongo(pay.model_dump()))
-    paid = await _payments_sum(user["tenant_id"], invoice_id)
-    new_status = _derive_status_after_payment(inv["status"], int(inv.get("total_cents", 0)), paid)
-    updates = {"updated_at": utc_now().isoformat()}
-    if new_status != inv["status"]:
-        updates["status"] = new_status
-    await db.invoices.update_one({"id": invoice_id}, {"$set": updates})
-    await record_audit(
-        tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
-        action="invoice.payment_added", entity_type="invoice", entity_id=invoice_id,
-        summary=f"Payment of ${payload.amount_cents/100:,.2f} added to I-{inv['number']}",
-        diff={"payment_id": pay.id, "amount_cents": payload.amount_cents, "method": payload.method, "new_status": new_status},
-    )
-    return {"payment": serialize_doc(pay.model_dump()), "already_exists": False, "invoice_status": new_status}
+    except ValueError as ex:
+        detail = {
+            "invoice_not_found": (404, "Invoice not found"),
+            "invoice_void": (400, "Invoice is void"),
+            "overpayment_rejected": (400, "Amount exceeds current balance"),
+            "amount_must_be_positive": (400, "Amount must be positive"),
+        }.get(str(ex), (400, str(ex)))
+        raise HTTPException(status_code=detail[0], detail=detail[1]) from ex
+    latest = await db.invoices.find_one({"id": invoice_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    return {
+        "payment": payment,
+        "already_exists": already_exists,
+        "invoice_status": (latest or {}).get("status"),
+    }

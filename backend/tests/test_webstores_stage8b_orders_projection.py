@@ -71,6 +71,8 @@ async def _seed_projection(suffix: str) -> dict[str, str]:
                     "variant_id": "large",
                     "name": "Projection Shirt",
                     "selected_options": {"size": "Large"},
+                    "production_mapping": {"method": "screen_print", "material": "cotton"},
+                    "image_reference": {"file_id": "artwork-1"},
                     "fulfillment_method": "pickup",
                     "quantity": 2,
                     "unit_price_cents": 1500,
@@ -185,3 +187,27 @@ async def test_projection_enforces_tenant_and_assignment_scope():
             ctx["webstore_id"],
         )
     assert permission_error.value.status_code == 403
+
+    assigned_user_id = f"assigned-db-{uuid.uuid4().hex[:8]}"
+    await db.webstore_access_assignments.insert_one(
+        {
+            "id": f"assignment-{assigned_user_id}",
+            "tenant_id": ctx["tenant_id"],
+            "webstore_id": ctx["other_store_id"],
+            "portal_identity_id": assigned_user_id,
+            "email": f"assigned-{assigned_user_id}@example.com",
+            "role": "manager",
+            "status": "active",
+        }
+    )
+    with pytest.raises(WebstoreError) as db_assignment_error:
+        await list_webstore_orders(
+            {
+                "id": assigned_user_id,
+                "tenant_id": ctx["tenant_id"],
+                "role": "staff",
+                "email": f"assigned-{assigned_user_id}@example.com",
+            },
+            ctx["webstore_id"],
+        )
+    assert db_assignment_error.value.status_code == 403

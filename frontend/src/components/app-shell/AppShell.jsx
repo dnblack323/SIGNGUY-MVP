@@ -31,6 +31,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import AssistantLauncher from "@/components/assistant/AssistantLauncher";
+import SupportModeBanner from "@/components/platform/SupportModeBanner";
 import WorkspaceDock from "@/components/workspaces/WorkspaceDock";
 import { WorkspaceProvider, useWorkspace } from "@/context/WorkspaceContext";
 import { cn } from "@/lib/utils";
@@ -555,6 +556,7 @@ function AppShellFrame() {
             <QuickAccessToolbar permissions={permissions} onOpenMobileNav={() => setMobileOpen(true)} />
           </header>
 
+          <SupportModeBanner />
           {!isWebstoreDetailRoute && <ShellPageHeading area={selectedArea} module={activeModule} />}
           <main className="px-4 md:px-6 py-5 pb-24 max-w-[1400px]" data-testid="app-shell-content" data-active-path={location.pathname}>
             <Outlet />

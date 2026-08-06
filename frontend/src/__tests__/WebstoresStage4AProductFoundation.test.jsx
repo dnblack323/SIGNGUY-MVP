@@ -22,12 +22,14 @@ import {
   getWebstoreQuestionnaireResponse,
   getWebstoreReports,
   getWebstoreOrders,
+  handoffWebstoreOrderToProduction,
   getWebstoreSetupProgress,
   listProductTemplates,
   listWebstoreArtwork,
   listWebstoreAssignments,
   listWebstoreMockups,
   listWebstoreProductCategories,
+  previewWebstoreProductAiAction,
   listWebstoreSetupFiles,
   previewWebstoreAnswerApplication,
   reorderWebstoreProducts,
@@ -36,6 +38,7 @@ import {
   restoreWebstoreProduct,
   restoreWebstoreProductCategory,
   reverseWebstoreAnswerApplication,
+  runWebstoreProductAiAction,
   sendLaunchPacket,
   setWebstoreStatus,
   updateProductTemplate,
@@ -76,6 +79,7 @@ jest.mock("@/lib/webstores", () => ({
   listWebstoreAssignments: jest.fn(),
   listWebstoreMockups: jest.fn(),
   listWebstoreProductCategories: jest.fn(),
+  previewWebstoreProductAiAction: jest.fn(),
   listWebstoreSetupFiles: jest.fn(),
   previewWebstoreAnswerApplication: jest.fn(),
   reorderWebstoreProducts: jest.fn(),
@@ -84,6 +88,7 @@ jest.mock("@/lib/webstores", () => ({
   restoreWebstoreProduct: jest.fn(),
   restoreWebstoreProductCategory: jest.fn(),
   reverseWebstoreAnswerApplication: jest.fn(),
+  runWebstoreProductAiAction: jest.fn(),
   sendLaunchPacket: jest.fn(),
   setWebstoreStatus: jest.fn(),
   updateProductTemplate: jest.fn(),
@@ -115,6 +120,8 @@ jest.mock("sonner", () => ({
     success: jest.fn(),
   },
 }));
+
+jest.setTimeout(10000);
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -228,6 +235,27 @@ beforeEach(() => {
     items: [{ id: "cat-1", name: "Team Wear", description: "Team gear", status: "active", revision: 4, product_count: 1 }],
     legacy_categories: ["Legacy / Unknown"],
   });
+  previewWebstoreProductAiAction.mockResolvedValue({
+    action: "product_description",
+    label: "Product description draft",
+    credit_charge_credits: 1,
+    available_credits: 8,
+    credit_display: "1 AI credit",
+    confirmation_required: true,
+    insufficient_credits: false,
+    auto_apply: false,
+    manual_setup_available: true,
+  });
+  runWebstoreProductAiAction.mockResolvedValue({
+    auto_apply: false,
+    review_required: true,
+    ai_result: {
+      id: "draft-1",
+      record_type: "editable_draft",
+      title: "Product description draft - Draft Shirt",
+      content_text: "Local mock draft for Webstore Product Content: booster club shirt",
+    },
+  });
   createProductFromTemplate.mockResolvedValue({ id: "prod-new", name: "New draft product", status: "draft", public: false, revision: 1 });
   updateWebstoreProduct.mockResolvedValue({ id: "prod-1", name: "Updated Draft Shirt", status: "draft", public: false, revision: 4 });
   createProductTemplate.mockResolvedValue({});
@@ -301,7 +329,7 @@ test("staff product image picker previews selected files before save", async () 
 
   await screen.findByText(/Team Store/);
   expect(screen.getByText(/Webstores setup/)).toBeInTheDocument();
-  await user.click(screen.getByRole("tab", { name: "Product Setup" }));
+  await user.click(screen.getByRole("tab", { name: "Products" }));
   await user.click(screen.getByTestId("webstore-product-row-prod-1"));
   await user.click(screen.getByRole("tab", { name: "Images and Mockups" }));
 
@@ -351,7 +379,36 @@ test("staff product image picker previews selected files before save", async () 
   }));
 });
 
+test("staff previews and confirms Webstore product AI output without applying it", async () => {
+  const user = userEvent.setup();
+  renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
+
+  await screen.findByText(/Team Store/);
+  await user.click(screen.getByRole("tab", { name: "Products" }));
+  await user.click(screen.getByTestId("webstore-product-row-prod-1"));
+
+  await user.click(screen.getByTestId("webstore-ai-preview-description"));
+  expect(await screen.findByTestId("webstore-ai-preview")).toBeInTheDocument();
+  expect(screen.getByTestId("webstore-ai-credit-display")).toHaveTextContent("1 AI credit");
+  expect(screen.getByText(/8 credits available/)).toBeInTheDocument();
+
+  await user.type(screen.getByTestId("webstore-ai-prompt"), "booster club shirt");
+  await user.click(screen.getByTestId("webstore-ai-run-confirmed"));
+
+  await waitFor(() => {
+    expect(runWebstoreProductAiAction).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({
+      action: "product_description",
+      confirmed_credit_charge_credits: 1,
+      prompt: "booster club shirt",
+    }));
+  });
+  expect(await screen.findByTestId("webstore-ai-review-output")).toHaveTextContent("Local mock draft");
+  expect(screen.getByTestId("webstore-ai-review-output")).toHaveTextContent("not applied automatically");
+  expect(updateWebstoreProduct).not.toHaveBeenCalled();
+});
+
 test("staff launch readiness shows packet versioning, terms, QR, schedule, and change-request controls", async () => {
+  const user = userEvent.setup();
   getWebstore.mockResolvedValueOnce({
     webstore: {
       id: "ws-1",
@@ -417,6 +474,7 @@ test("staff launch readiness shows packet versioning, terms, QR, schedule, and c
   });
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
+  await user.click(await screen.findByTestId("webstore-advanced-setup-toggle"));
   expect(await screen.findByTestId("webstore-readiness-gate-packet_delivered")).toHaveTextContent("Current packet version was delivered");
   expect(screen.getByTestId("webstore-readiness-gate-buyer_commerce_connected")).toHaveTextContent("connected");
   expect(screen.getByTestId("webstore-terms-readiness")).toHaveTextContent("Waiting on separate Store Owner Terms acceptance");
@@ -503,7 +561,7 @@ test("staff persisted product images prefer authenticated previews over public U
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
   await screen.findByText(/Team Store/);
-  await user.click(screen.getByRole("tab", { name: "Product Setup" }));
+  await user.click(screen.getByRole("tab", { name: "Products" }));
 
   expect(screen.getByTestId("webstore-product-card-prod-1").querySelector("img")).toHaveAttribute("src", "/api/webstores/ws-1/setup-files/file-1/preview");
   expect(screen.getByTestId("webstore-product-card-prod-fallback").querySelector("img")).toHaveAttribute("src", "/api/public/webstores/team-store-public/product-images/prod-fallback/primary");
@@ -548,10 +606,11 @@ test("staff product builder separates planning from focused product setup", asyn
 
   expect(await screen.findByText(/Team Store/)).toBeInTheDocument();
   expect(screen.getByText(/Webstores setup/)).toBeInTheDocument();
-  expect(screen.getByTestId("webstore-builder-progress")).toHaveTextContent("Product Plan");
-  expect(screen.getByTestId("webstore-builder-status-panel")).toHaveTextContent("AI review");
+  expect(screen.getByTestId("webstore-builder-progress")).toHaveTextContent("Webstores Feed");
+  expect(screen.getByRole("tab", { name: "Storefront" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Review & Launch" })).toBeInTheDocument();
 
-  await user.click(screen.getByRole("tab", { name: "Product Plan" }));
+  await user.click(screen.getByRole("tab", { name: "Products" }));
   const plan = screen.getByTestId("webstore-product-plan");
   expect(plan).toHaveTextContent("Questionnaire Summary");
   expect(plan).toHaveTextContent("AI Product Suggestions");
@@ -566,11 +625,10 @@ test("staff product builder separates planning from focused product setup", asyn
   await waitFor(() => expect(createProductFromTemplate).toHaveBeenCalledWith("ws-1", { name: "New draft product", product_type: "general" }));
 
   await user.click(within(plan).getByTestId("webstore-stage4-template-select"));
-  await user.click(await screen.findByText("Tenant Shirt"));
+  await user.click(await screen.findByRole("option", { name: "Tenant Shirt" }));
   await user.click(within(plan).getByTestId("webstore-add-template-draft"));
   await waitFor(() => expect(createProductFromTemplate).toHaveBeenCalledWith("ws-1", expect.objectContaining({ source_template_id: "tpl-tenant" })));
 
-  await user.click(screen.getByRole("tab", { name: "Product Setup" }));
   expect(screen.getByTestId("webstore-product-foundation")).toHaveTextContent("Selected Products");
   expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("Continue Setup");
   expect(screen.getByTestId("webstore-product-card-prod-1")).toHaveTextContent("planned - private catalog");
@@ -641,7 +699,7 @@ test("stale product saves keep the editor open and offer a reload action", async
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
   await screen.findByText(/Team Store/);
-  await user.click(screen.getByRole("tab", { name: "Product Setup" }));
+  await user.click(screen.getByRole("tab", { name: "Products" }));
   await user.click(screen.getByTestId("webstore-product-row-prod-1"));
   fireEvent.change(screen.getByTestId("webstore-product-name"), { target: { value: "Updated Draft Shirt" } });
   await user.click(screen.getByRole("tab", { name: "Review Status" }));

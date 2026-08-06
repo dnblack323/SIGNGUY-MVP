@@ -24,6 +24,14 @@ api.interceptors.response.use(
         window.location.href = "/login";
       }
     }
+    if (err?.response?.status === 403 && err?.response?.data?.detail?.code === "tenant_suspended") {
+      const detail = err.response.data.detail;
+      sessionStorage.setItem("signguy.suspended", JSON.stringify(detail));
+      localStorage.removeItem("signguy.token");
+      if (!window.location.pathname.startsWith("/account-suspended")) {
+        window.location.href = "/account-suspended";
+      }
+    }
     return Promise.reject(err);
   },
 );
@@ -34,6 +42,7 @@ export function extractError(err, fallback = "Something went wrong") {
   const d = err?.response?.data;
   if (!d) return fallback;
   if (typeof d?.detail === "string") return d.detail;
+  if (typeof d?.detail?.message === "string") return d.detail.message;
   if (Array.isArray(d?.detail)) {
     return d.detail.map((e) => e.msg || JSON.stringify(e)).join("; ");
   }

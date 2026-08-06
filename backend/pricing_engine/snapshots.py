@@ -387,7 +387,8 @@ def _copy_component_amounts(rows: Any) -> list[dict[str, Any]]:
         item = deepcopy(dict(row))
         amount = item.get("amount_cents")
         if amount is not None:
-            allow_negative = str(item.get("field") or "").endswith("_adjustment")
+            field = str(item.get("field") or "")
+            allow_negative = field == "profit_amount" or field.endswith("_adjustment")
             item["amount_cents"] = (
                 validate_signed_cents(amount, field_name=f"component_amounts[{index}].amount_cents")
                 if allow_negative

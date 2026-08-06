@@ -1,15 +1,8 @@
-"""EC3 — Idempotent, race-safe Quote-to-Order conversion.
+"""EC3 - Idempotent, race-safe Quote-to-Order conversion.
 
-Preserves the working MVP idempotent guard (`find_one_and_update` claim on
-`converted_order_id == None`) and extends it with:
-
-- Copies Quote Line Items → Order Items, preserving pricing snapshots, category,
-  dimensions, override metadata, and `production_required` defaults.
-- Records `source_quote_id` + `source_quote_revision` on the Order.
-- Records `converted_revision` on the Quote.
-- Rejects declined/void quotes.
-- Rejects expired quotes unless caller passes `allow_expired=True` with a
-  documented reason (enforced by the router permission + audit event).
+Preserves the MVP idempotent guard on `converted_order_id == None` and keeps
+failed conversions retryable by linking the quote only after all candidate
+Order artifacts have been created successfully.
 """
 from __future__ import annotations
 
@@ -64,9 +57,8 @@ async def convert_quote_to_order(
     if not quote:
         raise ValueError("quote_not_found")
 
-    # Idempotent short-circuit
     if quote.get("converted_order_id"):
-        existing = await db.orders.find_one({"id": quote["converted_order_id"]}, {"_id": 0})
+        existing = await db.orders.find_one({"id": quote["converted_order_id"], "tenant_id": tenant_id}, {"_id": 0})
         return serialize_doc(existing) if existing else {"id": quote["converted_order_id"]}, True
 
     if quote.get("status") == "declined":
@@ -80,29 +72,36 @@ async def convert_quote_to_order(
     if expired and allow_expired and not override_reason:
         raise ValueError("override_reason_required")
 
-    # Atomically claim the quote so a concurrent second click can't create a duplicate order.
-    now_iso = utc_now().isoformat()
-    claim = await db.quotes.find_one_and_update(
-        {"id": quote_id, "tenant_id": tenant_id, "converted_order_id": None},
-        {"$set": {"status": "converted", "converted_at": now_iso, "updated_at": now_iso}},
-    )
-    if not claim:
-        # Lost the race — return the winning order (or 409 if inconsistent).
-        quote2 = await db.quotes.find_one({"id": quote_id}, {"_id": 0})
+    revision_number = int(quote.get("revision_number") or 1)
+    order_item_ids: list[str] = []
+
+    async def _winning_order() -> tuple[dict[str, Any], bool]:
+        quote2 = await db.quotes.find_one({"id": quote_id, "tenant_id": tenant_id}, {"_id": 0})
         if quote2 and quote2.get("converted_order_id"):
-            existing = await db.orders.find_one({"id": quote2["converted_order_id"]}, {"_id": 0})
+            existing = await db.orders.find_one({"id": quote2["converted_order_id"], "tenant_id": tenant_id}, {"_id": 0})
             return serialize_doc(existing) if existing else {"id": quote2["converted_order_id"]}, True
         raise ValueError("conversion_race_lost")
 
-    revision_number = int(quote.get("revision_number") or 1)
+    async def _cleanup_candidate(order_id: str) -> None:
+        linked = await db.quotes.find_one(
+            {"id": quote_id, "tenant_id": tenant_id, "converted_order_id": order_id},
+            {"_id": 0, "id": 1},
+        )
+        if linked:
+            return
+        if order_item_ids:
+            await db.pricing_snapshot_records.delete_many(
+                {"tenant_id": tenant_id, "source_type": "order_item", "source_id": {"$in": order_item_ids}}
+            )
+            await db.order_items.delete_many({"tenant_id": tenant_id, "order_id": order_id, "id": {"$in": order_item_ids}})
+        await db.orders.delete_one({"tenant_id": tenant_id, "id": order_id})
 
-    # Create the Order
     number = await next_number(tenant_id=tenant_id, name="order")
     order = Order(
         tenant_id=tenant_id,
         number=number,
         customer_id=quote["customer_id"],
-        quote_id=quote_id,                         # backward compat
+        quote_id=quote_id,
         source_quote_id=quote_id,
         source_quote_revision=revision_number,
         job_name=quote.get("job_name") or "",
@@ -123,85 +122,93 @@ async def convert_quote_to_order(
     for field in DOCUMENT_PRICING_FIELDS:
         if field in quote:
             order_doc[field] = quote.get(field)
-    await db.orders.insert_one(prepare_for_mongo(order_doc))
 
-    # Copy Quote Line Items → Order Items
-    cursor = db.quote_line_items.find(
-        {"tenant_id": tenant_id, "quote_id": quote_id, "revision_number": revision_number},
-        {"_id": 0},
-    ).sort("position", 1)
-    async for li in cursor:
-        prod_req = li.get("production_required")
-        if prod_req is None:
-            prod_req = default_production_required(li.get("category"))
-        item = OrderItem(
-            tenant_id=tenant_id,
-            order_id=order.id,
-            position=int(li.get("position") or 0),
-            item_name=li.get("item_name"),
-            category=li.get("category"),
-            product_type=li.get("product_type"),
-            description=li.get("description") or "",
-            sku=li.get("sku"),
-            quantity=int(li.get("quantity") or 1),
-            unit_of_measure=li.get("unit_of_measure") or "each",
-            width_inches=li.get("width_inches"),
-            height_inches=li.get("height_inches"),
-            depth_inches=li.get("depth_inches"),
-            material_key=li.get("material_key"),
-            unit_price_cents=int(li.get("unit_price_cents") or 0),
-            discount_cents=int(li.get("discount_cents") or 0),
-            tax_cents=int(li.get("tax_cents") or 0),
-            line_subtotal_cents=int(li.get("line_subtotal_cents") or 0),
-            line_total_cents=int(li.get("line_total_cents") or 0),
-            pricing_snapshot=dict(li.get("pricing_snapshot") or {}),
-            manual_override_reason=li.get("manual_override_reason"),
-            manual_override_actor_user_id=li.get("manual_override_actor_user_id"),
-            manual_override_actor_email=li.get("manual_override_actor_email"),
-            manual_override_at=li.get("manual_override_at"),
-            production_required=bool(prod_req),
-            notes=li.get("notes"),
-            # EC9 Phase 9F — Quote-to-Order conversion preserves every
-            # pricing reference/derived field exactly as-is. NO recalculation.
-            category_inputs=dict(li.get("category_inputs") or {}),
-            material_profile_id=li.get("material_profile_id"),
-            pricing_component_ids=list(li.get("pricing_component_ids") or []),
-            saved_item_id=li.get("saved_item_id"),
-            suggested_price_cents=li.get("suggested_price_cents"),
-            manual_price_cents=li.get("manual_price_cents"),
-            selected_price_source=li.get("selected_price_source") or "manual",
-            pricing_status=li.get("pricing_status") or "manual",
-            estimated_cost_cents=li.get("estimated_cost_cents"),
-            estimated_profit_cents=li.get("estimated_profit_cents"),
-            estimated_margin_percent=li.get("estimated_margin_percent"),
-            calculation_warnings=list(li.get("calculation_warnings") or []),
-            source_labels=dict(li.get("source_labels") or {}),
-            price_selected_by_user_id=li.get("price_selected_by_user_id"),
-        )
-        await db.order_items.insert_one(prepare_for_mongo(item.model_dump()))
+    try:
+        await db.orders.insert_one(prepare_for_mongo(order_doc))
 
-        # EC9 Phase 9G — clone the source Quote Line Item's active snapshot
-        # lineage into a brand-new record for the Order Item. Zero
-        # recalculation: the item's own `pricing_snapshot`/derived fields are
-        # copied byte-for-byte above; this only gives the new Order Item its
-        # own first immutable record, cross-linked via `previous_snapshot_id`.
-        quote_snapshot = await db.pricing_snapshot_records.find_one(
-            {"tenant_id": tenant_id, "source_type": "quote_line_item", "source_id": li["id"], "status": "active"},
+        cursor = db.quote_line_items.find(
+            {"tenant_id": tenant_id, "quote_id": quote_id, "revision_number": revision_number},
             {"_id": 0},
-        )
-        await create_snapshot_record(
-            tenant_id=tenant_id, source_type="order_item", source_id=item.id,
-            quote_id=quote_id, order_id=order.id, item_doc=item.model_dump(),
-            calculated_by_user_id=actor_user_id,
-            previous_snapshot_id=quote_snapshot.get("id") if quote_snapshot else None,
-        )
+        ).sort("position", 1)
+        async for li in cursor:
+            prod_req = li.get("production_required")
+            if prod_req is None:
+                prod_req = default_production_required(li.get("category"))
+            item = OrderItem(
+                tenant_id=tenant_id,
+                order_id=order.id,
+                position=int(li.get("position") or 0),
+                item_name=li.get("item_name"),
+                category=li.get("category"),
+                product_type=li.get("product_type"),
+                description=li.get("description") or "",
+                sku=li.get("sku"),
+                quantity=int(li.get("quantity") or 1),
+                unit_of_measure=li.get("unit_of_measure") or "each",
+                width_inches=li.get("width_inches"),
+                height_inches=li.get("height_inches"),
+                depth_inches=li.get("depth_inches"),
+                material_key=li.get("material_key"),
+                unit_price_cents=int(li.get("unit_price_cents") or 0),
+                discount_cents=int(li.get("discount_cents") or 0),
+                tax_cents=int(li.get("tax_cents") or 0),
+                line_subtotal_cents=int(li.get("line_subtotal_cents") or 0),
+                line_total_cents=int(li.get("line_total_cents") or 0),
+                pricing_snapshot=dict(li.get("pricing_snapshot") or {}),
+                manual_override_reason=li.get("manual_override_reason"),
+                manual_override_actor_user_id=li.get("manual_override_actor_user_id"),
+                manual_override_actor_email=li.get("manual_override_actor_email"),
+                manual_override_at=li.get("manual_override_at"),
+                production_required=bool(prod_req),
+                notes=li.get("notes"),
+                category_inputs=dict(li.get("category_inputs") or {}),
+                material_profile_id=li.get("material_profile_id"),
+                pricing_component_ids=list(li.get("pricing_component_ids") or []),
+                saved_item_id=li.get("saved_item_id"),
+                suggested_price_cents=li.get("suggested_price_cents"),
+                manual_price_cents=li.get("manual_price_cents"),
+                selected_price_source=li.get("selected_price_source") or "manual",
+                pricing_status=li.get("pricing_status") or "manual",
+                estimated_cost_cents=li.get("estimated_cost_cents"),
+                estimated_profit_cents=li.get("estimated_profit_cents"),
+                estimated_margin_percent=li.get("estimated_margin_percent"),
+                calculation_warnings=list(li.get("calculation_warnings") or []),
+                source_labels=dict(li.get("source_labels") or {}),
+                price_selected_by_user_id=li.get("price_selected_by_user_id"),
+            )
+            await db.order_items.insert_one(prepare_for_mongo(item.model_dump()))
+            order_item_ids.append(item.id)
 
-    # Complete the quote row (record converted revision + order id)
-    await db.quotes.update_one(
-        {"id": quote_id},
-        {"$set": {
-            "converted_order_id": order.id,
-            "converted_revision": revision_number,
-        }},
-    )
-    return serialize_doc(order_doc), False
+            quote_snapshot = await db.pricing_snapshot_records.find_one(
+                {"tenant_id": tenant_id, "source_type": "quote_line_item", "source_id": li["id"], "status": "active"},
+                {"_id": 0},
+            )
+            await create_snapshot_record(
+                tenant_id=tenant_id,
+                source_type="order_item",
+                source_id=item.id,
+                quote_id=quote_id,
+                order_id=order.id,
+                item_doc=item.model_dump(),
+                calculated_by_user_id=actor_user_id,
+                previous_snapshot_id=quote_snapshot.get("id") if quote_snapshot else None,
+            )
+
+        now_iso = utc_now().isoformat()
+        claim = await db.quotes.update_one(
+            {"id": quote_id, "tenant_id": tenant_id, "converted_order_id": None},
+            {"$set": {
+                "status": "converted",
+                "converted_at": now_iso,
+                "updated_at": now_iso,
+                "converted_order_id": order.id,
+                "converted_revision": revision_number,
+            }},
+        )
+        if claim.modified_count == 0:
+            await _cleanup_candidate(order.id)
+            return await _winning_order()
+        return serialize_doc(order_doc), False
+    except Exception:
+        await _cleanup_candidate(order.id)
+        raise
