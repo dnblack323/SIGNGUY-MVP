@@ -48,6 +48,32 @@ def _now_iso() -> str:
     return utc_now().isoformat()
 
 
+def _chunked(values: list[str], size: int = 5000) -> list[list[str]]:
+    return [values[i : i + size] for i in range(0, len(values), size)]
+
+
+def _parse_iso(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        raw = str(value)
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(raw)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    except Exception:
+        return None
+
+
+def _days_since(value: Any) -> int | None:
+    parsed = _parse_iso(value)
+    if not parsed:
+        return None
+    return max(0, (utc_now() - parsed.astimezone(timezone.utc)).days)
+
+
 def _request_meta(request: Request | None) -> dict[str, Any]:
     if not request:
         return {}
@@ -116,6 +142,32 @@ async def _subscription_for_tenant(tenant_id: str) -> dict | None:
     return {"account": serialize_doc(account), "subscription": sub}
 
 
+def _dunning_detail(account: dict | None, subscription: dict | None) -> dict[str, Any]:
+    account = account or {}
+    subscription = subscription or {}
+    failed_since = subscription.get("first_payment_failed_at") or account.get("first_payment_failed_at")
+    days_past_due = _days_since(failed_since)
+    review_after_days = (
+        account.get("dunning_review_after_days")
+        or subscription.get("dunning_review_after_days")
+        or account.get("dunning_failure_threshold")
+    )
+    review_after_days = int(review_after_days or 15)
+    parsed_failed_since = _parse_iso(failed_since)
+    review_eligible_at = (parsed_failed_since + timedelta(days=review_after_days)).isoformat() if parsed_failed_since else None
+    return {
+        "state": subscription.get("dunning_state") or "current",
+        "failed_since": failed_since,
+        "days_past_due": days_past_due,
+        "last_failed_at": subscription.get("last_payment_failed_at") or account.get("last_payment_failed_at"),
+        "last_paid_at": subscription.get("last_payment_succeeded_at") or account.get("last_payment_succeeded_at"),
+        "manual_grace_until": subscription.get("manual_grace_until") or account.get("grace_period_until"),
+        "review_after_days": review_after_days,
+        "review_eligible_at": review_eligible_at,
+        "suspension_review_eligible": days_past_due is not None and days_past_due >= review_after_days,
+    }
+
+
 async def _founder_flag(tenant_id: str) -> bool:
     if await db.founder_tenant_contracts.count_documents({"tenant_id": tenant_id, "founder_status": {"$in": ["pending", "active", "grace"]}}):
         return True
@@ -128,24 +180,76 @@ async def list_tenants(user: dict, *, search: Optional[str] = None, limit: int =
     if search:
         owners = await db.users.distinct("tenant_id", {"email": {"$regex": search, "$options": "i"}})
         query = {"$or": [{"name": {"$regex": search, "$options": "i"}}, {"slug": {"$regex": search, "$options": "i"}}, {"id": {"$in": owners}}]}
-    docs = await db.tenants.find(query, {"_id": 0}).sort("created_at", -1).limit(max(1, min(limit, 2000))).to_list(None)
+    page_limit = max(1, min(limit, 2000))
+    docs = await db.tenants.find(query, {"_id": 0}).sort("created_at", -1).limit(page_limit).to_list(None)
+    tenant_ids = [tenant["id"] for tenant in docs if tenant.get("id")]
+
+    owner_by_tenant: dict[str, dict[str, Any]] = {}
+    user_count_by_tenant: dict[str, int] = {}
+    account_by_tenant: dict[str, dict[str, Any]] = {}
+    sub_by_tenant: dict[str, dict[str, Any]] = {}
+    founder_ids: set[str] = set()
+
+    if tenant_ids:
+        for chunk in _chunked(tenant_ids):
+            owner_rows = await db.users.find(
+                {"tenant_id": {"$in": chunk}, "$or": [{"role": "owner"}, {"is_owner": True}]},
+                {"_id": 0, "tenant_id": 1, "email": 1, "full_name": 1, "created_at": 1},
+            ).sort("created_at", 1).to_list(None)
+            for owner in owner_rows:
+                owner_by_tenant.setdefault(owner["tenant_id"], owner)
+
+            count_rows = await db.users.aggregate([
+                {"$match": {"tenant_id": {"$in": chunk}}},
+                {"$group": {"_id": "$tenant_id", "count": {"$sum": 1}}},
+            ]).to_list(None)
+            user_count_by_tenant.update({row["_id"]: row["count"] for row in count_rows})
+
+            account_rows = await db.tenant_billing_accounts.find({"tenant_id": {"$in": chunk}}, {"_id": 0}).to_list(None)
+            for account in account_rows:
+                account_by_tenant.setdefault(account["tenant_id"], account)
+
+            sub_rows = await db.tenant_subscriptions.find({"tenant_id": {"$in": chunk}}, {"_id": 0}).sort("updated_at", -1).to_list(None)
+            for sub in sub_rows:
+                account = account_by_tenant.get(sub.get("tenant_id"))
+                if account and account.get("current_subscription_id") == sub.get("id"):
+                    sub_by_tenant[sub["tenant_id"]] = sub
+                else:
+                    sub_by_tenant.setdefault(sub["tenant_id"], sub)
+
+            founder_ids.update(await db.founder_tenant_contracts.distinct("tenant_id", {"tenant_id": {"$in": chunk}, "founder_status": {"$in": ["pending", "active", "grace"]}}))
+            founder_ids.update(await db.users.distinct("tenant_id", {"tenant_id": {"$in": chunk}, "is_founder": True}))
+
+    summary_founder_ids = set(await db.founder_tenant_contracts.distinct("tenant_id", {"founder_status": {"$in": ["pending", "active", "grace"]}}))
+    summary_founder_ids.update(await db.users.distinct("tenant_id", {"is_founder": True}))
     items = []
     for tenant in docs:
-        owner = await _owner_for_tenant(tenant["id"])
-        billing = await _subscription_for_tenant(tenant["id"])
+        owner = owner_by_tenant.get(tenant["id"])
+        account = account_by_tenant.get(tenant["id"]) or {}
+        sub = sub_by_tenant.get(tenant["id"]) or {}
         items.append({
             "id": tenant["id"],
             "name": tenant.get("name") or "Unnamed Shop",
             "slug": tenant.get("slug"),
             "owner_email": tenant.get("owner_email") or (owner or {}).get("email"),
-            "plan": (billing.get("subscription") or {}).get("plan_product_id") or tenant.get("plan") or "unassigned",
-            "status": "suspended" if tenant.get("is_active") is False else ((billing.get("account") or {}).get("status") or "active"),
+            "plan": sub.get("plan_product_id") or tenant.get("plan") or "unassigned",
+            "status": "suspended" if tenant.get("is_active") is False else (account.get("status") or "active"),
             "is_active": tenant.get("is_active", True),
             "created_at": tenant.get("created_at"),
-            "user_count": await db.users.count_documents({"tenant_id": tenant["id"]}),
-            "is_founder": await _founder_flag(tenant["id"]),
+            "user_count": user_count_by_tenant.get(tenant["id"], 0),
+            "is_founder": tenant["id"] in founder_ids,
         })
-    return {"items": items, "total": len(items)}
+    return {
+        "items": items,
+        "total": await db.tenants.count_documents(query),
+        "page_count": len(items),
+        "summary": {
+            "total_tenants": await db.tenants.count_documents({}),
+            "total_users": await db.users.count_documents({}),
+            "suspended_tenants": await db.tenants.count_documents({"is_active": False}),
+            "founder_tenants": len(summary_founder_ids),
+        },
+    }
 
 
 async def seed_sample_data(user: dict) -> dict:
@@ -254,7 +358,7 @@ async def seed_sample_data(user: dict) -> dict:
             "status": account_status,
             "stripe_customer_id": f"cus_demo_{idx}",
             "current_subscription_id": subscription_id,
-            "dunning_failure_threshold": 3 + idx,
+            "dunning_review_after_days": 15 + idx,
             "suspended_at": tenant.get("suspended_at"),
             "suspension_reason": tenant.get("suspension_reason"),
             "created_at": tenant["created_at"],
@@ -452,7 +556,7 @@ async def tenant_detail(user: dict, tenant_id: str) -> dict:
     return {
         "tenant": tenant_out,
         "users": [serialize_doc(u) for u in users],
-        "billing": billing,
+        "billing": {**billing, "dunning": _dunning_detail(billing.get("account"), billing.get("subscription"))},
         "email_summary": email_summary,
         "onboarding": onboarding,
         "audit_events": [serialize_doc(row) for row in audit_rows],
@@ -538,7 +642,7 @@ async def mark_paid(user: dict, tenant_id: str, *, note: Optional[str] = None, r
     now = _now_iso()
     await db.tenant_subscriptions.update_many(
         {"tenant_id": tenant_id},
-        {"$set": {"status": "active", "dunning_state": "current", "first_payment_failed_at": None, "last_payment_succeeded_at": now, "updated_at": now}},
+        {"$set": {"status": "active", "dunning_state": "current", "first_payment_failed_at": None, "last_payment_failed_at": None, "last_payment_succeeded_at": now, "updated_at": now}},
     )
     await db.tenant_billing_accounts.update_one(
         {"tenant_id": tenant_id},
@@ -559,14 +663,14 @@ async def mark_paid(user: dict, tenant_id: str, *, note: Optional[str] = None, r
 async def set_dunning_threshold(user: dict, tenant_id: str, *, threshold: Optional[int], request: Request | None = None) -> dict:
     require_platform_admin(user, extra_permissions={PlatformPerm.PLATFORM_SUBSCRIPTION_ADMIN.value})
     if threshold is not None and threshold < 1:
-        raise PlatformAdminError("invalid_threshold", "Threshold must be a positive number or null", 400)
+        raise PlatformAdminError("invalid_threshold", "Review day must be a positive number or null", 400)
     tenant = await db.tenants.find_one({"id": tenant_id}, {"_id": 0})
     if not tenant:
         raise PlatformAdminError("tenant_not_found", "Tenant not found", 404)
     now = _now_iso()
     updated = await db.tenant_billing_accounts.update_one(
         {"tenant_id": tenant_id},
-        {"$set": {"dunning_failure_threshold": threshold, "updated_at": now}},
+        {"$set": {"dunning_review_after_days": threshold, "updated_at": now}},
     )
     if updated.matched_count == 0:
         account = TenantBillingAccount(
@@ -574,10 +678,10 @@ async def set_dunning_threshold(user: dict, tenant_id: str, *, threshold: Option
             billing_email=tenant.get("owner_email"),
             status="pending",
         ).model_dump()
-        account["dunning_failure_threshold"] = threshold
+        account["dunning_review_after_days"] = threshold
         account["updated_at"] = now
         await db.tenant_billing_accounts.insert_one(prepare_for_mongo(account))
-    await _audit(user, tenant_id=tenant_id, action="dunning.threshold_set", entity_type="tenant", entity_id=tenant_id, summary=f"Set dunning threshold for {tenant.get('name')}", request=request, metadata={"threshold": threshold})
+    await _audit(user, tenant_id=tenant_id, action="dunning.threshold_set", entity_type="tenant", entity_id=tenant_id, summary=f"Set dunning review day for {tenant.get('name')}", request=request, metadata={"review_after_days": threshold})
     return await tenant_detail(user, tenant_id)
 
 
@@ -782,6 +886,20 @@ def _render_broadcast(text: str, context: dict[str, str]) -> str:
     return out
 
 
+async def _owners_by_tenant(tenant_ids: list[str]) -> dict[str, dict[str, Any]]:
+    owners: dict[str, dict[str, Any]] = {}
+    if not tenant_ids:
+        return owners
+    for chunk in _chunked(sorted({tenant_id for tenant_id in tenant_ids if tenant_id})):
+        rows = await db.users.find(
+            {"tenant_id": {"$in": chunk}, "$or": [{"role": "owner"}, {"is_owner": True}]},
+            {"_id": 0, "tenant_id": 1, "email": 1, "full_name": 1, "created_at": 1},
+        ).sort("created_at", 1).to_list(None)
+        for row in rows:
+            owners.setdefault(row["tenant_id"], row)
+    return owners
+
+
 async def _broadcast_recipients(user: dict, *, target: str = "all_owners", tenant_ids: Optional[list[str]] = None, test_to: Optional[str] = None) -> list[dict]:
     if test_to:
         tenant = await db.tenants.find_one({"id": user["tenant_id"]}, {"_id": 0}) or {"id": user["tenant_id"], "name": "Example Tenant", "owner_email": test_to}
@@ -797,11 +915,12 @@ async def _broadcast_recipients(user: dict, *, target: str = "all_owners", tenan
         ids = await db.founder_tenant_contracts.distinct("tenant_id", {"founder_status": {"$in": ["pending", "active", "grace"]}})
         ids.extend(await db.users.distinct("tenant_id", {"is_founder": True}))
         q["id"] = {"$in": sorted({i for i in ids if i})}
-    tenants = await db.tenants.find(q, {"_id": 0}).to_list(10000)
+    tenants = await db.tenants.find(q, {"_id": 0}).to_list(None)
+    owner_by_tenant = await _owners_by_tenant([tenant["id"] for tenant in tenants if tenant.get("id")])
     recipients: list[dict] = []
     seen: set[str] = set()
     for tenant in tenants:
-        owner = await _owner_for_tenant(tenant["id"])
+        owner = owner_by_tenant.get(tenant["id"])
         email = (tenant.get("owner_email") or (owner or {}).get("email") or "").strip()
         key = email.lower()
         if not key or key in seen:
@@ -813,9 +932,28 @@ async def _broadcast_recipients(user: dict, *, target: str = "all_owners", tenan
 
 async def broadcast_counts(user: dict) -> dict:
     require_platform_admin(user, extra_permissions={PlatformPerm.PLATFORM_BROADCAST_WRITE.value})
-    counts = {}
-    for key in ("all_owners", "active_only", "suspended_only", "founders_only"):
-        counts[key] = len(await _broadcast_recipients(user, target=key))
+    tenants = await db.tenants.find({}, {"_id": 0, "id": 1, "name": 1, "owner_email": 1, "is_active": 1}).to_list(None)
+    owner_by_tenant = await _owners_by_tenant([tenant["id"] for tenant in tenants if tenant.get("id")])
+    founder_ids = set(await db.founder_tenant_contracts.distinct("tenant_id", {"founder_status": {"$in": ["pending", "active", "grace"]}}))
+    founder_ids.update(await db.users.distinct("tenant_id", {"is_founder": True}))
+
+    def count_for(predicate) -> int:
+        seen: set[str] = set()
+        for tenant in tenants:
+            if not predicate(tenant):
+                continue
+            owner = owner_by_tenant.get(tenant["id"])
+            email = (tenant.get("owner_email") or (owner or {}).get("email") or "").strip().lower()
+            if email:
+                seen.add(email)
+        return len(seen)
+
+    counts = {
+        "all_owners": count_for(lambda _tenant: True),
+        "active_only": count_for(lambda tenant: tenant.get("is_active") is not False),
+        "suspended_only": count_for(lambda tenant: tenant.get("is_active") is False),
+        "founders_only": count_for(lambda tenant: tenant.get("id") in founder_ids),
+    }
     return counts
 
 
@@ -877,18 +1015,24 @@ async def send_broadcast(user: dict, *, subject: str, html_body: str, target: st
     return {"mode": "test" if test_to else "broadcast", "matched_recipients": len(recipients), "sent_count": len(sent), "failed_count": len(failed), "failed": failed[:25]}
 
 
-async def email_logs_summary(user: dict, *, tenant_id: Optional[str] = None, since: Optional[str] = None) -> dict:
+async def email_logs_summary(user: dict, *, tenant_id: Optional[str] = None, status: Optional[str] = None, to_email: Optional[str] = None, since: Optional[str] = None) -> dict:
     require_platform_admin(user, extra_permissions={PlatformPerm.PLATFORM_TENANT_READ.value})
     q: dict[str, Any] = {}
     if tenant_id:
         q["tenant_id"] = tenant_id
+    if status:
+        q["status"] = status
+    if to_email:
+        q["to_email"] = {"$regex": to_email, "$options": "i"}
     if since:
         q["created_at"] = {"$gte": since}
     total = await db.email_logs.count_documents(q)
     counts = {status: await db.email_logs.count_documents({**q, "status": status}) for status in ("sent", "delivered", "failed", "skipped", "queued")}
-    bounced = await db.email_activity.count_documents({**({"tenant_id": tenant_id} if tenant_id else {}), "event": {"$in": ["bounce", "dropped"]}})
-    complaints = await db.email_activity.count_documents({**({"tenant_id": tenant_id} if tenant_id else {}), "event": "spamreport"})
-    delivered_events = await db.email_activity.count_documents({**({"tenant_id": tenant_id} if tenant_id else {}), "event": "delivered"})
+    log_ids = await db.email_logs.distinct("id", q) if total else []
+    activity_scope: dict[str, Any] = {"email_log_id": {"$in": log_ids}} if log_ids else {"email_log_id": "__none__"}
+    bounced = len(await db.email_activity.distinct("email_log_id", {**activity_scope, "event": {"$in": ["bounce", "dropped"]}}))
+    complaints = len(await db.email_activity.distinct("email_log_id", {**activity_scope, "event": "spamreport"}))
+    delivered_events = len(await db.email_activity.distinct("email_log_id", {**activity_scope, "event": "delivered"}))
     return {"total": total, "delivered": max(counts.get("delivered", 0), delivered_events), "pending": counts.get("sent", 0) + counts.get("queued", 0), "bounced": bounced, "complaints": complaints, "failed": counts.get("failed", 0), "by_status": counts}
 
 
@@ -909,7 +1053,17 @@ async def list_email_logs(user: dict, *, tenant_id: Optional[str] = None, status
     return {"items": [serialize_doc(r) for r in rows], "total": len(rows)}
 
 
-async def list_audit_log(user: dict, *, action: Optional[str] = None, actor_email: Optional[str] = None, tenant_id: Optional[str] = None, entity_type: Optional[str] = None, limit: int = 200) -> dict:
+async def list_audit_log(
+    user: dict,
+    *,
+    action: Optional[str] = None,
+    actor_email: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    limit: int = 200,
+) -> dict:
     require_platform_admin(user, extra_permissions={PlatformPerm.PLATFORM_AUDIT_READ.value})
     q: dict[str, Any] = {}
     if action:
@@ -920,6 +1074,13 @@ async def list_audit_log(user: dict, *, action: Optional[str] = None, actor_emai
         q["tenant_id"] = tenant_id
     if entity_type:
         q["entity_type"] = entity_type
+    date_filter: dict[str, str] = {}
+    if since:
+        date_filter["$gte"] = since
+    if until:
+        date_filter["$lte"] = until
+    if date_filter:
+        q["created_at"] = date_filter
     rows = await db.audit_events.find(q, {"_id": 0}).sort("created_at", -1).limit(max(1, min(limit, 1000))).to_list(None)
     return {"items": [serialize_doc(r) for r in rows], "total": len(rows)}
 

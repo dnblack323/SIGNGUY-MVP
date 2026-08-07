@@ -33,7 +33,7 @@ class MarkPaidIn(BaseModel):
 
 
 class DunningThresholdIn(BaseModel):
-    threshold: Optional[StrictInt] = Field(default=None, ge=1, le=20)
+    threshold: Optional[StrictInt] = Field(default=None, ge=1, le=45)
 
 
 class ImpersonateIn(BaseModel):
@@ -256,9 +256,16 @@ async def broadcast_email(payload: BroadcastIn, request: Request, user: dict = D
 
 
 @router.get("/email-logs/summary")
-async def email_logs_summary(tenant_id: Optional[str] = None, since: Optional[str] = None, user: dict = Depends(get_current_user)) -> dict:
+async def email_logs_summary(
+    tenant_id: Optional[str] = None,
+    tenant: Optional[str] = None,
+    status: Optional[str] = None,
+    to_email: Optional[str] = None,
+    since: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+) -> dict:
     try:
-        return await svc.email_logs_summary(user, tenant_id=tenant_id, since=since)
+        return await svc.email_logs_summary(user, tenant_id=tenant_id or tenant, status=status, to_email=to_email, since=since)
     except PlatformAdminError as exc:
         _raise(exc)
 
@@ -285,11 +292,13 @@ async def audit_log(
     actor_email: Optional[str] = None,
     tenant_id: Optional[str] = None,
     entity_type: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
     limit: int = Query(200, ge=1, le=1000),
     user: dict = Depends(get_current_user),
 ) -> dict:
     try:
-        return await svc.list_audit_log(user, action=action, actor_email=actor_email, tenant_id=tenant_id, entity_type=entity_type, limit=limit)
+        return await svc.list_audit_log(user, action=action, actor_email=actor_email, tenant_id=tenant_id, entity_type=entity_type, since=since, until=until, limit=limit)
     except PlatformAdminError as exc:
         _raise(exc)
 

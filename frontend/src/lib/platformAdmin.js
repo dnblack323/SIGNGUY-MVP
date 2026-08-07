@@ -1,7 +1,7 @@
 import api from "@/lib/api";
 
 export const platformAdminApi = {
-  tenants: async (search = "") => (await api.get("/platform-admin/tenants", { params: search ? { search } : {} })).data,
+  tenants: async (search = "", limit = 200) => (await api.get("/platform-admin/tenants", { params: { ...(search ? { search } : {}), limit } })).data,
   seedSampleData: async () => (await api.post("/platform-admin/sample-data/seed")).data,
   tenant: async (tenantId) => (await api.get(`/platform-admin/tenants/${tenantId}`)).data,
   suspend: async (tenantId, reason) => (await api.post(`/platform-admin/tenants/${tenantId}/suspend`, { reason })).data,

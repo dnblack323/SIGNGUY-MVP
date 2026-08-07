@@ -152,14 +152,15 @@ export default function PlatformAdminPage() {
   };
 
   const stats = useMemo(() => {
+    const summary = data.summary || {};
     const items = data.items || [];
     return {
-      tenants: items.length,
-      users: items.reduce((sum, t) => sum + (t.user_count || 0), 0),
-      suspended: items.filter((t) => t.is_active === false || t.status === "suspended").length,
-      founders: items.filter((t) => t.is_founder).length,
+      tenants: summary.total_tenants ?? data.total ?? items.length,
+      users: summary.total_users ?? items.reduce((sum, t) => sum + (t.user_count || 0), 0),
+      suspended: summary.suspended_tenants ?? items.filter((t) => t.is_active === false || t.status === "suspended").length,
+      founders: summary.founder_tenants ?? items.filter((t) => t.is_founder).length,
     };
-  }, [data.items]);
+  }, [data]);
 
   return (
     <PlatformGate>
@@ -187,7 +188,7 @@ export default function PlatformAdminPage() {
         <Card>
           <CardHeader>
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <CardTitle>Tenant List</CardTitle>
+              <CardTitle>Tenant List {data.total != null && <span className="text-sm font-normal text-muted-foreground">({(data.items || []).length} of {data.total})</span>}</CardTitle>
               <label className="relative w-full md:w-80">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input className="pl-8" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, slug, owner email" data-testid="platform-admin-tenant-search" />
@@ -261,13 +262,12 @@ export function PlatformAdminTenantDetailPage() {
   const owner = (data?.users || []).find((u) => u.role === "owner") || data?.users?.[0];
   const subscription = data?.billing?.subscription || {};
   const account = data?.billing?.account || {};
+  const dunning = data?.billing?.dunning || {};
   const checklist = data?.onboarding?.items || [];
   const progress = data?.onboarding?.progress || {};
   const tenantAuditEvents = data?.audit_events || [];
   const tenantImpersonationLogs = data?.impersonation_logs || [];
-  const paymentFailureCount = account.payment_failed_count || account.failed_payment_count || subscription.payment_failed_count || subscription.failed_payment_count || (subscription.first_payment_failed_at ? 1 : 0);
-  const lastPaymentFailureAt = subscription.last_payment_failed_at || subscription.last_payment_failure_at || account.last_payment_failed_at || account.last_payment_failure_at;
-  const graceUntil = subscription.manual_grace_until || account.grace_period_until;
+  const reviewAfterDays = dunning.review_after_days || account.dunning_review_after_days || account.dunning_failure_threshold || 15;
 
   const startImpersonation = async (userId) => {
     if (!window.confirm("Start support mode as this user? Do not change tenant data without consent.")) return;
@@ -328,23 +328,26 @@ export function PlatformAdminTenantDetailPage() {
               <div className="flex justify-between"><span className="text-muted-foreground">Last activity</span><span>{dt(tenant.last_activity_at)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Founder</span><Badge variant={tenant.is_founder ? "secondary" : "outline"}>{tenant.is_founder ? "Yes" : "No"}</Badge></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Billing</span><Badge variant={statusVariant(account.status)}>{account.status || "not configured"}</Badge></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Dunning</span><Badge variant="outline">{subscription.dunning_state || "current"}</Badge></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Dunning</span><Badge variant="outline">{dunning.state || subscription.dunning_state || "current"}</Badge></div>
             </CardContent>
           </Card>
           <Card data-testid="tenant-billing-card">
             <CardHeader><CardTitle className="text-base">Billing & Dunning</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-2">
-                <div><div className="text-muted-foreground">Failures</div><div>{paymentFailureCount}</div></div>
-                <div><div className="text-muted-foreground">First failed</div><div>{dt(subscription.first_payment_failed_at)}</div></div>
-                <div><div className="text-muted-foreground">Last failed</div><div>{dt(lastPaymentFailureAt)}</div></div>
-                <div><div className="text-muted-foreground">Last paid</div><div>{dt(subscription.last_payment_succeeded_at)}</div></div>
-                <div><div className="text-muted-foreground">Threshold</div><div>{account.dunning_failure_threshold || "default"}</div></div>
-                <div><div className="text-muted-foreground">Grace until</div><div>{dt(graceUntil)}</div></div>
+                <div><div className="text-muted-foreground">Stage</div><div>{dunning.state || "current"}</div></div>
+                <div><div className="text-muted-foreground">Days past due</div><div>{dunning.days_past_due ?? 0}</div></div>
+                <div><div className="text-muted-foreground">Failed since</div><div>{dt(dunning.failed_since)}</div></div>
+                <div><div className="text-muted-foreground">Last failed</div><div>{dt(dunning.last_failed_at)}</div></div>
+                <div><div className="text-muted-foreground">Last paid</div><div>{dt(dunning.last_paid_at)}</div></div>
+                <div><div className="text-muted-foreground">Review day</div><div>{reviewAfterDays}</div></div>
+                <div><div className="text-muted-foreground">Review eligible</div><div>{dt(dunning.review_eligible_at)}</div></div>
+                <div><div className="text-muted-foreground">Grace until</div><div>{dt(dunning.manual_grace_until)}</div></div>
               </div>
+              {dunning.suspension_review_eligible && <Alert variant="destructive"><AlertTriangle className="size-4" /><AlertTitle>Suspension review eligible</AlertTitle><AlertDescription>This tenant is past the configured dunning review day.</AlertDescription></Alert>}
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => act(() => platformAdminApi.markPaid(tenantId, ""), "Marked paid")} disabled={busy}>Mark Paid</Button>
-                <Button size="sm" variant="outline" onClick={() => { setThreshold(account.dunning_failure_threshold ? String(account.dunning_failure_threshold) : ""); setThresholdOpen(true); }} disabled={busy}>Set Threshold</Button>
+                <Button size="sm" variant="outline" onClick={() => { setThreshold(reviewAfterDays ? String(reviewAfterDays) : ""); setThresholdOpen(true); }} disabled={busy}>Set Review Day</Button>
               </div>
             </CardContent>
           </Card>
@@ -407,8 +410,8 @@ export function PlatformAdminTenantDetailPage() {
         </Dialog>
         <Dialog open={thresholdOpen} onOpenChange={setThresholdOpen}>
           <DialogContent data-testid="tenant-threshold-dialog">
-            <DialogHeader><DialogTitle>Set Dunning Threshold</DialogTitle><DialogDescription>Override when this tenant should move through payment-failure handling. Leave blank to use the global default.</DialogDescription></DialogHeader>
-            <div className="space-y-3"><Input type="number" min="1" value={threshold} onChange={(e) => setThreshold(e.target.value)} placeholder="default" /><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setThresholdOpen(false)}>Cancel</Button><Button disabled={busy} onClick={() => act(async () => { const next = await platformAdminApi.setThreshold(tenantId, threshold ? Number(threshold) : null); setThresholdOpen(false); return next; }, "Threshold saved")}>Save Threshold</Button></div></div>
+            <DialogHeader><DialogTitle>Set Dunning Review Day</DialogTitle><DialogDescription>Override the day after first failed payment when this tenant becomes eligible for suspension review. Leave blank to use the default day 15 review.</DialogDescription></DialogHeader>
+            <div className="space-y-3"><Input type="number" min="1" max="45" value={threshold} onChange={(e) => setThreshold(e.target.value)} placeholder="15" /><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setThresholdOpen(false)}>Cancel</Button><Button disabled={busy} onClick={() => act(async () => { const next = await platformAdminApi.setThreshold(tenantId, threshold ? Number(threshold) : null); setThresholdOpen(false); return next; }, "Review day saved")}>Save Review Day</Button></div></div>
           </DialogContent>
         </Dialog>
       </div>
@@ -562,13 +565,25 @@ export function PlatformAdminAuditLogPage() {
   const [action, setAction] = useState("");
   const [actorEmail, setActorEmail] = useState("");
   const [tenantId, setTenantId] = useState("");
+  const [entityType, setEntityType] = useState("all");
+  const [since, setSince] = useState("");
+  const [until, setUntil] = useState("");
+  const [options, setOptions] = useState({ actions: [], entity_types: [] });
   const [rows, setRows] = useState([]);
   const [selected, setSelected] = useState(null);
   const load = useCallback(async () => {
-    const data = await platformAdminApi.auditLog({ action: action || undefined, actor_email: actorEmail || undefined, tenant_id: tenantId || undefined });
+    const data = await platformAdminApi.auditLog({
+      action: action && action !== "all" ? action : undefined,
+      actor_email: actorEmail || undefined,
+      tenant_id: tenantId || undefined,
+      entity_type: entityType !== "all" ? entityType : undefined,
+      since: since || undefined,
+      until: until || undefined,
+    });
     setRows(data.items || []);
-  }, [action, actorEmail, tenantId]);
+  }, [action, actorEmail, entityType, since, tenantId, until]);
   useEffect(() => { load().catch(() => {}); }, [load]);
+  useEffect(() => { platformAdminApi.auditActions().then(setOptions).catch(() => setOptions({ actions: [], entity_types: [] })); }, []);
   const inspect = async (row) => {
     setSelected(row);
     try {
@@ -581,7 +596,15 @@ export function PlatformAdminAuditLogPage() {
     <PlatformGate>
       <div className="space-y-4" data-testid="platform-admin-audit-log-page">
         <PageHeader title="Audit Log" subtitle="Privileged Platform Admin and tenant actions." actions={<Button asChild size="sm" variant="outline"><Link to="/platform-admin">Back</Link></Button>} />
-        <Card><CardContent className="grid gap-2 pt-6 md:grid-cols-4"><Input placeholder="Action" value={action} onChange={(e) => setAction(e.target.value)} /><Input placeholder="Actor email" value={actorEmail} onChange={(e) => setActorEmail(e.target.value)} /><Input placeholder="Tenant ID" value={tenantId} onChange={(e) => setTenantId(e.target.value)} /><Button onClick={load}>Apply</Button></CardContent></Card>
+        <Card><CardContent className="grid gap-2 pt-6 md:grid-cols-3 xl:grid-cols-7">
+          <Select value={action || "all"} onValueChange={setAction}><SelectTrigger><SelectValue placeholder="Action" /></SelectTrigger><SelectContent><SelectItem value="all">All actions</SelectItem>{(options.actions || []).map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
+          <Select value={entityType} onValueChange={setEntityType}><SelectTrigger><SelectValue placeholder="Target" /></SelectTrigger><SelectContent><SelectItem value="all">All targets</SelectItem>{(options.entity_types || []).map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
+          <Input placeholder="Actor email" value={actorEmail} onChange={(e) => setActorEmail(e.target.value)} />
+          <Input placeholder="Tenant ID" value={tenantId} onChange={(e) => setTenantId(e.target.value)} />
+          <Input type="datetime-local" value={since} onChange={(e) => setSince(e.target.value)} />
+          <Input type="datetime-local" value={until} onChange={(e) => setUntil(e.target.value)} />
+          <Button onClick={load}>Apply</Button>
+        </CardContent></Card>
         <Card><CardContent className="pt-6"><Table data-testid="audit-log-table"><TableHeader><TableRow><TableHead>When</TableHead><TableHead>Actor</TableHead><TableHead>Action</TableHead><TableHead>Target</TableHead><TableHead>Summary</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id} className="cursor-pointer" onClick={() => inspect(row)}><TableCell>{dt(row.created_at)}</TableCell><TableCell>{row.actor_email}</TableCell><TableCell className="font-mono text-xs">{row.action}</TableCell><TableCell>{row.entity_type}:{row.entity_id}</TableCell><TableCell>{row.summary}</TableCell></TableRow>)}{rows.length === 0 && <TableRow><TableCell colSpan={5} className="text-sm text-muted-foreground">No audit rows found.</TableCell></TableRow>}</TableBody></Table></CardContent></Card>
       </div>
       <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
