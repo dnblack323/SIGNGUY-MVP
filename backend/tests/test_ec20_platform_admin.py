@@ -107,7 +107,12 @@ async def test_platform_admin_sample_data_seed_populates_dashboard_sections(ec20
     assert tenants.status_code == 200, tenants.text
     assert len(tenants.json()["items"]) >= 3
     assert analytics.status_code == 200, analytics.text
-    assert analytics.json()["overview"]["analytics_events"] >= 3
+    analytics_body = analytics.json()
+    assert analytics_body["overview"]["analytics_events"] >= 3
+    assert analytics_body["users"]
+    assert analytics_body["sessions_detail"]
+    assert analytics_body["errors_detail"]["total_errors"] >= 1
+    assert analytics_body["suspicious_detail"]["total_suspicious"] >= 1
     assert email_logs.status_code == 200, email_logs.text
     assert email_logs.json()["total"] >= 1
 

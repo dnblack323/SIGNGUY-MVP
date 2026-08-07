@@ -4,7 +4,7 @@ import PageHeader from "@/components/layout/PageHeader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -19,8 +19,13 @@ import { isPlatformUser } from "@/lib/navigation";
 import { platformAdminApi } from "@/lib/platformAdmin";
 import {
   Ban,
+  Activity,
+  AlertTriangle,
   BarChart3,
+  Bot,
   CheckCircle2,
+  Eye,
+  Globe,
   Mail,
   Megaphone,
   RefreshCcw,
@@ -28,9 +33,11 @@ import {
   Settings,
   ShieldCheck,
   ScrollText,
+  TrendingUp,
   UserRound,
   Wrench,
 } from "lucide-react";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 
 function dt(value) {
@@ -216,6 +223,12 @@ export function PlatformAdminTenantDetailPage() {
   const [busy, setBusy] = useState(false);
   const [threshold, setThreshold] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [suspendOpen, setSuspendOpen] = useState(false);
+  const [suspensionReason, setSuspensionReason] = useState("");
+  const [reactivateOpen, setReactivateOpen] = useState(false);
+  const [reactivateNote, setReactivateNote] = useState("");
+  const [notifyOwner, setNotifyOwner] = useState(true);
+  const [thresholdOpen, setThresholdOpen] = useState(false);
   const navigate = useNavigate();
 
   const load = useCallback(async () => {
@@ -250,6 +263,8 @@ export function PlatformAdminTenantDetailPage() {
   const account = data?.billing?.account || {};
   const checklist = data?.onboarding?.items || [];
   const progress = data?.onboarding?.progress || {};
+  const tenantAuditEvents = data?.audit_events || [];
+  const tenantImpersonationLogs = data?.impersonation_logs || [];
   const paymentFailureCount = account.payment_failed_count || account.failed_payment_count || subscription.payment_failed_count || subscription.failed_payment_count || (subscription.first_payment_failed_at ? 1 : 0);
   const lastPaymentFailureAt = subscription.last_payment_failed_at || subscription.last_payment_failure_at || account.last_payment_failed_at || account.last_payment_failure_at;
   const graceUntil = subscription.manual_grace_until || account.grace_period_until;
@@ -291,12 +306,9 @@ export function PlatformAdminTenantDetailPage() {
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={() => navigate("/platform-admin")}>Back</Button>
               {tenant?.is_active === false ? (
-                <Button size="sm" onClick={() => act(() => platformAdminApi.reactivate(tenantId, { note: "", notify_owner: true }), "Tenant reactivated")} disabled={busy}><CheckCircle2 className="size-4 mr-2" />Reactivate</Button>
+                <Button size="sm" onClick={() => setReactivateOpen(true)} disabled={busy}><CheckCircle2 className="size-4 mr-2" />Reactivate</Button>
               ) : (
-                <Button size="sm" variant="destructive" onClick={() => {
-                  const reason = window.prompt("Reason for suspension");
-                  if (reason) act(() => platformAdminApi.suspend(tenantId, reason), "Tenant suspended");
-                }} disabled={busy}><Ban className="size-4 mr-2" />Suspend</Button>
+                <Button size="sm" variant="destructive" onClick={() => setSuspendOpen(true)} disabled={busy}><Ban className="size-4 mr-2" />Suspend</Button>
               )}
             </div>
           }
@@ -332,8 +344,7 @@ export function PlatformAdminTenantDetailPage() {
               </div>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => act(() => platformAdminApi.markPaid(tenantId, ""), "Marked paid")} disabled={busy}>Mark Paid</Button>
-                <Input className="h-9 w-28" value={threshold} onChange={(e) => setThreshold(e.target.value)} placeholder={account.dunning_failure_threshold ? String(account.dunning_failure_threshold) : "default"} />
-                <Button size="sm" variant="outline" onClick={() => act(() => platformAdminApi.setThreshold(tenantId, threshold ? Number(threshold) : null), "Threshold saved")} disabled={busy}>Set</Button>
+                <Button size="sm" variant="outline" onClick={() => { setThreshold(account.dunning_failure_threshold ? String(account.dunning_failure_threshold) : ""); setThresholdOpen(true); }} disabled={busy}>Set Threshold</Button>
               </div>
             </CardContent>
           </Card>
@@ -348,7 +359,7 @@ export function PlatformAdminTenantDetailPage() {
           </Card>
         </div>
         <Tabs defaultValue="users">
-          <TabsList><TabsTrigger value="users">Users</TabsTrigger><TabsTrigger value="checklist">Onboarding</TabsTrigger></TabsList>
+          <TabsList className="flex h-auto flex-wrap justify-start"><TabsTrigger value="users">Overview & Users</TabsTrigger><TabsTrigger value="checklist">Onboarding</TabsTrigger><TabsTrigger value="support">Support Log</TabsTrigger></TabsList>
           <TabsContent value="users">
             <Card>
               <CardHeader><CardTitle className="text-base">Users</CardTitle></CardHeader>
@@ -377,7 +388,29 @@ export function PlatformAdminTenantDetailPage() {
               </CardContent>
             </Card>
           </TabsContent>
+          <TabsContent value="support" className="space-y-4">
+            <MiniRows title="Recent Tenant Audit Events" rows={tenantAuditEvents} columns={[{ key: "created_at", label: "When", render: (row) => dt(row.created_at) }, { key: "actor_email", label: "Actor" }, { key: "action", label: "Action" }, { key: "entity_type", label: "Target" }, { key: "summary", label: "Summary" }]} />
+            <MiniRows title="Support Impersonation Sessions" rows={tenantImpersonationLogs} columns={[{ key: "started_at", label: "Started", render: (row) => dt(row.started_at) }, { key: "platform_admin_email", label: "Platform Admin" }, { key: "target_user_email", label: "Target User" }, { key: "ended_at", label: "Ended", render: (row) => dt(row.ended_at) }, { key: "duration_seconds", label: "Duration" }]} />
+          </TabsContent>
         </Tabs>
+        <Dialog open={suspendOpen} onOpenChange={setSuspendOpen}>
+          <DialogContent data-testid="tenant-suspend-dialog">
+            <DialogHeader><DialogTitle>Suspend Tenant</DialogTitle><DialogDescription>Record a clear reason. Tenant users will be blocked from normal app access.</DialogDescription></DialogHeader>
+            <div className="space-y-3"><Textarea value={suspensionReason} onChange={(e) => setSuspensionReason(e.target.value)} placeholder="Reason for suspension" rows={4} /><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setSuspendOpen(false)}>Cancel</Button><Button variant="destructive" disabled={busy || !suspensionReason.trim()} onClick={() => act(async () => { const next = await platformAdminApi.suspend(tenantId, suspensionReason.trim()); setSuspendOpen(false); setSuspensionReason(""); return next; }, "Tenant suspended")}>Suspend Tenant</Button></div></div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={reactivateOpen} onOpenChange={setReactivateOpen}>
+          <DialogContent data-testid="tenant-reactivate-dialog">
+            <DialogHeader><DialogTitle>Reactivate Tenant</DialogTitle><DialogDescription>Reactivate access and optionally notify the owner.</DialogDescription></DialogHeader>
+            <div className="space-y-3"><Textarea value={reactivateNote} onChange={(e) => setReactivateNote(e.target.value)} placeholder="Optional note for the owner or audit trail" rows={4} /><label className="flex items-center gap-2 text-sm"><Checkbox checked={notifyOwner} onCheckedChange={setNotifyOwner} />Notify owner</label><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setReactivateOpen(false)}>Cancel</Button><Button disabled={busy} onClick={() => act(async () => { const next = await platformAdminApi.reactivate(tenantId, { note: reactivateNote, notify_owner: notifyOwner }); setReactivateOpen(false); setReactivateNote(""); return next; }, "Tenant reactivated")}>Reactivate Tenant</Button></div></div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={thresholdOpen} onOpenChange={setThresholdOpen}>
+          <DialogContent data-testid="tenant-threshold-dialog">
+            <DialogHeader><DialogTitle>Set Dunning Threshold</DialogTitle><DialogDescription>Override when this tenant should move through payment-failure handling. Leave blank to use the global default.</DialogDescription></DialogHeader>
+            <div className="space-y-3"><Input type="number" min="1" value={threshold} onChange={(e) => setThreshold(e.target.value)} placeholder="default" /><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setThresholdOpen(false)}>Cancel</Button><Button disabled={busy} onClick={() => act(async () => { const next = await platformAdminApi.setThreshold(tenantId, threshold ? Number(threshold) : null); setThresholdOpen(false); return next; }, "Threshold saved")}>Save Threshold</Button></div></div>
+          </DialogContent>
+        </Dialog>
       </div>
     </PlatformGate>
   );
@@ -604,39 +637,145 @@ export function PlatformAdminImpersonationLogsPage() {
 
 export function PlatformAdminAnalyticsPage() {
   const [range, setRange] = useState("30d");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
   const [data, setData] = useState(null);
-  const load = useCallback(() => platformAdminApi.analytics(range).then(setData), [range]);
-  useEffect(() => { load().catch(() => {}); }, [load]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setData(await platformAdminApi.analytics(range, {
+        custom_start: range === "custom" ? customStart || undefined : undefined,
+        custom_end: range === "custom" ? customEnd || undefined : undefined,
+      }));
+    } catch (err) {
+      setError(extractError(err, "Unable to load analytics"));
+    } finally {
+      setLoading(false);
+    }
+  }, [customEnd, customStart, range]);
+  useEffect(() => { load(); }, [load]);
   const o = data?.overview || {};
+  const chartRows = data?.activity_chart || [];
+  const errors = data?.errors_detail || {};
+  const suspicious = data?.suspicious_detail || {};
   return (
     <PlatformGate>
       <div className="space-y-4" data-testid="platform-admin-analytics-page">
-        <PageHeader title="Platform Analytics" subtitle="Activity, adoption, commercial conversion, AI cost, and suspicious activity." actions={<Button asChild size="sm" variant="outline"><Link to="/platform-admin">Back</Link></Button>} />
-        <div className="flex gap-2">{["today", "7d", "14d", "30d"].map((r) => <Button key={r} size="sm" variant={range === r ? "default" : "outline"} onClick={() => setRange(r)}>{r}</Button>)}</div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <StatCard title="Tenants" value={o.total_tenants} icon={UserRound} />
-          <StatCard title="Users" value={o.total_users} icon={UserRound} />
-          <StatCard title="Sessions" value={o.sessions} icon={BarChart3} />
-          <StatCard title="Visitors" value={o.visitors} icon={BarChart3} />
-          <StatCard title="Subscriptions" value={o.subscriptions} icon={ShieldCheck} />
-          <StatCard title="Dunning" value={o.dunning_subscriptions} icon={Ban} />
-          <StatCard title="New Orders" value={o.new_orders} icon={BarChart3} />
-          <StatCard title="New Quotes" value={o.new_quotes} icon={BarChart3} />
-          <StatCard title="AI Usage" value={o.ai_usage_events} icon={BarChart3} />
-          <StatCard title="AI Cost Cents" value={data?.ai_cost?.actual_cost_cents || 0} icon={BarChart3} />
-          <StatCard title="Errors" value={o.error_events} icon={Ban} />
-          <StatCard title="Suspicious" value={o.suspicious_events} icon={Ban} />
-          <StatCard title="Active Tenants" value={o.active_tenants_in_period} icon={UserRound} />
+        <PageHeader
+          title="Platform Analytics"
+          subtitle="Activity, adoption, commercial conversion, AI cost, errors, sessions, referrers, and suspicious traffic."
+          actions={<div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={load} disabled={loading}><RefreshCcw className="size-4 mr-2" />{loading ? "Loading" : "Refresh"}</Button><Button asChild size="sm" variant="outline"><Link to="/platform-admin">Back</Link></Button></div>}
+        />
+        {error && <Alert variant="destructive"><AlertTitle>Unable to load analytics</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
+        <div className="flex flex-wrap items-center gap-2" data-testid="analytics-date-range-controls">
+          {["today", "yesterday", "7d", "14d", "30d", "custom"].map((r) => <Button key={r} size="sm" variant={range === r ? "default" : "outline"} onClick={() => setRange(r)}>{r}</Button>)}
+          {range === "custom" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Input type="date" className="h-9 w-40" value={customStart} onChange={(e) => setCustomStart(e.target.value)} />
+              <Input type="date" className="h-9 w-40" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} />
+              <Button size="sm" onClick={load}>Apply</Button>
+            </div>
+          )}
         </div>
-        <Card><CardHeader><CardTitle className="text-base">Activity Chart</CardTitle></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Users</TableHead><TableHead>Quotes</TableHead><TableHead>Orders</TableHead><TableHead>Events</TableHead></TableRow></TableHeader><TableBody>{(data?.activity_chart || []).map((b) => <TableRow key={b.date}><TableCell>{b.date}</TableCell><TableCell>{b.users}</TableCell><TableCell>{b.quotes}</TableCell><TableCell>{b.orders}</TableCell><TableCell>{b.events}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <MiniRows title="Routes" rows={data?.routes || []} columns={[{ key: "route", label: "Route" }, { key: "events", label: "Events" }, { key: "sessions", label: "Sessions" }]} />
-          <MiniRows title="Referrers" rows={data?.referrers || []} columns={[{ key: "referrer", label: "Referrer" }, { key: "events", label: "Events" }, { key: "visitors", label: "Visitors" }]} />
-          <MiniRows title="Feature Usage" rows={data?.feature_usage || []} columns={[{ key: "event_type", label: "Event" }, { key: "events", label: "Events" }, { key: "sessions", label: "Sessions" }]} />
-          <MiniRows title="AI Feature Usage" rows={data?.ai_feature_usage || []} columns={[{ key: "feature_key", label: "Feature" }, { key: "uses", label: "Uses" }, { key: "credits", label: "Credits" }]} />
-          <MiniRows title="Trial Funnel" rows={data?.trial_funnel || []} columns={[{ key: "status", label: "Status" }, { key: "count", label: "Count" }]} />
-          <MiniRows title="AI Credit Activity" rows={data?.ai_credit_activity || []} columns={[{ key: "entry_type", label: "Type" }, { key: "credits", label: "Credits" }, { key: "count", label: "Rows" }]} />
-        </div>
+        <Alert>
+          <Activity className="size-4" />
+          <AlertTitle>Real usage versus collecting signals</AlertTitle>
+          <AlertDescription>Business records such as users, orders, quotes, subscriptions, and audit actions are existing system data. Session, route, referrer, error, and suspicious-traffic analytics collect from browser/API event tracking and will grow as the app is used.</AlertDescription>
+        </Alert>
+        <Tabs defaultValue="overview" data-testid="analytics-tabs">
+          <TabsList className="flex h-auto flex-wrap justify-start">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="charts">Charts</TabsTrigger>
+            <TabsTrigger value="users">Users</TabsTrigger>
+            <TabsTrigger value="routes">Routes</TabsTrigger>
+            <TabsTrigger value="sessions">Sessions</TabsTrigger>
+            <TabsTrigger value="referrers">Referrers</TabsTrigger>
+            <TabsTrigger value="errors">Errors</TabsTrigger>
+            <TabsTrigger value="suspicious">Suspicious</TabsTrigger>
+            <TabsTrigger value="commercial">Commercial</TabsTrigger>
+            <TabsTrigger value="ai">AI Cost</TabsTrigger>
+          </TabsList>
+          <TabsContent value="overview" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <StatCard title="Tenants" value={o.total_tenants} icon={UserRound} />
+              <StatCard title="Users" value={o.total_users} icon={UserRound} />
+              <StatCard title="New Users" value={o.new_users} icon={UserRound} />
+              <StatCard title="Orders" value={o.total_orders} icon={BarChart3} />
+              <StatCard title="New Orders" value={o.new_orders} icon={BarChart3} />
+              <StatCard title="New Quotes" value={o.new_quotes} icon={BarChart3} />
+              <StatCard title="Webstores" value={o.total_webstores} icon={Globe} />
+              <StatCard title="New Webstores" value={o.new_webstores} icon={Globe} />
+              <StatCard title="Sessions" value={o.total_sessions || o.sessions} icon={Eye} />
+              <StatCard title="Visitors" value={o.total_visitors || o.visitors} icon={Eye} />
+              <StatCard title="Page Views" value={o.page_views} icon={Activity} />
+              <StatCard title="Logged-in Events" value={o.logged_in_visits} icon={ShieldCheck} />
+              <StatCard title="Anonymous Events" value={o.anonymous_visits} icon={Activity} />
+              <StatCard title="Bot Events" value={o.bot_events} icon={Bot} />
+              <StatCard title="Errors" value={o.error_events} icon={AlertTriangle} />
+              <StatCard title="Suspicious" value={o.suspicious_events} icon={Ban} />
+            </div>
+            <Card>
+              <CardHeader><CardTitle className="text-base">Real Usage Breakdown</CardTitle><CardDescription>Meaningful business activity separated from request/event volume.</CardDescription></CardHeader>
+              <CardContent>
+                <Table><TableHeader><TableRow><TableHead>Signal</TableHead><TableHead>Source</TableHead><TableHead className="text-right">Count</TableHead></TableRow></TableHeader><TableBody>{[
+                  ["Logged-in app events", "analytics_events", o.logged_in_visits],
+                  ["Anonymous visitor events", "analytics_events", o.anonymous_visits],
+                  ["New accounts", "users", o.new_users],
+                  ["Business actions", "orders + quotes + webstores", (o.new_orders || 0) + (o.new_quotes || 0) + (o.new_webstores || 0)],
+                  ["Audit actions", "audit_events", o.audit_actions],
+                  ["Error events", "analytics_events", o.error_events],
+                ].map((row) => <TableRow key={row[0]}><TableCell>{row[0]}</TableCell><TableCell className="text-muted-foreground">{row[1]}</TableCell><TableCell className="text-right font-mono">{row[2] || 0}</TableCell></TableRow>)}</TableBody></Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="charts" className="space-y-4">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Business Activity Over Time</CardTitle><CardDescription>Orders, quotes, users, and collected events in the selected period.</CardDescription></CardHeader>
+              <CardContent className="h-80">
+                <ResponsiveContainer width="100%" height="100%"><AreaChart data={chartRows}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis allowDecimals={false} /><Tooltip /><Legend /><Area type="monotone" dataKey="orders" stroke="#047857" fill="#047857" fillOpacity={0.16} /><Area type="monotone" dataKey="quotes" stroke="#7c3aed" fill="#7c3aed" fillOpacity={0.12} /><Area type="monotone" dataKey="users" stroke="#2563eb" fill="#2563eb" fillOpacity={0.12} /><Area type="monotone" dataKey="events" stroke="#d97706" fill="#d97706" fillOpacity={0.1} /></AreaChart></ResponsiveContainer>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle className="text-base">Activity Table</CardTitle></CardHeader>
+              <CardContent><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Users</TableHead><TableHead>Quotes</TableHead><TableHead>Orders</TableHead><TableHead>Events</TableHead></TableRow></TableHeader><TableBody>{chartRows.map((b) => <TableRow key={b.date}><TableCell>{b.date}</TableCell><TableCell>{b.users}</TableCell><TableCell>{b.quotes}</TableCell><TableCell>{b.orders}</TableCell><TableCell>{b.events}</TableCell></TableRow>)}</TableBody></Table></CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="users">
+            <MiniRows title="Logged-in User Activity" rows={data?.users || []} columns={[{ key: "full_name", label: "Name" }, { key: "email", label: "Email" }, { key: "company_name", label: "Tenant" }, { key: "role", label: "Role" }, { key: "orders", label: "Orders" }, { key: "quotes", label: "Quotes" }, { key: "page_views", label: "Views" }, { key: "last_login_at", label: "Last Login", render: (row) => dt(row.last_login_at) }]} />
+          </TabsContent>
+          <TabsContent value="routes">
+            <MiniRows title="Top Pages & Routes" rows={data?.routes || []} columns={[{ key: "route", label: "Route" }, { key: "requests", label: "Requests" }, { key: "unique_users", label: "Users" }, { key: "unique_visitors", label: "Visitors" }, { key: "last_accessed", label: "Last Accessed", render: (row) => dt(row.last_accessed) }]} />
+          </TabsContent>
+          <TabsContent value="sessions">
+            <MiniRows title="Visitor Sessions" rows={data?.sessions_detail || []} columns={[{ key: "session_id", label: "Session", render: (row) => row.session_id?.slice(0, 12) || "-" }, { key: "ip_address", label: "IP" }, { key: "referrer", label: "Referrer", render: (row) => row.referrer || "Direct" }, { key: "requests", label: "Requests" }, { key: "route_count", label: "Routes" }, { key: "is_logged_in", label: "Logged In", render: (row) => row.is_logged_in ? "Yes" : "No" }, { key: "is_bot", label: "Bot", render: (row) => row.is_bot ? "Yes" : "No" }, { key: "last_seen", label: "Last Seen", render: (row) => dt(row.last_seen) }]} />
+          </TabsContent>
+          <TabsContent value="referrers" className="space-y-4">
+            <MiniRows title="Traffic Sources" rows={data?.referrer_sources || []} columns={[{ key: "source", label: "Source" }, { key: "requests", label: "Requests" }, { key: "unique_visitors", label: "Visitors" }, { key: "pct", label: "Traffic %" }]} />
+            <MiniRows title="Raw Referrers" rows={data?.referrers || []} columns={[{ key: "referrer", label: "Referrer" }, { key: "events", label: "Events" }, { key: "visitors", label: "Visitors" }]} />
+          </TabsContent>
+          <TabsContent value="errors" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4"><StatCard title="Total Errors" value={errors.total_errors} icon={AlertTriangle} /><StatCard title="Frontend Errors" value={errors.frontend_errors} icon={AlertTriangle} /><StatCard title="API Errors" value={errors.api_errors} icon={AlertTriangle} /></div>
+            <MiniRows title="Error Log" rows={errors.errors || []} columns={[{ key: "event_type", label: "Type" }, { key: "route", label: "Route" }, { key: "message", label: "Message" }, { key: "count", label: "Count" }, { key: "affected_users", label: "Users" }, { key: "last_occurred", label: "Last Occurred", render: (row) => dt(row.last_occurred) }]} />
+          </TabsContent>
+          <TabsContent value="suspicious" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4"><StatCard title="Bot Events" value={suspicious.total_bot} icon={Bot} /><StatCard title="Suspicious Events" value={suspicious.total_suspicious} icon={Ban} /><StatCard title="Bot Traffic %" value={`${suspicious.bot_pct || 0}%`} icon={Activity} /></div>
+            <MiniRows title="Bot & Suspicious Traffic" rows={suspicious.suspicious || []} columns={[{ key: "ip_address", label: "IP" }, { key: "label", label: "Label" }, { key: "user_agent", label: "User Agent" }, { key: "requests", label: "Requests" }, { key: "session_count", label: "Sessions" }, { key: "first_seen", label: "First Seen", render: (row) => dt(row.first_seen) }, { key: "last_seen", label: "Last Seen", render: (row) => dt(row.last_seen) }]} />
+          </TabsContent>
+          <TabsContent value="commercial" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><StatCard title="Subscriptions" value={o.subscriptions} icon={ShieldCheck} /><StatCard title="Active" value={o.active_subscriptions} icon={ShieldCheck} /><StatCard title="Trialing" value={o.trialing_subscriptions} icon={TrendingUp} /><StatCard title="Dunning" value={o.dunning_subscriptions} icon={Ban} /></div>
+            <MiniRows title="Trial Funnel" rows={data?.trial_funnel || []} columns={[{ key: "status", label: "Status" }, { key: "count", label: "Count" }]} />
+          </TabsContent>
+          <TabsContent value="ai" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><StatCard title="AI Usage" value={o.ai_usage_events} icon={BarChart3} /><StatCard title="Cost Rows" value={o.ai_cost_rows} icon={BarChart3} /><StatCard title="Credit Rows" value={o.ai_credit_rows} icon={BarChart3} /><StatCard title="Actual Cost Cents" value={data?.ai_cost?.actual_cost_cents || 0} icon={BarChart3} /></div>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <MiniRows title="AI Feature Usage" rows={data?.ai_feature_usage || []} columns={[{ key: "feature_key", label: "Feature" }, { key: "uses", label: "Uses" }, { key: "credits", label: "Credits" }, { key: "input_units", label: "Input" }, { key: "output_units", label: "Output" }]} />
+              <MiniRows title="AI Credit Activity" rows={data?.ai_credit_activity || []} columns={[{ key: "entry_type", label: "Type" }, { key: "credits", label: "Credits" }, { key: "count", label: "Rows" }]} />
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </PlatformGate>
   );

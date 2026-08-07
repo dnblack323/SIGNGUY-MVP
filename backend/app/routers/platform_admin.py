@@ -311,9 +311,14 @@ async def audit_log_entry(entry_id: str, user: dict = Depends(get_current_user))
 
 
 @router.get("/analytics")
-async def platform_analytics(range: str = "30d", user: dict = Depends(get_current_user)) -> dict:
+async def platform_analytics(
+    range: str = "30d",
+    custom_start: Optional[str] = None,
+    custom_end: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+) -> dict:
     try:
-        return await svc.analytics(user, range_key=range)
+        return await svc.analytics(user, range_key=range, custom_start=custom_start, custom_end=custom_end)
     except PlatformAdminError as exc:
         _raise(exc)
 

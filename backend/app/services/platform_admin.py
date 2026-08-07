@@ -439,6 +439,8 @@ async def tenant_detail(user: dict, tenant_id: str) -> dict:
     billing = await _subscription_for_tenant(tenant_id)
     email_summary = await email_logs_summary(user, tenant_id=tenant_id)
     onboarding = await onboarding_checklist(user, tenant_id)
+    audit_rows = await db.audit_events.find({"tenant_id": tenant_id}, {"_id": 0}).sort("created_at", -1).limit(25).to_list(25)
+    impersonation_rows = await db.impersonation_logs.find({"tenant_id": tenant_id}, {"_id": 0}).sort("started_at", -1).limit(10).to_list(10)
     tenant_out = serialize_doc(tenant)
     tenant_out.update({
         "owner_email": tenant.get("owner_email") or (owner or {}).get("email"),
@@ -453,6 +455,8 @@ async def tenant_detail(user: dict, tenant_id: str) -> dict:
         "billing": billing,
         "email_summary": email_summary,
         "onboarding": onboarding,
+        "audit_events": [serialize_doc(row) for row in audit_rows],
+        "impersonation_logs": [serialize_doc(row) for row in impersonation_rows],
     }
 
 
@@ -935,16 +939,47 @@ async def audit_entry(user: dict, entry_id: str) -> dict:
     return serialize_doc(doc)
 
 
-def _date_bounds(range_key: str) -> tuple[str, str]:
+def _date_bounds(range_key: str, custom_start: Optional[str] = None, custom_end: Optional[str] = None) -> tuple[str, str]:
     now = utc_now()
+    if range_key == "custom" and custom_start:
+        start = datetime.fromisoformat(str(custom_start).replace("Z", "+00:00"))
+        end_raw = custom_end or now.isoformat()
+        end = datetime.fromisoformat(str(end_raw).replace("Z", "+00:00"))
+        return start.isoformat(), end.isoformat()
+    if range_key == "yesterday":
+        day = now - timedelta(days=1)
+        start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = day.replace(hour=23, minute=59, second=59, microsecond=999999)
+        return start.isoformat(), end.isoformat()
     days = {"today": 0, "7d": 7, "14d": 14, "30d": 30}.get(range_key, 30)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0) if days == 0 else now - timedelta(days=days)
     return start.isoformat(), now.isoformat()
 
 
-async def analytics(user: dict, *, range_key: str = "30d") -> dict:
+def _referrer_source(referrer: str | None) -> str:
+    value = (referrer or "").lower()
+    if not value:
+        return "Direct"
+    if "google" in value:
+        return "Google"
+    if "facebook" in value or "fb.com" in value:
+        return "Facebook"
+    if "instagram" in value:
+        return "Instagram"
+    if "twitter" in value or "t.co" in value or "x.com" in value:
+        return "Twitter/X"
+    if "linkedin" in value:
+        return "LinkedIn"
+    if "localhost" in value or "127.0.0.1" in value:
+        return "Internal/Test"
+    if "mail" in value or "email" in value or "newsletter" in value:
+        return "Email"
+    return "Other"
+
+
+async def analytics(user: dict, *, range_key: str = "30d", custom_start: Optional[str] = None, custom_end: Optional[str] = None) -> dict:
     require_platform_admin(user, extra_permissions={PlatformPerm.PLATFORM_ANALYTICS_READ.value})
-    start, end = _date_bounds(range_key)
+    start, end = _date_bounds(range_key, custom_start=custom_start, custom_end=custom_end)
     date_filter = {"$gte": start, "$lte": end}
     tenants = await db.tenants.count_documents({})
     users = await db.users.count_documents({})
@@ -953,6 +988,10 @@ async def analytics(user: dict, *, range_key: str = "30d") -> dict:
     new_users = await db.users.count_documents({"created_at": date_filter})
     new_orders = await db.orders.count_documents({"created_at": date_filter})
     new_quotes = await db.quotes.count_documents({"created_at": date_filter})
+    new_webstores = await db.webstores.count_documents({"created_at": date_filter})
+    total_orders = await db.orders.count_documents({})
+    total_quotes = await db.quotes.count_documents({})
+    total_webstores = await db.webstores.count_documents({})
     audit_actions_count = await db.audit_events.count_documents({"created_at": date_filter})
     ai_usage = await db.ai_usage_ledger_entries.count_documents({"created_at": date_filter})
     ai_cost_rows = await db.ai_provider_cost_ledger_entries.count_documents({"created_at": date_filter})
@@ -971,15 +1010,19 @@ async def analytics(user: dict, *, range_key: str = "30d") -> dict:
     active_subs = await db.tenant_subscriptions.count_documents({"status": "active"})
     dunning = await db.tenant_subscriptions.count_documents({"dunning_state": {"$ne": "current"}})
     events = await db.analytics_events.count_documents({"timestamp": date_filter})
+    page_views = await db.analytics_events.count_documents({"timestamp": date_filter, "event_type": "page_view"})
+    logged_in_events = await db.analytics_events.count_documents({"timestamp": date_filter, "user_id": {"$nin": [None, ""]}})
+    anonymous_events = max(0, events - logged_in_events)
+    bot_events = await db.analytics_events.count_documents({"timestamp": date_filter, "is_bot": True})
     errors = await db.analytics_events.count_documents({"timestamp": date_filter, "event_type": {"$in": ["error", "api_error", "frontend_error"]}})
     suspicious = await db.analytics_events.count_documents({"timestamp": date_filter, "$or": [{"is_bot": True}, {"is_suspicious": True}]})
     route_rows = await db.analytics_events.aggregate([
         {"$match": {"timestamp": date_filter, "route": {"$nin": [None, ""]}}},
-        {"$group": {"_id": "$route", "events": {"$sum": 1}, "sessions": {"$addToSet": "$session_id"}, "visitors": {"$addToSet": "$visitor_id"}}},
-        {"$project": {"route": "$_id", "events": 1, "sessions": {"$size": "$sessions"}, "visitors": {"$size": "$visitors"}, "_id": 0}},
+        {"$group": {"_id": "$route", "events": {"$sum": 1}, "requests": {"$sum": 1}, "sessions": {"$addToSet": "$session_id"}, "visitors": {"$addToSet": "$visitor_id"}, "users": {"$addToSet": "$user_id"}, "last_accessed": {"$max": "$timestamp"}}},
+        {"$project": {"route": "$_id", "events": 1, "requests": 1, "sessions": {"$size": "$sessions"}, "visitors": {"$size": "$visitors"}, "unique_visitors": {"$size": "$visitors"}, "unique_users": {"$size": "$users"}, "last_accessed": 1, "_id": 0}},
         {"$sort": {"events": -1}},
-        {"$limit": 25},
-    ]).to_list(25)
+        {"$limit": 50},
+    ]).to_list(50)
     referrer_rows = await db.analytics_events.aggregate([
         {"$match": {"timestamp": date_filter, "referrer": {"$nin": [None, ""]}}},
         {"$group": {"_id": "$referrer", "events": {"$sum": 1}, "visitors": {"$addToSet": "$visitor_id"}}},
@@ -987,6 +1030,17 @@ async def analytics(user: dict, *, range_key: str = "30d") -> dict:
         {"$sort": {"events": -1}},
         {"$limit": 25},
     ]).to_list(25)
+    referrer_sources: dict[str, dict[str, Any]] = {}
+    for row in referrer_rows:
+        source = _referrer_source(row.get("referrer"))
+        referrer_sources.setdefault(source, {"source": source, "requests": 0, "unique_visitors": 0, "logged_in": 0})
+        referrer_sources[source]["requests"] += row.get("events", 0)
+        referrer_sources[source]["unique_visitors"] += row.get("visitors", 0)
+    total_referrer_requests = sum(row["requests"] for row in referrer_sources.values()) or 1
+    referrer_source_rows = []
+    for row in sorted(referrer_sources.values(), key=lambda item: -item["requests"]):
+        row["pct"] = round((row["requests"] / total_referrer_requests) * 100, 1)
+        referrer_source_rows.append(row)
     event_rows = await db.analytics_events.aggregate([
         {"$match": {"timestamp": date_filter}},
         {"$group": {"_id": "$event_type", "events": {"$sum": 1}, "sessions": {"$addToSet": "$session_id"}}},
@@ -1003,6 +1057,50 @@ async def analytics(user: dict, *, range_key: str = "30d") -> dict:
     ]).to_list(25)
     sessions_total = len(await db.analytics_events.distinct("session_id", {"timestamp": date_filter}))
     visitors_total = len(await db.analytics_events.distinct("visitor_id", {"timestamp": date_filter}))
+    avg_req_per_session = round(events / max(sessions_total, 1), 1)
+    user_rows = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).limit(100).to_list(100)
+    analytics_users = []
+    for row in user_rows:
+        tenant_id = row.get("tenant_id")
+        user_id = row.get("id")
+        tenant = await db.tenants.find_one({"id": tenant_id}, {"_id": 0, "name": 1})
+        analytics_users.append({
+            "id": user_id,
+            "full_name": row.get("full_name"),
+            "email": row.get("email"),
+            "role": row.get("platform_role") or row.get("role"),
+            "company_name": (tenant or {}).get("name"),
+            "tenant_id": tenant_id,
+            "is_active": row.get("is_active", True),
+            "created_at": row.get("created_at"),
+            "last_login_at": row.get("last_login_at"),
+            "orders": await db.orders.count_documents({"tenant_id": tenant_id, "created_at": date_filter}) if tenant_id else 0,
+            "quotes": await db.quotes.count_documents({"tenant_id": tenant_id, "created_at": date_filter}) if tenant_id else 0,
+            "webstores": await db.webstores.count_documents({"tenant_id": tenant_id, "created_at": date_filter}) if tenant_id else 0,
+            "admin_actions": await db.audit_events.count_documents({"actor_user_id": user_id, "created_at": date_filter}) if user_id else 0,
+            "page_views": await db.analytics_events.count_documents({"user_id": user_id, "event_type": "page_view", "timestamp": date_filter}) if user_id else 0,
+        })
+    session_rows = await db.analytics_events.aggregate([
+        {"$match": {"timestamp": date_filter}},
+        {"$group": {"_id": "$session_id", "visitor_id": {"$first": "$visitor_id"}, "user_id": {"$first": "$user_id"}, "ip_address": {"$first": "$ip_address"}, "user_agent": {"$first": "$user_agent"}, "referrer": {"$first": "$referrer"}, "first_seen": {"$min": "$timestamp"}, "last_seen": {"$max": "$timestamp"}, "requests": {"$sum": 1}, "is_bot": {"$max": "$is_bot"}, "routes": {"$addToSet": "$route"}}},
+        {"$project": {"session_id": "$_id", "visitor_id": 1, "user_id": 1, "ip_address": 1, "user_agent": 1, "referrer": 1, "first_seen": 1, "last_seen": 1, "requests": 1, "is_bot": 1, "is_logged_in": {"$cond": [{"$ifNull": ["$user_id", False]}, True, False]}, "route_count": {"$size": "$routes"}, "_id": 0}},
+        {"$sort": {"last_seen": -1}},
+        {"$limit": 100},
+    ]).to_list(100)
+    error_rows = await db.analytics_events.aggregate([
+        {"$match": {"timestamp": date_filter, "event_type": {"$in": ["error", "api_error", "frontend_error"]}}},
+        {"$group": {"_id": {"event_type": "$event_type", "route": "$route", "message": {"$ifNull": ["$metadata.message", "Unknown"]}}, "count": {"$sum": 1}, "last_occurred": {"$max": "$timestamp"}, "first_occurred": {"$min": "$timestamp"}, "users": {"$addToSet": "$user_id"}}},
+        {"$project": {"event_type": "$_id.event_type", "route": "$_id.route", "message": "$_id.message", "count": 1, "last_occurred": 1, "first_occurred": 1, "affected_users": {"$size": "$users"}, "_id": 0}},
+        {"$sort": {"count": -1}},
+        {"$limit": 100},
+    ]).to_list(100)
+    suspicious_rows = await db.analytics_events.aggregate([
+        {"$match": {"timestamp": date_filter, "$or": [{"is_bot": True}, {"is_suspicious": True}]}},
+        {"$group": {"_id": {"ip_address": "$ip_address", "user_agent": "$user_agent"}, "requests": {"$sum": 1}, "session_ids": {"$addToSet": "$session_id"}, "routes": {"$addToSet": "$route"}, "first_seen": {"$min": "$timestamp"}, "last_seen": {"$max": "$timestamp"}, "is_bot": {"$max": "$is_bot"}, "is_suspicious": {"$max": "$is_suspicious"}}},
+        {"$project": {"ip_address": "$_id.ip_address", "user_agent": "$_id.user_agent", "requests": 1, "session_count": {"$size": "$session_ids"}, "route_count": {"$size": "$routes"}, "first_seen": 1, "last_seen": 1, "is_bot": 1, "is_suspicious": 1, "label": {"$cond": ["$is_bot", "Likely Bot", "Suspicious Path"]}, "_id": 0}},
+        {"$sort": {"requests": -1}},
+        {"$limit": 50},
+    ]).to_list(50)
     active_tenants = len(set(await db.orders.distinct("tenant_id", {"created_at": date_filter}) + await db.quotes.distinct("tenant_id", {"created_at": date_filter}) + await db.users.distinct("tenant_id", {"last_login_at": date_filter})))
     trial_rows = await db.trial_records.aggregate([
         {"$group": {"_id": "$status", "count": {"$sum": 1}}},
@@ -1024,12 +1122,24 @@ async def analytics(user: dict, *, range_key: str = "30d") -> dict:
             "new_users": new_users,
             "new_orders": new_orders,
             "new_quotes": new_quotes,
+            "new_webstores": new_webstores,
+            "total_orders": total_orders,
+            "total_quotes": total_quotes,
+            "total_webstores": total_webstores,
             "audit_actions": audit_actions_count,
             "subscriptions": subscriptions,
             "trialing_subscriptions": trialing,
             "active_subscriptions": active_subs,
             "dunning_subscriptions": dunning,
             "analytics_events": events,
+            "total_events": events,
+            "page_views": page_views,
+            "total_sessions": sessions_total,
+            "total_visitors": visitors_total,
+            "logged_in_visits": logged_in_events,
+            "anonymous_visits": anonymous_events,
+            "bot_events": bot_events,
+            "avg_req_per_session": avg_req_per_session,
             "error_events": errors,
             "suspicious_events": suspicious,
             "ai_usage_events": ai_usage,
@@ -1041,6 +1151,22 @@ async def analytics(user: dict, *, range_key: str = "30d") -> dict:
         },
         "routes": route_rows,
         "referrers": referrer_rows,
+        "referrer_sources": referrer_source_rows,
+        "users": analytics_users,
+        "sessions_detail": session_rows,
+        "errors_detail": {
+            "errors": error_rows,
+            "total_errors": errors,
+            "frontend_errors": await db.analytics_events.count_documents({"timestamp": date_filter, "event_type": "frontend_error"}),
+            "api_errors": await db.analytics_events.count_documents({"timestamp": date_filter, "event_type": "api_error"}),
+        },
+        "suspicious_detail": {
+            "suspicious": suspicious_rows,
+            "total_bot": bot_events,
+            "total_suspicious": suspicious,
+            "total_events": events,
+            "bot_pct": round((bot_events / max(events, 1)) * 100, 1),
+        },
         "feature_usage": event_rows,
         "ai_feature_usage": ai_feature_rows,
         "ai_cost": ai_cost[0] if ai_cost else {"actual_cost_cents": 0, "estimated_cost_micros": 0, "actual_cost_micros": 0, "input_units": 0, "output_units": 0},

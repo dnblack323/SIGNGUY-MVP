@@ -21,5 +21,5 @@ export const platformAdminApi = {
   auditActions: async () => (await api.get("/platform-admin/audit-log/actions")).data,
   auditLog: async (params = {}) => (await api.get("/platform-admin/audit-log", { params })).data,
   auditEntry: async (entryId) => (await api.get(`/platform-admin/audit-log/${entryId}`)).data,
-  analytics: async (range = "30d") => (await api.get("/platform-admin/analytics", { params: { range } })).data,
+  analytics: async (range = "30d", extraParams = {}) => (await api.get("/platform-admin/analytics", { params: { range, ...extraParams } })).data,
 };
