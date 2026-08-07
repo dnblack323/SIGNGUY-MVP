@@ -406,9 +406,11 @@ async def test_failed_refund_webhook_is_authority_checked_and_idempotent():
 class _CheckoutFixture:
     def __init__(self):
         self.calls = 0
+        self.last_kwargs = {}
 
     async def create_checkout_session(self, **kwargs):
         self.calls += 1
+        self.last_kwargs = kwargs
         return ProviderResult.success(
             {
                 "provider": "stripe",
@@ -438,8 +440,13 @@ async def test_checkout_service_reuses_intent_and_never_creates_order(monkeypatc
             "name": "Stage 7 Store",
             "slug": webstore_id,
             "public_slug": public_slug,
+            "store_type": "fundraiser",
             "status": "live",
             "checkout_enabled": True,
+            "store_settings": {
+                "donation": {"enabled": True, "minimum_cents": 100, "maximum_cents": 2000},
+                "promo_codes": [{"code": "TEAM10", "discount_type": "percentage", "discount_basis_points": 1000}],
+            },
         }
     )
     await db.webstore_stripe_connect_records.insert_one(
@@ -470,8 +477,9 @@ async def test_checkout_service_reuses_intent_and_never_creates_order(monkeypatc
             "approval_status": "approved",
             "approval_revision": 1,
             "revision": 1,
-            "fulfillment_methods": ["pickup"],
+            "fulfillment_methods": ["pickup", "shipping"],
             "default_fulfillment_method": "pickup",
+            "shipping_cost_cents": 300,
             "variants": [],
         }
     )
@@ -481,7 +489,9 @@ async def test_checkout_service_reuses_intent_and_never_creates_order(monkeypatc
     fields = {
         "buyer_name": "Buyer",
         "buyer_email": f"buyer-{suffix}@example.com",
-        "line_items": [{"product_id": product_id, "quantity": 1, "variant": {}, "personalization": {}}],
+        "line_items": [{"product_id": product_id, "quantity": 1, "variant": {}, "personalization": {}, "fulfillment_method": "shipping"}],
+        "donation_cents": 500,
+        "promo_code": "TEAM10",
         "idempotency_key": f"checkout-{suffix}",
     }
     first = await webstores_service.create_checkout_session(public_slug, fields)
@@ -491,6 +501,8 @@ async def test_checkout_service_reuses_intent_and_never_creates_order(monkeypatc
     assert first["checkout"]["checkout_url"].startswith("https://")
     assert replay["purchase_intent"]["id"] == first["purchase_intent"]["id"]
     assert provider.calls == 1
+    assert provider.last_kwargs["line_items"] == [{"name": "Stage 7 Store order", "quantity": 1, "unit_amount_cents": 3050}]
+    assert first["purchase_intent"]["total_cents"] == 3050
     assert await db.orders.count_documents({"tenant_id": tenant_id}) == 0
     assert await db.webstore_purchase_intents.count_documents({"tenant_id": tenant_id}) == 1
 
