@@ -89,6 +89,14 @@ async def list_tenants(
         _raise(exc)
 
 
+@router.post("/sample-data/seed")
+async def seed_sample_data(user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.seed_sample_data(user)
+    except PlatformAdminError as exc:
+        _raise(exc)
+
+
 @router.get("/tenants/{tenant_id}")
 async def tenant_detail(tenant_id: str, user: dict = Depends(get_current_user)) -> dict:
     try:

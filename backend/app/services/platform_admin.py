@@ -28,6 +28,7 @@ SETTINGS_ID = "global"
 BROADCAST_HOURLY_CAP_TENANTS = 10
 BROADCAST_HOURLY_CAP_TESTS = 30
 BROADCAST_PLACEHOLDERS = ("tenant_name", "owner_email", "owner_first_name")
+SAMPLE_DATA_PREFIX = "demo-platform-admin"
 
 
 class PlatformAdminError(Exception):
@@ -145,6 +146,287 @@ async def list_tenants(user: dict, *, search: Optional[str] = None, limit: int =
             "is_founder": await _founder_flag(tenant["id"]),
         })
     return {"items": items, "total": len(items)}
+
+
+async def seed_sample_data(user: dict) -> dict:
+    require_platform_admin(user, extra_permissions={PlatformPerm.PLATFORM_TENANT_WRITE.value})
+    settings = get_settings()
+    if settings.env == "production":
+        raise PlatformAdminError("sample_data_disabled", "Sample data is disabled in production", 404)
+
+    now = utc_now()
+    now_iso = now.isoformat()
+    tenants = [
+        {
+            "id": f"{SAMPLE_DATA_PREFIX}-alpha",
+            "slug": "sample-sign-shop-alpha",
+            "name": "Alpha Sign Co.",
+            "owner_email": "owner@alphasigns.example.com",
+            "plan": "signguy_pro_monthly",
+            "is_active": True,
+            "status": "active",
+            "created_at": (now - timedelta(days=42)).isoformat(),
+        },
+        {
+            "id": f"{SAMPLE_DATA_PREFIX}-beta",
+            "slug": "sample-wrap-studio-beta",
+            "name": "Beta Wrap Studio",
+            "owner_email": "hello@betawraps.example.com",
+            "plan": "signguy_founder_annual",
+            "is_active": True,
+            "status": "past_due",
+            "created_at": (now - timedelta(days=18)).isoformat(),
+            "is_founder": True,
+        },
+        {
+            "id": f"{SAMPLE_DATA_PREFIX}-gamma",
+            "slug": "sample-neon-garage-gamma",
+            "name": "Gamma Neon Garage",
+            "owner_email": "ops@gammaneon.example.com",
+            "plan": "signguy_starter_monthly",
+            "is_active": False,
+            "status": "suspended",
+            "created_at": (now - timedelta(days=9)).isoformat(),
+            "suspension_reason": "Payment dunning reached suspension review.",
+            "suspended_at": (now - timedelta(days=2)).isoformat(),
+        },
+    ]
+
+    inserted = {
+        "tenants": 0,
+        "users": 0,
+        "billing": 0,
+        "email_logs": 0,
+        "audit_events": 0,
+        "analytics_events": 0,
+        "ai_rows": 0,
+        "trials": 0,
+        "onboarding": 0,
+    }
+
+    async def upsert(collection: str, filter_doc: dict[str, Any], doc: dict[str, Any]) -> bool:
+        prepared = prepare_for_mongo({**doc, "updated_at": doc.get("updated_at") or now_iso})
+        result = await getattr(db, collection).update_one(filter_doc, {"$set": prepared}, upsert=True)
+        return bool(result.upserted_id)
+
+    for idx, tenant in enumerate(tenants):
+        tenant_id = tenant["id"]
+        inserted["tenants"] += int(await upsert("tenants", {"id": tenant_id}, tenant))
+
+        owner_id = f"{tenant_id}-owner"
+        manager_id = f"{tenant_id}-manager"
+        for user_doc in [
+            {
+                "id": owner_id,
+                "tenant_id": tenant_id,
+                "email": tenant["owner_email"],
+                "full_name": tenant["name"].replace("Co.", "Owner").replace("Studio", "Manager").replace("Garage", "Owner"),
+                "role": "owner",
+                "is_active": tenant.get("is_active", True),
+                "password_hash": "sample-data-login-disabled",
+                "created_at": tenant["created_at"],
+                "last_login_at": (now - timedelta(days=idx + 1)).isoformat(),
+                "is_founder": bool(tenant.get("is_founder")),
+            },
+            {
+                "id": manager_id,
+                "tenant_id": tenant_id,
+                "email": f"manager+{idx}@signguy-demo.example.com",
+                "full_name": f"{tenant['name']} Manager",
+                "role": "admin",
+                "is_active": tenant.get("is_active", True),
+                "password_hash": "sample-data-login-disabled",
+                "created_at": (now - timedelta(days=max(1, idx + 4))).isoformat(),
+                "last_login_at": (now - timedelta(days=idx + 2)).isoformat(),
+            },
+        ]:
+            inserted["users"] += int(await upsert("users", {"id": user_doc["id"], "tenant_id": tenant_id}, user_doc))
+
+        billing_account_id = f"{tenant_id}-billing"
+        subscription_id = f"{tenant_id}-subscription"
+        dunning_state = "current" if idx == 0 else ("day_8_14_soft_restriction" if idx == 1 else "suspended")
+        account_status = "active" if idx == 0 else ("past_due" if idx == 1 else "suspended")
+        inserted["billing"] += int(await upsert("tenant_billing_accounts", {"id": billing_account_id, "tenant_id": tenant_id}, {
+            "id": billing_account_id,
+            "tenant_id": tenant_id,
+            "billing_owner_user_id": owner_id,
+            "billing_email": tenant["owner_email"],
+            "status": account_status,
+            "stripe_customer_id": f"cus_demo_{idx}",
+            "current_subscription_id": subscription_id,
+            "dunning_failure_threshold": 3 + idx,
+            "suspended_at": tenant.get("suspended_at"),
+            "suspension_reason": tenant.get("suspension_reason"),
+            "created_at": tenant["created_at"],
+        }))
+        inserted["billing"] += int(await upsert("tenant_subscriptions", {"id": subscription_id, "tenant_id": tenant_id}, {
+            "id": subscription_id,
+            "tenant_id": tenant_id,
+            "billing_account_id": billing_account_id,
+            "catalog_version_id": "sample-catalog-v1",
+            "plan_product_id": tenant["plan"],
+            "price_id": f"sample-price-{idx}",
+            "billing_interval": "monthly" if idx != 1 else "annual",
+            "status": "active" if idx == 0 else ("past_due" if idx == 1 else "unpaid"),
+            "dunning_state": dunning_state,
+            "stripe_subscription_id": f"sub_demo_{idx}",
+            "stripe_customer_id": f"cus_demo_{idx}",
+            "first_payment_failed_at": None if idx == 0 else (now - timedelta(days=idx * 4 + 2)).isoformat(),
+            "last_payment_failed_at": None if idx == 0 else (now - timedelta(days=idx + 1)).isoformat(),
+            "last_payment_succeeded_at": (now - timedelta(days=idx * 11 + 3)).isoformat(),
+            "manual_grace_until": (now + timedelta(days=7)).isoformat() if idx == 1 else None,
+            "created_at": tenant["created_at"],
+        }))
+
+        if tenant.get("is_founder"):
+            inserted["billing"] += int(await upsert("founder_tenant_contracts", {"id": f"{tenant_id}-founder-contract", "tenant_id": tenant_id}, {
+                "id": f"{tenant_id}-founder-contract",
+                "tenant_id": tenant_id,
+                "founder_status": "active",
+                "created_at": tenant["created_at"],
+            }))
+
+        trial_status = "converted" if idx == 0 else ("extended_active" if idx == 1 else "free_expired")
+        inserted["trials"] += int(await upsert("trial_records", {"id": f"{tenant_id}-trial", "tenant_id": tenant_id}, {
+            "id": f"{tenant_id}-trial",
+            "tenant_id": tenant_id,
+            "billing_account_id": billing_account_id,
+            "trial_kind": "free",
+            "status": trial_status,
+            "starts_at": tenant["created_at"],
+            "ends_at": (now + timedelta(days=14 - (idx * 10))).isoformat(),
+            "credit_allotment": 150,
+            "created_by_user_id": owner_id,
+        }))
+
+        for task_key, status in {
+            "company_profile": "completed",
+            "pricing_setup_assistant": "completed" if idx != 2 else "in_progress",
+            "customer_portal": "completed" if idx == 0 else "not_started",
+            "first_order": "completed" if idx == 0 else "not_started",
+        }.items():
+            inserted["onboarding"] += int(await upsert("onboarding_task_states", {"tenant_id": tenant_id, "program_key": "shop_launch_v1", "task_key": task_key}, {
+                "id": f"{tenant_id}-onboarding-{task_key}",
+                "tenant_id": tenant_id,
+                "program_key": "shop_launch_v1",
+                "program_version": 1,
+                "task_key": task_key,
+                "level": "required" if task_key in {"company_profile", "pricing_setup_assistant", "first_order"} else "recommended",
+                "status": status,
+                "completed_at": (now - timedelta(days=idx + 1)).isoformat() if status == "completed" else None,
+                "updated_by_user_id": user["id"],
+                "created_at": tenant["created_at"],
+            }))
+
+        for day in range(0, 5):
+            created = (now - timedelta(days=day + idx)).isoformat()
+            inserted["analytics_events"] += int(await upsert("analytics_events", {"id": f"{tenant_id}-analytics-{day}"}, {
+                "id": f"{tenant_id}-analytics-{day}",
+                "event_type": ["page_view", "quote_created", "order_created", "ai_tool_used", "frontend_error"][day],
+                "session_id": f"{tenant_id}-session-{day // 2}",
+                "visitor_id": f"{tenant_id}-visitor-{day}",
+                "user_id": owner_id,
+                "tenant_id": tenant_id,
+                "route": ["/", "/quotes", "/orders", "/studio", "/wp-admin"][day],
+                "referrer": ["direct", "google", "direct", "facebook", "crawler"][day],
+                "user_agent": "SignGuy Demo Browser",
+                "is_bot": day == 4,
+                "is_suspicious": day == 4,
+                "timestamp": created,
+                "metadata": {"sample": True},
+            }))
+
+        for related_type, collection in [("quote", "quotes"), ("order", "orders")]:
+            inserted["analytics_events"] += int(await upsert(collection, {"id": f"{tenant_id}-{related_type}-sample"}, {
+                "id": f"{tenant_id}-{related_type}-sample",
+                "tenant_id": tenant_id,
+                "customer_name": "Sample Customer",
+                "status": "approved" if related_type == "quote" else "in_production",
+                "created_at": (now - timedelta(days=idx + 1)).isoformat(),
+                "updated_at": (now - timedelta(days=idx)).isoformat(),
+            }))
+
+        email_log_id = f"{tenant_id}-email-log"
+        email_status = "delivered" if idx == 0 else ("sent" if idx == 1 else "failed")
+        inserted["email_logs"] += int(await upsert("email_logs", {"id": email_log_id, "tenant_id": tenant_id}, {
+            "id": email_log_id,
+            "tenant_id": tenant_id,
+            "related_type": "general",
+            "template": "general",
+            "to_email": tenant["owner_email"],
+            "from_email": settings.sendgrid_from_email or "demo@signguy-ai.example.com",
+            "subject": "Sample platform admin delivery row",
+            "body": "Sample email used by the Platform Admin demo data.",
+            "status": email_status,
+            "error_message": "Mailbox rejected demo message" if email_status == "failed" else None,
+            "sent_by": user["id"],
+            "sendgrid_message_id": f"sg-demo-{idx}",
+            "created_at": (now - timedelta(days=idx + 1)).isoformat(),
+        }))
+        inserted["email_logs"] += int(await upsert("email_activity", {"id": f"{email_log_id}-activity"}, {
+            "id": f"{email_log_id}-activity",
+            "tenant_id": tenant_id,
+            "email_log_id": email_log_id,
+            "provider": "sample",
+            "provider_event_id": f"sample-provider-event-{tenant_id}",
+            "event": "delivered" if idx == 0 else ("processed" if idx == 1 else "bounce"),
+            "event_timestamp": (now - timedelta(days=idx)).isoformat(),
+            "created_at": (now - timedelta(days=idx)).isoformat(),
+            "reason": "Sample provider event",
+        }))
+
+        inserted["audit_events"] += int(await upsert("audit_events", {"id": f"{tenant_id}-audit"}, {
+            "id": f"{tenant_id}-audit",
+            "tenant_id": tenant_id,
+            "actor_user_id": user["id"],
+            "actor_email": user.get("email", "platform"),
+            "action": "sample_data.seed",
+            "entity_type": "tenant",
+            "entity_id": tenant_id,
+            "summary": f"Seeded sample Platform Admin tenant {tenant['name']}",
+            "diff": {"metadata": {"sample": True}},
+            "created_at": now_iso,
+        }))
+
+        inserted["ai_rows"] += int(await upsert("ai_usage_ledger_entries", {"id": f"{tenant_id}-ai-usage"}, {
+            "id": f"{tenant_id}-ai-usage",
+            "tenant_id": tenant_id,
+            "user_id": owner_id,
+            "feature_key": "design_image",
+            "capability_key": "studio.design_image",
+            "credits_charged": 12 + idx,
+            "input_units": 800 + idx * 100,
+            "output_units": 1,
+            "created_at": (now - timedelta(days=idx + 1)).isoformat(),
+        }))
+        inserted["ai_rows"] += int(await upsert("ai_provider_cost_ledger_entries", {"id": f"{tenant_id}-ai-cost"}, {
+            "id": f"{tenant_id}-ai-cost",
+            "tenant_id": tenant_id,
+            "provider_key": "sample-provider",
+            "model_key": "sample-image-model",
+            "actual_cost_cents": 18 + idx,
+            "estimated_cost_micros": 180000 + idx * 10000,
+            "actual_cost_micros": 180000 + idx * 10000,
+            "input_units": 800 + idx * 100,
+            "output_units": 1,
+            "created_at": (now - timedelta(days=idx + 1)).isoformat(),
+        }))
+        inserted["ai_rows"] += int(await upsert("ai_credit_ledger_entries", {"id": f"{tenant_id}-ai-credit"}, {
+            "id": f"{tenant_id}-ai-credit",
+            "tenant_id": tenant_id,
+            "credit_account_id": f"{tenant_id}-credits",
+            "entry_type": "commit",
+            "amount_credits": -(12 + idx),
+            "created_at": (now - timedelta(days=idx + 1)).isoformat(),
+        }))
+
+    return {
+        "ok": True,
+        "sample_prefix": SAMPLE_DATA_PREFIX,
+        "inserted": inserted,
+        "tenant_ids": [tenant["id"] for tenant in tenants],
+        "message": "Sample Platform Admin tenants and related activity are ready.",
+    }
 
 
 async def tenant_detail(user: dict, tenant_id: str) -> dict:

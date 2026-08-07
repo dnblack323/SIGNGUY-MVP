@@ -27,6 +27,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  ScrollText,
   UserRound,
   Wrench,
 } from "lucide-react";
@@ -112,6 +113,7 @@ export default function PlatformAdminPage() {
   const [data, setData] = useState({ items: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [seeding, setSeeding] = useState(false);
   const navigate = useNavigate();
 
   const load = useCallback(async () => {
@@ -127,6 +129,20 @@ export default function PlatformAdminPage() {
   }, [search]);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadSampleData = async () => {
+    setSeeding(true);
+    setError("");
+    try {
+      await platformAdminApi.seedSampleData();
+      toast.success("Sample Platform Admin data loaded");
+      await load();
+    } catch (err) {
+      setError(extractError(err, "Unable to load sample data"));
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   const stats = useMemo(() => {
     const items = data.items || [];
@@ -144,7 +160,7 @@ export default function PlatformAdminPage() {
         <PageHeader
           title="Platform Admin"
           subtitle="Tenant oversight, support controls, communications, analytics, and governance."
-          actions={<Button size="sm" variant="outline" onClick={load} disabled={loading}><RefreshCcw className="size-4 mr-2" />Refresh</Button>}
+          actions={<div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={loadSampleData} disabled={seeding}>{seeding ? "Loading..." : "Load Sample Data"}</Button><Button size="sm" variant="outline" onClick={load} disabled={loading}><RefreshCcw className="size-4 mr-2" />Refresh</Button></div>}
         />
         {error && <Alert variant="destructive"><AlertTitle>Unable to load</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
         <div className="flex flex-wrap gap-2">
@@ -153,6 +169,7 @@ export default function PlatformAdminPage() {
           <Button asChild size="sm" variant="outline"><Link to="/platform-admin/site-settings"><Settings className="size-4 mr-2" />Site Settings</Link></Button>
           <Button asChild size="sm" variant="outline"><Link to="/platform-admin/email-logs"><Mail className="size-4 mr-2" />Email Deliverability</Link></Button>
           <Button asChild size="sm" variant="outline"><Link to="/platform-admin/audit-log"><ShieldCheck className="size-4 mr-2" />Audit Log</Link></Button>
+          <Button asChild size="sm" variant="outline"><Link to="/platform-admin/impersonation-logs"><ScrollText className="size-4 mr-2" />Impersonation Logs</Link></Button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <StatCard title="Tenants" value={stats.tenants} icon={UserRound} />
@@ -183,7 +200,7 @@ export default function PlatformAdminPage() {
                     <TableCell><Badge variant={statusVariant(tenant.status)}>{tenant.status}</Badge></TableCell>
                   </TableRow>
                 ))}
-                {(data.items || []).length === 0 && <TableRow><TableCell colSpan={5} className="text-sm text-muted-foreground">No tenants found.</TableCell></TableRow>}
+                {(data.items || []).length === 0 && <TableRow><TableCell colSpan={5} className="space-y-2 text-sm text-muted-foreground"><div>No tenants found.</div><Button size="sm" variant="outline" onClick={loadSampleData} disabled={seeding}>{seeding ? "Loading sample data..." : "Load sample tenants"}</Button></TableCell></TableRow>}
               </TableBody>
             </Table>
           </CardContent>
@@ -198,14 +215,21 @@ export function PlatformAdminTenantDetailPage() {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [threshold, setThreshold] = useState("");
+  const [loadError, setLoadError] = useState("");
   const navigate = useNavigate();
 
   const load = useCallback(async () => {
     if (!tenantId) return;
-    setData(await platformAdminApi.tenant(tenantId));
+    setLoadError("");
+    try {
+      setData(await platformAdminApi.tenant(tenantId));
+    } catch (err) {
+      setLoadError(extractError(err, "Unable to load tenant"));
+      setData(null);
+    }
   }, [tenantId]);
 
-  useEffect(() => { load().catch((err) => toast.error(extractError(err, "Unable to load tenant"))); }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const act = async (fn, success) => {
     setBusy(true);
@@ -226,6 +250,9 @@ export function PlatformAdminTenantDetailPage() {
   const account = data?.billing?.account || {};
   const checklist = data?.onboarding?.items || [];
   const progress = data?.onboarding?.progress || {};
+  const paymentFailureCount = account.payment_failed_count || account.failed_payment_count || subscription.payment_failed_count || subscription.failed_payment_count || (subscription.first_payment_failed_at ? 1 : 0);
+  const lastPaymentFailureAt = subscription.last_payment_failed_at || subscription.last_payment_failure_at || account.last_payment_failed_at || account.last_payment_failure_at;
+  const graceUntil = subscription.manual_grace_until || account.grace_period_until;
 
   const startImpersonation = async (userId) => {
     if (!window.confirm("Start support mode as this user? Do not change tenant data without consent.")) return;
@@ -238,6 +265,17 @@ export function PlatformAdminTenantDetailPage() {
       toast.error(extractError(err, "Unable to start impersonation"));
     }
   };
+
+  if (loadError) {
+    return (
+      <PlatformGate>
+        <div className="space-y-4" data-testid="platform-admin-tenant-load-error">
+          <PageHeader title="Tenant" subtitle="The tenant detail could not be loaded." actions={<Button size="sm" variant="outline" onClick={() => navigate("/platform-admin")}>Back</Button>} />
+          <Alert variant="destructive"><AlertTitle>Unable to load tenant</AlertTitle><AlertDescription>{loadError}</AlertDescription></Alert>
+        </div>
+      </PlatformGate>
+    );
+  }
 
   if (!data) {
     return <PlatformGate><div className="text-sm text-muted-foreground">Loading tenant...</div></PlatformGate>;
@@ -275,6 +313,7 @@ export function PlatformAdminTenantDetailPage() {
             <CardHeader><CardTitle className="text-base">Profile</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-muted-foreground">Joined</span><span>{dt(tenant.created_at)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Last activity</span><span>{dt(tenant.last_activity_at)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Founder</span><Badge variant={tenant.is_founder ? "secondary" : "outline"}>{tenant.is_founder ? "Yes" : "No"}</Badge></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Billing</span><Badge variant={statusVariant(account.status)}>{account.status || "not configured"}</Badge></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Dunning</span><Badge variant="outline">{subscription.dunning_state || "current"}</Badge></div>
@@ -284,8 +323,12 @@ export function PlatformAdminTenantDetailPage() {
             <CardHeader><CardTitle className="text-base">Billing & Dunning</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-2">
+                <div><div className="text-muted-foreground">Failures</div><div>{paymentFailureCount}</div></div>
                 <div><div className="text-muted-foreground">First failed</div><div>{dt(subscription.first_payment_failed_at)}</div></div>
+                <div><div className="text-muted-foreground">Last failed</div><div>{dt(lastPaymentFailureAt)}</div></div>
                 <div><div className="text-muted-foreground">Last paid</div><div>{dt(subscription.last_payment_succeeded_at)}</div></div>
+                <div><div className="text-muted-foreground">Threshold</div><div>{account.dunning_failure_threshold || "default"}</div></div>
+                <div><div className="text-muted-foreground">Grace until</div><div>{dt(graceUntil)}</div></div>
               </div>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => act(() => platformAdminApi.markPaid(tenantId, ""), "Marked paid")} disabled={busy}>Mark Paid</Button>
@@ -487,17 +530,73 @@ export function PlatformAdminAuditLogPage() {
   const [actorEmail, setActorEmail] = useState("");
   const [tenantId, setTenantId] = useState("");
   const [rows, setRows] = useState([]);
+  const [selected, setSelected] = useState(null);
   const load = useCallback(async () => {
     const data = await platformAdminApi.auditLog({ action: action || undefined, actor_email: actorEmail || undefined, tenant_id: tenantId || undefined });
     setRows(data.items || []);
   }, [action, actorEmail, tenantId]);
   useEffect(() => { load().catch(() => {}); }, [load]);
+  const inspect = async (row) => {
+    setSelected(row);
+    try {
+      setSelected(await platformAdminApi.auditEntry(row.id));
+    } catch {
+      setSelected(row);
+    }
+  };
   return (
     <PlatformGate>
       <div className="space-y-4" data-testid="platform-admin-audit-log-page">
         <PageHeader title="Audit Log" subtitle="Privileged Platform Admin and tenant actions." actions={<Button asChild size="sm" variant="outline"><Link to="/platform-admin">Back</Link></Button>} />
         <Card><CardContent className="grid gap-2 pt-6 md:grid-cols-4"><Input placeholder="Action" value={action} onChange={(e) => setAction(e.target.value)} /><Input placeholder="Actor email" value={actorEmail} onChange={(e) => setActorEmail(e.target.value)} /><Input placeholder="Tenant ID" value={tenantId} onChange={(e) => setTenantId(e.target.value)} /><Button onClick={load}>Apply</Button></CardContent></Card>
-        <Card><CardContent className="pt-6"><Table data-testid="audit-log-table"><TableHeader><TableRow><TableHead>When</TableHead><TableHead>Actor</TableHead><TableHead>Action</TableHead><TableHead>Target</TableHead><TableHead>Summary</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell>{dt(row.created_at)}</TableCell><TableCell>{row.actor_email}</TableCell><TableCell className="font-mono text-xs">{row.action}</TableCell><TableCell>{row.entity_type}:{row.entity_id}</TableCell><TableCell>{row.summary}</TableCell></TableRow>)}{rows.length === 0 && <TableRow><TableCell colSpan={5} className="text-sm text-muted-foreground">No audit rows found.</TableCell></TableRow>}</TableBody></Table></CardContent></Card>
+        <Card><CardContent className="pt-6"><Table data-testid="audit-log-table"><TableHeader><TableRow><TableHead>When</TableHead><TableHead>Actor</TableHead><TableHead>Action</TableHead><TableHead>Target</TableHead><TableHead>Summary</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id} className="cursor-pointer" onClick={() => inspect(row)}><TableCell>{dt(row.created_at)}</TableCell><TableCell>{row.actor_email}</TableCell><TableCell className="font-mono text-xs">{row.action}</TableCell><TableCell>{row.entity_type}:{row.entity_id}</TableCell><TableCell>{row.summary}</TableCell></TableRow>)}{rows.length === 0 && <TableRow><TableCell colSpan={5} className="text-sm text-muted-foreground">No audit rows found.</TableCell></TableRow>}</TableBody></Table></CardContent></Card>
+      </div>
+      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Audit Detail</DialogTitle>
+            <DialogDescription>{selected?.action || "Audit event"} - {dt(selected?.created_at)}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 text-sm md:grid-cols-2">
+            <div><span className="text-muted-foreground">Actor</span><div>{selected?.actor_email || "-"}</div></div>
+            <div><span className="text-muted-foreground">Tenant</span><div>{selected?.tenant_id || "-"}</div></div>
+            <div><span className="text-muted-foreground">Target</span><div>{selected?.entity_type || "-"}:{selected?.entity_id || "-"}</div></div>
+            <div><span className="text-muted-foreground">Summary</span><div>{selected?.summary || "-"}</div></div>
+          </div>
+          <pre className="max-h-80 overflow-auto rounded border bg-muted p-3 text-xs">{JSON.stringify(selected?.diff || {}, null, 2)}</pre>
+        </DialogContent>
+      </Dialog>
+    </PlatformGate>
+  );
+}
+
+export function PlatformAdminImpersonationLogsPage() {
+  const [tenantId, setTenantId] = useState("");
+  const [rows, setRows] = useState([]);
+  const [busyId, setBusyId] = useState("");
+  const load = useCallback(async () => {
+    const data = await platformAdminApi.impersonationLogs({ tenant_id: tenantId || undefined });
+    setRows(data.items || []);
+  }, [tenantId]);
+  useEffect(() => { load().catch(() => {}); }, [load]);
+  const endSession = async (row) => {
+    setBusyId(row.id);
+    try {
+      await platformAdminApi.endImpersonation(row.id);
+      await load();
+      toast.success("Impersonation session ended");
+    } catch (err) {
+      toast.error(extractError(err, "Unable to end impersonation"));
+    } finally {
+      setBusyId("");
+    }
+  };
+  return (
+    <PlatformGate>
+      <div className="space-y-4" data-testid="platform-admin-impersonation-logs-page">
+        <PageHeader title="Impersonation Logs" subtitle="Support-mode access, duration, and audit trail." actions={<Button asChild size="sm" variant="outline"><Link to="/platform-admin">Back</Link></Button>} />
+        <Card><CardContent className="grid gap-2 pt-6 md:grid-cols-[1fr_auto]"><Input placeholder="Tenant ID" value={tenantId} onChange={(e) => setTenantId(e.target.value)} /><Button onClick={load}>Apply</Button></CardContent></Card>
+        <Card><CardContent className="pt-6"><Table><TableHeader><TableRow><TableHead>Started</TableHead><TableHead>Platform Admin</TableHead><TableHead>Target User</TableHead><TableHead>Tenant</TableHead><TableHead>Status</TableHead><TableHead></TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell>{dt(row.started_at)}</TableCell><TableCell>{row.platform_admin_email}</TableCell><TableCell>{row.target_user_email}</TableCell><TableCell>{row.tenant_name || row.tenant_id}</TableCell><TableCell><Badge variant={row.ended_at ? "outline" : "secondary"}>{row.ended_at ? `Ended ${dt(row.ended_at)}` : "Active"}</Badge></TableCell><TableCell className="text-right">{!row.ended_at && <Button size="sm" variant="outline" disabled={busyId === row.id} onClick={() => endSession(row)}>End</Button>}</TableCell></TableRow>)}{rows.length === 0 && <TableRow><TableCell colSpan={6} className="text-sm text-muted-foreground">No impersonation sessions found.</TableCell></TableRow>}</TableBody></Table></CardContent></Card>
       </div>
     </PlatformGate>
   );

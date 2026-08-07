@@ -93,6 +93,7 @@ import PlatformAdminPage, {
   PlatformAdminAuditLogPage,
   PlatformAdminBroadcastEmailPage,
   PlatformAdminEmailLogsPage,
+  PlatformAdminImpersonationLogsPage,
   PlatformAdminSiteSettingsPage,
   PlatformAdminTenantDetailPage,
 } from "@/pages/PlatformAdminPages";
@@ -235,6 +236,7 @@ function AppRoutes() {
         <Route path="/platform-admin/site-settings" element={<PlatformAdminSiteSettingsPage />} />
         <Route path="/platform-admin/email-logs" element={<PlatformAdminEmailLogsPage />} />
         <Route path="/platform-admin/audit-log" element={<PlatformAdminAuditLogPage />} />
+        <Route path="/platform-admin/impersonation-logs" element={<PlatformAdminImpersonationLogsPage />} />
         <Route path="/platform-admin/analytics" element={<PlatformAdminAnalyticsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

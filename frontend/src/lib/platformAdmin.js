@@ -2,12 +2,14 @@ import api from "@/lib/api";
 
 export const platformAdminApi = {
   tenants: async (search = "") => (await api.get("/platform-admin/tenants", { params: search ? { search } : {} })).data,
+  seedSampleData: async () => (await api.post("/platform-admin/sample-data/seed")).data,
   tenant: async (tenantId) => (await api.get(`/platform-admin/tenants/${tenantId}`)).data,
   suspend: async (tenantId, reason) => (await api.post(`/platform-admin/tenants/${tenantId}/suspend`, { reason })).data,
   reactivate: async (tenantId, payload) => (await api.post(`/platform-admin/tenants/${tenantId}/reactivate`, payload)).data,
   markPaid: async (tenantId, note) => (await api.post(`/platform-admin/tenants/${tenantId}/mark-paid`, { note })).data,
   setThreshold: async (tenantId, threshold) => (await api.put(`/platform-admin/tenants/${tenantId}/dunning-threshold`, { threshold })).data,
   impersonate: async (targetUserId) => (await api.post("/platform-admin/impersonate", { target_user_id: targetUserId })).data,
+  impersonationLogs: async (params = {}) => (await api.get("/platform-admin/impersonation-logs", { params })).data,
   endImpersonation: async (logId) => (await api.post(`/platform-admin/impersonation-logs/${logId}/end`)).data,
   settings: async () => (await api.get("/platform-admin/settings")).data,
   setAnnouncement: async (payload) => (await api.put("/platform-admin/announcement", payload)).data,
@@ -18,5 +20,6 @@ export const platformAdminApi = {
   emailLogs: async (params = {}) => (await api.get("/platform-admin/email-logs", { params })).data,
   auditActions: async () => (await api.get("/platform-admin/audit-log/actions")).data,
   auditLog: async (params = {}) => (await api.get("/platform-admin/audit-log", { params })).data,
+  auditEntry: async (entryId) => (await api.get(`/platform-admin/audit-log/${entryId}`)).data,
   analytics: async (range = "30d") => (await api.get("/platform-admin/analytics", { params: { range } })).data,
 };

@@ -94,6 +94,25 @@ async def test_platform_admin_tenant_access_is_platform_only(ec20_ctx):
 
 
 @pytest.mark.asyncio
+async def test_platform_admin_sample_data_seed_populates_dashboard_sections(ec20_ctx):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        seeded = await client.post("/api/platform-admin/sample-data/seed", headers=_headers(ec20_ctx["platform_admin"]))
+        tenants = await client.get("/api/platform-admin/tenants", params={"search": "sample"}, headers=_headers(ec20_ctx["platform_admin"]))
+        analytics = await client.get("/api/platform-admin/analytics", headers=_headers(ec20_ctx["platform_admin"]))
+        email_logs = await client.get("/api/platform-admin/email-logs", params={"tenant_id": "demo-platform-admin-alpha"}, headers=_headers(ec20_ctx["platform_admin"]))
+
+    assert seeded.status_code == 200, seeded.text
+    body = seeded.json()
+    assert "demo-platform-admin-alpha" in body["tenant_ids"]
+    assert tenants.status_code == 200, tenants.text
+    assert len(tenants.json()["items"]) >= 3
+    assert analytics.status_code == 200, analytics.text
+    assert analytics.json()["overview"]["analytics_events"] >= 3
+    assert email_logs.status_code == 200, email_logs.text
+    assert email_logs.json()["total"] >= 1
+
+
+@pytest.mark.asyncio
 async def test_suspend_blocks_tenant_login_but_not_platform_admin_login(ec20_ctx):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         suspended = await client.post(
