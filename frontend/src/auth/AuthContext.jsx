@@ -45,10 +45,20 @@ export function AuthProvider({ children }) {
         setLoading(false);
         return;
       }
-      const { data } = await api.get("/auth/me");
-      setUser(data.user);
-      setTenant(data.tenant);
-      setPermissions(data.permissions || []);
+      try {
+        const { data } = await api.get("/auth/me");
+        setUser(data.user);
+        setTenant(data.tenant);
+        setPermissions(data.permissions || []);
+      } catch (meError) {
+        if (!bypass) throw meError;
+        localStorage.removeItem("signguy.token");
+        const { data } = await api.post("/auth/dev-login");
+        localStorage.setItem("signguy.token", data.access_token);
+        setUser(data.user);
+        setTenant(data.tenant);
+        setPermissions(data.permissions || []);
+      }
     } catch (e) {
       setUser(null); setTenant(null); setPermissions([]);
       setError(e);
