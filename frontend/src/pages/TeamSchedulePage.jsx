@@ -266,7 +266,7 @@ export default function TeamSchedulePage() {
       {isLoading ? (
         <div className="text-sm text-muted-foreground">Loading…</div>
       ) : visibleEmployees.length === 0 ? (
-        <EmptyState icon={CalendarDays} title="No employees to schedule" description="Add active employees under Team & Workflow → Employees first." />
+        <EmptyState icon={CalendarDays} title="No employees to schedule" description="Add active employees under Team & Productivity -> Employees first." />
       ) : (
         <Card>
           <CardContent className="p-0 overflow-x-auto">

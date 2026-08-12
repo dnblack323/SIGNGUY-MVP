@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import SignGuyLogo from "@/components/brand/SignGuyLogo";
 import { toast } from "sonner";
 
 export default function ResetPasswordPage() {
@@ -32,7 +33,8 @@ export default function ResetPasswordPage() {
   return (
     <div className="min-h-dvh grid place-items-center px-4 py-10 header-wash">
       <Card className="w-full max-w-[440px]">
-        <CardHeader>
+        <CardHeader className="items-center text-center">
+          <SignGuyLogo variant="full" className="h-12 w-full max-w-[240px]" testId="reset-password-logo" />
           <CardTitle className="font-display">Set new password</CardTitle>
           <CardDescription>Use the token from your email.</CardDescription>
         </CardHeader>

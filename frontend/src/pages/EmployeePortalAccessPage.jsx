@@ -54,7 +54,7 @@ export default function EmployeePortalAccessPage() {
       {isLoading ? (
         <div className="text-sm text-muted-foreground">Loading…</div>
       ) : employees.length === 0 ? (
-        <EmptyState icon={Users2} title="No active employees" description="Add active employees under Team & Workflow → Employees first." />
+        <EmptyState icon={Users2} title="No active employees" description="Add active employees under Team & Productivity -> Employees first." />
       ) : (
         <Card>
           <CardContent className="p-0 divide-y">

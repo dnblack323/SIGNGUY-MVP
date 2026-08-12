@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/auth/AuthContext";
+import SignGuyLogo from "@/components/brand/SignGuyLogo";
 
 /**
  * Lands here when Google redirects back with `?code=...&state=...`.
@@ -43,8 +44,11 @@ export default function GoogleAuthCallback() {
 
   if (!errorMsg) return null;
   return (
-    <div className="flex min-h-screen items-center justify-center text-sm text-rose-600" data-testid="google-auth-callback-error">
-      {errorMsg}
+    <div className="flex min-h-screen items-center justify-center px-4" data-testid="google-auth-callback-error">
+      <div className="flex flex-col items-center gap-3 text-center text-sm text-rose-600">
+        <SignGuyLogo variant="full" className="h-12 w-52" />
+        {errorMsg}
+      </div>
     </div>
   );
 }

@@ -284,18 +284,70 @@ export default function OrderDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
-        <Tabs defaultValue="items" data-testid="detail-tabs">
+        <Tabs defaultValue="overview" data-testid="detail-tabs">
           <TabsList>
-            <TabsTrigger value="items" data-testid="detail-tab-items">Items</TabsTrigger>
-            <TabsTrigger value="details" data-testid="detail-tab-details">Details</TabsTrigger>
+            <TabsTrigger value="overview" data-testid="detail-tab-overview">Overview</TabsTrigger>
+            <TabsTrigger value="items" data-testid="detail-tab-items">Order Items</TabsTrigger>
+            <TabsTrigger value="production" data-testid="detail-tab-production">Production</TabsTrigger>
+            <TabsTrigger value="documents-approvals" data-testid="detail-tab-documents-approvals">Documents & Approvals</TabsTrigger>
+            <TabsTrigger value="files-artwork" data-testid="detail-tab-files-artwork">Files & Artwork</TabsTrigger>
+            <TabsTrigger value="financial" data-testid="detail-tab-financial">Financial</TabsTrigger>
             <TabsTrigger value="activity" data-testid="detail-tab-activity">Activity</TabsTrigger>
           </TabsList>
+          <TabsContent value="overview" className="space-y-4">
+            <Card>
+              <CardHeader><CardTitle>Overview</CardTitle></CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-2">
+                <div className="text-sm"><span className="text-muted-foreground">Customer</span><div><Link className="link-underline" to={`/customers/${order.customer_id}`}>{customer?.name || "Loading..."}</Link></div></div>
+                <div className="text-sm"><span className="text-muted-foreground">Status</span><div><StatusPill kind="order" value={order.status} /></div></div>
+                <div className="text-sm"><span className="text-muted-foreground">Due date</span><div>{order.due_date || "Not set"}</div></div>
+                <div className="text-sm"><span className="text-muted-foreground">Order Items</span><div>{items.length}</div></div>
+                {digitalPrintAdjustmentCents != null && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Digital Print order minimum adjustment</span>
+                    <div data-testid="digital-print-order-minimum-adjustment">{centsToDollarsString(digitalPrintAdjustmentCents)}</div>
+                  </div>
+                )}
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Total</span>
+                  <div data-testid="order-derived-total">{centsToDollarsString(totals.total_cents ?? 0)}</div>
+                </div>
+                <div className="md:col-span-2 text-sm"><span className="text-muted-foreground">Notes</span><div>{order.notes_customer || order.notes_internal || order.notes || "No notes."}</div></div>
+              </CardContent>
+            </Card>
+          </TabsContent>
           <TabsContent value="items">
             <ItemsPanel orderId={id} items={items} totals={totals} pricingSummary={pricingSummary} canWrite={canWrite} orderStatus={order.status} />
           </TabsContent>
-          <TabsContent value="details" className="space-y-4">
+          <TabsContent value="production" className="space-y-4">
             <Card>
-              <CardHeader><CardTitle>Details</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Production</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {activeWO ? (
+                  <Button asChild variant="outline" size="sm" data-testid="order-production-workorder-link">
+                    <Link to={`/work-orders/${activeWO.id}`}>Open Work Order Summary W-{activeWO.number}</Link>
+                  </Button>
+                ) : (
+                  <div className="text-sm text-muted-foreground">No current Work Order Summary has been generated for this order.</div>
+                )}
+                <ProductionTimeline scope="order" orderId={id} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="documents-approvals" className="space-y-4">
+            <ProofsPanel orderId={id} customerId={order?.customer_id} />
+          </TabsContent>
+          <TabsContent value="files-artwork" className="space-y-4">
+            <Card>
+              <CardHeader><CardTitle>Files & Artwork</CardTitle></CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                Customer uploads, Intake photos and sketches, artwork, proofs, mockups, questionnaires, production files, installation photos, and other attachments remain linked to the Order or Order Item they belong to.
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="financial" className="space-y-4">
+            <Card>
+              <CardHeader><CardTitle>Financial</CardTitle></CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-2">
                 <div className="grid gap-1.5"><Label>Project name</Label><Input value={edit.job_name || ""} disabled={!canWrite} onChange={(e) => setForm((f) => ({ ...f, job_name: e.target.value }))} data-testid="order-job-name" /></div>
                 <div className="grid gap-1.5"><Label>Due date</Label><Input type="date" value={(edit.due_date || "").slice(0, 10)} disabled={!canWrite} onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value || null }))} data-testid="order-due-date" /></div>
@@ -360,8 +412,6 @@ export default function OrderDetailPage() {
           </Card>
         </aside>
       </div>
-
-      <ProofsPanel orderId={id} customerId={order?.customer_id} />
 
       <GenerateWorkOrderDialog
         orderId={id}

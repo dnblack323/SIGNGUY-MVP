@@ -1,8 +1,7 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api, { extractError } from "@/lib/api";
-import PageHeader from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,12 +13,16 @@ import TableSkeleton from "@/components/common/LoadingSkeleton";
 import EmptyState from "@/components/common/EmptyState";
 import StatusPill from "@/components/common/StatusPill";
 import { toast } from "sonner";
-import { Plus, ShoppingBag } from "lucide-react";
+import { ShoppingBag } from "lucide-react";
 import { relativeTime } from "@/lib/format";
 import { useAuth } from "@/auth/AuthContext";
 
-function NewOrderDialog({ onCreated }) {
-  const [open, setOpen] = useState(false);
+const ORDER_STATUS_OPTIONS = new Set(["all", "draft", "confirmed", "ready", "in_production", "completed", "cancelled"]);
+
+function NewOrderDialog({ onCreated, open: controlledOpen, onOpenChange, trigger = null }) {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
   const [customerId, setCustomerId] = useState("");
   const [jobName, setJobName] = useState("");
   const [notes, setNotes] = useState("");
@@ -40,7 +43,7 @@ function NewOrderDialog({ onCreated }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button data-testid="orders-create-button"><Plus className="size-4 mr-1" />New order</Button></DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader><DialogTitle>New order</DialogTitle><DialogDescription>Create an order directly (not from a quote).</DialogDescription></DialogHeader>
         <form onSubmit={submit} className="grid gap-3">
@@ -65,7 +68,10 @@ function NewOrderDialog({ onCreated }) {
 
 export default function OrdersPage() {
   const qc = useQueryClient();
-  const [status, setStatus] = useState("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusParam = searchParams.get("status");
+  const status = ORDER_STATUS_OPTIONS.has(statusParam) ? statusParam : "all";
+  const newOrderRequested = searchParams.get("new") === "1";
   const { hasPerm } = useAuth();
   const canWrite = hasPerm("order:write");
   const { data, isLoading } = useQuery({
@@ -73,20 +79,37 @@ export default function OrdersPage() {
     queryFn: async () => (await api.get("/orders", { params: { status: status === "all" ? undefined : status, limit: 100 } })).data,
   });
   const items = data?.items || [];
+  const countLabel = isLoading ? "Loading orders" : `${items.length} ${items.length === 1 ? "order" : "orders"}`;
+
+  useEffect(() => {
+    if (!newOrderRequested || canWrite) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+  }, [canWrite, newOrderRequested, searchParams, setSearchParams]);
+
+  function closeNewOrderDialog(nextOpen) {
+    if (nextOpen) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+  }
 
   return (
-    <div className="space-y-4" data-testid="orders-page">
-      <PageHeader title="Orders" subtitle="Everything in flight."
-        actions={canWrite && <NewOrderDialog onCreated={() => qc.invalidateQueries({ queryKey: ["orders"] })} />} />
-      <div className="flex flex-wrap gap-2">
-        {["all","draft","confirmed","in_production","completed","cancelled"].map((s) => (
-          <Button key={s} variant={status === s ? "default" : "outline"} size="sm" onClick={() => setStatus(s)} data-testid={`orders-filter-${s}`}>
-            <span className="capitalize">{s.replace("_", " ")}</span>
-          </Button>
-        ))}
+    <div className="space-y-2" data-testid="orders-page" data-active-order-view={status}>
+      {canWrite && (
+        <NewOrderDialog
+          open={newOrderRequested}
+          onOpenChange={closeNewOrderDialog}
+          onCreated={() => qc.invalidateQueries({ queryKey: ["orders"] })}
+        />
+      )}
+      <div className="flex h-10 items-center justify-between gap-3" data-testid="orders-table-utility-row">
+        <p className="text-sm text-slate-500" data-testid="orders-result-count">{countLabel}</p>
+        <div className="min-w-0 shrink-0" aria-hidden="true" />
       </div>
       {isLoading ? <TableSkeleton /> : items.length === 0 ? (
-        <EmptyState icon={ShoppingBag} title="No orders yet" description="Convert a quote or create an order directly." action={canWrite ? <NewOrderDialog onCreated={() => qc.invalidateQueries({ queryKey: ["orders"] })} /> : null} />
+        <EmptyState icon={ShoppingBag} title="No orders yet" description="Convert a quote or use New Order from the ribbon." />
       ) : (
         <div className="rounded-xl border bg-card overflow-hidden">
           <Table data-testid="orders-table">

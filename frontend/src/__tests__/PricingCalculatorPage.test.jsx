@@ -369,18 +369,18 @@ beforeEach(() => {
   mockApi();
 });
 
-test("adds Pricing under Shop Operations persistent module navigation", () => {
+test("Shop Operations navigation omits Pricing as a permanent module", () => {
   const shopOperations = NAV_AREAS.find((area) => area.key === "shop-operations");
-  expect(shopOperations.moduleNav).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        key: "pricing",
-        label: "Pricing",
-        to: "/pricing-calculator",
-        perm: "pricing:read",
-      }),
-    ]),
-  );
+  expect(shopOperations.moduleNav.map((item) => item.key)).toEqual([
+    "overview",
+    "sales",
+    "customers",
+    "production",
+    "approval-center",
+    "webstores",
+    "wrap-lab",
+  ]);
+  expect(shopOperations.moduleNav.some((item) => item.key === "pricing")).toBe(false);
   expect(shopOperations.flyout).toBeUndefined();
 });
 

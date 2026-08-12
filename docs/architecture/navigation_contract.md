@@ -2,32 +2,33 @@
 
 ## Structure
 
-The authenticated desktop shell uses the owner-approved UX1 hierarchy:
+The authenticated desktop shell uses the current owner-approved shell hierarchy:
 
-1. Compact collapsible main-area sidebar.
-2. Persistent second-level module tabs across the top of the content area.
-3. Compact contextual ribbon.
-4. Quick Access Toolbar.
-5. Breadcrumb and page heading.
+1. Global header with current workspace title/subtitle, Global Search, Create, Messages, Notifications, and Account.
+2. Compact breadcrumbs.
+3. Persistent secondary module navigation with Quick Access aligned to its right.
+4. Internal tabs when applicable.
+5. Contextual ribbon.
 6. Page content.
-7. Bottom Workspace Dock.
+7. Numbered Workspace Dock fixed to the bottom of the workspace.
 
 Portals, public storefronts, and kiosk routes remain separately routed and do not render the internal authenticated shell.
 
 ## Main-Area Sidebar
 
-The sidebar contains only the six approved main application areas:
+The sidebar contains only these single-level application areas, in order:
 
+- Home
 - Shop Operations
 - Business & Finance
-- Team & Workflow
-- Design Studio
+- Team & Productivity
+- Tools & Resources
 - Control Center
 - Help & Community
 
-Selecting a main area opens that area's overview/dashboard destination. Desktop must not render the obsolete long module flyout/dropdown navigation.
+Selecting a main area opens that area's overview/dashboard destination. Desktop must not render nested sidebar links, flyouts, accordions, secondary modules, record links, search, messages, notifications, or account controls in the sidebar.
 
-Global search, notifications, Help, and account controls remain at the bottom of the sidebar.
+The sidebar bottom contains only the sidebar pin/collapse control. The official SignGuy AI logo asset appears at the top; the full logo is used when expanded and the compact mark is used when collapsed.
 
 ## Module Navigation And Ribbon
 
@@ -37,9 +38,13 @@ Rules:
 
 - Second-level modules render as persistent horizontal tabs, not sidebar flyouts.
 - The active module is styled as a selected tab.
+- Shop Operations secondary modules are exactly: Overview, Sales, Customers, Production, Approval Center, Webstores, Wrap Lab.
+- The prior direct Shop Operations secondary links for Intake, Quotes, and Orders are superseded. They now live inside Sales as internal tabs: Intake Requests, Quotes, Orders.
+- Existing `/intake`, `/quotes`, and `/orders` routes remain valid and activate Shop Operations -> Sales.
 - The contextual ribbon appears below module tabs and changes by active area/module.
 - Ribbon commands must not duplicate module navigation.
 - Quick Access Toolbar commands share shell command definitions with the ribbon.
+- Quick Access pinning, reordering, and toolbar persistence are intentionally deferred from this visual correction checkpoint. The current toolbar remains a permission-aware static shortcut row.
 - Existing route destinations remain authoritative; navigation correction must not invent replacement pages.
 
 ## Workspace Dock
@@ -56,8 +61,7 @@ Rules:
 - Maximum open workspaces: 8.
 - Recent work references retained per tenant/user: 20.
 - Dock state persists to the authenticated account and is scoped by both tenant and user.
-- `Dock & New` in the Quick Access Toolbar docks the current eligible work, then opens the neutral dashboard workspace. If the current route is already docked, its visible label becomes `New Workspace` and no duplicate workspace is created.
-- The `+` button beside the dock opens the neutral dashboard workspace.
+- The dock `+` button opens recent/search-to-open workspace access. Creating business records belongs to the global Create menu.
 - Eligible record context menus may call the same workspace service through `Open in New Workspace`; they must not replace or destroy the currently active workspace first.
 - Workspace metadata must not store sensitive form contents.
 - Workspace persistence must not modify underlying Orders, Quotes, Customers, Work Orders, Invoices, pricing snapshots, saved calculations, artwork, or proof records.
@@ -68,15 +72,23 @@ Ordinary dashboards, overviews, record lists, reports landing pages, settings pa
 
 ## Permanent Placement
 
-- Payroll, Time Clock, Timesheets, and Team Schedule belong under Team & Workflow.
-- Shop Schedule belongs under Shop Operations and represents production/installation/delivery workload, not employee shifts.
-- Inventory, Vendors, and Purchasing belong under Shop Operations or their existing approved module placements.
+- Payroll, Time Clock, Timesheets, and Team Schedule remain reachable under Team & Productivity while that area's detailed secondary navigation remains deferred.
+- Installation, pickup, delivery, shipping, rework, returns, corrections, reprints, warranties, and installation return visits are represented through Sales request types or Production filters/saved views, not permanent Shop Operations secondary modules.
+- Materials, inventory, vendors, suppliers, and purchasing do not belong under current Shop Operations navigation.
 - Customer invoice and payment operations remain operational record workflows; financial analysis and reporting belong under Business & Finance.
-- Pricing configuration belongs under Control Center -> Pricing Defaults. The dedicated Pricing Calculator workspace belongs under Shop Operations.
+- Pricing configuration belongs under Control Center -> Pricing Defaults.
 - Tenant subscription and AI-credit purchasing belong under Control Center.
-- AI creation tools belong under Design Studio.
+- AI creation tools belong under Tools & Resources.
 - Community, bugs, feature requests, support, and documentation belong under Help & Community.
-- Proofs and approvals remain connected workflows reachable from records and document/library workflows; they are not permanent main-sidebar destinations.
+- Approval Center is the permanent Shop Operations module for cross-order approval work. Its only internal tabs are Approval Queue and Decision Rooms; statuses are filters, not tabs.
+- Proofs and approvals remain connected workflows reachable from records and Approval Center. A Decision Room is an enhanced approval experience, not a separate business module.
+- Use Webstores in active navigation and implementation-facing documentation. Order Portals is superseded terminology.
+
+## Customer And Order Records
+
+Customer records use these internal tabs: Overview, Contacts, Communications, Requests, Quotes, Orders, Files & Forms, Portal, Activity. Communications, files, forms, completed questionnaires, and portal data are linked from their source records instead of copied.
+
+Order records use these internal tabs: Overview, Order Items, Production, Documents & Approvals, Files & Artwork, Financial, Activity. The current production terminology is Order -> Order Items -> Work Order Summary. Job Ticket is banned as current product terminology.
 
 ## Testing
 

@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  MoreHorizontal,
   Pin,
   PinOff,
   Plus,
@@ -9,7 +10,14 @@ import {
   RotateCcw,
   X,
 } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,17 +67,17 @@ function WorkspaceTab({ workspace, index, all, compact = false }) {
       data-active={workspace.active ? "true" : "false"}
       data-dirty={workspace.dirty ? "true" : "false"}
       className={cn(
-        "group flex min-w-0 items-center gap-1 rounded-md border px-2 py-1 text-xs shadow-sm",
+        "group flex items-center gap-1 rounded-md border px-1.5 py-1 text-xs shadow-sm",
         workspace.active
           ? "border-cyan-500 bg-white text-slate-950"
           : "border-slate-300 bg-slate-100 text-slate-600 hover:bg-white",
-        compact ? "w-full" : "max-w-[240px]",
+        compact ? "w-full" : "w-auto",
       )}
     >
       <button
         type="button"
         onClick={() => activate(workspace)}
-        className="flex min-w-0 flex-1 items-center gap-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+        className="flex items-center gap-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
         title={workspaceTooltip(workspace, index + 1)}
         aria-current={workspace.active ? "page" : undefined}
         aria-label={`Workspace ${index + 1}: ${workspace.label}`}
@@ -85,40 +93,34 @@ function WorkspaceTab({ workspace, index, all, compact = false }) {
         </span>
         {workspace.pinned && <Pin className="size-3 shrink-0 text-cyan-600" aria-hidden="true" />}
         {workspace.dirty && <span className="size-1.5 shrink-0 rounded-full bg-amber-500" aria-label="Unsaved changes" />}
-        <span className="truncate">{workspace.label}</span>
+        {compact && <span className="truncate">{workspace.label}</span>}
       </button>
-      <div className="flex shrink-0 items-center gap-0.5">
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="size-6"
-          aria-label={workspace.pinned ? "Unpin workspace" : "Pin workspace"}
-          onClick={() => pin(workspace, !workspace.pinned)}
-        >
-          {workspace.pinned ? <PinOff className="size-3" /> : <Pin className="size-3" />}
-        </Button>
-        {!compact && (
-          <>
-            <Button type="button" size="icon" variant="ghost" className="size-6" aria-label="Move workspace left" disabled={!canMoveLeft} onClick={() => move(-1)}>
-              <ChevronLeft className="size-3" />
-            </Button>
-            <Button type="button" size="icon" variant="ghost" className="size-6" aria-label="Move workspace right" disabled={!canMoveRight} onClick={() => move(1)}>
-              <ChevronRight className="size-3" />
-            </Button>
-          </>
-        )}
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="size-6 opacity-80 transition-opacity group-hover:opacity-100 focus:opacity-100"
-          aria-label="Close workspace"
-          onClick={() => close(workspace)}
-        >
-          <X className="size-3" />
-        </Button>
-      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" size="icon" variant="ghost" className="size-6" aria-label={`Workspace ${index + 1} actions`}>
+            <MoreHorizontal className="size-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="top" className="w-48">
+          <DropdownMenuItem onClick={() => pin(workspace, !workspace.pinned)} aria-label={workspace.pinned ? "Unpin workspace" : "Pin workspace"}>
+            {workspace.pinned ? <PinOff className="mr-2 size-3" /> : <Pin className="mr-2 size-3" />}
+            {workspace.pinned ? "Unpin" : "Pin"}
+          </DropdownMenuItem>
+          {!compact && (
+            <>
+              <DropdownMenuItem disabled={!canMoveLeft} onClick={() => move(-1)} aria-label="Move workspace left">
+                <ChevronLeft className="mr-2 size-3" />Move left
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={!canMoveRight} onClick={() => move(1)} aria-label="Move workspace right">
+                <ChevronRight className="mr-2 size-3" />Move right
+              </DropdownMenuItem>
+            </>
+          )}
+          <DropdownMenuItem onClick={() => close(workspace)} aria-label="Close workspace">
+            <X className="mr-2 size-3" />Close
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -254,8 +256,9 @@ function MobileOpenWork() {
 }
 
 export default function WorkspaceDock({ sidebarCollapsed }) {
-  const { open_workspaces, loading, error, refresh, openFreshWorkspace } = useWorkspace();
-  const leftOffset = sidebarCollapsed ? "lg:left-[76px]" : "lg:left-[260px]";
+  const { open_workspaces, loading, error, refresh } = useWorkspace();
+  const [recentOpen, setRecentOpen] = useState(false);
+  const leftOffset = "lg:left-[76px]";
   return (
     <TooltipProvider delayDuration={200}>
       <div
@@ -285,7 +288,7 @@ export default function WorkspaceDock({ sidebarCollapsed }) {
                     <WorkspaceTab workspace={workspace} index={index} all={open_workspaces} />
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="top">{workspaceTooltip(workspace, index + 1)}</TooltipContent>
+              <TooltipContent side="top">{workspaceTooltip(workspace, index + 1)}</TooltipContent>
               </Tooltip>
             ))}
             <Tooltip>
@@ -295,15 +298,21 @@ export default function WorkspaceDock({ sidebarCollapsed }) {
                   size="icon"
                   variant="outline"
                   className="size-8 shrink-0 rounded-md"
-                  aria-label="New workspace"
+                  aria-label="Open recent or search workspace"
                   data-testid="workspace-new-button"
-                  onClick={openFreshWorkspace}
+                  onClick={() => setRecentOpen((value) => !value)}
                 >
                   <Plus className="size-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">Open a fresh workspace</TooltipContent>
+              <TooltipContent side="top">Recent records and search-to-open</TooltipContent>
             </Tooltip>
+            {recentOpen && (
+              <div className="absolute bottom-12 right-28 w-80 rounded-md border bg-white p-2 shadow-xl" data-testid="workspace-plus-popover">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Recent records</div>
+                <RecentList />
+              </div>
+            )}
           </div>
           <div className="relative shrink-0">
             <details className="group" data-testid="workspace-recent-menu">
