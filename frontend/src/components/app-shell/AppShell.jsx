@@ -4,19 +4,31 @@ import {
   CalendarDays,
   CheckCircle2,
   CircleHelp,
+  ClipboardCheck,
+  ClipboardList,
+  CopyPlus,
   DollarSign,
+  Download,
+  ExternalLink,
+  Filter,
   FileText,
+  Grid3X3,
   LayoutDashboard,
+  List,
   LogOut,
+  Mail,
   Menu,
   MessageSquare,
-  PanelLeftClose,
-  PanelLeftOpen,
+  Monitor,
   Plus,
+  RefreshCw,
   Search,
+  Send,
   ShieldAlert,
   ShoppingBag,
   Store,
+  Upload,
+  UserCheck,
   UserPlus,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
@@ -52,14 +64,43 @@ import {
 
 const COMMANDS = {
   dashboard: { key: "dashboard", label: "Overview", icon: LayoutDashboard, to: "/" },
-  newIntake: { key: "newIntake", label: "New Intake Request", icon: Plus, to: "/intake/new", permission: "intake:write" },
+  newIntake: { key: "newIntake", label: "New Intake", icon: ClipboardList, to: "/intake/new", permission: "intake:write" },
   newCustomer: { key: "newCustomer", label: "New Customer", icon: UserPlus, to: "/customers", permission: "customer:write" },
   newQuote: { key: "newQuote", label: "New Quote", icon: FileText, to: "/quotes", permission: "quote:write" },
   newOrder: { key: "newOrder", label: "New Order", icon: ShoppingBag, to: "/orders?new=1", permission: "order:write" },
+  sendQuote: { key: "sendQuote", label: "Send Quote", icon: Mail, to: "/quotes", permission: "quote:write" },
+  followUp: { key: "followUp", label: "Follow Up", icon: MessageSquare, to: "/quotes", permission: "quote:read" },
+  convertOrder: { key: "convertOrder", label: "Convert to Order", icon: ShoppingBag, to: "/quotes", permission: "order:write" },
   invitePortal: { key: "invitePortal", label: "Invite Customer to Portal", icon: UserPlus, to: "/customers?portalInvite=1", permission: "customer:write" },
   newWebstore: { key: "newWebstore", label: "New Webstore", icon: Store, to: "/webstores", permission: "webstore:write" },
   newWrapProject: { key: "newWrapProject", label: "New Wrap Project", icon: Plus, to: "/wrap-lab", permission: "wrap_lab:write" },
-  pricing: { key: "pricing", label: "Pricing", icon: DollarSign, to: "/pricing-calculator", permission: "pricing:read" },
+  pricing: { key: "pricing", label: "Pricing Calculator", icon: DollarSign, to: "/pricing-calculator", permission: "pricing:read" },
+  sendProof: { key: "sendProof", label: "Send Proof", icon: Send, to: "/decision-rooms", permission: "decision_room:read" },
+  scheduleInstall: { key: "scheduleInstall", label: "Schedule Install", icon: CalendarDays, to: "/shop-schedule", permission: "schedule:read" },
+  filter: { key: "filter", label: "Filter", icon: Filter, to: "#", permission: null },
+  emailCustomer: { key: "emailCustomer", label: "Email Customer", icon: Mail, to: "/email-history", permission: "customer:read" },
+  sendDocument: { key: "sendDocument", label: "Send Document", icon: FileText, to: "/documents", permission: "document:read" },
+  requestApproval: { key: "requestApproval", label: "Request Approval", icon: UserCheck, to: "/decision-rooms", permission: "decision_room:read" },
+  import: { key: "import", label: "Import", icon: Upload, to: "/customers", permission: "customer:write" },
+  export: { key: "export", label: "Export", icon: Download, to: "/customers", permission: "customer:read" },
+  mergeDuplicates: { key: "mergeDuplicates", label: "Merge Duplicates", icon: CopyPlus, to: "/customers", permission: "customer:write" },
+  assignMe: { key: "assignMe", label: "Assign to Me", icon: UserCheck, to: "/approval-center", permission: "decision_room:read" },
+  addInternalNote: { key: "addInternalNote", label: "Add Internal Note", icon: FileText, to: "/approval-center", permission: "decision_room:read" },
+  markReviewed: { key: "markReviewed", label: "Mark Reviewed", icon: CheckCircle2, to: "/approval-center", permission: "decision_room:read" },
+  applyDecision: { key: "applyDecision", label: "Apply Decision", icon: ClipboardCheck, to: "/approval-center", permission: "decision_room:read" },
+  respond: { key: "respond", label: "Respond", icon: MessageSquare, to: "/approval-center", permission: "decision_room:read" },
+  newDecisionRoom: { key: "newDecisionRoom", label: "New Decision Room", icon: FileText, to: "/decision-rooms", permission: "decision_room:read" },
+  openRoom: { key: "openRoom", label: "Open Room", icon: ExternalLink, to: "/decision-rooms", permission: "decision_room:read" },
+  workOrders: { key: "workOrders", label: "Work Orders", icon: ClipboardList, to: "/work-orders", permission: "work_order:read" },
+  openKiosk: { key: "openKiosk", label: "Open Kiosk", icon: Monitor, to: "/kiosk/production", permission: "work_order:read" },
+  assignWork: { key: "assignWork", label: "Assign", icon: UserPlus, to: "/work-orders", permission: "work_order:read" },
+  startWork: { key: "startWork", label: "Start", icon: CheckCircle2, to: "/work-orders", permission: "work_order:read" },
+  waitWork: { key: "waitWork", label: "Wait", icon: CircleHelp, to: "/work-orders", permission: "work_order:read" },
+  blockWork: { key: "blockWork", label: "Block", icon: ShieldAlert, to: "/work-orders", permission: "work_order:read" },
+  completeWork: { key: "completeWork", label: "Complete", icon: ClipboardCheck, to: "/work-orders", permission: "work_order:read" },
+  dueDate: { key: "dueDate", label: "Due Date", icon: CalendarDays, to: "/work-orders", permission: "work_order:read" },
+  addNote: { key: "addNote", label: "Add Note", icon: FileText, to: "/work-orders", permission: "work_order:read" },
+  refresh: { key: "refresh", label: "Refresh", icon: RefreshCw, to: "#", permission: null },
   task: { key: "task", label: "Task", icon: CheckCircle2, to: "/team/tasks", permission: "task:read" },
   calendar: { key: "calendar", label: "Calendar", icon: CalendarDays, to: "/shop-schedule", permission: "schedule:read" },
   assistant: { key: "assistant", label: "Assistant", icon: Bot, to: "/studio/assistant", permission: "ai_assistant:use" },
@@ -75,10 +116,9 @@ const COMMANDS = {
 };
 
 const CREATE_KEYS = ["newIntake", "newCustomer", "newQuote", "newOrder", "invitePortal", "newWebstore", "newWrapProject"];
-const QUICK_ACCESS_KEYS = ["newIntake", "newCustomer", "newQuote", "newOrder", "newWebstore", "newWrapProject", "assistant"];
 const SIDEBAR_LEAVE_DELAY_MS = 180;
-const DESKTOP_SIDEBAR_COLLAPSED_WIDTH = 76;
-const DESKTOP_SIDEBAR_EXPANDED_WIDTH = 260;
+const DESKTOP_SIDEBAR_COLLAPSED_WIDTH = 96;
+const DESKTOP_SIDEBAR_EXPANDED_WIDTH = 96;
 
 const RIBBON_BY_AREA = {
   home: ["newIntake", "newCustomer", "newQuote", "newOrder"],
@@ -91,10 +131,46 @@ const RIBBON_BY_AREA = {
 };
 
 const RIBBON_BY_MODULE = {
-  sales: ["newIntake", "newQuote", "newOrder"],
-  customers: ["newCustomer", "newQuote", "newOrder"],
-  production: ["newOrder", "calendar"],
-  "approval-center": ["newQuote", "newOrder"],
+  overview: [
+    ["Create", ["newCustomer", "newIntake", "newQuote", "newOrder"]],
+    ["Customer/Workflow", ["pricing", "sendProof", "scheduleInstall"]],
+    ["View", ["filter"]],
+  ],
+  sales: [
+    ["Create", ["newIntake", "newQuote", "newOrder"]],
+    ["Pricing", ["pricing"]],
+    ["Customer", ["sendQuote", "followUp", "requestApproval"]],
+    ["Workflow", ["convertOrder", "scheduleInstall"]],
+    ["View", ["filter"]],
+  ],
+  customers: [
+    ["Create", ["newCustomer", "newQuote", "newOrder"]],
+    ["Customer", ["emailCustomer", "sendDocument", "requestApproval"]],
+    ["Manage", ["import", "export", "mergeDuplicates"]],
+    ["View", ["filter"]],
+  ],
+  production: [
+    ["Work", ["workOrders", "openKiosk"]],
+    ["Stage", ["assignWork", "startWork", "waitWork", "blockWork", "completeWork"]],
+    ["Manage", ["dueDate", "addNote"]],
+    ["View", ["refresh", "filter"]],
+  ],
+  "approval-center": [
+    ["Create", ["newDecisionRoom"]],
+    ["Review", ["assignMe", "addInternalNote", "markReviewed", "applyDecision"]],
+    ["Respond", ["respond", "openRoom"]],
+    ["View", ["filter"]],
+  ],
+  webstores: [
+    ["Create", ["newWebstore"]],
+    ["Customer", ["sendProof", "requestApproval"]],
+    ["View", ["filter"]],
+  ],
+  "wrap-lab": [
+    ["Create", ["newWrapProject"]],
+    ["Customer/Workflow", ["pricing", "sendProof", "scheduleInstall"]],
+    ["View", ["filter"]],
+  ],
   tasks: ["task", "calendar"],
   "team-schedule": ["calendar", "task"],
   assistant: ["assistant"],
@@ -127,29 +203,33 @@ function CommandButton({ command, permissions, compact = false, testPrefix = "sh
   const label = command.workspaceAction === "dockAndNew" && workspace.isCurrentRouteDocked
     ? command.dockedLabel
     : command.label;
+  const baseClass = cn(
+    layout === "ribbon"
+      ? "flex h-[62px] w-[74px] shrink-0 flex-col items-center justify-center gap-1 rounded-sm border border-transparent px-1 py-1 text-center text-[11px] leading-tight text-slate-900 hover:border-slate-200 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      : compact
+        ? "grid size-11 shrink-0 place-items-center rounded-md text-white/90 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+        : "h-9 shrink-0 rounded-md px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-950",
+    active && "border-blue-300 bg-blue-50 text-slate-950 shadow-sm",
+  );
+  const iconClass = cn(
+    layout === "ribbon" ? "size-[22px]" : "size-5",
+    compact && "size-6",
+  );
+
   const content = command.workspaceAction === "dockAndNew" ? (
       <Button
         type="button"
         variant="ghost"
         size="sm"
-        className={cn(
-          layout === "ribbon"
-            ? "h-[52px] w-[72px] shrink-0 rounded-md border border-transparent px-1.5 py-1 text-[11px] whitespace-normal text-slate-700 hover:border-slate-200 hover:bg-white hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-cyan-500"
-            : "h-11 shrink-0 rounded-md px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-950",
-          compact && "size-9 px-0",
-          active && "border-cyan-300 bg-cyan-50 text-slate-950 shadow-sm",
-        )}
+        className={baseClass}
         data-testid={`${testPrefix}-${command.key}`}
         data-layout={layout}
         aria-label={label}
         title={compact ? undefined : command.tooltip}
         onClick={workspace.dockCurrentAndNew}
       >
-        <span className={cn(
-          "flex items-center justify-center",
-          layout === "ribbon" ? "h-full flex-col gap-0.5 text-center" : "gap-0.5",
-        )}>
-          <Icon className={cn("size-4", layout === "ribbon" && "size-[18px]")} aria-hidden="true" />
+        <span className={cn("flex items-center justify-center", layout === "ribbon" ? "h-full flex-col gap-1 text-center" : "gap-1")}>
+          <Icon className={iconClass} aria-hidden="true" />
           <span className={cn("leading-tight whitespace-normal", compact && "sr-only")}>{label}</span>
         </span>
       </Button>
@@ -158,13 +238,7 @@ function CommandButton({ command, permissions, compact = false, testPrefix = "sh
       asChild
       variant="ghost"
       size="sm"
-      className={cn(
-        layout === "ribbon"
-          ? "h-[52px] w-[72px] shrink-0 rounded-md border border-transparent px-1.5 py-1 text-[11px] whitespace-normal text-slate-700 hover:border-slate-200 hover:bg-white hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-cyan-500"
-          : "h-11 shrink-0 rounded-md px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-950",
-        compact && "size-9 px-0",
-        active && "border-cyan-300 bg-cyan-50 text-slate-950 shadow-sm",
-      )}
+      className={baseClass}
       data-testid={`${testPrefix}-${command.key}`}
       data-layout={layout}
     >
@@ -174,10 +248,10 @@ function CommandButton({ command, permissions, compact = false, testPrefix = "sh
         title={compact ? undefined : label}
         className={cn(
           "flex h-full items-center justify-center",
-          layout === "ribbon" ? "flex-col gap-0.5 text-center" : "gap-0.5",
+          layout === "ribbon" ? "flex-col gap-1 text-center" : "gap-1",
         )}
       >
-        <Icon className={cn("size-4", layout === "ribbon" && "size-[18px]")} aria-hidden="true" />
+        <Icon className={iconClass} aria-hidden="true" />
         <span className={cn("leading-tight whitespace-normal", compact && "sr-only")}>{label}</span>
       </Link>
     </Button>
@@ -205,13 +279,12 @@ function PrimaryAreaButton({ area, active, collapsed, onSelect }) {
       onClick={() => onSelect(area)}
       title={area.label}
       className={cn(
-        "h-10 rounded-lg flex items-center gap-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80",
-        collapsed ? "w-10 justify-center px-0" : "w-full px-3",
-        active ? "bg-white/10 text-white shadow-inner" : "text-slate-300 hover:bg-white/10 hover:text-white",
+        "flex min-h-[76px] w-full flex-col items-center justify-center gap-1 rounded-sm px-2 text-center text-[13px] font-medium leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80",
+        active ? "bg-blue-600 text-white shadow-inner" : "text-white hover:bg-white/10",
       )}
     >
-      <Icon className={cn("size-4 shrink-0", area.accent)} aria-hidden="true" />
-      {!collapsed && <span className="truncate">{area.label}</span>}
+      <Icon className={cn("size-7 shrink-0", active ? "text-white" : area.accent)} aria-hidden="true" />
+      <span className="line-clamp-2">{area.label}</span>
     </button>
   );
 
@@ -233,38 +306,22 @@ function SidebarInner({ collapsed, selectedAreaKey, onSelectArea, onNavigate, mo
         data-testid="app-shell-sidebar"
         data-collapsed={collapsed && !mobile ? "true" : "false"}
       >
-        <div className={cn("border-b border-white/10", collapsed && !mobile ? "px-2 py-3" : "px-4 py-4")}>
-          <div className={cn("flex items-center gap-3", collapsed && !mobile && "justify-center")}>
-            {collapsed && !mobile ? (
-              <SignGuyLogo
-                variant="mark"
-                className="size-11"
-                alt="SignGuy AI"
-                testId="sidebar-logo-compact"
-              />
-            ) : (
-              <SignGuyLogo
-                variant="full"
-                className="h-20 w-full max-w-[228px] justify-start"
-                imgClassName="object-left"
-                alt="SignGuy AI"
-                testId="sidebar-logo-full"
-              />
-            )}
-            {(!collapsed || mobile) && (
-              <div className="sr-only">
-                <div className="font-display font-semibold text-sm truncate" data-testid="sidebar-tenant-name">
-                  {tenant?.name || "SignGuy AI"}
-                </div>
-                <div className="text-[11px] text-slate-400 truncate">{tenant?.slug}</div>
-              </div>
-            )}
+        <div className="grid h-[72px] place-items-center border-b border-white/10 px-3">
+          <SignGuyLogo
+            variant="mark"
+            className="size-16"
+            alt="SignGuy AI"
+            testId="sidebar-logo-compact"
+          />
+          <div className="sr-only">
+            <div data-testid="sidebar-tenant-name">{tenant?.name || "SignGuy AI"}</div>
+            <div>{tenant?.slug}</div>
           </div>
         </div>
 
-        <nav className="flex-1 px-2 py-2 space-y-1 overflow-y-auto overflow-x-hidden" data-testid="primary-sidebar-nav" aria-label="Main application areas">
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="primary-sidebar-nav" aria-label="Main application areas">
           {navAreas.map((area) => (
-            <div key={area.key} className={cn(area.key === "control-center" && "border-t border-white/10 pt-2 mt-2")}>
+            <div key={area.key} className={cn("border-b border-white/5", area.key === "control-center" && "mt-3 border-t border-white/15 pt-3")}>
               <PrimaryAreaButton
                 area={area}
                 active={selectedAreaKey === area.key}
@@ -278,7 +335,11 @@ function SidebarInner({ collapsed, selectedAreaKey, onSelectArea, onNavigate, mo
           ))}
         </nav>
 
-        <div className="border-t border-white/10 px-2 py-2" data-testid="sidebar-bottom-controls">
+        <div className="space-y-2 border-t border-white/10 px-2 py-3" data-testid="sidebar-bottom-controls">
+          <AccountMenu sidebar />
+          <Button asChild size="icon" variant="ghost" className="mx-auto size-9 text-white hover:bg-white/10" data-testid="sidebar-notifications-button" aria-label="Notifications">
+            <Link to="/team/messages"><MessageSquare className="size-5" /></Link>
+          </Button>
           {!mobile && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -286,11 +347,11 @@ function SidebarInner({ collapsed, selectedAreaKey, onSelectArea, onNavigate, mo
                   type="button"
                   size="icon"
                   aria-label={pinned ? "Unpin sidebar" : "Pin sidebar open"}
-                  className="mx-auto size-9 bg-transparent text-slate-300 hover:bg-white/10 hover:text-white"
+                  className="sr-only"
                   data-testid="sidebar-pin-toggle"
                   onClick={onTogglePinned}
                 >
-                  {pinned ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
+                  <Menu className="size-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side={collapsed ? "right" : "top"}>{pinned ? "Unpin sidebar" : "Pin sidebar open"}</TooltipContent>
@@ -310,10 +371,10 @@ function ModuleTabs({ area, permissions, user }) {
     <div
       data-testid="module-tab-row"
       data-area-key={area.key}
-      className="flex min-w-0 flex-1"
+      className="flex min-w-0 flex-1 justify-center"
       aria-label={`${area.label} secondary navigation`}
     >
-      <div className="flex h-11 items-end gap-1 overflow-x-auto rounded-t-lg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex h-14 items-end gap-5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {visibleItems.map((item) => {
           const active = itemMatchesPath(item, location.pathname);
           return (
@@ -324,10 +385,10 @@ function ModuleTabs({ area, permissions, user }) {
               aria-current={active ? "page" : undefined}
               data-active={active ? "true" : "false"}
               className={cn(
-                "mb-[-1px] inline-flex h-9 shrink-0 items-center rounded-t-md border border-b-0 px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
+                "inline-flex h-14 shrink-0 items-center border-b-2 px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
                 active
-                  ? "border-cyan-300 bg-cyan-50 text-slate-950 shadow-sm"
-                  : "border-slate-200 bg-white/70 text-slate-600 hover:border-slate-300 hover:bg-white hover:text-slate-950",
+                  ? "border-blue-600 text-blue-700"
+                  : "border-transparent text-slate-950 hover:border-blue-200 hover:text-blue-700",
               )}
             >
               {item.label}
@@ -430,7 +491,7 @@ function Breadcrumbs({ area, module }) {
   );
 }
 
-function GlobalSearch() {
+function GlobalSearch({ blue = false }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -494,7 +555,7 @@ function GlobalSearch() {
 
   return (
     <form
-      className="relative hidden w-full max-w-md md:block"
+      className="relative hidden w-full max-w-xs md:block"
       role="search"
       data-testid="global-search"
       onSubmit={(event) => {
@@ -509,13 +570,18 @@ function GlobalSearch() {
         }
       }}
     >
-      <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+      <Search className={cn("pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2", blue ? "text-white" : "text-slate-400")} />
       <input
         type="search"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search customers, orders, quotes..."
-        className="h-9 w-full rounded-md border border-slate-200 bg-white pl-8 pr-3 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
+        placeholder="Search"
+        className={cn(
+          "h-9 w-full rounded-md border pl-8 pr-3 text-sm outline-none",
+          blue
+            ? "border-white/80 bg-white/5 text-white placeholder:text-white focus:border-white focus:ring-2 focus:ring-white/30"
+            : "border-slate-200 bg-white text-slate-950 placeholder:text-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100",
+        )}
         aria-label="Global search"
         onFocus={() => setOpen(true)}
         onKeyDown={(event) => {
@@ -550,12 +616,18 @@ function GlobalSearch() {
   );
 }
 
-function CreateMenu({ permissions }) {
+function CreateMenu({ permissions, blue = false }) {
   const actions = CREATE_KEYS.map((key) => COMMANDS[key]).filter((command) => command && allowedCommand(command, permissions));
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button size="sm" data-testid="global-create-menu"><Plus className="mr-1 size-4" />Create</Button>
+        <Button
+          size="sm"
+          data-testid="global-create-menu"
+          className={cn(blue && "border border-slate-950 bg-slate-950 text-white hover:bg-slate-900")}
+        >
+          <Plus className="mr-1 size-4" />Create
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         {actions.map((action) => {
@@ -571,7 +643,7 @@ function CreateMenu({ permissions }) {
   );
 }
 
-function AccountMenu() {
+function AccountMenu({ sidebar = false }) {
   const { user, tenant, logout, permissions } = useAuth();
   const { confirmBeforeAbandon } = useWorkspace();
   const canPlatformAdmin = permissions?.includes("platform:admin") || permissions?.includes("platform:creator") || user?.platform_admin || user?.platform_role;
@@ -580,8 +652,13 @@ function AccountMenu() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="grid size-9 place-items-center rounded-lg hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
-          data-testid="global-account-menu"
+          className={cn(
+            "grid size-9 place-items-center rounded-lg focus-visible:outline-none focus-visible:ring-2",
+            sidebar
+              ? "mx-auto text-white hover:bg-white/10 focus-visible:ring-white/80"
+              : "hover:bg-white/10 focus-visible:ring-white/80",
+          )}
+          data-testid={sidebar ? "sidebar-account-menu" : "global-account-menu"}
           aria-label="Account menu"
         >
           <Avatar className="size-8">
@@ -615,33 +692,54 @@ function AccountMenu() {
 }
 
 function GlobalHeader({ area, module, permissions, onOpenMobileNav }) {
-  const headerTitle = module?.label || area?.label || "Overview";
+  const headerTitle = area?.key === "shop-operations" ? "Shop Operations" : area?.label || module?.label || "Overview";
+  const quickIcons = [
+    { key: "menu", label: "Menu", icon: Menu, onClick: onOpenMobileNav },
+    { key: "create", label: "Create", icon: Plus, to: "/intake/new" },
+    { key: "search", label: "Search", icon: Search, to: "/customers" },
+    { key: "review", label: "Review", icon: CheckCircle2, to: "/approval-center" },
+    { key: "grid", label: "Apps", icon: Grid3X3, to: "/" },
+    { key: "list", label: "Queues", icon: List, to: "/orders" },
+  ];
   return (
-    <div className="border-b border-slate-200 bg-white px-4 md:px-6" data-testid="global-header">
-      <div className="flex h-16 items-center gap-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0 lg:hidden"
-          data-testid="sidebar-open-mobile"
-          aria-label="Open navigation"
-          onClick={onOpenMobileNav}
-        >
-          <Menu className="size-4" />
-        </Button>
-        <div className="min-w-0 shrink-0 md:w-[260px]">
-          <h1 className="truncate text-lg font-semibold leading-tight text-slate-950" data-testid="global-header-title">{headerTitle}</h1>
-          <div className="mt-0.5 min-w-0" data-testid="global-breadcrumb-row">
+    <div className="bg-blue-600 px-4 text-white shadow-sm md:px-6" data-testid="global-header">
+      <div className="grid h-[72px] grid-cols-[auto_1fr_auto] items-center gap-4">
+        <div className="flex items-center gap-3">
+          {quickIcons.map((item) => {
+            const Icon = item.icon;
+            const className = "grid size-10 place-items-center rounded-md text-white/95 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80";
+            if (item.onClick) {
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={className}
+                  data-testid="sidebar-open-mobile"
+                  aria-label={item.label}
+                  onClick={item.onClick}
+                >
+                  <Icon className="size-7" aria-hidden="true" />
+                </button>
+              );
+            }
+            return (
+              <Link key={item.key} to={item.to} className={className} aria-label={item.label} title={item.label}>
+                <Icon className="size-7" aria-hidden="true" />
+              </Link>
+            );
+          })}
+        </div>
+        <div className="min-w-0 text-center">
+          <h1 className="truncate text-2xl font-bold leading-tight text-white" data-testid="global-header-title">{headerTitle}</h1>
+          <div className="sr-only" data-testid="global-breadcrumb-row">
             <Breadcrumbs area={area} module={module} />
           </div>
         </div>
-        <div className="min-w-0 flex-1" />
-        <GlobalSearch />
-        <div className="flex shrink-0 items-center gap-1">
-          <CreateMenu permissions={permissions} />
-          <Button asChild size="icon" variant="ghost" data-testid="global-messages-button" aria-label="Messages">
-            <Link to="/team/messages"><MessageSquare className="size-4" /></Link>
+        <div className="flex min-w-0 shrink-0 items-center justify-end gap-3">
+          <GlobalSearch blue />
+          <CreateMenu permissions={permissions} blue />
+          <Button asChild size="icon" variant="ghost" className="size-10 text-white hover:bg-white/10" data-testid="global-messages-button" aria-label="Messages">
+            <Link to="/team/messages"><MessageSquare className="size-6" /></Link>
           </Button>
           <NotificationBell />
           <AccountMenu />
@@ -651,11 +749,36 @@ function GlobalHeader({ area, module, permissions, onOpenMobileNav }) {
   );
 }
 
+function normalizeRibbonGroups(area, module, activeSalesTab) {
+  if (module?.key === "sales") {
+    if (activeSalesTab?.key === "orders") {
+      return [
+        ["Create", ["newOrder"]],
+        ["Views", []],
+      ];
+    }
+    if (activeSalesTab?.key === "quotes") {
+      return [
+        ["Create", ["newQuote"]],
+        ["Pricing", ["pricing"]],
+        ["Customer", ["sendQuote", "followUp", "requestApproval"]],
+        ["Workflow", ["convertOrder", "scheduleInstall"]],
+        ["View", ["filter"]],
+      ];
+    }
+    return RIBBON_BY_MODULE.sales;
+  }
+
+  const configured = RIBBON_BY_MODULE[module?.key] || RIBBON_BY_AREA[area?.key] || ["dashboard"];
+  if (!Array.isArray(configured)) return [["Actions", ["dashboard"]]];
+  if (Array.isArray(configured[0])) return configured;
+  return [["Actions", configured]];
+}
+
 function ContextualRibbon({ area, module, permissions }) {
   const location = useLocation();
   const navigate = useNavigate();
   const activeSalesTab = module?.key === "sales" ? routeInternalTab(location.pathname, location.search) : null;
-  const isSalesModule = module?.key === "sales";
   const isOrdersPage = activeSalesTab?.key === "orders" && location.pathname === "/orders";
   const params = new URLSearchParams(location.search || "");
   const currentOrderView = ORDER_VIEW_OPTIONS.some((view) => view.status === params.get("status"))
@@ -669,61 +792,31 @@ function ContextualRibbon({ area, module, permissions }) {
     const query = next.toString();
     navigate(`${location.pathname}${query ? `?${query}` : ""}`);
   };
-  const keys = isSalesModule
-    ? {
-        intake: ["newIntake"],
-        quotes: ["newQuote"],
-        orders: ["newOrder"],
-      }[activeSalesTab?.key] || []
-    : RIBBON_BY_MODULE[module?.key] || RIBBON_BY_AREA[area?.key] || ["dashboard"];
-  const commands = keys.map((key) => COMMANDS[key]).filter(Boolean);
+  const groups = normalizeRibbonGroups(area, module, activeSalesTab);
   return (
     <TooltipProvider delayDuration={200}>
       <div
         data-testid="contextual-ribbon"
         data-area-key={area?.key}
         data-module-key={module?.key}
-        className="border-b border-slate-200 bg-slate-50 px-4 py-1 md:px-6"
+        className="border-b border-slate-200 bg-white px-4 md:px-6"
       >
-        <div className="flex h-14 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {isSalesModule && (
-            <>
+        <div className="flex h-[114px] items-stretch gap-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {groups.map(([groupLabel, keys], groupIndex) => {
+            const commands = keys.map((key) => COMMANDS[key]).filter(Boolean);
+            const showOrderViews = isOrdersPage && groupLabel === "Views";
+            return (
               <div
-                role="tablist"
-                aria-label="Sales navigation"
-                data-testid="sales-command-selector"
-                className="flex h-8 shrink-0 items-center overflow-hidden rounded-md border border-slate-200 bg-white"
+                key={`${groupLabel}-${groupIndex}`}
+                className={cn("flex shrink-0 flex-col justify-between px-3 py-3", groupIndex > 0 && "border-l border-slate-200")}
+                data-testid={`ribbon-group-${groupLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
               >
-                {SALES_INTERNAL_TABS.map((tab) => {
-                  const active = activeSalesTab?.key === tab.key;
-                  return (
-                    <Link
-                      key={tab.key}
-                      to={tab.to}
-                      role="tab"
-                      aria-selected={active ? "true" : "false"}
-                      aria-current={active ? "page" : undefined}
-                      data-active={active ? "true" : "false"}
-                      data-testid={`internal-tab-${tab.key}`}
-                      className={cn(
-                        "inline-flex h-full shrink-0 items-center border-r border-slate-200 px-2.5 text-xs font-medium transition-colors last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-500",
-                        active ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950",
-                      )}
-                    >
-                      {tab.label}
-                    </Link>
-                  );
-                })}
-              </div>
-              <div className="mx-1 h-9 w-px shrink-0 bg-slate-200" aria-hidden="true" data-testid="sales-command-divider" />
-            </>
-          )}
-          {commands.map((command) => (
-            <CommandButton key={command.key} command={command} permissions={permissions} testPrefix="ribbon-command" layout="ribbon" />
-          ))}
-          {isOrdersPage && (
-            <>
-              <div className="mx-1 h-9 w-px shrink-0 bg-slate-200" aria-hidden="true" data-testid="ribbon-group-divider" />
+                <div className="flex items-center gap-1">
+                  {commands.map((command) => (
+                    <CommandButton key={command.key} command={command} permissions={permissions} testPrefix="ribbon-command" layout="ribbon" />
+                  ))}
+                  {showOrderViews && (
+                    <>
               {ORDER_QUICK_VIEW_KEYS.map((key) => ORDER_VIEW_OPTIONS.find((view) => view.key === key)).filter(Boolean).map((view) => {
                 const Icon = view.icon;
                 const active = currentOrderView === view.status;
@@ -736,9 +829,9 @@ function ContextualRibbon({ area, module, permissions }) {
                         data-active={active ? "true" : "false"}
                         aria-pressed={active ? "true" : "false"}
                         className={cn(
-                          "flex h-[52px] w-[76px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-md border px-1.5 py-1 text-center text-[11px] leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
+                          "flex h-[62px] w-[76px] shrink-0 flex-col items-center justify-center gap-1 rounded-sm border px-1.5 py-1 text-center text-[11px] leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
                           active
-                            ? "border-cyan-300 bg-cyan-50 text-slate-950 shadow-sm"
+                            ? "border-blue-300 bg-blue-50 text-slate-950 shadow-sm"
                             : "border-transparent text-slate-700 hover:border-slate-200 hover:bg-white hover:text-slate-950",
                         )}
                         onClick={() => setOrderView(view.status)}
@@ -756,7 +849,7 @@ function ContextualRibbon({ area, module, permissions }) {
                   <button
                     type="button"
                     data-testid="ribbon-order-views-dropdown"
-                    className="flex h-[52px] w-[76px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-md border border-transparent px-1.5 py-1 text-center text-[11px] leading-tight text-slate-700 transition-colors hover:border-slate-200 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+                    className="flex h-[62px] w-[76px] shrink-0 flex-col items-center justify-center gap-1 rounded-sm border border-transparent px-1.5 py-1 text-center text-[11px] leading-tight text-slate-700 transition-colors hover:border-slate-200 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
                     <ShoppingBag className="size-[18px]" aria-hidden="true" />
                     <span>Order Views</span>
@@ -778,14 +871,19 @@ function ContextualRibbon({ area, module, permissions }) {
                       >
                         <Icon className="mr-2 size-4" aria-hidden="true" />
                         {view.label}
-                        {active && <span className="ml-auto text-xs text-cyan-700">Active</span>}
+                        {active && <span className="ml-auto text-xs text-blue-700">Active</span>}
                       </DropdownMenuItem>
                     );
                   })}
                 </DropdownMenuContent>
               </DropdownMenu>
-            </>
-          )}
+                    </>
+                  )}
+                </div>
+                <div className="pt-1 text-center text-[11px] font-medium uppercase tracking-wide text-slate-500">{groupLabel}</div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </TooltipProvider>
@@ -825,57 +923,25 @@ function ShellInternalTabs({ module }) {
   } else if (/^\/orders\/[^/]+/.test(pathname)) {
     tabs = ORDER_RECORD_TABS;
     activeKey = params.get("tab") || "overview";
+  } else if (module?.key === "sales" && ["/intake", "/quotes", "/orders"].includes(pathname)) {
+    tabs = SALES_INTERNAL_TABS;
+    activeKey = routeInternalTab(pathname, location.search)?.key;
   }
 
   if (!tabs.length) return null;
 
   return (
     <div className="border-b border-slate-200 bg-white px-4 py-1.5 md:px-6" data-testid="shell-internal-tabs">
-      <div role="tablist" aria-label="Internal page tabs" className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div
+        role="tablist"
+        aria-label={module?.key === "sales" ? "Sales navigation" : "Internal page tabs"}
+        data-testid={module?.key === "sales" ? "sales-command-selector" : undefined}
+        className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         {tabs.map((tab) => {
           const to = tab.to || `${basePath}?tab=${tab.key}`;
           return <InternalTabLink key={tab.key} tab={tab} active={activeKey === tab.key} to={to} />;
         })}
-      </div>
-    </div>
-  );
-}
-
-function QuickAccessToolbar({ permissions }) {
-  return (
-    <TooltipProvider delayDuration={200}>
-      <div
-        className="shrink-0 py-1"
-        data-testid="quick-access-toolbar"
-        aria-label="Quick access toolbar"
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" data-testid="quick-access-actions">
-            {QUICK_ACCESS_KEYS.map((key) => (
-              <CommandButton key={key} command={COMMANDS[key]} permissions={permissions} compact testPrefix="qat-command" />
-            ))}
-          </div>
-        </div>
-      </div>
-    </TooltipProvider>
-  );
-}
-
-function ShellPageHeading({ area, module }) {
-  return (
-    <div className="border-b border-slate-200 bg-white px-4 py-3 md:px-6" data-testid="shell-page-heading">
-      <div className="text-xs text-slate-500" data-testid="shell-breadcrumb">
-        {area?.label || "Shop Operations"} / {module?.label || "Overview"}
-      </div>
-      <div className="mt-1 flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-normal text-slate-950" data-testid="shell-page-title">
-            {module?.label || area?.label || "Overview"}
-          </h1>
-          <p className="text-sm text-slate-500" data-testid="shell-page-description">
-            {area?.label || "Shop Operations"} workspace
-          </p>
-        </div>
       </div>
     </div>
   );
@@ -908,7 +974,6 @@ function AppShellFrame() {
   const pathArea = useMemo(() => findAreaForPath(location.pathname), [location.pathname]);
   const selectedArea = PRIMARY_NAV_AREAS.find((area) => area.key === (selectedAreaKey || pathArea.key)) || pathArea;
   const activeModule = activeModuleForPath(selectedArea, location.pathname, permissions, user);
-  const isWebstoreDetailRoute = activeModule?.key === "webstores" && location.pathname.startsWith("/webstores/");
 
   useEffect(() => {
     setSelectedAreaKey(pathArea.key);
@@ -1045,21 +1110,19 @@ function AppShellFrame() {
           </Sheet>
           <header className="sticky top-0 z-30 bg-white shadow-sm" data-testid="app-shell-topbar">
             <GlobalHeader area={selectedArea} module={activeModule} permissions={permissions} onOpenMobileNav={() => setMobileOpen(true)} />
-            <div className="flex h-11 min-w-0 items-center gap-3 border-b border-slate-200 bg-white px-4 md:px-6" data-testid="secondary-navigation-row">
+            <div className="flex min-w-0 items-center gap-3 border-b border-slate-200 bg-white px-4 md:px-6" data-testid="secondary-navigation-row">
               <ModuleTabs area={selectedArea} permissions={permissions} user={user} />
-              <QuickAccessToolbar permissions={permissions} />
             </div>
+            <ContextualRibbon area={selectedArea} module={activeModule} permissions={permissions} />
           </header>
 
           <SupportModeBanner />
-          {!isWebstoreDetailRoute && activeModule?.key !== "sales" && <ShellPageHeading area={selectedArea} module={activeModule} />}
           <ShellInternalTabs module={activeModule} />
-          <ContextualRibbon area={selectedArea} module={activeModule} permissions={permissions} />
-          <main className="w-full px-4 py-3 pb-24 md:px-6" data-testid="app-shell-content" data-active-path={location.pathname}>
+          <main className="w-full bg-slate-50 px-4 py-5 pb-24 md:px-6" data-testid="app-shell-content" data-active-path={location.pathname}>
             <Outlet />
           </main>
           <div className="h-16 md:h-14" data-testid="workspace-dock-reserved-space" aria-hidden="true" />
-          <WorkspaceDock sidebarCollapsed />
+          <WorkspaceDock />
           <AssistantLauncher />
         </div>
       </div>

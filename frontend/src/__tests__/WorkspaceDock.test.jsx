@@ -232,8 +232,8 @@ test("dock tabs render occupied slot numbers, full tooltips, and the plus worksp
   );
 
   await user.click(screen.getByTestId("workspace-new-button"));
-  expect(screen.getByTestId("workspace-plus-popover")).toBeInTheDocument();
-  expect(screen.getByTestId("current-location")).toHaveTextContent("/orders/order-1?tab=items");
+  expect(screen.queryByTestId("workspace-plus-popover")).not.toBeInTheDocument();
+  expect(screen.getByTestId("current-location")).toHaveTextContent("/");
 });
 
 test("eligible record context action opens the record in a new workspace without replacing the current page first", async () => {

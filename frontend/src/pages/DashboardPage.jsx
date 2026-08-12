@@ -44,7 +44,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6" data-testid="dashboard-page">
-      <PageHeader title="Home" subtitle="Everything that needs your attention today." testId="dashboard-header" />
+      <PageHeader title="Overview" subtitle="What needs attention across shop operations" testId="dashboard-header" />
       {isLoading ? (
         <CardsSkeleton />
       ) : error ? (

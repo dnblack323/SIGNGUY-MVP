@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  BriefcaseBusiness,
   ChevronLeft,
   ChevronRight,
   MoreHorizontal,
@@ -10,7 +11,6 @@ import {
   RotateCcw,
   X,
 } from "lucide-react";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -67,17 +67,17 @@ function WorkspaceTab({ workspace, index, all, compact = false }) {
       data-active={workspace.active ? "true" : "false"}
       data-dirty={workspace.dirty ? "true" : "false"}
       className={cn(
-        "group flex items-center gap-1 rounded-md border px-1.5 py-1 text-xs shadow-sm",
+        "group flex items-center gap-1 rounded-sm border px-1.5 py-1 text-xs shadow-sm",
         workspace.active
-          ? "border-cyan-500 bg-white text-slate-950"
-          : "border-slate-300 bg-slate-100 text-slate-600 hover:bg-white",
+          ? "border-blue-500 bg-blue-600 text-white"
+          : "border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800",
         compact ? "w-full" : "w-auto",
       )}
     >
       <button
         type="button"
         onClick={() => activate(workspace)}
-        className="flex items-center gap-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+        className="flex items-center gap-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
         title={workspaceTooltip(workspace, index + 1)}
         aria-current={workspace.active ? "page" : undefined}
         aria-label={`Workspace ${index + 1}: ${workspace.label}`}
@@ -85,19 +85,19 @@ function WorkspaceTab({ workspace, index, all, compact = false }) {
         <span
           className={cn(
             "grid size-5 shrink-0 place-items-center rounded border text-[11px] font-semibold",
-            workspace.active ? "border-cyan-500 bg-cyan-50 text-cyan-700" : "border-slate-300 bg-white text-slate-500",
+            workspace.active ? "border-blue-200 bg-white text-blue-700" : "border-slate-600 bg-slate-950 text-slate-200",
           )}
           aria-hidden="true"
         >
           {index + 1}
         </span>
-        {workspace.pinned && <Pin className="size-3 shrink-0 text-cyan-600" aria-hidden="true" />}
+        {workspace.pinned && <Pin className={cn("size-3 shrink-0", workspace.active ? "text-white" : "text-blue-300")} aria-hidden="true" />}
         {workspace.dirty && <span className="size-1.5 shrink-0 rounded-full bg-amber-500" aria-label="Unsaved changes" />}
         {compact && <span className="truncate">{workspace.label}</span>}
       </button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" size="icon" variant="ghost" className="size-6" aria-label={`Workspace ${index + 1} actions`}>
+          <Button type="button" size="icon" variant="ghost" className="size-6 hover:bg-white/10" aria-label={`Workspace ${index + 1} actions`}>
             <MoreHorizontal className="size-3" />
           </Button>
         </DropdownMenuTrigger>
@@ -255,21 +255,23 @@ function MobileOpenWork() {
   );
 }
 
-export default function WorkspaceDock({ sidebarCollapsed }) {
-  const { open_workspaces, loading, error, refresh } = useWorkspace();
-  const [recentOpen, setRecentOpen] = useState(false);
-  const leftOffset = "lg:left-[76px]";
+export default function WorkspaceDock() {
+  const { open_workspaces, loading, error, refresh, openFreshWorkspace } = useWorkspace();
+  const leftOffset = "lg:left-[96px]";
   return (
     <TooltipProvider delayDuration={200}>
       <div
         className={cn(
-          "fixed inset-x-0 bottom-0 z-30 hidden border-t border-slate-300 bg-white/95 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:block",
+          "fixed inset-x-0 bottom-0 z-30 hidden border-t border-slate-800 bg-slate-950 text-white shadow-[0_-8px_24px_rgba(15,23,42,0.22)] md:block",
           leftOffset,
         )}
         data-testid="workspace-dock"
       >
-        <div className="flex min-h-14 items-center gap-2 px-3 py-2">
-          <div className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Open Work</div>
+        <div className="flex min-h-14 items-center gap-3 px-4 py-2">
+          <div className="flex shrink-0 items-center gap-2 text-sm font-semibold text-white" data-testid="workspace-dock-label">
+            <BriefcaseBusiness className="size-4" aria-hidden="true" />
+            Workspace Dock
+          </div>
           {loading && <div className="text-xs text-slate-500">Loading...</div>}
           {error && (
             <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-testid="workspace-api-error">
@@ -297,29 +299,23 @@ export default function WorkspaceDock({ sidebarCollapsed }) {
                   type="button"
                   size="icon"
                   variant="outline"
-                  className="size-8 shrink-0 rounded-md"
-                  aria-label="Open recent or search workspace"
+                  className="size-9 shrink-0 rounded-sm border-slate-700 bg-slate-950 text-white hover:bg-slate-900"
+                  aria-label="Open new workspace"
                   data-testid="workspace-new-button"
-                  onClick={() => setRecentOpen((value) => !value)}
+                  onClick={openFreshWorkspace}
                 >
                   <Plus className="size-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">Recent records and search-to-open</TooltipContent>
+              <TooltipContent side="top">Open new workspace</TooltipContent>
             </Tooltip>
-            {recentOpen && (
-              <div className="absolute bottom-12 right-28 w-80 rounded-md border bg-white p-2 shadow-xl" data-testid="workspace-plus-popover">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Recent records</div>
-                <RecentList />
-              </div>
-            )}
           </div>
           <div className="relative shrink-0">
             <details className="group" data-testid="workspace-recent-menu">
-              <summary className="cursor-pointer list-none rounded-md border px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">
+              <summary className="cursor-pointer list-none rounded-sm border border-slate-700 px-2 py-1 text-xs font-medium text-slate-200 hover:bg-slate-900">
                 Recent Work
               </summary>
-              <div className="absolute bottom-9 right-0 w-80 rounded-md border bg-white p-2 shadow-xl">
+              <div className="absolute bottom-9 right-0 w-80 rounded-md border bg-white p-2 text-slate-950 shadow-xl">
                 <RecentList />
               </div>
             </details>

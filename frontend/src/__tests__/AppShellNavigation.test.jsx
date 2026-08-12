@@ -104,6 +104,7 @@ function renderShell(initialPath = "/", authOverrides = {}) {
       <Routes>
         <Route element={<AppShell />}>
           <Route path="/" element={<><LocationProbe /><Page name="overview" /></>} />
+          <Route path="/home" element={<><LocationProbe /><Page name="home" /></>} />
           <Route path="/intake" element={<><LocationProbe /><Page name="intake" /></>} />
           <Route path="/intake/:id" element={<><LocationProbe /><Page name="intake-detail" /></>} />
           <Route path="/quotes" element={<><LocationProbe /><Page name="quotes" /></>} />
@@ -139,7 +140,7 @@ function waitMs(ms) {
   });
 }
 
-test("single-level sidebar renders the exact area order and only the pin control at the bottom", async () => {
+test("single-level sidebar renders the exact area order and bottom account controls", async () => {
   renderShell("/orders");
 
   const navButtons = within(screen.getByTestId("primary-sidebar-nav")).getAllByRole("button");
@@ -154,6 +155,8 @@ test("single-level sidebar renders the exact area order and only the pin control
   ]);
   expect(screen.queryByTestId("flyout-shop-operations")).not.toBeInTheDocument();
   expect(within(screen.getByTestId("sidebar-bottom-controls")).getByTestId("sidebar-pin-toggle")).toBeInTheDocument();
+  expect(within(screen.getByTestId("sidebar-bottom-controls")).getByTestId("sidebar-account-menu")).toBeInTheDocument();
+  expect(within(screen.getByTestId("sidebar-bottom-controls")).getByTestId("sidebar-notifications-button")).toBeInTheDocument();
   expect(within(screen.getByTestId("sidebar-bottom-controls")).queryByTestId("notification-bell")).not.toBeInTheDocument();
   expect(within(screen.getByTestId("sidebar-bottom-controls")).queryByTestId("sidebar-global-search")).not.toBeInTheDocument();
 });
@@ -165,12 +168,12 @@ test("desktop sidebar hover and pin expand as an overlay without shifting the wo
   const sidebar = screen.getByTestId("desktop-sidebar-shell");
   const mainRegion = screen.getByTestId("app-shell-main-region");
   expect(sidebar).toHaveAttribute("data-expanded", "false");
-  expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("76px");
+  expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("96px");
 
   fireEvent.mouseEnter(sidebar);
   expect(sidebar).toHaveAttribute("data-expanded", "true");
-  expect(sidebar).toHaveAttribute("data-sidebar-width", "260");
-  expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("76px");
+  expect(sidebar).toHaveAttribute("data-sidebar-width", "96");
+  expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("96px");
 
   await user.click(screen.getByTestId("sidebar-pin-toggle"));
   expect(sidebar).toHaveAttribute("data-pinned", "true");
@@ -178,14 +181,14 @@ test("desktop sidebar hover and pin expand as an overlay without shifting the wo
   fireEvent.mouseLeave(sidebar);
   await waitMs(220);
   expect(sidebar).toHaveAttribute("data-expanded", "true");
-  expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("76px");
+  expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("96px");
 });
 
 test("global header contains breadcrumbs, search, create, messages, notifications, and account controls", async () => {
   renderShell("/orders/order-1042?tab=items");
 
   const header = screen.getByTestId("global-header");
-  expect(within(header).getByTestId("global-header-title")).toHaveTextContent("Sales");
+  expect(within(header).getByTestId("global-header-title")).toHaveTextContent("Shop Operations");
   expect(within(header).queryByTestId("global-header-subtitle")).not.toBeInTheDocument();
   expect(within(header).getByTestId("global-breadcrumbs")).toHaveTextContent("Shop Operations/Orders/Order #order-1042");
   expect(within(header).getByTestId("global-search")).toBeInTheDocument();
@@ -198,7 +201,7 @@ test("global header contains breadcrumbs, search, create, messages, notification
 test("Orders hierarchy uses one compact header, one module tab row, and one combined Sales command bar", async () => {
   renderShell("/orders");
 
-  expect(screen.getByTestId("global-header-title")).toHaveTextContent("Sales");
+  expect(screen.getByTestId("global-header-title")).toHaveTextContent("Shop Operations");
   expect(screen.queryByTestId("global-header-subtitle")).not.toBeInTheDocument();
   expect(screen.getByTestId("global-breadcrumbs")).toHaveTextContent("Shop Operations/Orders");
   expect(screen.queryByTestId("shell-page-heading")).not.toBeInTheDocument();
@@ -207,8 +210,9 @@ test("Orders hierarchy uses one compact header, one module tab row, and one comb
 
   const secondaryNav = screen.getByTestId("secondary-navigation-row");
   const ribbon = screen.getByTestId("contextual-ribbon");
-  expect(screen.queryByTestId("shell-internal-tabs")).not.toBeInTheDocument();
-  expect(within(ribbon).getByTestId("sales-command-selector")).toBeInTheDocument();
+  expect(screen.getByTestId("shell-internal-tabs")).toBeInTheDocument();
+  expect(within(screen.getByTestId("shell-internal-tabs")).getByTestId("sales-command-selector")).toBeInTheDocument();
+  expect(within(ribbon).queryByTestId("sales-command-selector")).not.toBeInTheDocument();
   expect(secondaryNav.compareDocumentPosition(ribbon) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
@@ -216,7 +220,7 @@ test("Shop Operations secondary navigation uses Sales and omits direct Intake, Q
   renderShell("/orders");
 
   const labels = within(screen.getByTestId("module-tab-row")).getAllByRole("link").map((link) => link.textContent);
-  expect(labels).toEqual(["Overview", "Sales", "Customers", "Production", "Approval Center", "Webstores", "Wrap Lab"]);
+  expect(labels).toEqual(["Overview", "Customers", "Sales", "Approval Center", "Production", "Webstores", "Wrap Lab"]);
   expect(screen.getByTestId("module-nav-sales")).toHaveAttribute("aria-current", "page");
   expect(screen.queryByTestId("module-nav-intake")).not.toBeInTheDocument();
   expect(screen.queryByTestId("module-nav-quotes")).not.toBeInTheDocument();
@@ -239,8 +243,8 @@ test("Orders route activates Sales and Orders tabs with the ribbon directly belo
   expect(screen.getByTestId("internal-tab-orders")).toHaveAttribute("data-active", "true");
   expect(screen.getByTestId("internal-tab-orders")).toHaveAttribute("aria-current", "page");
   expect(screen.queryByText(/^SALES$/)).not.toBeInTheDocument();
-  expect(screen.queryByTestId("shell-internal-tabs")).not.toBeInTheDocument();
-  expect(screen.getByTestId("contextual-ribbon")).toContainElement(screen.getByTestId("sales-command-selector"));
+  expect(screen.getByTestId("shell-internal-tabs")).toContainElement(screen.getByTestId("sales-command-selector"));
+  expect(screen.getByTestId("contextual-ribbon")).not.toContainElement(screen.getByTestId("sales-command-selector"));
 });
 
 test("Orders ribbon uses icon-over-label commands and exposes all order views", async () => {
@@ -309,7 +313,7 @@ test("Create menu is permission-aware and keeps Intake Request, Quote, and Order
 
   await user.click(screen.getByTestId("global-create-menu"));
 
-  expect(screen.getByTestId("create-action-newIntake")).toHaveTextContent("New Intake Request");
+  expect(screen.getByTestId("create-action-newIntake")).toHaveTextContent("New Intake");
   expect(screen.queryByTestId("create-action-newQuote")).not.toBeInTheDocument();
   expect(screen.getByTestId("create-action-newOrder")).toHaveTextContent("New Order");
 });

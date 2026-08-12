@@ -24,13 +24,13 @@ export const PRIMARY_NAV_AREAS = [
     label: "Home",
     icon: Home,
     accent: "text-sky-300",
-    to: "/",
+    to: "/home",
     testId: "primary-nav-home",
     moduleNav: [
       {
         key: "overview",
         label: "Overview",
-        to: "/",
+        to: "/home",
         testId: "module-nav-home-overview",
       },
     ],
@@ -50,13 +50,6 @@ export const PRIMARY_NAV_AREAS = [
         testId: "module-nav-shop-overview",
       },
       {
-        key: "sales",
-        label: "Sales",
-        to: "/sales/intake",
-        testId: "module-nav-sales",
-        match: ["/sales", "/intake", "/quotes", "/orders"],
-      },
-      {
         key: "customers",
         label: "Customers",
         to: "/customers",
@@ -65,12 +58,11 @@ export const PRIMARY_NAV_AREAS = [
         match: ["/customers"],
       },
       {
-        key: "production",
-        label: "Production",
-        to: "/work-orders",
-        perm: "work_order:read",
-        testId: "module-nav-production",
-        match: ["/work-orders", "/kiosk/production"],
+        key: "sales",
+        label: "Sales",
+        to: "/sales/intake",
+        testId: "module-nav-sales",
+        match: ["/sales", "/intake", "/quotes", "/orders"],
       },
       {
         key: "approval-center",
@@ -79,6 +71,14 @@ export const PRIMARY_NAV_AREAS = [
         perm: "decision_room:read",
         testId: "module-nav-approval-center",
         match: ["/approval-center", "/decision-rooms", "/decision-room-review-queue"],
+      },
+      {
+        key: "production",
+        label: "Production",
+        to: "/work-orders",
+        perm: "work_order:read",
+        testId: "module-nav-production",
+        match: ["/work-orders"],
       },
       {
         key: "webstores",
