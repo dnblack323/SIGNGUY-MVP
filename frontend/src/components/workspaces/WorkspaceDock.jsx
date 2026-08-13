@@ -262,7 +262,7 @@ export default function WorkspaceDock() {
     <TooltipProvider delayDuration={200}>
       <div
         className={cn(
-          "fixed inset-x-0 bottom-0 z-30 hidden border-t border-slate-800 bg-slate-950 text-white shadow-[0_-8px_24px_rgba(15,23,42,0.22)] md:block",
+          "fixed inset-x-0 bottom-0 z-30 hidden min-h-[var(--workspace-dock-height)] border-t border-slate-800 bg-slate-950 text-white shadow-[0_-8px_24px_rgba(15,23,42,0.22)] md:block",
           leftOffset,
         )}
         data-testid="workspace-dock"

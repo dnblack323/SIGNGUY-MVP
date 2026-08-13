@@ -24,10 +24,6 @@ jest.mock("@/components/notifications/NotificationBell", () => function Notifica
   return <button type="button" data-testid="notification-bell">Notifications</button>;
 });
 
-jest.mock("@/components/assistant/AssistantLauncher", () => function AssistantLauncherMock() {
-  return <div data-testid="assistant-launcher" />;
-});
-
 jest.setTimeout(15000);
 
 const FULL_PERMISSIONS = [
@@ -234,6 +230,20 @@ test("dock tabs render occupied slot numbers, full tooltips, and the plus worksp
   await user.click(screen.getByTestId("workspace-new-button"));
   expect(screen.queryByTestId("workspace-plus-popover")).not.toBeInTheDocument();
   expect(screen.getByTestId("current-location")).toHaveTextContent("/");
+});
+
+test("assistant launcher is positioned above the Workspace Dock", async () => {
+  const dockState = { ...emptyDock, open_workspaces: [orderWorkspace] };
+  api.get.mockResolvedValue({ data: dockState });
+  renderShell("/orders/order-1");
+
+  await screen.findByTestId("workspace-dock");
+  const shell = screen.getByTestId("authenticated-app-shell");
+  const assistant = screen.getByTestId("assistant-launcher");
+  expect(shell).toHaveStyle({ "--workspace-dock-height": "56px" });
+  expect(screen.getByTestId("workspace-dock-reserved-space")).toHaveClass("md:h-[var(--workspace-dock-height)]");
+  expect(screen.getByTestId("workspace-dock")).toHaveClass("min-h-[var(--workspace-dock-height)]");
+  expect(assistant).toHaveClass("bottom-[calc(var(--workspace-dock-height,56px)+1rem)]");
 });
 
 test("eligible record context action opens the record in a new workspace without replacing the current page first", async () => {

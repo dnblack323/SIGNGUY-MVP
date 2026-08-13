@@ -116,9 +116,46 @@ const COMMANDS = {
 };
 
 const CREATE_KEYS = ["newIntake", "newCustomer", "newQuote", "newOrder", "invitePortal", "newWebstore", "newWrapProject"];
-const SIDEBAR_LEAVE_DELAY_MS = 180;
 const DESKTOP_SIDEBAR_COLLAPSED_WIDTH = 96;
-const DESKTOP_SIDEBAR_EXPANDED_WIDTH = 96;
+const DESKTOP_SIDEBAR_EXPANDED_WIDTH = 260;
+
+const COMMAND_COLOR_CLASSES = {
+  document: "text-blue-600",
+  quote: "text-fuchsia-600",
+  order: "text-green-600",
+  schedule: "text-orange-600",
+  view: "text-cyan-600",
+  destructive: "text-red-600",
+  neutral: "text-slate-600",
+};
+
+const COMMAND_CATEGORY_BY_KEY = {
+  newCustomer: "document",
+  newIntake: "document",
+  newQuote: "quote",
+  sendQuote: "quote",
+  followUp: "quote",
+  requestApproval: "quote",
+  sendProof: "quote",
+  respond: "quote",
+  newDecisionRoom: "quote",
+  newOrder: "order",
+  convertOrder: "order",
+  markReviewed: "order",
+  applyDecision: "order",
+  startWork: "order",
+  completeWork: "order",
+  scheduleInstall: "schedule",
+  waitWork: "schedule",
+  dueDate: "schedule",
+  blockWork: "destructive",
+  filter: "view",
+  refresh: "view",
+  openRoom: "view",
+  openKiosk: "view",
+  import: "view",
+  export: "view",
+};
 
 const RIBBON_BY_AREA = {
   home: ["newIntake", "newCustomer", "newQuote", "newOrder"],
@@ -196,10 +233,26 @@ function allowedCommand(command, permissions) {
   return !command.permission || permissions?.includes(command.permission);
 }
 
+function commandCategory(command) {
+  return COMMAND_CATEGORY_BY_KEY[command?.key] || "neutral";
+}
+
+function commandIconClass(command) {
+  return COMMAND_COLOR_CLASSES[commandCategory(command)] || COMMAND_COLOR_CLASSES.neutral;
+}
+
+function orderViewIconClass(view) {
+  if (view.status === "completed" || view.status === "ready" || view.status === "confirmed") return COMMAND_COLOR_CLASSES.order;
+  if (view.status === "cancelled") return COMMAND_COLOR_CLASSES.destructive;
+  if (view.status === "in_production") return COMMAND_COLOR_CLASSES.schedule;
+  return COMMAND_COLOR_CLASSES.view;
+}
+
 function CommandButton({ command, permissions, compact = false, testPrefix = "shell-command", layout = "inline", active = false }) {
   const workspace = useWorkspace();
   if (!allowedCommand(command, permissions)) return null;
   const Icon = command.icon;
+  const category = commandCategory(command);
   const label = command.workspaceAction === "dockAndNew" && workspace.isCurrentRouteDocked
     ? command.dockedLabel
     : command.label;
@@ -224,12 +277,13 @@ function CommandButton({ command, permissions, compact = false, testPrefix = "sh
         className={baseClass}
         data-testid={`${testPrefix}-${command.key}`}
         data-layout={layout}
+        data-command-category={category}
         aria-label={label}
         title={compact ? undefined : command.tooltip}
         onClick={workspace.dockCurrentAndNew}
       >
         <span className={cn("flex items-center justify-center", layout === "ribbon" ? "h-full flex-col gap-1 text-center" : "gap-1")}>
-          <Icon className={iconClass} aria-hidden="true" />
+          <Icon className={cn(iconClass, commandIconClass(command))} aria-hidden="true" />
           <span className={cn("leading-tight whitespace-normal", compact && "sr-only")}>{label}</span>
         </span>
       </Button>
@@ -241,6 +295,7 @@ function CommandButton({ command, permissions, compact = false, testPrefix = "sh
       className={baseClass}
       data-testid={`${testPrefix}-${command.key}`}
       data-layout={layout}
+      data-command-category={category}
     >
       <Link
         to={command.to}
@@ -251,7 +306,7 @@ function CommandButton({ command, permissions, compact = false, testPrefix = "sh
           layout === "ribbon" ? "flex-col gap-1 text-center" : "gap-1",
         )}
       >
-        <Icon className={iconClass} aria-hidden="true" />
+        <Icon className={cn(iconClass, commandIconClass(command))} aria-hidden="true" />
         <span className={cn("leading-tight whitespace-normal", compact && "sr-only")}>{label}</span>
       </Link>
     </Button>
@@ -279,12 +334,15 @@ function PrimaryAreaButton({ area, active, collapsed, onSelect }) {
       onClick={() => onSelect(area)}
       title={area.label}
       className={cn(
-        "flex min-h-[76px] w-full flex-col items-center justify-center gap-1 rounded-sm px-2 text-center text-[13px] font-medium leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80",
+        "flex w-full rounded-sm text-[13px] font-medium leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80",
+        collapsed
+          ? "min-h-[70px] flex-col items-center justify-center gap-1 px-2 text-center"
+          : "min-h-[54px] flex-row items-center justify-start gap-3 px-4 text-left",
         active ? "bg-blue-600 text-white shadow-inner" : "text-white hover:bg-white/10",
       )}
     >
-      <Icon className={cn("size-7 shrink-0", active ? "text-white" : area.accent)} aria-hidden="true" />
-      <span className="line-clamp-2">{area.label}</span>
+      <Icon className={cn("shrink-0", collapsed ? "size-7" : "size-6", active ? "text-white" : area.accent)} aria-hidden="true" />
+      <span className={cn(collapsed ? "sr-only" : "block min-w-0 truncate")}>{area.label}</span>
     </button>
   );
 
@@ -306,13 +364,20 @@ function SidebarInner({ collapsed, selectedAreaKey, onSelectArea, onNavigate, mo
         data-testid="app-shell-sidebar"
         data-collapsed={collapsed && !mobile ? "true" : "false"}
       >
-        <div className="grid h-[72px] place-items-center border-b border-white/10 px-3">
-          <SignGuyLogo
-            variant="mark"
-            className="size-16"
-            alt="SignGuy AI"
-            testId="sidebar-logo-compact"
-          />
+        <div className={cn("grid place-items-center border-b border-white/10 px-3", collapsed && !mobile ? "h-[86px]" : "h-[112px]")}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <SignGuyLogo
+                  variant={collapsed && !mobile ? "mark" : "full"}
+                  className={collapsed && !mobile ? "h-16 w-20" : "h-24 w-56 max-w-full"}
+                  alt="SignGuy AI"
+                  testId={collapsed && !mobile ? "sidebar-logo-compact" : "sidebar-logo-expanded"}
+                />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side={collapsed && !mobile ? "right" : "bottom"}>SignGuy AI</TooltipContent>
+          </Tooltip>
           <div className="sr-only">
             <div data-testid="sidebar-tenant-name">{tenant?.name || "SignGuy AI"}</div>
             <div>{tenant?.slug}</div>
@@ -345,16 +410,22 @@ function SidebarInner({ collapsed, selectedAreaKey, onSelectArea, onNavigate, mo
               <TooltipTrigger asChild>
                 <Button
                   type="button"
-                  size="icon"
-                  aria-label={pinned ? "Unpin sidebar" : "Pin sidebar open"}
-                  className="sr-only"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={pinned ? "Collapse sidebar" : "Expand sidebar"}
+                  aria-pressed={pinned ? "true" : "false"}
+                  className={cn(
+                    "mx-auto flex h-9 text-white hover:bg-white/10 focus-visible:ring-white/80",
+                    collapsed ? "w-10 px-0" : "w-full justify-start gap-2 px-3",
+                  )}
                   data-testid="sidebar-pin-toggle"
                   onClick={onTogglePinned}
                 >
                   <Menu className="size-4" />
+                  {!collapsed && <span>{pinned ? "Collapse" : "Expand"}</span>}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side={collapsed ? "right" : "top"}>{pinned ? "Unpin sidebar" : "Pin sidebar open"}</TooltipContent>
+              <TooltipContent side={collapsed ? "right" : "top"}>{pinned ? "Collapse sidebar" : "Expand sidebar"}</TooltipContent>
             </Tooltip>
           )}
         </div>
@@ -836,7 +907,7 @@ function ContextualRibbon({ area, module, permissions }) {
                         )}
                         onClick={() => setOrderView(view.status)}
                       >
-                        <Icon className="size-[18px]" aria-hidden="true" />
+                        <Icon className={cn("size-[18px]", orderViewIconClass(view))} aria-hidden="true" />
                         <span>{view.label}</span>
                       </button>
                     </TooltipTrigger>
@@ -851,7 +922,7 @@ function ContextualRibbon({ area, module, permissions }) {
                     data-testid="ribbon-order-views-dropdown"
                     className="flex h-[62px] w-[76px] shrink-0 flex-col items-center justify-center gap-1 rounded-sm border border-transparent px-1.5 py-1 text-center text-[11px] leading-tight text-slate-700 transition-colors hover:border-slate-200 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
-                    <ShoppingBag className="size-[18px]" aria-hidden="true" />
+                    <ShoppingBag className={cn("size-[18px]", COMMAND_COLOR_CLASSES.view)} aria-hidden="true" />
                     <span>Order Views</span>
                     <span className="sr-only">Current view: {selectedOrderView.label}</span>
                   </button>
@@ -869,7 +940,7 @@ function ContextualRibbon({ area, module, permissions }) {
                         data-testid={`ribbon-order-view-option-${view.key}`}
                         aria-current={active ? "true" : undefined}
                       >
-                        <Icon className="mr-2 size-4" aria-hidden="true" />
+                        <Icon className={cn("mr-2 size-4", orderViewIconClass(view))} aria-hidden="true" />
                         {view.label}
                         {active && <span className="ml-auto text-xs text-blue-700">Active</span>}
                       </DropdownMenuItem>
@@ -957,15 +1028,12 @@ export default function AppShell() {
 
 function AppShellFrame() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [desktopSidebarExpanded, setDesktopSidebarExpanded] = useState(false);
   const [desktopSidebarPinned, setDesktopSidebarPinned] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem("signguy.sidebarPinned") === "true";
   });
   const [devBannerHeight, setDevBannerHeight] = useState(0);
   const [selectedAreaKey, setSelectedAreaKey] = useState(null);
-  const leaveTimerRef = useRef(null);
-  const sidebarFocusWithinRef = useRef(false);
   const desktopSidebarRef = useRef(null);
   const devBannerRef = useRef(null);
   const location = useLocation();
@@ -985,30 +1053,7 @@ function AppShellFrame() {
     if (target) navigate(target.to);
   };
 
-  const clearLeaveTimer = () => {
-    if (!leaveTimerRef.current) return;
-    window.clearTimeout(leaveTimerRef.current);
-    leaveTimerRef.current = null;
-  };
-
-  const expandDesktopSidebar = () => {
-    clearLeaveTimer();
-    setDesktopSidebarExpanded(true);
-  };
-
-  const collapseDesktopSidebarSoon = () => {
-    if (desktopSidebarPinned) return;
-    clearLeaveTimer();
-    leaveTimerRef.current = window.setTimeout(() => {
-      if (!sidebarFocusWithinRef.current) setDesktopSidebarExpanded(false);
-      leaveTimerRef.current = null;
-    }, SIDEBAR_LEAVE_DELAY_MS);
-  };
-
-  useEffect(() => () => clearLeaveTimer(), []);
-
   useEffect(() => {
-    if (desktopSidebarPinned) setDesktopSidebarExpanded(true);
     window.localStorage.setItem("signguy.sidebarPinned", String(desktopSidebarPinned));
   }, [desktopSidebarPinned]);
 
@@ -1038,13 +1083,13 @@ function AppShellFrame() {
   }, [devBypass]);
 
   const desktopSidebarOffset = devBypass ? devBannerHeight : 0;
-  const desktopSidebarWidth = desktopSidebarExpanded || desktopSidebarPinned
+  const desktopSidebarWidth = desktopSidebarPinned
     ? DESKTOP_SIDEBAR_EXPANDED_WIDTH
     : DESKTOP_SIDEBAR_COLLAPSED_WIDTH;
-  const mainSidebarOffset = DESKTOP_SIDEBAR_COLLAPSED_WIDTH;
+  const mainSidebarOffset = desktopSidebarWidth;
 
   return (
-    <div className="min-h-dvh overflow-x-hidden bg-slate-100 text-foreground" data-testid="authenticated-app-shell">
+    <div className="min-h-dvh overflow-x-hidden bg-slate-100 text-foreground" data-testid="authenticated-app-shell" style={{ "--workspace-dock-height": "56px" }}>
       {devBypass && (
         <div ref={devBannerRef} className="w-full bg-amber-50 border-b border-amber-200 text-amber-900 text-xs px-4 py-1.5 flex items-center justify-center gap-2" data-testid="dev-bypass-banner">
           <ShieldAlert className="size-3.5" />
@@ -1063,23 +1108,12 @@ function AppShellFrame() {
             width: `${desktopSidebarWidth}px`,
           }}
           data-testid="desktop-sidebar-shell"
-          data-expanded={(desktopSidebarExpanded || desktopSidebarPinned) ? "true" : "false"}
+          data-expanded={desktopSidebarPinned ? "true" : "false"}
           data-pinned={desktopSidebarPinned ? "true" : "false"}
           data-sidebar-width={desktopSidebarWidth}
-          onMouseEnter={() => !desktopSidebarPinned && expandDesktopSidebar()}
-          onMouseLeave={collapseDesktopSidebarSoon}
-          onFocusCapture={() => {
-            sidebarFocusWithinRef.current = true;
-            expandDesktopSidebar();
-          }}
-          onBlurCapture={(event) => {
-            if (desktopSidebarRef.current?.contains(event.relatedTarget)) return;
-            sidebarFocusWithinRef.current = false;
-            collapseDesktopSidebarSoon();
-          }}
         >
           <SidebarInner
-            collapsed={!(desktopSidebarExpanded || desktopSidebarPinned)}
+            collapsed={!desktopSidebarPinned}
             selectedAreaKey={selectedArea.key}
             onSelectArea={selectArea}
             pinned={desktopSidebarPinned}
@@ -1121,7 +1155,7 @@ function AppShellFrame() {
           <main className="w-full bg-slate-50 px-4 py-5 pb-24 md:px-6" data-testid="app-shell-content" data-active-path={location.pathname}>
             <Outlet />
           </main>
-          <div className="h-16 md:h-14" data-testid="workspace-dock-reserved-space" aria-hidden="true" />
+          <div className="h-16 md:h-[var(--workspace-dock-height)]" data-testid="workspace-dock-reserved-space" aria-hidden="true" />
           <WorkspaceDock />
           <AssistantLauncher />
         </div>

@@ -13,7 +13,7 @@ export default function AssistantLauncher() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button className="fixed bottom-5 right-5 z-40 h-12 rounded-full shadow-lg" data-testid="assistant-launcher">
+        <Button className="fixed bottom-[calc(var(--workspace-dock-height,56px)+1rem)] right-5 z-40 h-12 rounded-full shadow-lg md:bottom-[calc(var(--workspace-dock-height,56px)+1rem)]" data-testid="assistant-launcher">
           <Bot className="mr-2 size-5" />Assistant
         </Button>
       </SheetTrigger>

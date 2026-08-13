@@ -85,7 +85,7 @@ export default function QuotesPage() {
   return (
     <div className="space-y-4" data-testid="quotes-page">
       <PageHeader
-        title="Quotes" subtitle="Manual pricing. No calculators."
+        title="Quotes" subtitle="Create, price, send, and track customer quotes."
         actions={canWrite && <NewQuoteDialog onCreated={() => qc.invalidateQueries({ queryKey: ["quotes"] })} />}
       />
       <div className="flex flex-wrap gap-2">

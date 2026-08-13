@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import AppShell from "@/components/app-shell/AppShell";
@@ -167,14 +167,6 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
-function waitMs(ms) {
-  return act(async () => {
-    await new Promise((resolve) => {
-      window.setTimeout(resolve, ms);
-    });
-  });
-}
-
 test("single-level sidebar renders the exact area order and bottom account controls", async () => {
   renderShell("/orders");
 
@@ -244,27 +236,51 @@ test("/home redirects to the Home dashboard route outside the kiosk route", asyn
   expectActiveArea("Home");
 });
 
-test("desktop sidebar hover and pin expand as an overlay without shifting the workspace", async () => {
+test("desktop sidebar explicitly expands, collapses, and preserves the chosen state", async () => {
   const user = userEvent.setup();
   renderShell("/orders");
 
   const sidebar = screen.getByTestId("desktop-sidebar-shell");
   const mainRegion = screen.getByTestId("app-shell-main-region");
   expect(sidebar).toHaveAttribute("data-expanded", "false");
-  expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("96px");
-
-  fireEvent.mouseEnter(sidebar);
-  expect(sidebar).toHaveAttribute("data-expanded", "true");
   expect(sidebar).toHaveAttribute("data-sidebar-width", "96");
   expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("96px");
+  expect(screen.getByTestId("sidebar-logo-compact")).toBeInTheDocument();
+  expect(screen.queryByTestId("sidebar-logo-expanded")).not.toBeInTheDocument();
+  expect(screen.getByTestId("primary-nav-shop-operations")).toHaveAttribute("aria-label", "Shop Operations");
+  expect(within(screen.getByTestId("primary-nav-shop-operations")).getByText("Shop Operations")).toHaveClass("sr-only");
+  expect(screen.getByTestId("sidebar-pin-toggle")).toHaveAttribute("aria-label", "Expand sidebar");
 
   await user.click(screen.getByTestId("sidebar-pin-toggle"));
   expect(sidebar).toHaveAttribute("data-pinned", "true");
-  expect(window.localStorage.getItem("signguy.sidebarPinned")).toBe("true");
-  fireEvent.mouseLeave(sidebar);
-  await waitMs(220);
   expect(sidebar).toHaveAttribute("data-expanded", "true");
-  expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("96px");
+  expect(sidebar).toHaveAttribute("data-sidebar-width", "260");
+  expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("260px");
+  expect(screen.getByTestId("sidebar-logo-expanded")).toBeInTheDocument();
+  expect(screen.getByTestId("primary-nav-shop-operations")).toHaveTextContent("Shop Operations");
+  expect(within(screen.getByTestId("primary-nav-shop-operations")).getByText("Shop Operations")).not.toHaveClass("sr-only");
+  expect(screen.getByTestId("sidebar-pin-toggle")).toHaveAttribute("aria-label", "Collapse sidebar");
+  expect(window.localStorage.getItem("signguy.sidebarPinned")).toBe("true");
+
+  await user.click(screen.getByTestId("module-nav-customers"));
+  expect(sidebar).toHaveAttribute("data-expanded", "true");
+  expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("260px");
+
+  await user.click(screen.getByTestId("sidebar-pin-toggle"));
+  expect(sidebar).toHaveAttribute("data-expanded", "false");
+  expect(sidebar).toHaveAttribute("data-sidebar-width", "96");
+  expect(window.localStorage.getItem("signguy.sidebarPinned")).toBe("false");
+});
+
+test("persisted expanded sidebar state is restored on render", async () => {
+  window.localStorage.setItem("signguy.sidebarPinned", "true");
+  renderShell("/shop-operations");
+
+  const sidebar = screen.getByTestId("desktop-sidebar-shell");
+  expect(sidebar).toHaveAttribute("data-expanded", "true");
+  expect(sidebar).toHaveAttribute("data-sidebar-width", "260");
+  expect(screen.getByTestId("app-shell-main-region").style.getPropertyValue("--app-shell-sidebar-width")).toBe("260px");
+  expectActiveArea("Shop Operations");
 });
 
 test("global header contains breadcrumbs, search, create, messages, notifications, and account controls", async () => {
@@ -361,6 +377,16 @@ test("Orders ribbon uses icon-over-label commands and exposes all order views", 
 
   await user.click(screen.getByTestId("ribbon-order-view-option-ready"));
   await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent("/orders?status=ready"));
+});
+
+test("Shop Operations ribbon commands expose shared color categories", async () => {
+  renderShell("/shop-operations");
+
+  expect(screen.getByTestId("ribbon-command-newCustomer")).toHaveAttribute("data-command-category", "document");
+  expect(screen.getByTestId("ribbon-command-newQuote")).toHaveAttribute("data-command-category", "quote");
+  expect(screen.getByTestId("ribbon-command-newOrder")).toHaveAttribute("data-command-category", "order");
+  expect(screen.getByTestId("ribbon-command-scheduleInstall")).toHaveAttribute("data-command-category", "schedule");
+  expect(screen.getByTestId("ribbon-command-filter")).toHaveAttribute("data-command-category", "view");
 });
 
 test("Order and Customer records expose the required shell-level internal tab order", async () => {
