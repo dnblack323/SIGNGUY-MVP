@@ -36,7 +36,7 @@ function ListCard({ title, testId, empty, children, viewAllTo }) {
   );
 }
 
-export default function DashboardPage() {
+export default function DashboardPage({ title = "Home", subtitle = "Everything that needs your attention today." }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ["dashboard"],
     queryFn: async () => (await api.get("/dashboard/summary")).data,
@@ -44,7 +44,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6" data-testid="dashboard-page">
-      <PageHeader title="Overview" subtitle="What needs attention across shop operations" testId="dashboard-header" />
+      <PageHeader title={title} subtitle={subtitle} testId="dashboard-header" />
       {isLoading ? (
         <CardsSkeleton />
       ) : error ? (

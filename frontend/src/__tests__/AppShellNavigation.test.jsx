@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import AppShell from "@/components/app-shell/AppShell";
 import { useAuth } from "@/auth/AuthContext";
 import api from "@/lib/api";
@@ -105,6 +105,7 @@ function renderShell(initialPath = "/", authOverrides = {}) {
         <Route element={<AppShell />}>
           <Route path="/" element={<><LocationProbe /><Page name="overview" /></>} />
           <Route path="/home" element={<><LocationProbe /><Page name="home" /></>} />
+          <Route path="/shop-operations" element={<><LocationProbe /><Page name="shop-operations-overview" /></>} />
           <Route path="/intake" element={<><LocationProbe /><Page name="intake" /></>} />
           <Route path="/intake/:id" element={<><LocationProbe /><Page name="intake-detail" /></>} />
           <Route path="/quotes" element={<><LocationProbe /><Page name="quotes" /></>} />
@@ -114,6 +115,7 @@ function renderShell(initialPath = "/", authOverrides = {}) {
           <Route path="/customers" element={<><LocationProbe /><Page name="customers" /></>} />
           <Route path="/customers/:id" element={<><LocationProbe /><Page name="customer-detail" /></>} />
           <Route path="/work-orders" element={<><LocationProbe /><Page name="production" /></>} />
+          <Route path="/webstores" element={<><LocationProbe /><Page name="webstores" /></>} />
           <Route path="/approval-center" element={<><LocationProbe /><Page name="approval-center" /></>} />
           <Route path="/webstores/:id" element={<><LocationProbe /><Page name="webstore-detail" /></>} />
           <Route path="/wrap-lab" element={<><LocationProbe /><Page name="wrap-lab" /></>} />
@@ -125,6 +127,39 @@ function renderShell(initialPath = "/", authOverrides = {}) {
       </Routes>
     </MemoryRouter>,
   );
+}
+
+function renderAppRouteHarness(initialPath = "/") {
+  const permissions = FULL_PERMISSIONS;
+  api.get.mockResolvedValue({ data: { open_workspaces: [], recent_workspaces: [], limits: { max_open: 8, max_recent: 20 } } });
+  api.post.mockResolvedValue({ data: { open_workspaces: [], recent_workspaces: [], limits: { max_open: 8, max_recent: 20 } } });
+  useAuth.mockReturnValue({
+    devBypass: false,
+    hasPerm: (permission) => permissions.includes(permission),
+    logout: jest.fn(),
+    permissions,
+    tenant: { id: "tenant-1", name: "Donnell Black's Shop", slug: "dev-shop" },
+    user: { id: "user-1", email: "owner@example.com", full_name: "Owner User", platform_admin: true },
+  });
+
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <Routes>
+        <Route path="/kiosk/production" element={<><LocationProbe /><Page name="kiosk" /></>} />
+        <Route element={<AppShell />}>
+          <Route path="/" element={<><LocationProbe /><Page name="home" /></>} />
+          <Route path="/home" element={<Navigate to="/" replace />} />
+          <Route path="/shop-operations" element={<><LocationProbe /><Page name="shop-operations-overview" /></>} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+function expectActiveArea(activeLabel) {
+  const buttons = within(screen.getByTestId("primary-sidebar-nav")).getAllByRole("button");
+  const active = buttons.find((button) => button.getAttribute("data-active") === "true");
+  expect(active).toHaveAttribute("aria-label", activeLabel);
 }
 
 beforeEach(() => {
@@ -159,6 +194,54 @@ test("single-level sidebar renders the exact area order and bottom account contr
   expect(within(screen.getByTestId("sidebar-bottom-controls")).getByTestId("sidebar-notifications-button")).toBeInTheDocument();
   expect(within(screen.getByTestId("sidebar-bottom-controls")).queryByTestId("notification-bell")).not.toBeInTheDocument();
   expect(within(screen.getByTestId("sidebar-bottom-controls")).queryByTestId("sidebar-global-search")).not.toBeInTheDocument();
+});
+
+test("root and Shop Operations overview have distinct route ownership", async () => {
+  const root = renderShell("/");
+  expect(screen.getByTestId("current-path")).toHaveTextContent("/");
+  expectActiveArea("Home");
+  expect(screen.getByTestId("module-nav-home-overview")).toHaveAttribute("aria-current", "page");
+  expect(screen.queryByTestId("module-nav-shop-overview")).not.toBeInTheDocument();
+  root.unmount();
+
+  renderShell("/shop-operations");
+  expect(screen.getByTestId("current-path")).toHaveTextContent("/shop-operations");
+  expectActiveArea("Shop Operations");
+  expect(screen.getByTestId("module-nav-shop-overview")).toHaveAttribute("aria-current", "page");
+});
+
+test.each([
+  ["/customers", "Customers", "module-nav-customers"],
+  ["/intake", "Sales", "module-nav-sales"],
+  ["/quotes", "Sales", "module-nav-sales"],
+  ["/orders", "Sales", "module-nav-sales"],
+  ["/approval-center", "Approval Center", "module-nav-approval-center"],
+  ["/work-orders", "Production", "module-nav-production"],
+  ["/webstores", "Webstores", "module-nav-webstores"],
+  ["/wrap-lab", "Wrap Lab", "module-nav-wrap-lab"],
+])("%s belongs to Shop Operations and activates %s", async (route, _moduleLabel, testId) => {
+  renderShell(route);
+
+  expectActiveArea("Shop Operations");
+  expect(screen.getByTestId(testId)).toHaveAttribute("aria-current", "page");
+});
+
+test("Production Kiosk route renders outside AppShell", async () => {
+  renderAppRouteHarness("/kiosk/production");
+
+  expect(screen.getByTestId("current-path")).toHaveTextContent("/kiosk/production");
+  expect(screen.getByTestId("kiosk-route")).toBeInTheDocument();
+  expect(screen.queryByTestId("authenticated-app-shell")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("app-shell-sidebar")).not.toBeInTheDocument();
+});
+
+test("/home redirects to the Home dashboard route outside the kiosk route", async () => {
+  renderAppRouteHarness("/home");
+
+  await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent("/"));
+  expect(screen.getByTestId("home-route")).toBeInTheDocument();
+  expect(screen.getByTestId("authenticated-app-shell")).toBeInTheDocument();
+  expectActiveArea("Home");
 });
 
 test("desktop sidebar hover and pin expand as an overlay without shifting the workspace", async () => {

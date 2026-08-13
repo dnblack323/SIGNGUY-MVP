@@ -24,13 +24,13 @@ export const PRIMARY_NAV_AREAS = [
     label: "Home",
     icon: Home,
     accent: "text-sky-300",
-    to: "/home",
+    to: "/",
     testId: "primary-nav-home",
     moduleNav: [
       {
         key: "overview",
         label: "Overview",
-        to: "/home",
+        to: "/",
         testId: "module-nav-home-overview",
       },
     ],
@@ -40,13 +40,13 @@ export const PRIMARY_NAV_AREAS = [
     label: "Shop Operations",
     icon: ShoppingBag,
     accent: "text-cyan-300",
-    to: "/",
+    to: "/shop-operations",
     testId: "primary-nav-shop-operations",
     moduleNav: [
       {
         key: "overview",
         label: "Overview",
-        to: "/",
+        to: "/shop-operations",
         testId: "module-nav-shop-overview",
       },
       {
