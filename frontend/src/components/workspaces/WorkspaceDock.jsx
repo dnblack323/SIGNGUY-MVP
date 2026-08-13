@@ -1,7 +1,9 @@
 import {
   AlertTriangle,
+  BriefcaseBusiness,
   ChevronLeft,
   ChevronRight,
+  MoreHorizontal,
   Pin,
   PinOff,
   Plus,
@@ -10,6 +12,12 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,6 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import AssistantLauncher from "@/components/assistant/AssistantLauncher";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/context/WorkspaceContext";
 
@@ -59,17 +68,17 @@ function WorkspaceTab({ workspace, index, all, compact = false }) {
       data-active={workspace.active ? "true" : "false"}
       data-dirty={workspace.dirty ? "true" : "false"}
       className={cn(
-        "group flex min-w-0 items-center gap-1 rounded-md border px-2 py-1 text-xs shadow-sm",
+        "group flex items-center gap-1 rounded-sm border px-1.5 py-1 text-xs shadow-sm",
         workspace.active
-          ? "border-cyan-500 bg-white text-slate-950"
-          : "border-slate-300 bg-slate-100 text-slate-600 hover:bg-white",
-        compact ? "w-full" : "max-w-[240px]",
+          ? "border-blue-500 bg-blue-600 text-white"
+          : "border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800",
+        compact ? "w-full" : "w-auto",
       )}
     >
       <button
         type="button"
         onClick={() => activate(workspace)}
-        className="flex min-w-0 flex-1 items-center gap-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+        className="flex items-center gap-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
         title={workspaceTooltip(workspace, index + 1)}
         aria-current={workspace.active ? "page" : undefined}
         aria-label={`Workspace ${index + 1}: ${workspace.label}`}
@@ -77,48 +86,42 @@ function WorkspaceTab({ workspace, index, all, compact = false }) {
         <span
           className={cn(
             "grid size-5 shrink-0 place-items-center rounded border text-[11px] font-semibold",
-            workspace.active ? "border-cyan-500 bg-cyan-50 text-cyan-700" : "border-slate-300 bg-white text-slate-500",
+            workspace.active ? "border-blue-200 bg-white text-blue-700" : "border-slate-600 bg-slate-950 text-slate-200",
           )}
           aria-hidden="true"
         >
           {index + 1}
         </span>
-        {workspace.pinned && <Pin className="size-3 shrink-0 text-cyan-600" aria-hidden="true" />}
+        {workspace.pinned && <Pin className={cn("size-3 shrink-0", workspace.active ? "text-white" : "text-blue-300")} aria-hidden="true" />}
         {workspace.dirty && <span className="size-1.5 shrink-0 rounded-full bg-amber-500" aria-label="Unsaved changes" />}
-        <span className="truncate">{workspace.label}</span>
+        {compact && <span className="truncate">{workspace.label}</span>}
       </button>
-      <div className="flex shrink-0 items-center gap-0.5">
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="size-6"
-          aria-label={workspace.pinned ? "Unpin workspace" : "Pin workspace"}
-          onClick={() => pin(workspace, !workspace.pinned)}
-        >
-          {workspace.pinned ? <PinOff className="size-3" /> : <Pin className="size-3" />}
-        </Button>
-        {!compact && (
-          <>
-            <Button type="button" size="icon" variant="ghost" className="size-6" aria-label="Move workspace left" disabled={!canMoveLeft} onClick={() => move(-1)}>
-              <ChevronLeft className="size-3" />
-            </Button>
-            <Button type="button" size="icon" variant="ghost" className="size-6" aria-label="Move workspace right" disabled={!canMoveRight} onClick={() => move(1)}>
-              <ChevronRight className="size-3" />
-            </Button>
-          </>
-        )}
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="size-6 opacity-80 transition-opacity group-hover:opacity-100 focus:opacity-100"
-          aria-label="Close workspace"
-          onClick={() => close(workspace)}
-        >
-          <X className="size-3" />
-        </Button>
-      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" size="icon" variant="ghost" className="size-6 hover:bg-white/10" aria-label={`Workspace ${index + 1} actions`}>
+            <MoreHorizontal className="size-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="top" className="w-48">
+          <DropdownMenuItem onClick={() => pin(workspace, !workspace.pinned)} aria-label={workspace.pinned ? "Unpin workspace" : "Pin workspace"}>
+            {workspace.pinned ? <PinOff className="mr-2 size-3" /> : <Pin className="mr-2 size-3" />}
+            {workspace.pinned ? "Unpin" : "Pin"}
+          </DropdownMenuItem>
+          {!compact && (
+            <>
+              <DropdownMenuItem disabled={!canMoveLeft} onClick={() => move(-1)} aria-label="Move workspace left">
+                <ChevronLeft className="mr-2 size-3" />Move left
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={!canMoveRight} onClick={() => move(1)} aria-label="Move workspace right">
+                <ChevronRight className="mr-2 size-3" />Move right
+              </DropdownMenuItem>
+            </>
+          )}
+          <DropdownMenuItem onClick={() => close(workspace)} aria-label="Close workspace">
+            <X className="mr-2 size-3" />Close
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -253,20 +256,23 @@ function MobileOpenWork() {
   );
 }
 
-export default function WorkspaceDock({ sidebarCollapsed }) {
+export default function WorkspaceDock() {
   const { open_workspaces, loading, error, refresh, openFreshWorkspace } = useWorkspace();
-  const leftOffset = sidebarCollapsed ? "lg:left-[76px]" : "lg:left-[260px]";
+  const leftOffset = "lg:left-[var(--app-shell-sidebar-width)]";
   return (
     <TooltipProvider delayDuration={200}>
       <div
         className={cn(
-          "fixed inset-x-0 bottom-0 z-30 hidden border-t border-slate-300 bg-white/95 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:block",
+          "fixed inset-x-0 bottom-0 z-30 hidden min-h-[var(--workspace-dock-height)] border-t border-slate-800 bg-slate-950 text-white shadow-[0_-8px_24px_rgba(15,23,42,0.22)] md:block",
           leftOffset,
         )}
         data-testid="workspace-dock"
       >
-        <div className="flex min-h-14 items-center gap-2 px-3 py-2">
-          <div className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Open Work</div>
+        <div className="flex min-h-14 items-center gap-3 px-4 py-2">
+          <div className="flex shrink-0 items-center gap-2 text-sm font-semibold text-white" data-testid="workspace-dock-label">
+            <BriefcaseBusiness className="size-4" aria-hidden="true" />
+            Workspace Dock
+          </div>
           {loading && <div className="text-xs text-slate-500">Loading...</div>}
           {error && (
             <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-testid="workspace-api-error">
@@ -285,7 +291,7 @@ export default function WorkspaceDock({ sidebarCollapsed }) {
                     <WorkspaceTab workspace={workspace} index={index} all={open_workspaces} />
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="top">{workspaceTooltip(workspace, index + 1)}</TooltipContent>
+              <TooltipContent side="top">{workspaceTooltip(workspace, index + 1)}</TooltipContent>
               </Tooltip>
             ))}
             <Tooltip>
@@ -294,23 +300,24 @@ export default function WorkspaceDock({ sidebarCollapsed }) {
                   type="button"
                   size="icon"
                   variant="outline"
-                  className="size-8 shrink-0 rounded-md"
-                  aria-label="New workspace"
+                  className="size-9 shrink-0 rounded-sm border-slate-700 bg-slate-950 text-white hover:bg-slate-900"
+                  aria-label="Open new workspace"
                   data-testid="workspace-new-button"
                   onClick={openFreshWorkspace}
                 >
                   <Plus className="size-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">Open a fresh workspace</TooltipContent>
+              <TooltipContent side="top">Open new workspace</TooltipContent>
             </Tooltip>
           </div>
+          <AssistantLauncher />
           <div className="relative shrink-0">
             <details className="group" data-testid="workspace-recent-menu">
-              <summary className="cursor-pointer list-none rounded-md border px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">
+              <summary className="cursor-pointer list-none rounded-sm border border-slate-700 px-2 py-1 text-xs font-medium text-slate-200 hover:bg-slate-900">
                 Recent Work
               </summary>
-              <div className="absolute bottom-9 right-0 w-80 rounded-md border bg-white p-2 shadow-xl">
+              <div className="absolute bottom-9 right-0 w-80 rounded-md border bg-white p-2 text-slate-950 shadow-xl">
                 <RecentList />
               </div>
             </details>

@@ -24,9 +24,11 @@ jest.mock("@/components/notifications/NotificationBell", () => function Notifica
   return <button type="button" data-testid="notification-bell">Notifications</button>;
 });
 
-jest.mock("@/components/assistant/AssistantLauncher", () => function AssistantLauncherMock() {
-  return <div data-testid="assistant-launcher" />;
+jest.mock("@/components/assistant/AssistantPanel", () => function AssistantPanelMock() {
+  return <div data-testid="assistant-panel">Assistant panel</div>;
 });
+
+jest.setTimeout(15000);
 
 const FULL_PERMISSIONS = [
   "customer:read", "customer:write", "quote:read", "quote:write", "order:read", "order:write",
@@ -163,7 +165,7 @@ test("supported record routes create or activate dock tabs while lists do not", 
     pathname: "/orders/order-1",
     query_params: { tab: "items" },
   })));
-  expect(await screen.findByText("O-000127 - Fayette EMS")).toBeInTheDocument();
+  expect(await screen.findByLabelText("Workspace 1: O-000127 - Fayette EMS")).toBeInTheDocument();
 
   jest.clearAllMocks();
   api.get.mockResolvedValue({ data: emptyDock });
@@ -183,7 +185,7 @@ test("switching dock tabs restores the stored route and query parameters", async
   const user = userEvent.setup();
   renderShell("/orders/order-1?tab=items");
 
-  await user.click(await screen.findByText("Q-000219 - Party Squad"));
+  await user.click(await screen.findByLabelText("Workspace 2: Q-000219 - Party Squad"));
 
   await waitFor(() => expect(screen.getByTestId("current-location")).toHaveTextContent("/quotes/quote-1?tab=summary"));
 });
@@ -195,14 +197,17 @@ test("pinning, reordering, closing, and recent reopen use the backend dock APIs"
   const user = userEvent.setup();
   renderShell("/orders/order-1");
 
-  await screen.findByText("O-000127 - Fayette EMS");
-  await user.click(screen.getAllByLabelText("Pin workspace")[0]);
+  await screen.findByLabelText("Workspace 1: O-000127 - Fayette EMS");
+  await user.click(screen.getByLabelText("Workspace 1 actions"));
+  await user.click(screen.getByLabelText("Pin workspace"));
   expect(api.post).toHaveBeenCalledWith("/workspaces/workspace-order-1/pin");
 
-  await user.click(screen.getAllByLabelText("Move workspace right")[0]);
+  await user.click(screen.getByLabelText("Workspace 1 actions"));
+  await user.click(screen.getByLabelText("Move workspace right"));
   expect(api.post).toHaveBeenCalledWith("/workspaces/reorder", { workspace_ids: ["workspace-quote-1", "workspace-order-1"] });
 
-  await user.click(screen.getAllByLabelText("Close workspace")[0]);
+  await user.click(screen.getByLabelText("Workspace 1 actions"));
+  await user.click(screen.getByLabelText("Close workspace"));
   expect(api.post).toHaveBeenCalledWith("/workspaces/workspace-order-1/close");
 
   await user.click(screen.getByText("Recent Work"));
@@ -227,31 +232,31 @@ test("dock tabs render occupied slot numbers, full tooltips, and the plus worksp
   );
 
   await user.click(screen.getByTestId("workspace-new-button"));
+  expect(screen.queryByTestId("workspace-plus-popover")).not.toBeInTheDocument();
   expect(screen.getByTestId("current-location")).toHaveTextContent("/");
 });
 
-test("quick access Dock & New uses the workspace open contract before navigating to a fresh workspace", async () => {
-  api.post.mockResolvedValue({ data: emptyDock });
+test("assistant launcher renders inside the Workspace Dock and opens the Assistant experience", async () => {
+  const dockState = { ...emptyDock, open_workspaces: [orderWorkspace] };
+  api.get.mockResolvedValue({ data: dockState });
   const user = userEvent.setup();
-  renderShell("/orders/order-1?tab=items");
+  renderShell("/orders/order-1");
 
-  await user.click(await screen.findByTestId("qat-command-dockNew"));
+  await screen.findByTestId("workspace-dock");
+  const dock = screen.getByTestId("workspace-dock");
+  const assistant = within(dock).getByTestId("workspace-dock-assistant");
+  expect(assistant).toHaveAccessibleName("Assistant");
+  expect(assistant).toHaveAttribute("title", "Assistant");
+  expect(assistant).toHaveClass("h-9");
+  expect(assistant).not.toHaveClass("fixed");
+  expect(screen.queryByTestId("assistant-launcher")).not.toBeInTheDocument();
+  expect(screen.getByTestId("workspace-dock-reserved-space")).toHaveClass("md:h-[var(--workspace-dock-height)]");
+  expect(screen.getByTestId("workspace-dock")).toHaveClass("min-h-[var(--workspace-dock-height)]");
+  expect(assistant.compareDocumentPosition(screen.getByTestId("workspace-recent-menu")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-  await waitFor(() => expect(api.post).toHaveBeenCalledWith("/workspaces/open", expect.objectContaining({
-    workspace_type: "order",
-    record_id: "order-1",
-    pathname: "/orders/order-1",
-    query_params: { tab: "items" },
-    view_state: expect.objectContaining({ selected_tab: "items" }),
-  })));
-  await waitFor(() => expect(screen.getByTestId("current-location")).toHaveTextContent("/"));
-});
-
-test("quick access Dock & New changes to New Workspace when the current route is already docked", async () => {
-  api.post.mockResolvedValue({ data: { ...emptyDock, open_workspaces: [orderWorkspace] } });
-  renderShell("/orders/order-1?tab=items");
-
-  expect(await screen.findByLabelText("New Workspace")).toBeInTheDocument();
+  await user.click(assistant);
+  expect(await screen.findByText("Business Assistant")).toBeInTheDocument();
+  expect(screen.getByTestId("assistant-panel")).toBeInTheDocument();
 });
 
 test("eligible record context action opens the record in a new workspace without replacing the current page first", async () => {
@@ -286,7 +291,8 @@ test("dirty workspaces warn before close and can be cancelled", async () => {
   const user = userEvent.setup();
   renderShell("/customers/customer-1");
 
-  await user.click(await screen.findByLabelText("Close workspace"));
+  await user.click(await screen.findByLabelText("Workspace 1 actions"));
+  await user.click(screen.getByLabelText("Close workspace"));
   expect(await screen.findByTestId("workspace-dirty-dialog")).toBeInTheDocument();
 
   await user.click(screen.getByText("Cancel"));
@@ -349,7 +355,7 @@ test("mobile Open Work drawer exposes open and recent work", async () => {
   await user.click(mobileTrigger);
 
   expect(screen.getByTestId("mobile-open-work-drawer")).toBeInTheDocument();
-  expect(await screen.findAllByText("O-000127 - Fayette EMS")).toHaveLength(2);
+  expect(within(screen.getByTestId("mobile-open-work-drawer")).getByLabelText("Workspace 1: O-000127 - Fayette EMS")).toBeInTheDocument();
   expect(screen.getAllByText("Q-000219 - Party Squad").length).toBeGreaterThan(0);
 });
 

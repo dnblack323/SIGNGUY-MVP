@@ -1,6 +1,7 @@
 """Motor client + collection accessors + one-time index setup."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
@@ -9,12 +10,57 @@ from .config import get_settings
 logger = logging.getLogger(__name__)
 
 _settings = get_settings()
-_client: AsyncIOMotorClient = AsyncIOMotorClient(_settings.mongo_url)
-db: AsyncIOMotorDatabase = _client[_settings.db_name]
+_clients_by_loop: dict[asyncio.AbstractEventLoop, AsyncIOMotorClient] = {}
+
+
+def _current_loop() -> asyncio.AbstractEventLoop:
+    return asyncio.get_running_loop()
 
 
 def get_client() -> AsyncIOMotorClient:
-    return _client
+    loop = _current_loop()
+    client = _clients_by_loop.get(loop)
+    if client is None:
+        client = AsyncIOMotorClient(_settings.mongo_url)
+        _clients_by_loop[loop] = client
+    return client
+
+
+def get_db() -> AsyncIOMotorDatabase:
+    return get_client()[_settings.db_name]
+
+
+class _LoopLocalCollection:
+    def __init__(self, name: str):
+        self._name = name
+
+    def _collection(self):
+        return get_db()[self._name]
+
+    def __getattr__(self, name: str):
+        def _method(*args, **kwargs):
+            return getattr(self._collection(), name)(*args, **kwargs)
+
+        return _method
+
+    def __getitem__(self, name: str):
+        return _LoopLocalCollection(f"{self._name}.{name}")
+
+
+class _LoopLocalDatabase:
+    def __getattr__(self, name: str):
+        if hasattr(AsyncIOMotorDatabase, name):
+            def _method(*args, **kwargs):
+                return getattr(get_db(), name)(*args, **kwargs)
+
+            return _method
+        return _LoopLocalCollection(name)
+
+    def __getitem__(self, name: str):
+        return _LoopLocalCollection(name)
+
+
+db = _LoopLocalDatabase()
 
 
 async def ensure_indexes() -> None:

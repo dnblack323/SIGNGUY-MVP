@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/auth/AuthContext";
 import api, { extractError } from "@/lib/api";
-import { Loader2, Building2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import SignGuyLogo from "@/components/brand/SignGuyLogo";
 import { toast } from "sonner";
 
 async function handleGoogleLogin() {
@@ -25,10 +26,11 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const { login, user, loading } = useAuth();
+  const { login, devLogin, devBypass, user, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || "/";
+  const showDevLogin = devBypass || process.env.NODE_ENV === "development";
 
   useEffect(() => { if (!loading && user) navigate(from, { replace: true }); }, [user, loading, navigate, from]);
 
@@ -46,14 +48,27 @@ export default function LoginPage() {
     }
   }
 
+  async function onDevLogin() {
+    setSubmitting(true);
+    try {
+      await devLogin();
+      toast.success("Signed in as Dev Shop");
+      navigate(from, { replace: true });
+    } catch (err) {
+      toast.error(extractError(err, "Dev sign-in is not available"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div className="min-h-dvh grid place-items-center px-4 py-10 header-wash">
       <Card className="w-full max-w-[420px]">
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <div className="grid size-9 place-items-center rounded-lg bg-primary text-primary-foreground"><Building2 className="size-4" /></div>
+          <div className="flex flex-col items-center gap-2 text-center">
+            <SignGuyLogo variant="full" className="h-32 w-full max-w-[300px]" testId="login-logo" />
             <div>
-              <CardTitle className="font-display">SignGuy AI</CardTitle>
+              <CardTitle className="font-display">Sign in</CardTitle>
               <CardDescription>Sign in to your shop</CardDescription>
             </div>
           </div>
@@ -76,6 +91,11 @@ export default function LoginPage() {
               {submitting && <Loader2 className="size-4 mr-2 animate-spin" />}
               Sign in
             </Button>
+            {showDevLogin && (
+              <Button type="button" variant="secondary" onClick={onDevLogin} disabled={submitting} data-testid="login-dev-button">
+                Continue as Dev Shop
+              </Button>
+            )}
             <div className="relative py-1 text-center text-xs text-muted-foreground">
               <span className="bg-card px-2 relative z-10">or</span>
               <div className="absolute inset-x-0 top-1/2 h-px bg-border" />

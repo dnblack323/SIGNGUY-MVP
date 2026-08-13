@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import TableSkeleton from "@/components/common/LoadingSkeleton";
 import EmptyState from "@/components/common/EmptyState";
 import StatusPill from "@/components/common/StatusPill";
-import { relativeTime } from "@/lib/format";
+import { formatDate, relativeTime } from "@/lib/format";
 import { Plus, Inbox, Search, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { INTAKE_STATUSES, INTAKE_PRIORITIES } from "@/lib/intake";
@@ -99,7 +99,7 @@ export default function IntakePage() {
                   <TableCell className="text-sm text-muted-foreground capitalize">{(i.source_type || "").replace(/_/g, " ")}</TableCell>
                   <TableCell><StatusPill kind="intake" value={i.status} /></TableCell>
                   <TableCell><StatusPill kind="intake_priority" value={i.priority} /></TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{i.requested_due_date || "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{formatDate(i.requested_due_date) || "—"}</TableCell>
                   <TableCell className="text-right tabular-nums">{i.items?.length || 0}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{relativeTime(i.created_at)}</TableCell>
                 </TableRow>

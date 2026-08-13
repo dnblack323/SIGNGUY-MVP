@@ -91,13 +91,19 @@ export default function CustomerDetailPage() {
         />
       </div>
 
-      <Tabs defaultValue="details" data-testid="detail-tabs">
+      <Tabs defaultValue="overview" data-testid="detail-tabs">
         <TabsList>
-          <TabsTrigger value="details" data-testid="detail-tab-details">Details</TabsTrigger>
-          <TabsTrigger value="linked" data-testid="detail-tab-linked">Linked records</TabsTrigger>
+          <TabsTrigger value="overview" data-testid="detail-tab-overview">Overview</TabsTrigger>
+          <TabsTrigger value="contacts" data-testid="detail-tab-contacts">Contacts</TabsTrigger>
+          <TabsTrigger value="communications" data-testid="detail-tab-communications">Communications</TabsTrigger>
+          <TabsTrigger value="requests" data-testid="detail-tab-requests">Requests</TabsTrigger>
+          <TabsTrigger value="quotes" data-testid="detail-tab-quotes">Quotes</TabsTrigger>
+          <TabsTrigger value="orders" data-testid="detail-tab-orders">Orders</TabsTrigger>
+          <TabsTrigger value="files-forms" data-testid="detail-tab-files-forms">Files & Forms</TabsTrigger>
+          <TabsTrigger value="portal" data-testid="detail-tab-portal">Portal</TabsTrigger>
           <TabsTrigger value="activity" data-testid="detail-tab-activity">Activity</TabsTrigger>
         </TabsList>
-        <TabsContent value="details" className="space-y-4">
+        <TabsContent value="overview" className="space-y-4">
           <Card>
             <CardHeader><CardTitle>Contact</CardTitle></CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-2">
@@ -116,7 +122,39 @@ export default function CustomerDetailPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="linked" className="space-y-4" data-testid="customer-linked">
+        <TabsContent value="contacts" className="space-y-4" data-testid="customer-contacts">
+          <Card>
+            <CardHeader><CardTitle>Contacts</CardTitle></CardHeader>
+            <CardContent className="text-sm text-muted-foreground">Primary and authorized customer contacts are organized here without creating duplicate customer records.</CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="communications" className="space-y-4" data-testid="customer-communications">
+          <Card>
+            <CardHeader><CardTitle>Communications</CardTitle></CardHeader>
+            <CardContent>
+              {rel?.emails?.length ? (
+                <ul className="divide-y">
+                  {rel.emails.map((e) => (
+                    <li key={e.id} className="py-2 flex items-center justify-between gap-2">
+                      <div className="min-w-0"><div className="text-sm truncate">{e.subject}</div><div className="text-xs text-muted-foreground">to {e.to_email} &middot; {relativeTime(e.created_at)}</div></div>
+                      <StatusPill kind="email" value={e.status} />
+                    </li>
+                  ))}
+                </ul>
+              ) : <div className="text-sm text-muted-foreground">No communications yet.</div>}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="requests" className="space-y-4" data-testid="customer-requests">
+          <Card>
+            <CardHeader><CardTitle>Requests</CardTitle></CardHeader>
+            <CardContent className="text-sm text-muted-foreground">Linked Intake requests, including service, warranty, correction, return, and complaint requests, remain Intake records and are surfaced here by relationship.</CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="quotes" className="space-y-4" data-testid="customer-quotes">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card>
               <CardHeader><CardTitle>Quotes</CardTitle></CardHeader>
@@ -194,6 +232,38 @@ export default function CustomerDetailPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="orders" className="space-y-4" data-testid="customer-orders">
+          <Card>
+            <CardHeader><CardTitle>Orders</CardTitle></CardHeader>
+            <CardContent>
+              {rel?.orders?.length ? (
+                <ul className="divide-y">
+                  {rel.orders.map((o) => (
+                    <li key={o.id} className="py-2 flex items-center justify-between">
+                      <Link className="text-sm hover:underline" to={`/orders/${o.id}`}><span className="mono text-xs text-muted-foreground mr-2">O-{o.number}</span>{o.job_name}</Link>
+                      <StatusPill kind="order" value={o.status} />
+                    </li>
+                  ))}
+                </ul>
+              ) : <div className="text-sm text-muted-foreground">No orders.</div>}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="files-forms" className="space-y-4" data-testid="customer-files-forms">
+          <Card>
+            <CardHeader><CardTitle>Files & Forms</CardTitle></CardHeader>
+            <CardContent className="text-sm text-muted-foreground">Customer-level files, completed questionnaires, and linked record forms are shown by relationship without duplicating attachments.</CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="portal" className="space-y-4" data-testid="customer-portal">
+          <Card>
+            <CardHeader><CardTitle>Portal</CardTitle></CardHeader>
+            <CardContent className="text-sm text-muted-foreground">Portal access, invitations, authorized contacts, visibility, access history, and enable/disable controls belong here.</CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="activity">

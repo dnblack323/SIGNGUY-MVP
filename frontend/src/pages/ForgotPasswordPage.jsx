@@ -5,7 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Building2, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import SignGuyLogo from "@/components/brand/SignGuyLogo";
 import { toast } from "sonner";
 
 export default function ForgotPasswordPage() {
@@ -34,8 +35,8 @@ export default function ForgotPasswordPage() {
     <div className="min-h-dvh grid place-items-center px-4 py-10 header-wash">
       <Card className="w-full max-w-[440px]">
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <div className="grid size-9 place-items-center rounded-lg bg-primary text-primary-foreground"><Building2 className="size-4" /></div>
+          <div className="flex flex-col items-center gap-2 text-center">
+            <SignGuyLogo variant="full" className="h-12 w-full max-w-[240px]" testId="forgot-password-logo" />
             <div>
               <CardTitle className="font-display">Reset your password</CardTitle>
               <CardDescription>We'll email you a one-time token (60 min).</CardDescription>

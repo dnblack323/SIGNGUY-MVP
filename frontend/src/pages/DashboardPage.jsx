@@ -4,7 +4,7 @@ import api from "@/lib/api";
 import PageHeader from "@/components/layout/PageHeader";
 import { CardsSkeleton } from "@/components/common/LoadingSkeleton";
 import StatusPill from "@/components/common/StatusPill";
-import { centsToDollarsString, relativeTime } from "@/lib/format";
+import { centsToDollarsString, formatDate, relativeTime } from "@/lib/format";
 import { ShoppingBag, FileText, Wrench, Receipt, ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { AuditTimeline } from "@/components/audit/AuditTimeline";
@@ -36,7 +36,7 @@ function ListCard({ title, testId, empty, children, viewAllTo }) {
   );
 }
 
-export default function DashboardPage() {
+export default function DashboardPage({ title = "Home", subtitle = "Everything that needs your attention today." }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ["dashboard"],
     queryFn: async () => (await api.get("/dashboard/summary")).data,
@@ -44,7 +44,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6" data-testid="dashboard-page">
-      <PageHeader title="Home" subtitle="Everything that needs your attention today." testId="dashboard-header" />
+      <PageHeader title={title} subtitle={subtitle} testId="dashboard-header" />
       {isLoading ? (
         <CardsSkeleton />
       ) : error ? (
@@ -112,7 +112,7 @@ export default function DashboardPage() {
                         <Link className="flex items-center justify-between px-4 py-3 hover:bg-muted/40" to={`/invoices/${inv.id}`}>
                           <div className="min-w-0">
                             <div className="text-sm truncate"><span className="mono text-xs text-muted-foreground mr-2">I-{inv.number}</span>{inv.title}</div>
-                            <div className="text-xs text-muted-foreground">Due {inv.due_date || "—"}</div>
+                            <div className="text-xs text-muted-foreground">Due {formatDate(inv.due_date) || "—"}</div>
                           </div>
                           <div className="flex items-center gap-3">
                             <span className="text-sm tabular-nums">{centsToDollarsString(inv.total_cents)}</span>

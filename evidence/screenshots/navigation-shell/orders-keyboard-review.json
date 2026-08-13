@@ -1,0 +1,278 @@
+{
+  "urlAfterReady": "http://localhost:3003/orders?status=ready",
+  "readyRows": 2,
+  "resultCountText": "2 orders",
+  "menuOpen": true,
+  "focusTrail": [
+    {
+      "tag": "BODY",
+      "testid": null,
+      "text": "Auth bypass ON · you're browsing as Dev Shop owner. Set AUTH_DEV_BYPASS=false be",
+      "href": null
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "primary-nav-home",
+      "text": "Home",
+      "href": null
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "primary-nav-shop-operations",
+      "text": "Shop Operations",
+      "href": null
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "primary-nav-business-finance",
+      "text": "Business & Finance",
+      "href": null
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "primary-nav-team-productivity",
+      "text": "Team & Productivity",
+      "href": null
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "primary-nav-tools-resources",
+      "text": "Tools & Resources",
+      "href": null
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "primary-nav-control-center",
+      "text": "Control Center",
+      "href": null
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "primary-nav-help-community",
+      "text": "Help & Community",
+      "href": null
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "sidebar-pin-toggle",
+      "text": "Pin sidebar open",
+      "href": null
+    },
+    {
+      "tag": "INPUT",
+      "testid": null,
+      "text": "Global search",
+      "href": null
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "global-create-menu",
+      "text": "Create",
+      "href": null
+    },
+    {
+      "tag": "A",
+      "testid": "global-messages-button",
+      "text": "Messages",
+      "href": "/team/messages"
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "notification-bell",
+      "text": "16",
+      "href": null
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "global-account-menu",
+      "text": "T",
+      "href": null
+    },
+    {
+      "tag": "A",
+      "testid": null,
+      "text": "Shop Operations",
+      "href": "/"
+    },
+    {
+      "tag": "A",
+      "testid": null,
+      "text": "Sales",
+      "href": "/sales/intake"
+    },
+    {
+      "tag": "A",
+      "testid": "module-nav-shop-overview",
+      "text": "Overview",
+      "href": "/"
+    },
+    {
+      "tag": "A",
+      "testid": "module-nav-sales",
+      "text": "Sales",
+      "href": "/sales/intake"
+    },
+    {
+      "tag": "A",
+      "testid": "module-nav-customers",
+      "text": "Customers",
+      "href": "/customers"
+    },
+    {
+      "tag": "A",
+      "testid": "module-nav-production",
+      "text": "Production",
+      "href": "/work-orders"
+    },
+    {
+      "tag": "A",
+      "testid": "module-nav-approval-center",
+      "text": "Approval Center",
+      "href": "/approval-center"
+    },
+    {
+      "tag": "A",
+      "testid": "module-nav-webstores",
+      "text": "Webstores",
+      "href": "/webstores"
+    },
+    {
+      "tag": "A",
+      "testid": "module-nav-wrap-lab",
+      "text": "Wrap Lab",
+      "href": "/wrap-lab"
+    },
+    {
+      "tag": "A",
+      "testid": "qat-command-newIntake",
+      "text": "New Intake Request",
+      "href": "/intake/new"
+    },
+    {
+      "tag": "A",
+      "testid": "qat-command-newCustomer",
+      "text": "New Customer",
+      "href": "/customers"
+    },
+    {
+      "tag": "A",
+      "testid": "qat-command-newQuote",
+      "text": "New Quote",
+      "href": "/quotes"
+    },
+    {
+      "tag": "A",
+      "testid": "qat-command-newOrder",
+      "text": "New Order",
+      "href": "/orders?new=1"
+    },
+    {
+      "tag": "A",
+      "testid": "qat-command-newWebstore",
+      "text": "New Webstore",
+      "href": "/webstores"
+    },
+    {
+      "tag": "A",
+      "testid": "qat-command-newWrapProject",
+      "text": "New Wrap Project",
+      "href": "/wrap-lab"
+    },
+    {
+      "tag": "A",
+      "testid": "qat-command-assistant",
+      "text": "Assistant",
+      "href": "/studio/assistant"
+    },
+    {
+      "tag": "A",
+      "testid": "internal-tab-intake",
+      "text": "Intake Requests",
+      "href": "/intake"
+    },
+    {
+      "tag": "A",
+      "testid": "internal-tab-quotes",
+      "text": "Quotes",
+      "href": "/quotes"
+    },
+    {
+      "tag": "A",
+      "testid": "internal-tab-orders",
+      "text": "Orders",
+      "href": "/orders"
+    },
+    {
+      "tag": "A",
+      "testid": "ribbon-command-newIntake",
+      "text": "New Intake Request",
+      "href": "/intake/new"
+    },
+    {
+      "tag": "A",
+      "testid": "ribbon-command-newQuote",
+      "text": "New Quote",
+      "href": "/quotes"
+    },
+    {
+      "tag": "A",
+      "testid": "ribbon-command-newOrder",
+      "text": "New Order",
+      "href": "/orders?new=1"
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "ribbon-order-view-all",
+      "text": "All Orders",
+      "href": null
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "ribbon-order-view-in_production",
+      "text": "In Production",
+      "href": null
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "ribbon-order-view-ready",
+      "text": "Ready",
+      "href": null
+    },
+    {
+      "tag": "BUTTON",
+      "testid": "ribbon-order-views-dropdown",
+      "text": "Order Views Current view: All Orders",
+      "href": null
+    },
+    {
+      "tag": "A",
+      "testid": null,
+      "text": "BrightPath Preschool Perforated window graphics",
+      "href": "/orders/signguy-dev-sample-v1:dev-shop:order:16"
+    },
+    {
+      "tag": "A",
+      "testid": null,
+      "text": "Metro Pet Clinic Contour-cut decals",
+      "href": "/orders/signguy-dev-sample-v1:dev-shop:order:15"
+    },
+    {
+      "tag": "A",
+      "testid": null,
+      "text": "Peak Adventure Rentals Partial vehicle wrap",
+      "href": "/orders/signguy-dev-sample-v1:dev-shop:order:14"
+    },
+    {
+      "tag": "A",
+      "testid": null,
+      "text": "Harbor House Realty Vehicle lettering",
+      "href": "/orders/signguy-dev-sample-v1:dev-shop:order:13"
+    },
+    {
+      "tag": "A",
+      "testid": null,
+      "text": "Cedar Grove Church Channel letter service",
+      "href": "/orders/signguy-dev-sample-v1:dev-shop:order:12"
+    }
+  ]
+}

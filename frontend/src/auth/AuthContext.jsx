@@ -76,6 +76,13 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
+  const devLogin = useCallback(async () => {
+    const { data } = await api.post("/auth/dev-login");
+    localStorage.setItem("signguy.token", data.access_token);
+    setUser(data.user); setTenant(data.tenant); setPermissions(data.permissions || []);
+    return data;
+  }, []);
+
   const registerTenant = useCallback(async (payload) => {
     const { data } = await api.post("/auth/register-tenant", payload);
     localStorage.setItem("signguy.token", data.access_token);
@@ -94,8 +101,8 @@ export function AuthProvider({ children }) {
     user, tenant, permissions, loading, error, devBypass,
     hasPerm: (perm) => permissions.includes(perm),
     hasAny: (list) => list.some((p) => permissions.includes(p)),
-    refresh, login, registerTenant, logout,
-  }), [user, tenant, permissions, loading, error, devBypass, refresh, login, registerTenant, logout]);
+    refresh, login, devLogin, registerTenant, logout,
+  }), [user, tenant, permissions, loading, error, devBypass, refresh, login, devLogin, registerTenant, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "@/auth/AuthContext";
 import RequireAuth from "@/auth/RequireAuth";
 import GoogleAuthCallback from "@/auth/GoogleAuthCallback";
 import AppShell from "@/components/app-shell/AppShell";
+import SignGuyLogo from "@/components/brand/SignGuyLogo";
 import GlobalPlatformBanner from "@/components/platform/GlobalPlatformBanner";
 import LoginPage from "@/pages/LoginPage";
 import AccountSuspendedPage from "@/pages/AccountSuspendedPage";
@@ -25,6 +26,7 @@ import IntakePage from "@/pages/IntakePage";
 import IntakeNewPage from "@/pages/IntakeNewPage";
 import IntakeDetailPage from "@/pages/IntakeDetailPage";
 import DecisionRoomsPage from "@/pages/DecisionRoomsPage";
+import ApprovalCenterPage from "@/pages/ApprovalCenterPage";
 import DecisionRoomNewPage from "@/pages/DecisionRoomNewPage";
 import DecisionRoomEditorPage from "@/pages/DecisionRoomEditorPage";
 import DecisionRoomReviewQueuePage from "@/pages/DecisionRoomReviewQueuePage";
@@ -101,7 +103,13 @@ import { Toaster } from "sonner";
 
 function LoggedInHome() {
   const { user, loading } = useAuth();
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="min-h-dvh grid place-items-center text-muted-foreground">
+        <SignGuyLogo variant="full" className="h-12 w-52" testId="home-loading-logo" />
+      </div>
+    );
+  }
   if (!user) return <Navigate to="/login" replace />;
   return <Navigate to="/" replace />;
 }
@@ -128,6 +136,20 @@ function AppRoutes() {
         }
       >
         <Route path="/" element={<DashboardPage />} />
+        <Route path="/home" element={<Navigate to="/" replace />} />
+        <Route
+          path="/shop-operations"
+          element={
+            <DashboardPage
+              title="Overview"
+              subtitle="What needs attention across shop operations"
+            />
+          }
+        />
+        <Route path="/sales" element={<Navigate to="/intake" replace />} />
+        <Route path="/sales/intake" element={<Navigate to="/intake" replace />} />
+        <Route path="/sales/quotes" element={<Navigate to="/quotes" replace />} />
+        <Route path="/sales/orders" element={<Navigate to="/orders" replace />} />
         <Route path="/customers" element={<CustomersPage />} />
         <Route path="/customers/:id" element={<CustomerDetailPage />} />
         <Route path="/quotes" element={<QuotesPage />} />
@@ -145,6 +167,7 @@ function AppRoutes() {
           path="/decision-room-review-queue"
           element={<DecisionRoomReviewQueuePage />}
         />
+        <Route path="/approval-center" element={<ApprovalCenterPage />} />
         <Route path="/forms" element={<FormsLibraryPage />} />
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/decision-rooms/new" element={<DecisionRoomNewPage />} />

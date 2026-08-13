@@ -2,15 +2,16 @@
  * Authenticated application shell navigation contract.
  *
  * Desktop shell:
- * - primary sidebar = six main application areas only;
- * - module navigation = persistent horizontal tabs in the content header;
- * - contextual ribbon = module-specific command surface.
+ * - primary sidebar = single-level application areas only;
+ * - secondary navigation = persistent horizontal module row in the workspace;
+ * - contextual ribbon = page/module-specific command surface.
  */
 import {
   CircleHelp,
   DollarSign,
   HelpCircle,
-  Palette,
+  Home,
+  Library,
   Settings,
   ShoppingBag,
   Sparkles,
@@ -19,26 +20,34 @@ import {
 
 export const PRIMARY_NAV_AREAS = [
   {
-    key: "shop-operations",
-    label: "Shop Operations",
-    icon: ShoppingBag,
-    accent: "text-cyan-300",
+    key: "home",
+    label: "Home",
+    icon: Home,
+    accent: "text-sky-300",
     to: "/",
-    testId: "primary-nav-shop-operations",
+    testId: "primary-nav-home",
     moduleNav: [
       {
         key: "overview",
         label: "Overview",
         to: "/",
-        testId: "module-nav-shop-overview",
+        testId: "module-nav-home-overview",
       },
+    ],
+  },
+  {
+    key: "shop-operations",
+    label: "Shop Operations",
+    icon: ShoppingBag,
+    accent: "text-cyan-300",
+    to: "/shop-operations",
+    testId: "primary-nav-shop-operations",
+    moduleNav: [
       {
-        key: "intake",
-        label: "Intake",
-        to: "/intake",
-        perm: "intake:read",
-        testId: "module-nav-intake",
-        match: ["/intake"],
+        key: "overview",
+        label: "Overview",
+        to: "/shop-operations",
+        testId: "module-nav-shop-overview",
       },
       {
         key: "customers",
@@ -49,28 +58,19 @@ export const PRIMARY_NAV_AREAS = [
         match: ["/customers"],
       },
       {
-        key: "quotes",
-        label: "Quotes",
-        to: "/quotes",
-        perm: "quote:read",
-        testId: "module-nav-quotes",
-        match: ["/quotes"],
+        key: "sales",
+        label: "Sales",
+        to: "/sales/intake",
+        testId: "module-nav-sales",
+        match: ["/sales", "/intake", "/quotes", "/orders"],
       },
       {
-        key: "orders",
-        label: "Orders",
-        to: "/orders",
-        perm: "order:read",
-        testId: "module-nav-orders",
-        match: ["/orders"],
-      },
-      {
-        key: "pricing",
-        label: "Pricing",
-        to: "/pricing-calculator",
-        perm: "pricing:read",
-        testId: "module-nav-pricing",
-        match: ["/pricing-calculator"],
+        key: "approval-center",
+        label: "Approval Center",
+        to: "/approval-center",
+        perm: "decision_room:read",
+        testId: "module-nav-approval-center",
+        match: ["/approval-center", "/decision-rooms", "/decision-room-review-queue"],
       },
       {
         key: "production",
@@ -78,28 +78,7 @@ export const PRIMARY_NAV_AREAS = [
         to: "/work-orders",
         perm: "work_order:read",
         testId: "module-nav-production",
-        match: ["/work-orders", "/kiosk/production"],
-      },
-      {
-        key: "shop-schedule",
-        label: "Shop Schedule",
-        to: "/shop-schedule",
-        perm: "schedule:read",
-        testId: "module-nav-shop-schedule",
-      },
-      {
-        key: "library",
-        label: "Library/DocuLink",
-        to: "/documents",
-        perm: "document:read",
-        testId: "module-nav-library",
-        match: [
-          "/documents",
-          "/decision-rooms",
-          "/decision-room-review-queue",
-          "/templates",
-          "/forms",
-        ],
+        match: ["/work-orders"],
       },
       {
         key: "webstores",
@@ -173,12 +152,12 @@ export const PRIMARY_NAV_AREAS = [
     ],
   },
   {
-    key: "team-workflow",
-    label: "Team & Workflow",
+    key: "team-productivity",
+    label: "Team & Productivity",
     icon: Users,
     accent: "text-violet-300",
     to: "/team",
-    testId: "primary-nav-team-workflow",
+    testId: "primary-nav-team-productivity",
     moduleNav: [
       {
         key: "overview",
@@ -274,16 +253,16 @@ export const PRIMARY_NAV_AREAS = [
     ],
   },
   {
-    key: "design-studio",
-    label: "Design Studio",
-    icon: Palette,
+    key: "tools-resources",
+    label: "Tools & Resources",
+    icon: Library,
     accent: "text-amber-300",
     to: "/studio",
-    testId: "primary-nav-design-studio",
+    testId: "primary-nav-tools-resources",
     moduleNav: [
       {
         key: "overview",
-        label: "Overview",
+        label: "Studio",
         to: "/studio",
         perm: "ai_tool:use",
         testId: "module-nav-studio-overview",
@@ -359,14 +338,6 @@ export const PRIMARY_NAV_AREAS = [
         label: "Overview",
         to: "/settings",
         testId: "module-nav-settings-overview",
-      },
-      {
-        key: "platform-admin",
-        label: "Platform Admin",
-        to: "/platform-admin",
-        platformOnly: true,
-        testId: "module-nav-platform-admin",
-        match: ["/platform-admin"],
       },
       {
         key: "company",
