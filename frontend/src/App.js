@@ -12,6 +12,7 @@ import RegisterTenantPage from "@/pages/RegisterTenantPage";
 import ForgotPasswordPage from "@/pages/ForgotPasswordPage";
 import ResetPasswordPage from "@/pages/ResetPasswordPage";
 import DashboardPage from "@/pages/DashboardPage";
+import ShopOperationsOverviewPage from "@/pages/ShopOperationsOverviewPage";
 import CustomersPage from "@/pages/CustomersPage";
 import CustomerDetailPage from "@/pages/CustomerDetailPage";
 import QuotesPage from "@/pages/QuotesPage";
@@ -137,15 +138,7 @@ function AppRoutes() {
       >
         <Route path="/" element={<DashboardPage />} />
         <Route path="/home" element={<Navigate to="/" replace />} />
-        <Route
-          path="/shop-operations"
-          element={
-            <DashboardPage
-              title="Overview"
-              subtitle="What needs attention across shop operations"
-            />
-          }
-        />
+        <Route path="/shop-operations" element={<ShopOperationsOverviewPage />} />
         <Route path="/sales" element={<Navigate to="/intake" replace />} />
         <Route path="/sales/intake" element={<Navigate to="/intake" replace />} />
         <Route path="/sales/quotes" element={<Navigate to="/quotes" replace />} />

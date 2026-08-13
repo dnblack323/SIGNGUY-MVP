@@ -28,6 +28,7 @@ import {
   ShoppingBag,
   Store,
   Upload,
+  User,
   UserCheck,
   UserPlus,
 } from "lucide-react";
@@ -41,7 +42,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import NotificationBell from "@/components/notifications/NotificationBell";
@@ -115,38 +116,37 @@ const COMMANDS = {
 };
 
 const CREATE_KEYS = ["newIntake", "newCustomer", "newQuote", "newOrder", "invitePortal", "newWebstore", "newWrapProject"];
-const DESKTOP_SIDEBAR_COLLAPSED_WIDTH = 96;
-const DESKTOP_SIDEBAR_EXPANDED_WIDTH = 260;
+const DESKTOP_SIDEBAR_WIDTH = 96;
 
 const COMMAND_COLOR_CLASSES = {
-  document: "text-blue-600",
-  quote: "text-fuchsia-600",
-  order: "text-green-600",
-  schedule: "text-orange-600",
-  view: "text-cyan-600",
-  destructive: "text-red-600",
-  neutral: "text-slate-600",
+  document: "text-blue-700",
+  approval: "text-violet-700",
+  completion: "text-emerald-700",
+  warning: "text-orange-700",
+  destructive: "text-red-700",
+  view: "text-slate-600",
+  neutral: "text-slate-700",
 };
 
 const COMMAND_CATEGORY_BY_KEY = {
   newCustomer: "document",
   newIntake: "document",
-  newQuote: "quote",
-  sendQuote: "quote",
-  followUp: "quote",
-  requestApproval: "quote",
-  sendProof: "quote",
-  respond: "quote",
-  newDecisionRoom: "quote",
-  newOrder: "order",
-  convertOrder: "order",
-  markReviewed: "order",
-  applyDecision: "order",
-  startWork: "order",
-  completeWork: "order",
-  scheduleInstall: "schedule",
-  waitWork: "schedule",
-  dueDate: "schedule",
+  newQuote: "document",
+  sendQuote: "document",
+  followUp: "approval",
+  requestApproval: "approval",
+  sendProof: "approval",
+  respond: "approval",
+  newDecisionRoom: "approval",
+  newOrder: "document",
+  convertOrder: "completion",
+  markReviewed: "completion",
+  applyDecision: "completion",
+  startWork: "completion",
+  completeWork: "completion",
+  scheduleInstall: "warning",
+  waitWork: "warning",
+  dueDate: "warning",
   blockWork: "destructive",
   filter: "view",
   refresh: "view",
@@ -241,9 +241,9 @@ function commandIconClass(command) {
 }
 
 function orderViewIconClass(view) {
-  if (view.status === "completed" || view.status === "ready" || view.status === "confirmed") return COMMAND_COLOR_CLASSES.order;
+  if (view.status === "completed" || view.status === "ready" || view.status === "confirmed") return COMMAND_COLOR_CLASSES.completion;
   if (view.status === "cancelled") return COMMAND_COLOR_CLASSES.destructive;
-  if (view.status === "in_production") return COMMAND_COLOR_CLASSES.schedule;
+  if (view.status === "in_production") return COMMAND_COLOR_CLASSES.warning;
   return COMMAND_COLOR_CLASSES.view;
 }
 
@@ -321,9 +321,9 @@ function CommandButton({ command, permissions, compact = false, testPrefix = "sh
   );
 }
 
-function PrimaryAreaButton({ area, active, collapsed, onSelect }) {
+function PrimaryAreaButton({ area, active, onSelect }) {
   const Icon = area.icon;
-  const button = (
+  return (
     <button
       type="button"
       data-testid={area.testId}
@@ -333,49 +333,62 @@ function PrimaryAreaButton({ area, active, collapsed, onSelect }) {
       onClick={() => onSelect(area)}
       title={area.label}
       className={cn(
-        "flex w-full rounded-sm text-[13px] font-medium leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80",
-        collapsed
-          ? "min-h-[70px] flex-col items-center justify-center gap-1 px-2 text-center"
-          : "min-h-[54px] flex-row items-center justify-start gap-3 px-4 text-left",
-        active ? "bg-blue-600 text-white shadow-inner" : "text-white hover:bg-white/10",
+        "flex min-h-[62px] w-full flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-center text-[11px] font-semibold leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80",
+        active ? "bg-blue-600 text-white shadow-inner" : "text-slate-200 hover:bg-white/10 hover:text-white",
       )}
     >
-      <Icon className={cn("shrink-0", collapsed ? "size-7" : "size-6", active ? "text-white" : area.accent)} aria-hidden="true" />
-      <span className={cn(collapsed ? "sr-only" : "block min-w-0 truncate")}>{area.label}</span>
+      <Icon className="size-5 shrink-0 stroke-[1.8] text-current" aria-hidden="true" />
+      <span className="block max-w-[82px] text-balance">{area.label}</span>
     </button>
   );
+}
 
-  if (!collapsed) return button;
+function SidebarSignOutButton({ mobile = false }) {
+  const { logout } = useAuth();
+  const { confirmBeforeAbandon } = useWorkspace();
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent side="right">{area.label}</TooltipContent>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="mx-auto size-10 text-white hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/80"
+          data-testid="sidebar-sign-out-button"
+          aria-label="Sign out"
+          title="Sign out"
+          onClick={() => confirmBeforeAbandon(logout, "Sign out and leave unsaved workspace changes?")}
+        >
+          <LogOut className="size-5" aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side={mobile ? "bottom" : "right"}>Sign out</TooltipContent>
     </Tooltip>
   );
 }
 
-function SidebarInner({ collapsed, selectedAreaKey, onSelectArea, onNavigate, mobile = false, tenant = null }) {
+function SidebarInner({ selectedAreaKey, onSelectArea, onNavigate, mobile = false, tenant = null }) {
   const navAreas = PRIMARY_NAV_AREAS;
   return (
     <TooltipProvider delayDuration={200}>
       <div
-        className="flex h-full flex-col bg-slate-950 text-slate-100"
+        className="flex h-full flex-col bg-[#06172a] text-slate-100"
         data-testid="app-shell-sidebar"
-        data-collapsed={collapsed && !mobile ? "true" : "false"}
+        data-collapsed="false"
       >
-        <div className={cn("grid place-items-center border-b border-white/10 px-3", collapsed && !mobile ? "h-[86px]" : "h-[112px]")}>
+        <div className="grid h-[72px] place-items-center border-b border-white/10 px-2">
           <Tooltip>
             <TooltipTrigger asChild>
               <div>
                 <SignGuyLogo
-                  variant={collapsed && !mobile ? "mark" : "full"}
-                  className={collapsed && !mobile ? "h-16 w-20" : "h-24 w-56 max-w-full"}
+                  variant="mark"
+                  className="h-10 w-[70px]"
                   alt="SignGuy AI"
-                  testId={collapsed && !mobile ? "sidebar-logo-compact" : "sidebar-logo-expanded"}
+                  testId="sidebar-logo-compact"
                 />
               </div>
             </TooltipTrigger>
-            <TooltipContent side={collapsed && !mobile ? "right" : "bottom"}>SignGuy AI</TooltipContent>
+            <TooltipContent side={mobile ? "bottom" : "right"}>SignGuy AI</TooltipContent>
           </Tooltip>
           <div className="sr-only">
             <div data-testid="sidebar-tenant-name">{tenant?.name || "SignGuy AI"}</div>
@@ -383,13 +396,12 @@ function SidebarInner({ collapsed, selectedAreaKey, onSelectArea, onNavigate, mo
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="primary-sidebar-nav" aria-label="Main application areas">
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden px-1 py-1 lg:overflow-y-hidden" data-testid="primary-sidebar-nav" aria-label="Main application areas">
           {navAreas.map((area) => (
-            <div key={area.key} className={cn("border-b border-white/5", area.key === "control-center" && "mt-3 border-t border-white/15 pt-3")}>
+            <div key={area.key} className={cn("py-px", area.key === "control-center" && "mt-1 border-t border-white/15 pt-1.5")}>
               <PrimaryAreaButton
                 area={area}
                 active={selectedAreaKey === area.key}
-                collapsed={collapsed && !mobile}
                 onSelect={(nextArea) => {
                   onSelectArea(nextArea);
                   onNavigate?.();
@@ -399,11 +411,16 @@ function SidebarInner({ collapsed, selectedAreaKey, onSelectArea, onNavigate, mo
           ))}
         </nav>
 
-        <div className="space-y-2 border-t border-white/10 px-2 py-3" data-testid="sidebar-bottom-controls">
+        <div className="space-y-1.5 border-t border-white/10 px-2 py-2" data-testid="sidebar-bottom-controls">
           <AccountMenu sidebar />
-          <Button asChild size="icon" variant="ghost" className="mx-auto size-9 text-white hover:bg-white/10" data-testid="sidebar-notifications-button" aria-label="Notifications">
-            <Link to="/team/messages"><MessageSquare className="size-5" /></Link>
-          </Button>
+          <NotificationBell
+            testId="sidebar-notifications-button"
+            tooltip="Notifications"
+            className="mx-auto size-10 text-white hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/80"
+            iconClassName="size-5"
+            badgeClassName="bg-blue-600 text-white"
+          />
+          <SidebarSignOutButton mobile={mobile} />
         </div>
       </div>
     </TooltipProvider>
@@ -690,17 +707,30 @@ function CreateMenu({ permissions, blue = false }) {
   );
 }
 
+function accountInitials(user) {
+  const source = (user?.full_name || user?.name || user?.email || "").trim();
+  if (!source) return "";
+  const parts = source.includes("@") ? source.split("@")[0].split(/[._-]+/) : source.split(/\s+/);
+  return parts
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
+
 function AccountMenu({ sidebar = false }) {
   const { user, tenant, logout, permissions } = useAuth();
   const { confirmBeforeAbandon } = useWorkspace();
   const canPlatformAdmin = permissions?.includes("platform:admin") || permissions?.includes("platform:creator") || user?.platform_admin || user?.platform_role;
+  const initials = accountInitials(user);
+  const avatarSrc = user?.profile_image_url || user?.avatar_url || user?.picture || user?.image_url;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
           className={cn(
-            "grid size-9 place-items-center rounded-lg focus-visible:outline-none focus-visible:ring-2",
+            "grid size-10 place-items-center rounded-lg focus-visible:outline-none focus-visible:ring-2",
             sidebar
               ? "mx-auto text-white hover:bg-white/10 focus-visible:ring-white/80"
               : "hover:bg-white/10 focus-visible:ring-white/80",
@@ -709,7 +739,16 @@ function AccountMenu({ sidebar = false }) {
           aria-label="Account menu"
         >
           <Avatar className="size-8">
-            <AvatarFallback>{(user?.full_name || user?.email || "U").slice(0, 1).toUpperCase()}</AvatarFallback>
+            {avatarSrc && <AvatarImage src={avatarSrc} alt="" data-testid={sidebar ? "sidebar-account-avatar-image" : "global-account-avatar-image"} />}
+            <AvatarFallback
+              className={cn(
+                "bg-slate-100 text-sm font-semibold text-slate-700",
+                sidebar && "bg-white text-slate-900",
+              )}
+              data-testid={sidebar ? "sidebar-account-avatar-fallback" : "global-account-avatar-fallback"}
+            >
+              {initials || <User className="size-4" aria-hidden="true" />}
+            </AvatarFallback>
           </Avatar>
         </button>
       </DropdownMenuTrigger>
@@ -738,11 +777,10 @@ function AccountMenu({ sidebar = false }) {
   );
 }
 
-function GlobalHeader({ area, module, permissions, sidebarExpanded, onToggleNavigation }) {
+function GlobalHeader({ area, module, permissions, onToggleNavigation }) {
   const headerTitle = area?.key === "shop-operations" ? "Shop Operations" : area?.label || module?.label || "Overview";
-  const menuLabel = sidebarExpanded ? "Collapse navigation" : "Expand navigation";
   const quickIcons = [
-    { key: "menu", label: menuLabel, icon: Menu, onClick: onToggleNavigation },
+    { key: "menu", label: "Open navigation", icon: Menu, onClick: onToggleNavigation, mobileOnly: true },
     { key: "create", label: "Create", icon: Plus, to: "/intake/new" },
     { key: "search", label: "Search", icon: Search, to: "/customers" },
     { key: "review", label: "Review", icon: CheckCircle2, to: "/approval-center" },
@@ -755,14 +793,17 @@ function GlobalHeader({ area, module, permissions, sidebarExpanded, onToggleNavi
         <div className="flex items-center gap-2">
           {quickIcons.map((item) => {
             const Icon = item.icon;
-            const className = "grid size-9 place-items-center rounded-md text-white/95 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80";
+            const className = cn(
+              "grid size-9 place-items-center rounded-md text-white/95 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80",
+              item.mobileOnly && "lg:hidden",
+            );
             if (item.onClick) {
               return (
                 <button
                   key={item.key}
                   type="button"
                   className={className}
-                  data-testid="sidebar-toggle-button"
+                  data-testid="mobile-sidebar-menu-button"
                   aria-label={item.label}
                   title={item.label}
                   onClick={item.onClick}
@@ -1006,14 +1047,11 @@ export default function AppShell() {
 
 function AppShellFrame() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [desktopSidebarPinned, setDesktopSidebarPinned] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("signguy.sidebarPinned") === "true";
-  });
   const [devBannerHeight, setDevBannerHeight] = useState(0);
   const [selectedAreaKey, setSelectedAreaKey] = useState(null);
   const desktopSidebarRef = useRef(null);
   const devBannerRef = useRef(null);
+  const mobileMenuButtonRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { devBypass, permissions, user, tenant } = useAuth();
@@ -1030,10 +1068,6 @@ function AppShellFrame() {
     const target = firstAvailableModule(area, permissions, user);
     if (target) navigate(target.to);
   };
-
-  useEffect(() => {
-    window.localStorage.setItem("signguy.sidebarPinned", String(desktopSidebarPinned));
-  }, [desktopSidebarPinned]);
 
   useLayoutEffect(() => {
     if (!devBypass) {
@@ -1061,16 +1095,18 @@ function AppShellFrame() {
   }, [devBypass]);
 
   const desktopSidebarOffset = devBypass ? devBannerHeight : 0;
-  const desktopSidebarWidth = desktopSidebarPinned
-    ? DESKTOP_SIDEBAR_EXPANDED_WIDTH
-    : DESKTOP_SIDEBAR_COLLAPSED_WIDTH;
+  const desktopSidebarWidth = DESKTOP_SIDEBAR_WIDTH;
   const mainSidebarOffset = desktopSidebarWidth;
   const toggleNavigation = () => {
-    if (typeof window !== "undefined" && window.innerWidth < 1024) {
-      setMobileOpen(true);
-      return;
+    mobileMenuButtonRef.current = document.activeElement;
+    setMobileOpen(true);
+  };
+
+  const setMobileNavigationOpen = (open) => {
+    setMobileOpen(open);
+    if (!open) {
+      requestAnimationFrame(() => mobileMenuButtonRef.current?.focus?.());
     }
-    setDesktopSidebarPinned((value) => !value);
   };
 
   return (
@@ -1078,14 +1114,14 @@ function AppShellFrame() {
       {devBypass && (
         <div ref={devBannerRef} className="w-full bg-amber-50 border-b border-amber-200 text-amber-900 text-xs px-4 py-1.5 flex items-center justify-center gap-2" data-testid="dev-bypass-banner">
           <ShieldAlert className="size-3.5" />
-          <span><span className="font-semibold">Auth bypass ON</span> · you're browsing as Dev Shop owner. Set <span className="mono">AUTH_DEV_BYPASS=false</span> before deploying.</span>
+          <span><span className="font-semibold">Auth bypass ON</span> - you're browsing as Dev Shop owner. Set <span className="mono">AUTH_DEV_BYPASS=false</span> before deploying.</span>
         </div>
       )}
       <div className="min-h-dvh" data-testid="app-shell-layout">
         <aside
           ref={desktopSidebarRef}
           className={cn(
-            "fixed left-0 z-40 hidden flex-col border-r border-slate-900 bg-slate-950 shadow-2xl transition-[width] duration-150 ease-out lg:flex",
+            "fixed left-0 z-40 hidden flex-col border-r border-slate-900 bg-[#06172a] shadow-2xl lg:flex",
           )}
           style={{
             top: `${desktopSidebarOffset}px`,
@@ -1093,12 +1129,11 @@ function AppShellFrame() {
             width: `${desktopSidebarWidth}px`,
           }}
           data-testid="desktop-sidebar-shell"
-          data-expanded={desktopSidebarPinned ? "true" : "false"}
-          data-pinned={desktopSidebarPinned ? "true" : "false"}
+          data-expanded="true"
+          data-pinned="true"
           data-sidebar-width={desktopSidebarWidth}
         >
           <SidebarInner
-            collapsed={!desktopSidebarPinned}
             selectedAreaKey={selectedArea.key}
             onSelectArea={selectArea}
             tenant={tenant}
@@ -1111,12 +1146,16 @@ function AppShellFrame() {
           data-testid="app-shell-main-region"
           data-sidebar-width={mainSidebarOffset}
         >
-          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetContent side="left" className="w-[280px] border-slate-900 bg-slate-950 p-0">
+          <Sheet open={mobileOpen} onOpenChange={setMobileNavigationOpen}>
+            <SheetContent
+              side="left"
+              className="w-[280px] border-slate-900 bg-slate-950 p-0"
+              closeClassName="grid size-11 place-items-center rounded-md border border-white/20 bg-slate-900/90 text-white opacity-100 hover:bg-slate-800 focus:ring-white focus:ring-offset-slate-950"
+              closeLabel="Close navigation"
+            >
               <SheetTitle className="sr-only">Application navigation</SheetTitle>
               <SheetDescription className="sr-only">Mobile navigation drawer for SignGuy AI work areas and account controls.</SheetDescription>
               <SidebarInner
-                collapsed={false}
                 selectedAreaKey={selectedArea.key}
                 onSelectArea={selectArea}
                 onNavigate={() => setMobileOpen(false)}
@@ -1130,7 +1169,6 @@ function AppShellFrame() {
               area={selectedArea}
               module={activeModule}
               permissions={permissions}
-              sidebarExpanded={desktopSidebarPinned}
               onToggleNavigation={toggleNavigation}
             />
             <div className="flex h-11 min-w-0 items-center gap-3 border-b border-slate-200 bg-white px-4 md:px-6" data-testid="secondary-navigation-row">

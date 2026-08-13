@@ -1,33 +1,49 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
+import { useAuth } from "@/auth/AuthContext";
 import PageHeader from "@/components/layout/PageHeader";
 import { CardsSkeleton } from "@/components/common/LoadingSkeleton";
 import StatusPill from "@/components/common/StatusPill";
-import { centsToDollarsString, formatDate, relativeTime } from "@/lib/format";
-import { ShoppingBag, FileText, Wrench, Receipt, ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { AuditTimeline } from "@/components/audit/AuditTimeline";
+import { centsToDollarsString, formatDate, relativeTime } from "@/lib/format";
+import {
+  BriefcaseBusiness,
+  ChevronRight,
+  FileText,
+  Receipt,
+  ShoppingBag,
+  Users,
+} from "lucide-react";
 
-function StatCard({ label, value, helper, icon: Icon, to, testId }) {
+export function DashboardStatCard({ label, value, helper, icon: Icon, to, testId }) {
   return (
-    <Link to={to} className="rounded-xl border bg-card p-4 shadow-[0_1px_0_rgba(15,23,42,0.04)] hover:bg-muted/30 transition-colors block" data-testid={testId}>
-      <div className="flex items-start justify-between">
+    <Link
+      to={to}
+      className="block rounded-lg border bg-card p-4 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition-colors hover:bg-muted/30"
+      data-testid={testId}
+    >
+      <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-xs font-medium text-muted-foreground">{label}</div>
           <div className="mt-2 text-3xl font-semibold tabular-nums font-display" data-testid="dashboard-stat-card-value">{value}</div>
           {helper && <div className="mt-1 text-xs text-muted-foreground">{helper}</div>}
         </div>
-        {Icon && <div className="grid size-9 place-items-center rounded-lg bg-muted text-muted-foreground"><Icon className="size-4" /></div>}
+        {Icon && (
+          <div className="grid size-9 place-items-center rounded-lg bg-muted text-muted-foreground">
+            <Icon className="size-4" aria-hidden="true" />
+          </div>
+        )}
       </div>
     </Link>
   );
 }
 
-function ListCard({ title, testId, empty, children, viewAllTo }) {
+export function DashboardListCard({ title, testId, empty, children, viewAllTo }) {
   return (
-    <div className="rounded-xl border bg-card" data-testid={testId}>
-      <div className="flex items-center justify-between px-4 py-3 border-b">
+    <div className="rounded-lg border bg-card" data-testid={testId}>
+      <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="font-medium">{title}</div>
         {viewAllTo && <Link className="text-xs text-muted-foreground hover:underline" to={viewAllTo}>View all</Link>}
       </div>
@@ -36,118 +52,197 @@ function ListCard({ title, testId, empty, children, viewAllTo }) {
   );
 }
 
-export default function DashboardPage({ title = "Home", subtitle = "Everything that needs your attention today." }) {
+function SummaryRow({ to, primary, secondary, statusKind, statusValue, value }) {
+  const row = (
+    <>
+      <div className="min-w-0">
+        <div className="truncate text-sm">{primary}</div>
+        {secondary && <div className="text-xs text-muted-foreground">{secondary}</div>}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {value && <span className="text-sm tabular-nums">{value}</span>}
+        {statusKind && <StatusPill kind={statusKind} value={statusValue} />}
+        <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
+      </div>
+    </>
+  );
+
+  if (!to) return <div className="flex items-center justify-between gap-3 px-4 py-3">{row}</div>;
+  return (
+    <Link className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-muted/40" to={to}>
+      {row}
+    </Link>
+  );
+}
+
+function CrossBusinessSection({ title, icon: Icon, testId, children }) {
+  return (
+    <section className="rounded-lg border bg-card" data-testid={testId}>
+      <div className="flex items-center gap-2 border-b px-4 py-3">
+        <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+        <h2 className="font-medium">{title}</h2>
+      </div>
+      <div>{children}</div>
+    </section>
+  );
+}
+
+function RestrictedState({ children }) {
+  return <div className="px-4 py-6 text-sm text-muted-foreground" data-testid="home-permission-empty">{children}</div>;
+}
+
+export default function DashboardPage() {
+  const { hasPerm } = useAuth();
+  const canViewFinance = hasPerm("invoice:read") || hasPerm("finance:read");
+  const canViewTeam = hasPerm("employee:read") || hasPerm("task:read") || hasPerm("timesheet:self");
+  const canReviewTimesheets = hasPerm("timesheet:read") || hasPerm("timesheet:manage");
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ["dashboard"],
+    queryKey: ["home-dashboard"],
     queryFn: async () => (await api.get("/dashboard/summary")).data,
+  });
+  const teamDashboard = useQuery({
+    queryKey: ["home-team-dashboard"],
+    queryFn: async () => (await api.get("/team/dashboard")).data,
+    enabled: canViewTeam,
+    retry: false,
+  });
+  const pendingTimesheets = useQuery({
+    queryKey: ["home-timesheets-pending"],
+    queryFn: async () => (await api.get("/timesheets/pending-review")).data,
+    enabled: canReviewTimesheets,
+    retry: false,
   });
 
   return (
-    <div className="space-y-6" data-testid="dashboard-page">
-      <PageHeader title={title} subtitle={subtitle} testId="dashboard-header" />
+    <div className="space-y-5" data-testid="home-dashboard-page">
+      <PageHeader title="Home" subtitle="Cross-business attention for the whole company today." testId="dashboard-header" />
       {isLoading ? (
         <CardsSkeleton />
       ) : error ? (
         <EmptyState title="Couldn't load dashboard" description="Try refreshing the page." />
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard testId="stat-active-orders" label="Active orders" value={data.counts.active_orders} icon={ShoppingBag} to="/orders" helper="Confirmed or in production" />
-            <StatCard testId="stat-quotes-follow-up" label="Quotes needing follow-up" value={data.counts.quotes_follow_up} icon={FileText} to="/quotes" helper="Sent, not yet decided" />
-            <StatCard testId="stat-work-orders-attention" label="Work orders in progress" value={data.counts.work_orders_attention} icon={Wrench} to="/work-orders" helper="Or on hold" />
-            <StatCard testId="stat-unpaid-invoices" label="Unpaid invoices" value={data.counts.unpaid_invoices} icon={Receipt} to="/invoices" helper="Sent, partially paid, overdue" />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <DashboardStatCard testId="home-stat-shop-operations" label="Shop operations" value={data.counts.active_orders} icon={ShoppingBag} to="/shop-operations" helper="Active orders needing oversight" />
+            <DashboardStatCard testId="home-stat-quotes-follow-up" label="Sales follow-up" value={data.counts.quotes_follow_up} icon={FileText} to="/quotes" helper="Sent quotes awaiting decisions" />
+            <DashboardStatCard testId="home-stat-finance" label="Finance attention" value={canViewFinance ? data.counts.unpaid_invoices : "-"} icon={Receipt} to="/finance" helper={canViewFinance ? "Open invoice balances" : "Restricted by permission"} />
+            <DashboardStatCard testId="home-stat-team" label="Team signals" value={canReviewTimesheets ? (pendingTimesheets.data?.items?.length ?? 0) : "-"} icon={Users} to="/team" helper={canViewTeam ? "Team and timesheet signals" : "Restricted by permission"} />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <div className="lg:col-span-6">
-              <ListCard title="Quotes needing follow-up" testId="list-quotes-follow-up" empty="No quotes waiting." viewAllTo="/quotes">
-                {data.quotes_follow_up.length > 0 && (
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+            <div className="space-y-5 lg:col-span-7">
+              <CrossBusinessSection title="Shop Operations Attention" icon={BriefcaseBusiness} testId="home-section-shop-operations">
+                {(data.quotes_follow_up.length > 0 || data.work_orders_attention.length > 0) ? (
                   <ul className="divide-y">
-                    {data.quotes_follow_up.slice(0, 6).map((q) => (
+                    {data.quotes_follow_up.slice(0, 3).map((q) => (
                       <li key={q.id}>
-                        <Link className="flex items-center justify-between px-4 py-3 hover:bg-muted/40" to={`/quotes/${q.id}`}>
-                          <div className="min-w-0">
-                            <div className="text-sm truncate"><span className="mono text-xs text-muted-foreground mr-2">Q-{q.number}</span>{q.job_name}</div>
-                            <div className="text-xs text-muted-foreground">{relativeTime(q.created_at)}</div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm tabular-nums">{centsToDollarsString(q.total_cents)}</span>
-                            <StatusPill kind="quote" value={q.status} />
-                            <ChevronRight className="size-4 text-muted-foreground" />
-                          </div>
-                        </Link>
+                        <SummaryRow
+                          to={`/quotes/${q.id}`}
+                          primary={<><span className="mono mr-2 text-xs text-muted-foreground">Q-{q.number}</span>{q.job_name}</>}
+                          secondary={relativeTime(q.created_at)}
+                          statusKind="quote"
+                          statusValue={q.status}
+                          value={centsToDollarsString(q.total_cents)}
+                        />
                       </li>
                     ))}
-                  </ul>
-                )}
-              </ListCard>
-            </div>
-
-            <div className="lg:col-span-6">
-              <ListCard title="Work orders in production" testId="list-work-orders-attention" empty="Nothing in the shop right now." viewAllTo="/work-orders">
-                {data.work_orders_attention.length > 0 && (
-                  <ul className="divide-y">
-                    {data.work_orders_attention.slice(0, 6).map((w) => (
+                    {data.work_orders_attention.slice(0, 3).map((w) => (
                       <li key={w.id}>
-                        <Link className="flex items-center justify-between px-4 py-3 hover:bg-muted/40" to={`/work-orders/${w.id}`}>
-                          <div className="min-w-0">
-                            <div className="text-sm truncate"><span className="mono text-xs text-muted-foreground mr-2">W-{w.number}</span>Order O-…</div>
-                            <div className="text-xs text-muted-foreground">{relativeTime(w.created_at)}</div>
-                          </div>
-                          <StatusPill kind="production" value={w.production_status} />
-                        </Link>
+                        <SummaryRow
+                          to={`/work-orders/${w.id}`}
+                          primary={<><span className="mono mr-2 text-xs text-muted-foreground">W-{w.number}</span>Production attention</>}
+                          secondary={relativeTime(w.created_at)}
+                          statusKind="production"
+                          statusValue={w.production_status}
+                        />
                       </li>
                     ))}
                   </ul>
+                ) : (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">No shop operations attention items from current records.</div>
                 )}
-              </ListCard>
-            </div>
+              </CrossBusinessSection>
 
-            <div className="lg:col-span-7">
-              <ListCard title="Unpaid invoices" testId="list-unpaid-invoices" empty="Nothing outstanding 🎉 " viewAllTo="/invoices">
-                {data.unpaid_invoices.length > 0 && (
+              <CrossBusinessSection title="Business & Finance" icon={Receipt} testId="home-section-business-finance">
+                {!canViewFinance ? (
+                  <RestrictedState>Finance information is hidden because this account does not have finance or invoice access.</RestrictedState>
+                ) : data.unpaid_invoices.length > 0 ? (
                   <ul className="divide-y">
-                    {data.unpaid_invoices.slice(0, 8).map((inv) => (
+                    {data.unpaid_invoices.slice(0, 5).map((inv) => (
                       <li key={inv.id}>
-                        <Link className="flex items-center justify-between px-4 py-3 hover:bg-muted/40" to={`/invoices/${inv.id}`}>
-                          <div className="min-w-0">
-                            <div className="text-sm truncate"><span className="mono text-xs text-muted-foreground mr-2">I-{inv.number}</span>{inv.title}</div>
-                            <div className="text-xs text-muted-foreground">Due {formatDate(inv.due_date) || "—"}</div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm tabular-nums">{centsToDollarsString(inv.total_cents)}</span>
-                            <StatusPill kind="invoice" value={inv.status} />
-                          </div>
-                        </Link>
+                        <SummaryRow
+                          to={`/invoices/${inv.id}`}
+                          primary={<><span className="mono mr-2 text-xs text-muted-foreground">I-{inv.number}</span>{inv.title}</>}
+                          secondary={`Due ${formatDate(inv.due_date) || "not set"}`}
+                          statusKind="invoice"
+                          statusValue={inv.status}
+                          value={centsToDollarsString(inv.total_cents)}
+                        />
                       </li>
                     ))}
                   </ul>
+                ) : (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">No unpaid invoice attention items from current records.</div>
                 )}
-              </ListCard>
+              </CrossBusinessSection>
             </div>
 
-            <div className="lg:col-span-5 space-y-6">
-              <ListCard title="Recent emails" testId="list-recent-emails" empty="No emails sent yet." viewAllTo="/email-history">
+            <div className="space-y-5 lg:col-span-5">
+              <CrossBusinessSection title="Team & Productivity" icon={Users} testId="home-section-team-productivity">
+                {!canViewTeam ? (
+                  <RestrictedState>Team information is hidden because this account does not have team access.</RestrictedState>
+                ) : teamDashboard.isLoading || pendingTimesheets.isLoading ? (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">Loading team signals...</div>
+                ) : teamDashboard.error && !pendingTimesheets.data ? (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">Team summary is unavailable right now.</div>
+                ) : (
+                  <ul className="divide-y">
+                    <li>
+                      <SummaryRow
+                        to="/team/timesheets"
+                        primary="Timesheets awaiting review"
+                        secondary="Existing timesheet review queue"
+                        value={canReviewTimesheets ? String(pendingTimesheets.data?.items?.length ?? 0) : "Restricted"}
+                      />
+                    </li>
+                    <li>
+                      <SummaryRow
+                        to="/team"
+                        primary="Active team members"
+                        secondary="Current team status summary"
+                        value={String(teamDashboard.data?.employee_status_counts?.active ?? 0)}
+                      />
+                    </li>
+                  </ul>
+                )}
+              </CrossBusinessSection>
+
+              <DashboardListCard title="Upcoming & Recent Activity" testId="home-list-recent-activity" empty="No recent activity yet.">
+                {data.recent_activity.length > 0 ? (
+                  <div className="p-3">
+                    <AuditTimeline events={data.recent_activity.slice(0, 6)} />
+                  </div>
+                ) : (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">No recent cross-business activity yet.</div>
+                )}
+              </DashboardListCard>
+
+              <DashboardListCard title="Recent Emails" testId="home-list-recent-emails" empty="No emails sent yet." viewAllTo="/email-history">
                 {data.recent_emails.length > 0 && (
                   <ul className="divide-y">
-                    {data.recent_emails.slice(0, 6).map((e) => (
+                    {data.recent_emails.slice(0, 5).map((e) => (
                       <li key={e.id} className="px-4 py-3">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm truncate">{e.subject}</div>
+                          <div className="truncate text-sm">{e.subject}</div>
                           <StatusPill kind="email" value={e.status} />
                         </div>
-                        <div className="text-xs text-muted-foreground">to {e.to_email} · {relativeTime(e.created_at)}</div>
+                        <div className="text-xs text-muted-foreground">to {e.to_email} - {relativeTime(e.created_at)}</div>
                       </li>
                     ))}
                   </ul>
                 )}
-              </ListCard>
-
-              <ListCard title="Recent activity" testId="list-recent-activity" empty="No activity yet.">
-                <div className="p-3">
-                  <AuditTimeline events={data.recent_activity} />
-                </div>
-              </ListCard>
+              </DashboardListCard>
             </div>
           </div>
         </>
