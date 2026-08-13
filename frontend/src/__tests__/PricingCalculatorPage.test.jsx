@@ -373,10 +373,10 @@ test("Shop Operations navigation omits Pricing as a permanent module", () => {
   const shopOperations = NAV_AREAS.find((area) => area.key === "shop-operations");
   expect(shopOperations.moduleNav.map((item) => item.key)).toEqual([
     "overview",
-    "sales",
     "customers",
-    "production",
+    "sales",
     "approval-center",
+    "production",
     "webstores",
     "wrap-lab",
   ]);
