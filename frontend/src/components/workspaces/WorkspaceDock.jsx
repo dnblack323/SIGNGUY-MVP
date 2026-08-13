@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import AssistantLauncher from "@/components/assistant/AssistantLauncher";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/context/WorkspaceContext";
 
@@ -257,7 +258,7 @@ function MobileOpenWork() {
 
 export default function WorkspaceDock() {
   const { open_workspaces, loading, error, refresh, openFreshWorkspace } = useWorkspace();
-  const leftOffset = "lg:left-[96px]";
+  const leftOffset = "lg:left-[var(--app-shell-sidebar-width)]";
   return (
     <TooltipProvider delayDuration={200}>
       <div
@@ -310,6 +311,7 @@ export default function WorkspaceDock() {
               <TooltipContent side="top">Open new workspace</TooltipContent>
             </Tooltip>
           </div>
+          <AssistantLauncher />
           <div className="relative shrink-0">
             <details className="group" data-testid="workspace-recent-menu">
               <summary className="cursor-pointer list-none rounded-sm border border-slate-700 px-2 py-1 text-xs font-medium text-slate-200 hover:bg-slate-900">

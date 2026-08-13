@@ -24,6 +24,10 @@ jest.mock("@/components/notifications/NotificationBell", () => function Notifica
   return <button type="button" data-testid="notification-bell">Notifications</button>;
 });
 
+jest.mock("@/components/assistant/AssistantPanel", () => function AssistantPanelMock() {
+  return <div data-testid="assistant-panel">Assistant panel</div>;
+});
+
 jest.setTimeout(15000);
 
 const FULL_PERMISSIONS = [
@@ -232,18 +236,27 @@ test("dock tabs render occupied slot numbers, full tooltips, and the plus worksp
   expect(screen.getByTestId("current-location")).toHaveTextContent("/");
 });
 
-test("assistant launcher is positioned above the Workspace Dock", async () => {
+test("assistant launcher renders inside the Workspace Dock and opens the Assistant experience", async () => {
   const dockState = { ...emptyDock, open_workspaces: [orderWorkspace] };
   api.get.mockResolvedValue({ data: dockState });
+  const user = userEvent.setup();
   renderShell("/orders/order-1");
 
   await screen.findByTestId("workspace-dock");
-  const shell = screen.getByTestId("authenticated-app-shell");
-  const assistant = screen.getByTestId("assistant-launcher");
-  expect(shell).toHaveStyle({ "--workspace-dock-height": "56px" });
+  const dock = screen.getByTestId("workspace-dock");
+  const assistant = within(dock).getByTestId("workspace-dock-assistant");
+  expect(assistant).toHaveAccessibleName("Assistant");
+  expect(assistant).toHaveAttribute("title", "Assistant");
+  expect(assistant).toHaveClass("h-9");
+  expect(assistant).not.toHaveClass("fixed");
+  expect(screen.queryByTestId("assistant-launcher")).not.toBeInTheDocument();
   expect(screen.getByTestId("workspace-dock-reserved-space")).toHaveClass("md:h-[var(--workspace-dock-height)]");
   expect(screen.getByTestId("workspace-dock")).toHaveClass("min-h-[var(--workspace-dock-height)]");
-  expect(assistant).toHaveClass("bottom-[calc(var(--workspace-dock-height,56px)+1rem)]");
+  expect(assistant.compareDocumentPosition(screen.getByTestId("workspace-recent-menu")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+  await user.click(assistant);
+  expect(await screen.findByText("Business Assistant")).toBeInTheDocument();
+  expect(screen.getByTestId("assistant-panel")).toBeInTheDocument();
 });
 
 test("eligible record context action opens the record in a new workspace without replacing the current page first", async () => {

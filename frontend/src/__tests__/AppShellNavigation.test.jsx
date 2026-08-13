@@ -24,7 +24,7 @@ jest.mock("@/components/notifications/NotificationBell", () => function Notifica
 });
 
 jest.mock("@/components/assistant/AssistantLauncher", () => function AssistantLauncherMock() {
-  return <div data-testid="assistant-launcher" />;
+  return <button type="button" data-testid="workspace-dock-assistant" aria-label="Assistant">Assistant</button>;
 });
 
 const FULL_PERMISSIONS = [
@@ -181,7 +181,7 @@ test("single-level sidebar renders the exact area order and bottom account contr
     "Help & Community",
   ]);
   expect(screen.queryByTestId("flyout-shop-operations")).not.toBeInTheDocument();
-  expect(within(screen.getByTestId("sidebar-bottom-controls")).getByTestId("sidebar-pin-toggle")).toBeInTheDocument();
+  expect(within(screen.getByTestId("sidebar-bottom-controls")).queryByTestId("sidebar-pin-toggle")).not.toBeInTheDocument();
   expect(within(screen.getByTestId("sidebar-bottom-controls")).getByTestId("sidebar-account-menu")).toBeInTheDocument();
   expect(within(screen.getByTestId("sidebar-bottom-controls")).getByTestId("sidebar-notifications-button")).toBeInTheDocument();
   expect(within(screen.getByTestId("sidebar-bottom-controls")).queryByTestId("notification-bell")).not.toBeInTheDocument();
@@ -242,6 +242,7 @@ test("desktop sidebar explicitly expands, collapses, and preserves the chosen st
 
   const sidebar = screen.getByTestId("desktop-sidebar-shell");
   const mainRegion = screen.getByTestId("app-shell-main-region");
+  const headerToggle = screen.getByTestId("sidebar-toggle-button");
   expect(sidebar).toHaveAttribute("data-expanded", "false");
   expect(sidebar).toHaveAttribute("data-sidebar-width", "96");
   expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("96px");
@@ -249,9 +250,10 @@ test("desktop sidebar explicitly expands, collapses, and preserves the chosen st
   expect(screen.queryByTestId("sidebar-logo-expanded")).not.toBeInTheDocument();
   expect(screen.getByTestId("primary-nav-shop-operations")).toHaveAttribute("aria-label", "Shop Operations");
   expect(within(screen.getByTestId("primary-nav-shop-operations")).getByText("Shop Operations")).toHaveClass("sr-only");
-  expect(screen.getByTestId("sidebar-pin-toggle")).toHaveAttribute("aria-label", "Expand sidebar");
+  expect(headerToggle).toHaveAttribute("aria-label", "Expand navigation");
+  expect(screen.queryByTestId("sidebar-pin-toggle")).not.toBeInTheDocument();
 
-  await user.click(screen.getByTestId("sidebar-pin-toggle"));
+  await user.click(headerToggle);
   expect(sidebar).toHaveAttribute("data-pinned", "true");
   expect(sidebar).toHaveAttribute("data-expanded", "true");
   expect(sidebar).toHaveAttribute("data-sidebar-width", "260");
@@ -259,16 +261,17 @@ test("desktop sidebar explicitly expands, collapses, and preserves the chosen st
   expect(screen.getByTestId("sidebar-logo-expanded")).toBeInTheDocument();
   expect(screen.getByTestId("primary-nav-shop-operations")).toHaveTextContent("Shop Operations");
   expect(within(screen.getByTestId("primary-nav-shop-operations")).getByText("Shop Operations")).not.toHaveClass("sr-only");
-  expect(screen.getByTestId("sidebar-pin-toggle")).toHaveAttribute("aria-label", "Collapse sidebar");
+  expect(headerToggle).toHaveAttribute("aria-label", "Collapse navigation");
   expect(window.localStorage.getItem("signguy.sidebarPinned")).toBe("true");
 
   await user.click(screen.getByTestId("module-nav-customers"));
   expect(sidebar).toHaveAttribute("data-expanded", "true");
   expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("260px");
 
-  await user.click(screen.getByTestId("sidebar-pin-toggle"));
+  await user.click(headerToggle);
   expect(sidebar).toHaveAttribute("data-expanded", "false");
   expect(sidebar).toHaveAttribute("data-sidebar-width", "96");
+  expect(headerToggle).toHaveAttribute("aria-label", "Expand navigation");
   expect(window.localStorage.getItem("signguy.sidebarPinned")).toBe("false");
 });
 
@@ -288,6 +291,7 @@ test("global header contains breadcrumbs, search, create, messages, notification
 
   const header = screen.getByTestId("global-header");
   expect(within(header).getByTestId("global-header-title")).toHaveTextContent("Shop Operations");
+  expect(within(header).getByTestId("sidebar-toggle-button")).toHaveAttribute("aria-label", "Expand navigation");
   expect(within(header).queryByTestId("global-header-subtitle")).not.toBeInTheDocument();
   expect(within(header).getByTestId("global-breadcrumbs")).toHaveTextContent("Shop Operations/Orders/Order #order-1042");
   expect(within(header).getByTestId("global-search")).toBeInTheDocument();

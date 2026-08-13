@@ -45,7 +45,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import NotificationBell from "@/components/notifications/NotificationBell";
-import AssistantLauncher from "@/components/assistant/AssistantLauncher";
 import SupportModeBanner from "@/components/platform/SupportModeBanner";
 import WorkspaceDock from "@/components/workspaces/WorkspaceDock";
 import { WorkspaceProvider, useWorkspace } from "@/context/WorkspaceContext";
@@ -258,14 +257,14 @@ function CommandButton({ command, permissions, compact = false, testPrefix = "sh
     : command.label;
   const baseClass = cn(
     layout === "ribbon"
-      ? "flex h-[62px] w-[74px] shrink-0 flex-col items-center justify-center gap-1 rounded-sm border border-transparent px-1 py-1 text-center text-[11px] leading-tight text-slate-900 hover:border-slate-200 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      ? "flex h-[48px] w-[64px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-sm border border-transparent px-1 py-1 text-center text-[10px] leading-tight text-slate-900 hover:border-slate-200 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       : compact
         ? "grid size-11 shrink-0 place-items-center rounded-md text-white/90 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
         : "h-9 shrink-0 rounded-md px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-950",
     active && "border-blue-300 bg-blue-50 text-slate-950 shadow-sm",
   );
   const iconClass = cn(
-    layout === "ribbon" ? "size-[22px]" : "size-5",
+    layout === "ribbon" ? "size-[19px]" : "size-5",
     compact && "size-6",
   );
 
@@ -355,7 +354,7 @@ function PrimaryAreaButton({ area, active, collapsed, onSelect }) {
   );
 }
 
-function SidebarInner({ collapsed, selectedAreaKey, onSelectArea, onNavigate, mobile = false, pinned = false, onTogglePinned, tenant = null }) {
+function SidebarInner({ collapsed, selectedAreaKey, onSelectArea, onNavigate, mobile = false, tenant = null }) {
   const navAreas = PRIMARY_NAV_AREAS;
   return (
     <TooltipProvider delayDuration={200}>
@@ -405,29 +404,6 @@ function SidebarInner({ collapsed, selectedAreaKey, onSelectArea, onNavigate, mo
           <Button asChild size="icon" variant="ghost" className="mx-auto size-9 text-white hover:bg-white/10" data-testid="sidebar-notifications-button" aria-label="Notifications">
             <Link to="/team/messages"><MessageSquare className="size-5" /></Link>
           </Button>
-          {!mobile && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  aria-label={pinned ? "Collapse sidebar" : "Expand sidebar"}
-                  aria-pressed={pinned ? "true" : "false"}
-                  className={cn(
-                    "mx-auto flex h-9 text-white hover:bg-white/10 focus-visible:ring-white/80",
-                    collapsed ? "w-10 px-0" : "w-full justify-start gap-2 px-3",
-                  )}
-                  data-testid="sidebar-pin-toggle"
-                  onClick={onTogglePinned}
-                >
-                  <Menu className="size-4" />
-                  {!collapsed && <span>{pinned ? "Collapse" : "Expand"}</span>}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side={collapsed ? "right" : "top"}>{pinned ? "Collapse sidebar" : "Expand sidebar"}</TooltipContent>
-            </Tooltip>
-          )}
         </div>
       </div>
     </TooltipProvider>
@@ -445,7 +421,7 @@ function ModuleTabs({ area, permissions, user }) {
       className="flex min-w-0 flex-1 justify-center"
       aria-label={`${area.label} secondary navigation`}
     >
-      <div className="flex h-14 items-end gap-5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex h-11 items-center gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {visibleItems.map((item) => {
           const active = itemMatchesPath(item, location.pathname);
           return (
@@ -456,7 +432,7 @@ function ModuleTabs({ area, permissions, user }) {
               aria-current={active ? "page" : undefined}
               data-active={active ? "true" : "false"}
               className={cn(
-                "inline-flex h-14 shrink-0 items-center border-b-2 px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+                "inline-flex h-11 shrink-0 items-center border-b-2 px-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
                 active
                   ? "border-blue-600 text-blue-700"
                   : "border-transparent text-slate-950 hover:border-blue-200 hover:text-blue-700",
@@ -626,7 +602,7 @@ function GlobalSearch({ blue = false }) {
 
   return (
     <form
-      className="relative hidden w-full max-w-xs md:block"
+      className="relative hidden w-full max-w-[250px] md:block"
       role="search"
       data-testid="global-search"
       onSubmit={(event) => {
@@ -695,7 +671,7 @@ function CreateMenu({ permissions, blue = false }) {
         <Button
           size="sm"
           data-testid="global-create-menu"
-          className={cn(blue && "border border-slate-950 bg-slate-950 text-white hover:bg-slate-900")}
+          className={cn("h-9", blue && "border border-slate-950 bg-slate-950 text-white hover:bg-slate-900")}
         >
           <Plus className="mr-1 size-4" />Create
         </Button>
@@ -762,10 +738,11 @@ function AccountMenu({ sidebar = false }) {
   );
 }
 
-function GlobalHeader({ area, module, permissions, onOpenMobileNav }) {
+function GlobalHeader({ area, module, permissions, sidebarExpanded, onToggleNavigation }) {
   const headerTitle = area?.key === "shop-operations" ? "Shop Operations" : area?.label || module?.label || "Overview";
+  const menuLabel = sidebarExpanded ? "Collapse navigation" : "Expand navigation";
   const quickIcons = [
-    { key: "menu", label: "Menu", icon: Menu, onClick: onOpenMobileNav },
+    { key: "menu", label: menuLabel, icon: Menu, onClick: onToggleNavigation },
     { key: "create", label: "Create", icon: Plus, to: "/intake/new" },
     { key: "search", label: "Search", icon: Search, to: "/customers" },
     { key: "review", label: "Review", icon: CheckCircle2, to: "/approval-center" },
@@ -773,44 +750,45 @@ function GlobalHeader({ area, module, permissions, onOpenMobileNav }) {
     { key: "list", label: "Queues", icon: List, to: "/orders" },
   ];
   return (
-    <div className="bg-blue-600 px-4 text-white shadow-sm md:px-6" data-testid="global-header">
-      <div className="grid h-[72px] grid-cols-[auto_1fr_auto] items-center gap-4">
-        <div className="flex items-center gap-3">
+    <div className="bg-blue-600 px-4 text-white shadow-sm md:px-5" data-testid="global-header">
+      <div className="grid h-[58px] grid-cols-[auto_1fr_auto] items-center gap-3">
+        <div className="flex items-center gap-2">
           {quickIcons.map((item) => {
             const Icon = item.icon;
-            const className = "grid size-10 place-items-center rounded-md text-white/95 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80";
+            const className = "grid size-9 place-items-center rounded-md text-white/95 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80";
             if (item.onClick) {
               return (
                 <button
                   key={item.key}
                   type="button"
                   className={className}
-                  data-testid="sidebar-open-mobile"
+                  data-testid="sidebar-toggle-button"
                   aria-label={item.label}
+                  title={item.label}
                   onClick={item.onClick}
                 >
-                  <Icon className="size-7" aria-hidden="true" />
+                  <Icon className="size-6" aria-hidden="true" />
                 </button>
               );
             }
             return (
               <Link key={item.key} to={item.to} className={className} aria-label={item.label} title={item.label}>
-                <Icon className="size-7" aria-hidden="true" />
+                <Icon className="size-6" aria-hidden="true" />
               </Link>
             );
           })}
         </div>
         <div className="min-w-0 text-center">
-          <h1 className="truncate text-2xl font-bold leading-tight text-white" data-testid="global-header-title">{headerTitle}</h1>
+          <h1 className="truncate text-xl font-bold leading-tight text-white" data-testid="global-header-title">{headerTitle}</h1>
           <div className="sr-only" data-testid="global-breadcrumb-row">
             <Breadcrumbs area={area} module={module} />
           </div>
         </div>
-        <div className="flex min-w-0 shrink-0 items-center justify-end gap-3">
+        <div className="flex min-w-0 shrink-0 items-center justify-end gap-2">
           <GlobalSearch blue />
           <CreateMenu permissions={permissions} blue />
-          <Button asChild size="icon" variant="ghost" className="size-10 text-white hover:bg-white/10" data-testid="global-messages-button" aria-label="Messages">
-            <Link to="/team/messages"><MessageSquare className="size-6" /></Link>
+          <Button asChild size="icon" variant="ghost" className="size-9 text-white hover:bg-white/10" data-testid="global-messages-button" aria-label="Messages">
+            <Link to="/team/messages"><MessageSquare className="size-5" /></Link>
           </Button>
           <NotificationBell />
           <AccountMenu />
@@ -872,14 +850,14 @@ function ContextualRibbon({ area, module, permissions }) {
         data-module-key={module?.key}
         className="border-b border-slate-200 bg-white px-4 md:px-6"
       >
-        <div className="flex h-[114px] items-stretch gap-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex h-[84px] items-stretch gap-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {groups.map(([groupLabel, keys], groupIndex) => {
             const commands = keys.map((key) => COMMANDS[key]).filter(Boolean);
             const showOrderViews = isOrdersPage && groupLabel === "Views";
             return (
               <div
                 key={`${groupLabel}-${groupIndex}`}
-                className={cn("flex shrink-0 flex-col justify-between px-3 py-3", groupIndex > 0 && "border-l border-slate-200")}
+                className={cn("flex shrink-0 flex-col justify-between px-2 py-2", groupIndex > 0 && "border-l border-slate-200")}
                 data-testid={`ribbon-group-${groupLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
               >
                 <div className="flex items-center gap-1">
@@ -900,7 +878,7 @@ function ContextualRibbon({ area, module, permissions }) {
                         data-active={active ? "true" : "false"}
                         aria-pressed={active ? "true" : "false"}
                         className={cn(
-                          "flex h-[62px] w-[76px] shrink-0 flex-col items-center justify-center gap-1 rounded-sm border px-1.5 py-1 text-center text-[11px] leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+                          "flex h-[48px] w-[64px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-sm border px-1 py-1 text-center text-[10px] leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
                           active
                             ? "border-blue-300 bg-blue-50 text-slate-950 shadow-sm"
                             : "border-transparent text-slate-700 hover:border-slate-200 hover:bg-white hover:text-slate-950",
@@ -920,7 +898,7 @@ function ContextualRibbon({ area, module, permissions }) {
                   <button
                     type="button"
                     data-testid="ribbon-order-views-dropdown"
-                    className="flex h-[62px] w-[76px] shrink-0 flex-col items-center justify-center gap-1 rounded-sm border border-transparent px-1.5 py-1 text-center text-[11px] leading-tight text-slate-700 transition-colors hover:border-slate-200 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    className="flex h-[48px] w-[64px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-sm border border-transparent px-1 py-1 text-center text-[10px] leading-tight text-slate-700 transition-colors hover:border-slate-200 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
                     <ShoppingBag className={cn("size-[18px]", COMMAND_COLOR_CLASSES.view)} aria-hidden="true" />
                     <span>Order Views</span>
@@ -951,7 +929,7 @@ function ContextualRibbon({ area, module, permissions }) {
                     </>
                   )}
                 </div>
-                <div className="pt-1 text-center text-[11px] font-medium uppercase tracking-wide text-slate-500">{groupLabel}</div>
+                <div className="pt-0.5 text-center text-[10px] font-medium uppercase tracking-wide text-slate-500">{groupLabel}</div>
               </div>
             );
           })}
@@ -971,7 +949,7 @@ function InternalTabLink({ tab, active, to }) {
       data-active={active ? "true" : "false"}
       data-testid={`internal-tab-${tab.key}`}
       className={cn(
-        "inline-flex h-9 shrink-0 items-center rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
+        "inline-flex h-8 shrink-0 items-center rounded-md border px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
         active ? "border-slate-950 bg-slate-950 text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950",
       )}
     >
@@ -1002,7 +980,7 @@ function ShellInternalTabs({ module }) {
   if (!tabs.length) return null;
 
   return (
-    <div className="border-b border-slate-200 bg-white px-4 py-1.5 md:px-6" data-testid="shell-internal-tabs">
+    <div className="border-b border-slate-200 bg-white px-4 py-1 md:px-6" data-testid="shell-internal-tabs">
       <div
         role="tablist"
         aria-label={module?.key === "sales" ? "Sales navigation" : "Internal page tabs"}
@@ -1087,6 +1065,13 @@ function AppShellFrame() {
     ? DESKTOP_SIDEBAR_EXPANDED_WIDTH
     : DESKTOP_SIDEBAR_COLLAPSED_WIDTH;
   const mainSidebarOffset = desktopSidebarWidth;
+  const toggleNavigation = () => {
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setMobileOpen(true);
+      return;
+    }
+    setDesktopSidebarPinned((value) => !value);
+  };
 
   return (
     <div className="min-h-dvh overflow-x-hidden bg-slate-100 text-foreground" data-testid="authenticated-app-shell" style={{ "--workspace-dock-height": "56px" }}>
@@ -1116,8 +1101,6 @@ function AppShellFrame() {
             collapsed={!desktopSidebarPinned}
             selectedAreaKey={selectedArea.key}
             onSelectArea={selectArea}
-            pinned={desktopSidebarPinned}
-            onTogglePinned={() => setDesktopSidebarPinned((value) => !value)}
             tenant={tenant}
           />
         </aside>
@@ -1143,8 +1126,14 @@ function AppShellFrame() {
             </SheetContent>
           </Sheet>
           <header className="sticky top-0 z-30 bg-white shadow-sm" data-testid="app-shell-topbar">
-            <GlobalHeader area={selectedArea} module={activeModule} permissions={permissions} onOpenMobileNav={() => setMobileOpen(true)} />
-            <div className="flex min-w-0 items-center gap-3 border-b border-slate-200 bg-white px-4 md:px-6" data-testid="secondary-navigation-row">
+            <GlobalHeader
+              area={selectedArea}
+              module={activeModule}
+              permissions={permissions}
+              sidebarExpanded={desktopSidebarPinned}
+              onToggleNavigation={toggleNavigation}
+            />
+            <div className="flex h-11 min-w-0 items-center gap-3 border-b border-slate-200 bg-white px-4 md:px-6" data-testid="secondary-navigation-row">
               <ModuleTabs area={selectedArea} permissions={permissions} user={user} />
             </div>
             <ContextualRibbon area={selectedArea} module={activeModule} permissions={permissions} />
@@ -1157,7 +1146,6 @@ function AppShellFrame() {
           </main>
           <div className="h-16 md:h-[var(--workspace-dock-height)]" data-testid="workspace-dock-reserved-space" aria-hidden="true" />
           <WorkspaceDock />
-          <AssistantLauncher />
         </div>
       </div>
     </div>
