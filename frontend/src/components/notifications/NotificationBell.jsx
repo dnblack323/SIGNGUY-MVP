@@ -3,8 +3,15 @@ import { Bell } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import NotificationPanel from "@/components/notifications/NotificationPanel";
 import api from "@/lib/api";
+import { cn } from "@/lib/utils";
 
-export default function NotificationBell() {
+export default function NotificationBell({
+  className,
+  iconClassName,
+  badgeClassName,
+  testId = "notification-bell",
+  tooltip,
+}) {
   const [count, setCount] = useState(0);
   const [open, setOpen] = useState(false);
 
@@ -28,15 +35,19 @@ export default function NotificationBell() {
       <PopoverTrigger asChild>
         <button
           type="button"
-          data-testid="notification-bell"
-          className="relative size-9 grid place-items-center rounded-lg hover:bg-muted/60 transition-colors"
+          data-testid={testId}
+          className={cn("relative grid size-9 place-items-center rounded-lg transition-colors hover:bg-muted/60", className)}
           aria-label="Notifications"
+          title={tooltip}
         >
-          <Bell className="size-4" />
+          <Bell className={cn("size-4", iconClassName)} />
           {count > 0 && (
             <span
               data-testid="notification-unread-badge"
-              className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 grid place-items-center rounded-full text-[10px] font-semibold bg-primary text-primary-foreground"
+              className={cn(
+                "absolute -right-0.5 -top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground",
+                badgeClassName,
+              )}
             >
               {count > 99 ? "99+" : count}
             </span>

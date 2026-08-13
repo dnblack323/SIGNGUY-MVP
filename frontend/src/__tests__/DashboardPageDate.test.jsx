@@ -3,6 +3,18 @@ import DashboardPage from "@/pages/DashboardPage";
 import { renderWithProviders } from "@/test-utils";
 import api from "@/lib/api";
 
+jest.mock("@/auth/AuthContext", () => ({
+  useAuth: () => ({
+    hasPerm: (permission) => [
+      "finance:read",
+      "invoice:read",
+      "employee:read",
+      "timesheet:read",
+      "timesheet:manage",
+    ].includes(permission),
+  }),
+}));
+
 jest.mock("@/lib/api", () => ({
   __esModule: true,
   default: {

@@ -19,8 +19,8 @@ jest.mock("@/lib/api", () => ({
   },
 }));
 
-jest.mock("@/components/notifications/NotificationBell", () => function NotificationBellMock() {
-  return <button type="button" data-testid="notification-bell">Notifications</button>;
+jest.mock("@/components/notifications/NotificationBell", () => function NotificationBellMock({ testId = "notification-bell" }) {
+  return <button type="button" data-testid={testId} aria-label="Notifications">Notifications</button>;
 });
 
 jest.mock("@/components/assistant/AssistantLauncher", () => function AssistantLauncherMock() {
@@ -96,7 +96,7 @@ function renderShell(initialPath = "/", authOverrides = {}) {
     logout: jest.fn(),
     permissions,
     tenant: { id: "tenant-1", name: "Donnell Black's Shop", slug: "dev-shop" },
-    user: { id: "user-1", email: "owner@example.com", full_name: "Owner User", platform_admin: true },
+    user: { id: "user-1", email: "owner@example.com", full_name: "Owner User", platform_admin: true, ...authOverrides.user },
   });
 
   return render(
@@ -184,8 +184,31 @@ test("single-level sidebar renders the exact area order and bottom account contr
   expect(within(screen.getByTestId("sidebar-bottom-controls")).queryByTestId("sidebar-pin-toggle")).not.toBeInTheDocument();
   expect(within(screen.getByTestId("sidebar-bottom-controls")).getByTestId("sidebar-account-menu")).toBeInTheDocument();
   expect(within(screen.getByTestId("sidebar-bottom-controls")).getByTestId("sidebar-notifications-button")).toBeInTheDocument();
+  expect(within(screen.getByTestId("sidebar-bottom-controls")).getByTestId("sidebar-sign-out-button")).toHaveAccessibleName("Sign out");
   expect(within(screen.getByTestId("sidebar-bottom-controls")).queryByTestId("notification-bell")).not.toBeInTheDocument();
   expect(within(screen.getByTestId("sidebar-bottom-controls")).queryByTestId("sidebar-global-search")).not.toBeInTheDocument();
+});
+
+test("keyboard users can reach every labeled sidebar destination and bottom control", async () => {
+  const user = userEvent.setup();
+  renderShell("/orders");
+
+  await user.tab();
+  expect(screen.getByTestId("primary-nav-home")).toHaveFocus();
+  for (const testId of [
+    "primary-nav-shop-operations",
+    "primary-nav-business-finance",
+    "primary-nav-team-productivity",
+    "primary-nav-tools-resources",
+    "primary-nav-control-center",
+    "primary-nav-help-community",
+    "sidebar-account-menu",
+    "sidebar-notifications-button",
+    "sidebar-sign-out-button",
+  ]) {
+    await user.tab();
+    expect(screen.getByTestId(testId)).toHaveFocus();
+  }
 });
 
 test("root and Shop Operations overview have distinct route ownership", async () => {
@@ -236,54 +259,92 @@ test("/home redirects to the Home dashboard route outside the kiosk route", asyn
   expectActiveArea("Home");
 });
 
-test("desktop sidebar explicitly expands, collapses, and preserves the chosen state", async () => {
-  const user = userEvent.setup();
+test("desktop sidebar is a fixed labeled rail without expansion controls", async () => {
   renderShell("/orders");
 
   const sidebar = screen.getByTestId("desktop-sidebar-shell");
   const mainRegion = screen.getByTestId("app-shell-main-region");
-  const headerToggle = screen.getByTestId("sidebar-toggle-button");
-  expect(sidebar).toHaveAttribute("data-expanded", "false");
+  expect(sidebar).toHaveAttribute("data-expanded", "true");
+  expect(sidebar).toHaveAttribute("data-pinned", "true");
   expect(sidebar).toHaveAttribute("data-sidebar-width", "96");
   expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("96px");
   expect(screen.getByTestId("sidebar-logo-compact")).toBeInTheDocument();
   expect(screen.queryByTestId("sidebar-logo-expanded")).not.toBeInTheDocument();
   expect(screen.getByTestId("primary-nav-shop-operations")).toHaveAttribute("aria-label", "Shop Operations");
-  expect(within(screen.getByTestId("primary-nav-shop-operations")).getByText("Shop Operations")).toHaveClass("sr-only");
-  expect(headerToggle).toHaveAttribute("aria-label", "Expand navigation");
-  expect(screen.queryByTestId("sidebar-pin-toggle")).not.toBeInTheDocument();
-
-  await user.click(headerToggle);
-  expect(sidebar).toHaveAttribute("data-pinned", "true");
-  expect(sidebar).toHaveAttribute("data-expanded", "true");
-  expect(sidebar).toHaveAttribute("data-sidebar-width", "260");
-  expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("260px");
-  expect(screen.getByTestId("sidebar-logo-expanded")).toBeInTheDocument();
-  expect(screen.getByTestId("primary-nav-shop-operations")).toHaveTextContent("Shop Operations");
   expect(within(screen.getByTestId("primary-nav-shop-operations")).getByText("Shop Operations")).not.toHaveClass("sr-only");
-  expect(headerToggle).toHaveAttribute("aria-label", "Collapse navigation");
-  expect(window.localStorage.getItem("signguy.sidebarPinned")).toBe("true");
-
-  await user.click(screen.getByTestId("module-nav-customers"));
-  expect(sidebar).toHaveAttribute("data-expanded", "true");
-  expect(mainRegion.style.getPropertyValue("--app-shell-sidebar-width")).toBe("260px");
-
-  await user.click(headerToggle);
-  expect(sidebar).toHaveAttribute("data-expanded", "false");
-  expect(sidebar).toHaveAttribute("data-sidebar-width", "96");
-  expect(headerToggle).toHaveAttribute("aria-label", "Expand navigation");
-  expect(window.localStorage.getItem("signguy.sidebarPinned")).toBe("false");
+  expect(screen.queryByTestId("sidebar-toggle-button")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("sidebar-pin-toggle")).not.toBeInTheDocument();
 });
 
-test("persisted expanded sidebar state is restored on render", async () => {
+test("desktop sidebar content fits the supported 1280 by 800 rail height", async () => {
+  renderShell("/orders", { devBypass: true });
+
+  const nav = screen.getByTestId("primary-sidebar-nav");
+  const bottomControls = screen.getByTestId("sidebar-bottom-controls");
+  expect(nav).toHaveClass("lg:overflow-y-hidden");
+  expect(bottomControls).toContainElement(screen.getByTestId("sidebar-account-menu"));
+  expect(bottomControls).toContainElement(screen.getByTestId("sidebar-notifications-button"));
+  expect(bottomControls).toContainElement(screen.getByTestId("sidebar-sign-out-button"));
+});
+
+test("account control shows initials or a neutral icon fallback", async () => {
+  const first = renderShell("/orders", { user: { full_name: "Donnell Black", email: "donnell@example.com" } });
+  expect(screen.getByTestId("sidebar-account-avatar-fallback")).toHaveTextContent("DB");
+  first.unmount();
+
+  renderShell("/orders", { user: { full_name: "", email: "" } });
+  expect(screen.getByTestId("sidebar-account-avatar-fallback").querySelector("svg")).toBeInTheDocument();
+});
+
+test("old persisted expanded sidebar state is ignored by the fixed rail", async () => {
   window.localStorage.setItem("signguy.sidebarPinned", "true");
   renderShell("/shop-operations");
 
   const sidebar = screen.getByTestId("desktop-sidebar-shell");
   expect(sidebar).toHaveAttribute("data-expanded", "true");
-  expect(sidebar).toHaveAttribute("data-sidebar-width", "260");
-  expect(screen.getByTestId("app-shell-main-region").style.getPropertyValue("--app-shell-sidebar-width")).toBe("260px");
+  expect(sidebar).toHaveAttribute("data-sidebar-width", "96");
+  expect(screen.getByTestId("app-shell-main-region").style.getPropertyValue("--app-shell-sidebar-width")).toBe("96px");
   expectActiveArea("Shop Operations");
+});
+
+test("mobile navigation drawer trigger remains accessible and closes after selection", async () => {
+  const user = userEvent.setup();
+  renderShell("/orders");
+
+  const mobileMenu = screen.getByTestId("mobile-sidebar-menu-button");
+  expect(mobileMenu).toHaveAccessibleName("Open navigation");
+  await user.click(mobileMenu);
+  expect(screen.getAllByTestId("app-shell-sidebar").length).toBeGreaterThan(1);
+  await user.click(screen.getAllByTestId("primary-nav-home").at(-1));
+  await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent("/"));
+});
+
+test("mobile drawer has an accessible close control and restores focus after close", async () => {
+  const user = userEvent.setup();
+  renderShell("/orders");
+
+  const mobileMenu = screen.getByTestId("mobile-sidebar-menu-button");
+  await user.click(mobileMenu);
+  const close = screen.getByRole("button", { name: "Close navigation" });
+  expect(close).toHaveClass("size-11");
+
+  await user.click(close);
+  await waitFor(() => expect(mobileMenu).toHaveFocus());
+
+  await user.click(mobileMenu);
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(mobileMenu).toHaveFocus());
+});
+
+test("mobile drawer closes from backdrop selection and restores opener focus", async () => {
+  const user = userEvent.setup();
+  renderShell("/orders");
+
+  const mobileMenu = screen.getByTestId("mobile-sidebar-menu-button");
+  await user.click(mobileMenu);
+  await user.click(screen.getByTestId("sheet-overlay"));
+
+  await waitFor(() => expect(mobileMenu).toHaveFocus());
 });
 
 test("global header contains breadcrumbs, search, create, messages, notifications, and account controls", async () => {
@@ -291,7 +352,7 @@ test("global header contains breadcrumbs, search, create, messages, notification
 
   const header = screen.getByTestId("global-header");
   expect(within(header).getByTestId("global-header-title")).toHaveTextContent("Shop Operations");
-  expect(within(header).getByTestId("sidebar-toggle-button")).toHaveAttribute("aria-label", "Expand navigation");
+  expect(within(header).queryByTestId("sidebar-toggle-button")).not.toBeInTheDocument();
   expect(within(header).queryByTestId("global-header-subtitle")).not.toBeInTheDocument();
   expect(within(header).getByTestId("global-breadcrumbs")).toHaveTextContent("Shop Operations/Orders/Order #order-1042");
   expect(within(header).getByTestId("global-search")).toBeInTheDocument();
@@ -387,9 +448,10 @@ test("Shop Operations ribbon commands expose shared color categories", async () 
   renderShell("/shop-operations");
 
   expect(screen.getByTestId("ribbon-command-newCustomer")).toHaveAttribute("data-command-category", "document");
-  expect(screen.getByTestId("ribbon-command-newQuote")).toHaveAttribute("data-command-category", "quote");
-  expect(screen.getByTestId("ribbon-command-newOrder")).toHaveAttribute("data-command-category", "order");
-  expect(screen.getByTestId("ribbon-command-scheduleInstall")).toHaveAttribute("data-command-category", "schedule");
+  expect(screen.getByTestId("ribbon-command-newQuote")).toHaveAttribute("data-command-category", "document");
+  expect(screen.getByTestId("ribbon-command-newOrder")).toHaveAttribute("data-command-category", "document");
+  expect(screen.getByTestId("ribbon-command-sendProof")).toHaveAttribute("data-command-category", "approval");
+  expect(screen.getByTestId("ribbon-command-scheduleInstall")).toHaveAttribute("data-command-category", "warning");
   expect(screen.getByTestId("ribbon-command-filter")).toHaveAttribute("data-command-category", "view");
 });
 
