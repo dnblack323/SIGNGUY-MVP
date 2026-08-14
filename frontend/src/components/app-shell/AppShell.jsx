@@ -80,6 +80,11 @@ const COMMANDS = {
   pricing: { key: "pricing", label: "Pricing Calculator", icon: DollarSign, quickIcon: Calculator, to: "/pricing-calculator", permission: "pricing:read" },
   sendProof: { key: "sendProof", label: "Send Proof", icon: Send, to: "/decision-rooms", permission: "decision_room:read" },
   scheduleInstall: { key: "scheduleInstall", label: "Schedule Install", icon: CalendarDays, to: "/shop-schedule", permission: "schedule:read" },
+  newAppointment: { key: "newAppointment", label: "New Appointment", icon: CalendarDays, to: "/shop-schedule?view=appointments&new=1", permission: "schedule:manage" },
+  scheduleToday: { key: "scheduleToday", label: "Today", icon: Clock3, to: "/shop-schedule?date=today", permission: "schedule:read" },
+  scheduleCalendar: { key: "scheduleCalendar", label: "Calendar", icon: CalendarDays, to: "/shop-schedule?view=calendar", permission: "schedule:read" },
+  scheduleAgenda: { key: "scheduleAgenda", label: "Agenda", icon: ClipboardList, to: "/shop-schedule?view=agenda", permission: "schedule:read" },
+  scheduleAppointments: { key: "scheduleAppointments", label: "Appointments", icon: ClipboardCheck, to: "/shop-schedule?view=appointments", permission: "schedule:read" },
   filter: { key: "filter", label: "Filter", icon: Filter, to: "#", permission: null },
   emailCustomer: { key: "emailCustomer", label: "Email Customer", icon: Mail, to: "/email-history", permission: "customer:read" },
   sendDocument: { key: "sendDocument", label: "Send Document", icon: FileText, to: "/documents", permission: "document:read" },
@@ -152,6 +157,11 @@ const COMMAND_CATEGORY_BY_KEY = {
   startWork: "completion",
   completeWork: "completion",
   scheduleInstall: "warning",
+  newAppointment: "document",
+  scheduleToday: "view",
+  scheduleCalendar: "view",
+  scheduleAgenda: "view",
+  scheduleAppointments: "view",
   waitWork: "warning",
   dueDate: "warning",
   blockWork: "destructive",
@@ -197,6 +207,10 @@ const RIBBON_BY_MODULE = {
     ["Stage", ["assignWork", "startWork", "waitWork", "blockWork", "completeWork"]],
     ["Manage", ["dueDate", "addNote"]],
     ["View", ["refresh", "filter"]],
+  ],
+  schedule: [
+    ["Create", ["newAppointment"]],
+    ["Schedule", ["scheduleToday", "scheduleCalendar", "scheduleAgenda", "scheduleAppointments"]],
   ],
   "approval-center": [
     ["Create", ["newDecisionRoom"]],
@@ -438,7 +452,7 @@ function SidebarInner({ selectedAreaKey, onSelectArea, onNavigate, mobile = fals
 
 function ModuleTabs({ area, permissions, user }) {
   const location = useLocation();
-  const visibleItems = filterNavItemsByPermissions(area?.moduleNav || [], permissions, user);
+  const visibleItems = filterNavItemsByPermissions(area?.moduleNav || [], permissions, user).filter((item) => !item.hidden);
   if (!area || !visibleItems.length) return null;
   return (
     <div

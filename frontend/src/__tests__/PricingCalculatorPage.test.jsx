@@ -371,16 +371,17 @@ beforeEach(() => {
 
 test("Shop Operations navigation omits Pricing as a permanent module", () => {
   const shopOperations = NAV_AREAS.find((area) => area.key === "shop-operations");
-  expect(shopOperations.moduleNav.map((item) => item.key)).toEqual([
+  expect(shopOperations.moduleNav.filter((item) => !item.hidden).map((item) => item.key)).toEqual([
     "overview",
     "customers",
     "sales",
     "approval-center",
     "production",
+    "schedule",
     "webstores",
-    "wrap-lab",
   ]);
   expect(shopOperations.moduleNav.some((item) => item.key === "pricing")).toBe(false);
+  expect(shopOperations.moduleNav.find((item) => item.key === "wrap-lab")).toMatchObject({ hidden: true, contextual: true });
   expect(shopOperations.flyout).toBeUndefined();
 });
 

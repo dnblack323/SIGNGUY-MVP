@@ -14,7 +14,8 @@ import { toast } from "sonner";
 import StatusPill from "@/components/common/StatusPill";
 import ProductionTimeline from "@/components/production/ProductionTimeline";
 import { centsToDollarsString } from "@/lib/format";
-import { ArrowLeft, Save, RefreshCw, Users as UsersIcon, Printer, AlertTriangle, ShieldCheck } from "lucide-react";
+import { buildShopScheduleUrl } from "@/lib/shopScheduleLinks";
+import { ArrowLeft, CalendarDays, Save, RefreshCw, Users as UsersIcon, Printer, AlertTriangle, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { RegenerateDialog, TransitionReasonDialog, AssignDialog } from "@/components/work-orders/GenerateWorkOrderDialog";
 import RequirementsDialog from "@/components/work-orders/RequirementsDialog";
@@ -111,6 +112,19 @@ export default function WorkOrderDetailPage() {
           actions={
             <div className="flex items-center gap-2 flex-wrap">
               <TaskHandoffButton sourceType="work_order" sourceId={id} defaults={{ title: `Follow up on W-${w.number}`, task_type: "production_followup" }} />
+              {hasPerm("schedule:manage") && (
+                <Button asChild variant="outline" size="sm" data-testid="work-order-schedule-button">
+                  <Link to={buildShopScheduleUrl({
+                    create: true,
+                    orderId: w.order_id,
+                    workOrderId: id,
+                    eventType: "production_milestone",
+                    title: `W-${w.number} appointment`,
+                  })}>
+                    <CalendarDays className="size-4 mr-1" />Schedule
+                  </Link>
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={() => setPrintOpen(true)} data-testid="wo-print-summary-button">
                 <Printer className="size-4 mr-1" />Print summary
               </Button>

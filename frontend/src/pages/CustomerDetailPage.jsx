@@ -15,7 +15,8 @@ import StatusPill from "@/components/common/StatusPill";
 import TaskHandoffButton from "@/components/tasks/TaskHandoffButton";
 import AIContextualActions from "@/components/ai/AIContextualActions";
 import { centsToDollarsString, relativeTime } from "@/lib/format";
-import { ArrowLeft, Save } from "lucide-react";
+import { buildShopScheduleUrl } from "@/lib/shopScheduleLinks";
+import { ArrowLeft, CalendarDays, Save } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { useWorkspaceDirty } from "@/context/WorkspaceContext";
 
@@ -34,6 +35,7 @@ export default function CustomerDetailPage() {
   const qc = useQueryClient();
   const { hasPerm } = useAuth();
   const canWrite = hasPerm("customer:write");
+  const canSchedule = hasPerm("schedule:manage");
 
   const { data: c, isLoading } = useQuery({
     queryKey: ["customer", id],
@@ -81,6 +83,13 @@ export default function CustomerDetailPage() {
                 { label: "Create Document", tool: "document_writer", mode: "customer_order_document" },
               ]} />
               <TaskHandoffButton sourceType="customer" sourceId={id} defaults={{ title: `Follow up with ${c.name}`, task_type: "customer_followup" }} />
+              {canSchedule && (
+                <Button asChild variant="outline" size="sm" data-testid="customer-schedule-button">
+                  <Link to={buildShopScheduleUrl({ create: true, customerId: id, title: `Appointment with ${c.name}` })}>
+                    <CalendarDays className="size-4 mr-1" />Schedule
+                  </Link>
+                </Button>
+              )}
               {canWrite && Object.keys(form).length > 0 && (
                 <Button onClick={() => save.mutate(form)} disabled={save.isPending} data-testid="customer-save-button">
                   <Save className="size-4 mr-1" /> Save changes

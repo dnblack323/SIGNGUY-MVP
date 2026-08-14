@@ -13,7 +13,8 @@ import { toast } from "sonner";
 import StatusPill from "@/components/common/StatusPill";
 import ProductionTimeline from "@/components/production/ProductionTimeline";
 import { centsToDollarsString } from "@/lib/format";
-import { ArrowLeft, Plus, Pencil, Trash2, Wrench, Receipt, Zap, RefreshCw } from "lucide-react";
+import { buildShopScheduleUrl } from "@/lib/shopScheduleLinks";
+import { ArrowLeft, CalendarDays, Plus, Pencil, Trash2, Wrench, Receipt, Zap, RefreshCw } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import LineItemDialog from "@/components/commerce/LineItemDialog";
 import DigitalPrintMinimumAdjustmentRow, { digitalPrintMinimumAdjustmentCents } from "@/components/commerce/DigitalPrintMinimumAdjustmentRow";
@@ -259,6 +260,20 @@ export default function OrderDetailPage() {
                 { label: "Marketing Post", tool: "social_post_builder", mode: "completed_work_showcase" },
               ]} />
               <TaskHandoffButton sourceType="order" sourceId={id} defaults={{ title: `Follow up on O-${order.number}`, task_type: "order_followup" }} />
+              {hasPerm("schedule:manage") && (
+                <Button asChild variant="outline" size="sm" data-testid="order-schedule-button">
+                  <Link to={buildShopScheduleUrl({
+                    create: true,
+                    customerId: order.customer_id,
+                    orderId: id,
+                    workOrderId: activeWO?.id,
+                    eventType: "installation",
+                    title: `${order.job_name} appointment`,
+                  })}>
+                    <CalendarDays className="size-4 mr-1" />Schedule
+                  </Link>
+                </Button>
+              )}
               {activeWO ? (
                 <>
                   <Button asChild variant="outline" size="sm" data-testid="order-open-workorder-button">
