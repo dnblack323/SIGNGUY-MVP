@@ -39,6 +39,11 @@ class CalendarEvent(BaseDoc):
     work_order_id: Optional[str] = None
     production_stage_id: Optional[str] = None
     employee_id: Optional[str] = None
+    assigned_employee_ids: list[str] = Field(default_factory=list)
+    reserved_equipment_ids: list[str] = Field(default_factory=list)
+    reserved_vehicle_ids: list[str] = Field(default_factory=list)
+    reserved_resource_ids: list[str] = Field(default_factory=list)
+    assignment_summary: dict[str, Any] = Field(default_factory=dict)
     assigned_user_id: Optional[str] = None
     created_by_user_id: Optional[str] = None
     created_by_employee_id: Optional[str] = None
@@ -51,4 +56,3 @@ class CalendarEvent(BaseDoc):
     version: int = 1
     history: list[dict[str, Any]] = Field(default_factory=list)
     conflict_overrides: list[dict[str, Any]] = Field(default_factory=list)
-

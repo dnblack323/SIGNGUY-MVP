@@ -756,9 +756,17 @@ async def ensure_indexes() -> None:
     await db.calendar_events.create_index("id", unique=True)
     await db.calendar_events.create_index([("tenant_id", 1), ("start_at", 1), ("end_at", 1), ("status", 1)])
     await db.calendar_events.create_index([("tenant_id", 1), ("employee_id", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("assigned_employee_ids", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("reserved_equipment_ids", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("reserved_vehicle_ids", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("reserved_resource_ids", 1), ("start_at", 1)])
     await db.calendar_events.create_index([("tenant_id", 1), ("customer_id", 1), ("start_at", 1)])
     await db.calendar_events.create_index([("tenant_id", 1), ("work_order_id", 1), ("start_at", 1)])
     await db.calendar_events.create_index([("tenant_id", 1), ("source_type", 1), ("source_id", 1)])
+
+    await db.schedulable_resources.create_index("id", unique=True)
+    await db.schedulable_resources.create_index([("tenant_id", 1), ("status", 1), ("name", 1)])
+    await db.schedulable_resources.create_index([("tenant_id", 1), ("resource_type", 1), ("status", 1)])
 
     # ---- EC12 Phases 12E/12F - shared communications, notes, preferences, digest ----
     await db.message_threads.create_index("id", unique=True)

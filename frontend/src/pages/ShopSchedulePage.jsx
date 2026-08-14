@@ -6,6 +6,7 @@ import { useAuth } from "@/auth/AuthContext";
 import PageHeader from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,9 +22,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  ListChecks,
+  MapPin,
   Plus,
   Search,
+  Truck,
+  Users,
+  Wrench,
+  X,
 } from "lucide-react";
 
 const TODAY = () => new Date().toISOString().slice(0, 10);
@@ -122,10 +127,104 @@ function summarizeConflict(detail) {
   if (!detail) return "Calendar conflict requires manager override reason.";
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) return detail.map((entry) => entry?.msg || String(entry)).join("; ");
+  if (Array.isArray(detail.conflicts) && detail.conflicts.length > 0) {
+    return detail.conflicts.map((entry) => {
+      const resource = entry.resource_name || entry.resource_id || entry.resource_type || "Resource";
+      return `${resource}: ${entry.title || "conflicting event"} ${fmtTime(entry.start_at)} - ${fmtTime(entry.end_at)}`;
+    }).join("; ");
+  }
   return detail.detail || detail.message || "Calendar conflict requires manager override reason.";
 }
 
-function AppointmentDialog({ open, onOpenChange, employees, initialDate, initialContext, editingEvent, onSaved }) {
+function resourceLabel(item) {
+  return item?.name || item?.title || item?.id || "Unnamed";
+}
+
+function selectedLabel(items, ids) {
+  const map = new Map(items.map((item) => [item.id, resourceLabel(item)]));
+  return ids.map((id) => map.get(id) || id).join(", ");
+}
+
+function assignmentText(item) {
+  const summary = item?.assignment_summary || {};
+  const parts = [
+    ...(summary.employees || []).map((entry) => entry.name),
+    ...(summary.equipment || []).map((entry) => entry.name),
+    ...(summary.vehicles || []).map((entry) => entry.name),
+    ...(summary.resources || []).map((entry) => entry.name),
+  ].filter(Boolean);
+  if (parts.length === 0 && item?.location) parts.push(item.location);
+  return parts.join(" • ");
+}
+
+function toggleId(values, id) {
+  return values.includes(id) ? values.filter((value) => value !== id) : [...values, id];
+}
+
+function ResourceChecklist({ title, icon: Icon, items, selectedIds, onChange, testId, detail }) {
+  const [q, setQ] = useState("");
+  const visible = items.filter((item) => `${resourceLabel(item)} ${item.role_label || ""} ${item.category || ""} ${item.resource_type || ""}`.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div className="rounded-md border p-3" data-testid={testId}>
+      <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
+        <Icon className="size-4 text-slate-500" />{title}
+      </div>
+      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${title.toLowerCase()}`} className="mb-2 h-8" aria-label={`Search ${title}`} />
+      <div className="max-h-28 space-y-1 overflow-auto">
+        {visible.length === 0 ? (
+          <div className="text-xs text-muted-foreground">No active records</div>
+        ) : visible.map((item) => (
+          <label key={item.id} className="flex cursor-pointer items-start gap-2 rounded px-1 py-1 text-xs hover:bg-slate-50">
+            <Checkbox checked={selectedIds.includes(item.id)} onCheckedChange={() => onChange(toggleId(selectedIds, item.id))} aria-label={resourceLabel(item)} />
+            <span className="min-w-0">
+              <span className="block truncate font-medium">{resourceLabel(item)}</span>
+              {detail?.(item) && <span className="block truncate text-muted-foreground">{detail(item)}</span>}
+            </span>
+          </label>
+        ))}
+      </div>
+      {selectedIds.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {selectedIds.map((id) => (
+            <Badge key={id} variant="outline" className="gap-1 text-[10px]">
+              {resourceLabel(items.find((item) => item.id === id) || { id })}
+              <button type="button" aria-label={`Remove ${id}`} onClick={() => onChange(selectedIds.filter((value) => value !== id))}>
+                <X className="size-3" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AvailabilityPanel({ availability, isLoading }) {
+  if (isLoading) return <div className="rounded-md border bg-slate-50 p-3 text-sm text-muted-foreground">Checking availability...</div>;
+  if (!availability) return null;
+  const conflicts = availability.conflicts || [];
+  const warnings = availability.warnings || [];
+  return (
+    <div className={`rounded-md border p-3 text-sm ${conflicts.length ? "border-amber-300 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`} data-testid="calendar-resource-availability">
+      <div className="font-medium">{conflicts.length ? "Availability needs attention" : "Selected resources are available"}</div>
+      <div className="mt-1 text-xs text-muted-foreground">
+        {availability.summary?.assigned_employees || 0} assigned people • {availability.summary?.reserved_equipment || 0} equipment • {availability.summary?.reserved_vehicles || 0} vehicles • {availability.summary?.available_resources || 0} available spaces
+      </div>
+      {conflicts.length > 0 && (
+        <div className="mt-2 space-y-1" data-testid="calendar-resource-conflicts">
+          {conflicts.map((entry, index) => (
+            <div key={`${entry.resource_type}-${entry.resource_id}-${entry.source_id}-${index}`} className="text-xs text-amber-950">
+              <strong>{entry.resource_name || entry.resource_id}</strong> conflicts with {entry.title || "scheduled event"} at {fmtTime(entry.start_at)} - {fmtTime(entry.end_at)}
+            </div>
+          ))}
+        </div>
+      )}
+      {warnings.length > 0 && <div className="mt-2 text-xs text-amber-900">{warnings.length} availability warning{warnings.length === 1 ? "" : "s"} to review.</div>}
+    </div>
+  );
+}
+
+function AppointmentDialog({ open, onOpenChange, employees, equipment, vehicles, resources, initialDate, initialContext, editingEvent, onSaved }) {
   const [form, setForm] = useState({});
   const [conflict, setConflict] = useState(null);
   const [overrideReason, setOverrideReason] = useState("");
@@ -144,6 +243,10 @@ function AppointmentDialog({ open, onOpenChange, employees, initialDate, initial
       end: editing ? toInputTime(editingEvent.end_at, "10:00") : "10:00",
       timezone: editing ? editingEvent.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "" : Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       employee_id: editing ? editingEvent.employee_id || "none" : "none",
+      assigned_employee_ids: editing ? editingEvent.assigned_employee_ids || (editingEvent.employee_id ? [editingEvent.employee_id] : []) : [],
+      reserved_equipment_ids: editing ? editingEvent.reserved_equipment_ids || [] : [],
+      reserved_vehicle_ids: editing ? editingEvent.reserved_vehicle_ids || [] : [],
+      reserved_resource_ids: editing ? editingEvent.reserved_resource_ids || [] : [],
       customer_id: editing ? editingEvent.customer_id || "" : initialContext.customerId || "",
       order_id: editing ? editingEvent.order_id || "" : initialContext.orderId || "",
       work_order_id: editing ? editingEvent.work_order_id || "" : initialContext.workOrderId || "",
@@ -155,6 +258,32 @@ function AppointmentDialog({ open, onOpenChange, employees, initialDate, initial
   function setField(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
   }
+
+  const proposedRange = useMemo(() => {
+    if (!open || !form.date || !form.start || !form.end) return null;
+    return {
+      start_at: toLocalDateTime(form.date, form.start),
+      end_at: toLocalDateTime(form.date, form.end),
+    };
+  }, [form.date, form.end, form.start, open]);
+
+  const availabilityPayload = useMemo(() => proposedRange ? {
+    ...proposedRange,
+    event_id: editing ? eventId(editingEvent) : undefined,
+    employee_id: clean(form.employee_id),
+    assigned_employee_ids: form.assigned_employee_ids || [],
+    reserved_equipment_ids: form.reserved_equipment_ids || [],
+    reserved_vehicle_ids: form.reserved_vehicle_ids || [],
+    reserved_resource_ids: form.reserved_resource_ids || [],
+    location: clean(form.location),
+    customer_id: clean(form.customer_id),
+  } : null, [editing, editingEvent, form, proposedRange]);
+
+  const { data: availability, isFetching: availabilityLoading } = useQuery({
+    queryKey: ["calendar-availability", availabilityPayload],
+    queryFn: async () => (await api.post("/calendar/availability", availabilityPayload)).data,
+    enabled: Boolean(open && availabilityPayload),
+  });
 
   async function submit(force = false) {
     if (!form.title?.trim()) {
@@ -168,6 +297,10 @@ function AppointmentDialog({ open, onOpenChange, employees, initialDate, initial
       end_at: toLocalDateTime(form.date, form.end),
       timezone: clean(form.timezone),
       employee_id: clean(form.employee_id),
+      assigned_employee_ids: form.assigned_employee_ids || [],
+      reserved_equipment_ids: form.reserved_equipment_ids || [],
+      reserved_vehicle_ids: form.reserved_vehicle_ids || [],
+      reserved_resource_ids: form.reserved_resource_ids || [],
       customer_id: clean(form.customer_id),
       order_id: clean(form.order_id),
       work_order_id: clean(form.work_order_id),
@@ -176,6 +309,10 @@ function AppointmentDialog({ open, onOpenChange, employees, initialDate, initial
       visibility: clean(form.employee_id) ? "employee" : "staff",
     };
     if (force) payload.conflict_override_reason = overrideReason;
+    if (!force && availability?.conflicts?.length > 0) {
+      setConflict(summarizeConflict({ conflicts: availability.conflicts }));
+      return;
+    }
 
     setBusy(true);
     try {
@@ -228,6 +365,61 @@ function AppointmentDialog({ open, onOpenChange, employees, initialDate, initial
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="space-y-3 rounded-md border bg-slate-50 p-3" data-testid="calendar-people-resources-section">
+            <div>
+              <div className="text-sm font-semibold text-slate-950">People & Resources</div>
+              <div className="text-xs text-muted-foreground">Assign crew members and reserve equipment, vehicles, or shop work areas.</div>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <ResourceChecklist
+                title="Crew"
+                icon={Users}
+                items={employees}
+                selectedIds={form.assigned_employee_ids || []}
+                onChange={(ids) => setField("assigned_employee_ids", ids)}
+                testId="calendar-employee-selector"
+                detail={(item) => item.role_label}
+              />
+              <ResourceChecklist
+                title="Equipment"
+                icon={Wrench}
+                items={equipment}
+                selectedIds={form.reserved_equipment_ids || []}
+                onChange={(ids) => setField("reserved_equipment_ids", ids)}
+                testId="calendar-equipment-selector"
+                detail={(item) => item.category}
+              />
+              <ResourceChecklist
+                title="Vehicles"
+                icon={Truck}
+                items={vehicles}
+                selectedIds={form.reserved_vehicle_ids || []}
+                onChange={(ids) => setField("reserved_vehicle_ids", ids)}
+                testId="calendar-vehicle-selector"
+                detail={(item) => item.location}
+              />
+              <ResourceChecklist
+                title="Bays & Work Areas"
+                icon={MapPin}
+                items={resources}
+                selectedIds={form.reserved_resource_ids || []}
+                onChange={(ids) => setField("reserved_resource_ids", ids)}
+                testId="calendar-resource-selector"
+                detail={(item) => [item.resource_type, item.location].filter(Boolean).join(" • ")}
+              />
+            </div>
+            {(form.assigned_employee_ids?.length || form.reserved_equipment_ids?.length || form.reserved_vehicle_ids?.length || form.reserved_resource_ids?.length) ? (
+              <div className="rounded-md bg-white p-2 text-xs text-slate-700" data-testid="calendar-selected-resource-summary">
+                {[
+                  selectedLabel(employees, form.assigned_employee_ids || []),
+                  selectedLabel(equipment, form.reserved_equipment_ids || []),
+                  selectedLabel(vehicles, form.reserved_vehicle_ids || []),
+                  selectedLabel(resources, form.reserved_resource_ids || []),
+                ].filter(Boolean).join(" • ")}
+              </div>
+            ) : null}
+            <AvailabilityPanel availability={availability} isLoading={availabilityLoading} />
           </div>
           <div className="grid gap-3 sm:grid-cols-4">
             <div className="grid gap-1.5">
@@ -305,9 +497,11 @@ function EventCard({ item, canManage, onOpen, onCancel }) {
       >
         <div className="font-medium text-slate-950">{itemTitle(item)}</div>
         <div className="text-slate-600">{fmtTime(item.start_at)} - {fmtTime(item.end_at)}</div>
+        {assignmentText(item) && <div className="mt-1 truncate text-slate-700" data-testid={`shop-schedule-assignment-${item.source_id}`}>{assignmentText(item)}</div>}
         <div className="mt-1 flex flex-wrap items-center gap-1">
           <Badge variant="outline" className="bg-white/70 text-[10px]">{String(item.event_type || item.source_type).replace(/_/g, " ")}</Badge>
           {item.status && <Badge variant="outline" className="bg-white/70 text-[10px]">{String(item.status).replace(/_/g, " ")}</Badge>}
+          {item.conflicts?.length > 0 && <Badge variant="outline" className="border-amber-300 bg-amber-100 text-[10px] text-amber-900">Conflict</Badge>}
         </div>
       </button>
       {canManage && item.allowed_actions?.includes("cancel") && (
@@ -355,6 +549,10 @@ export default function ShopSchedulePage() {
   const initialDate = query.get("date") === "today" || !query.get("date") ? TODAY() : query.get("date");
   const [anchor, setAnchor] = useState(initialDate);
   const [employeeFilter, setEmployeeFilter] = useState("all");
+  const [equipmentFilter, setEquipmentFilter] = useState("all");
+  const [vehicleFilter, setVehicleFilter] = useState("all");
+  const [resourceFilter, setResourceFilter] = useState("all");
+  const [attentionFilter, setAttentionFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -390,12 +588,30 @@ export default function ShopSchedulePage() {
   });
   const employees = employeesData?.items || [];
 
+  const { data: equipmentData } = useQuery({
+    queryKey: ["equipment-calendar"],
+    queryFn: async () => (await api.get("/equipment", { params: { status: "active" } })).data,
+  });
+  const allEquipment = equipmentData?.items || [];
+  const equipment = allEquipment.filter((item) => item.category !== "vehicle");
+  const vehicles = allEquipment.filter((item) => item.category === "vehicle");
+
+  const { data: resourceData } = useQuery({
+    queryKey: ["calendar-resources"],
+    queryFn: async () => (await api.get("/calendar/resources", { params: { status: "active" } })).data,
+  });
+  const resources = resourceData?.items || [];
+
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: [
       "calendar-feed",
       range.start_at,
       range.end_at,
       employeeFilter,
+      equipmentFilter,
+      vehicleFilter,
+      resourceFilter,
+      attentionFilter,
       typeFilter,
       initialContext.customerId,
       initialContext.orderId,
@@ -405,6 +621,10 @@ export default function ShopSchedulePage() {
       params: {
         ...range,
         employee_id: employeeFilter === "all" ? undefined : employeeFilter,
+        equipment_id: equipmentFilter === "all" ? undefined : equipmentFilter,
+        vehicle_id: vehicleFilter === "all" ? undefined : vehicleFilter,
+        resource_id: resourceFilter === "all" ? undefined : resourceFilter,
+        attention: attentionFilter === "all" ? undefined : attentionFilter,
         event_type: typeFilter === "all" ? undefined : typeFilter,
         customer_id: clean(initialContext.customerId),
         order_id: clean(initialContext.orderId),
@@ -439,6 +659,10 @@ export default function ShopSchedulePage() {
     appointments: operationalItems.filter((item) => item.source_type === "calendar_event").length,
     production: operationalItems.filter((item) => item.source_type === "production_stage").length,
     tasks: operationalItems.filter((item) => item.source_type === "task").length,
+    assignedEmployees: new Set(operationalItems.flatMap((item) => item.assigned_employee_ids || (item.employee_id ? [item.employee_id] : []))).size,
+    reservedEquipment: operationalItems.reduce((count, item) => count + (item.reserved_equipment_ids?.length || 0) + (item.reserved_vehicle_ids?.length || 0), 0),
+    reservedResources: operationalItems.reduce((count, item) => count + (item.reserved_resource_ids?.length || 0), 0),
+    conflicts: operationalItems.filter((item) => item.conflicts?.length).length,
   }), [operationalItems]);
 
   function setView(nextView) {
@@ -527,8 +751,8 @@ export default function ShopSchedulePage() {
 
       <div className="grid gap-3 md:grid-cols-3" data-testid="shop-schedule-summary">
         <Card><CardContent className="flex items-center gap-3 p-4"><CalendarCheck className="size-5 text-blue-700" /><div><div className="text-xs text-muted-foreground">Appointments</div><div className="text-xl font-semibold">{counts.appointments}</div></div></CardContent></Card>
-        <Card><CardContent className="flex items-center gap-3 p-4"><Clock className="size-5 text-orange-700" /><div><div className="text-xs text-muted-foreground">Production milestones</div><div className="text-xl font-semibold">{counts.production}</div></div></CardContent></Card>
-        <Card><CardContent className="flex items-center gap-3 p-4"><ListChecks className="size-5 text-violet-700" /><div><div className="text-xs text-muted-foreground">Task due dates</div><div className="text-xl font-semibold">{counts.tasks}</div></div></CardContent></Card>
+        <Card><CardContent className="flex items-center gap-3 p-4"><Users className="size-5 text-emerald-700" /><div><div className="text-xs text-muted-foreground">Assigned employees</div><div className="text-xl font-semibold">{counts.assignedEmployees}</div></div></CardContent></Card>
+        <Card><CardContent className="flex items-center gap-3 p-4"><Wrench className="size-5 text-slate-700" /><div><div className="text-xs text-muted-foreground">Reserved resources</div><div className="text-xl font-semibold">{counts.reservedEquipment + counts.reservedResources}</div></div></CardContent></Card>
       </div>
 
       <Card>
@@ -542,6 +766,34 @@ export default function ShopSchedulePage() {
             <SelectContent>
               <SelectItem value="all">All assigned employees</SelectItem>
               {employees.map((employee) => <SelectItem key={employee.id} value={employee.id}>{employee.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={equipmentFilter} onValueChange={setEquipmentFilter}>
+            <SelectTrigger className="w-48" data-testid="calendar-equipment-filter"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All equipment</SelectItem>
+              {equipment.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={vehicleFilter} onValueChange={setVehicleFilter}>
+            <SelectTrigger className="w-44" data-testid="calendar-vehicle-filter"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All vehicles</SelectItem>
+              {vehicles.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={resourceFilter} onValueChange={setResourceFilter}>
+            <SelectTrigger className="w-48" data-testid="calendar-resource-filter"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All bays/areas</SelectItem>
+              {resources.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={attentionFilter} onValueChange={setAttentionFilter}>
+            <SelectTrigger className="w-44" data-testid="calendar-attention-filter"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All attention</SelectItem>
+              <SelectItem value="conflicts">Conflicts only</SelectItem>
             </SelectContent>
           </Select>
           <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -587,9 +839,11 @@ export default function ShopSchedulePage() {
                   <div className="min-w-0">
                     <div className="font-medium text-slate-950">{itemTitle(item)}</div>
                     <div className="text-sm text-muted-foreground">{fmtDate(item.start_at)} at {fmtTime(item.start_at)} - {fmtTime(item.end_at)}</div>
+                    {assignmentText(item) && <div className="text-sm text-slate-700" data-testid={`shop-schedule-row-assignment-${item.source_id}`}>{assignmentText(item)}</div>}
                     <div className="mt-1 flex flex-wrap gap-1">
                       <Badge variant="outline">{String(item.event_type || item.source_type).replace(/_/g, " ")}</Badge>
                       {item.status && <Badge variant="outline">{String(item.status).replace(/_/g, " ")}</Badge>}
+                      {item.conflicts?.length > 0 && <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">Conflict</Badge>}
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
@@ -616,6 +870,9 @@ export default function ShopSchedulePage() {
         initialDate={anchor}
         initialContext={initialContext}
         editingEvent={editingEvent}
+        equipment={equipment}
+        vehicles={vehicles}
+        resources={resources}
         onSaved={invalidateSchedule}
       />
     </div>

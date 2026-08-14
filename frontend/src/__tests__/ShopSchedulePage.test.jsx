@@ -42,6 +42,16 @@ const feedItems = [
     customer_id: "customer-1",
     order_id: "order-1",
     work_order_id: "work-order-1",
+    assigned_employee_ids: ["employee-1", "employee-2"],
+    reserved_equipment_ids: ["equipment-1"],
+    reserved_vehicle_ids: ["vehicle-1"],
+    reserved_resource_ids: ["resource-1"],
+    assignment_summary: {
+      employees: [{ id: "employee-1", name: "Donnell" }, { id: "employee-2", name: "Bill" }],
+      equipment: [{ id: "equipment-1", name: "HP Latex" }],
+      vehicles: [{ id: "vehicle-1", name: "Install Van" }],
+      resources: [{ id: "resource-1", name: "Install Bay 1" }],
+    },
     allowed_actions: ["update", "cancel"],
   },
   {
@@ -101,11 +111,19 @@ const feedItems = [
 
 function mockScheduleApi(items = feedItems) {
   api.get.mockImplementation((url) => {
-    if (url === "/employees") return Promise.resolve({ data: { items: [{ id: "employee-1", name: "Donnell" }] } });
+    if (url === "/employees") return Promise.resolve({ data: { items: [{ id: "employee-1", name: "Donnell" }, { id: "employee-2", name: "Bill" }] } });
+    if (url === "/equipment") return Promise.resolve({ data: { items: [
+      { id: "equipment-1", name: "HP Latex", category: "printer" },
+      { id: "vehicle-1", name: "Install Van", category: "vehicle" },
+    ] } });
+    if (url === "/calendar/resources") return Promise.resolve({ data: { items: [{ id: "resource-1", name: "Install Bay 1", resource_type: "installation_bay" }] } });
     if (url === "/calendar/feed") return Promise.resolve({ data: { items, total: items.length } });
     return Promise.resolve({ data: {} });
   });
-  api.post.mockResolvedValue({ data: { id: "event-created" } });
+  api.post.mockImplementation((url) => {
+    if (url === "/calendar/availability") return Promise.resolve({ data: { conflicts: [], warnings: [], summary: { assigned_employees: 0, reserved_equipment: 0, reserved_vehicles: 0, available_resources: 1 } } });
+    return Promise.resolve({ data: { id: "event-created" } });
+  });
   api.patch.mockResolvedValue({ data: { id: "event-1" } });
 }
 
@@ -122,6 +140,11 @@ test("Shop Schedule shows operational calendar items without employee shift or a
   expect(await screen.findByText("Install at Rusty Lemon")).toBeInTheDocument();
   expect(screen.getByText("Production: Print & Cut")).toBeInTheDocument();
   expect(screen.getByText("Task due: Send proof")).toBeInTheDocument();
+  expect(screen.getByTestId("shop-schedule-assignment-event-1")).toHaveTextContent("Donnell");
+  expect(screen.getByTestId("calendar-equipment-filter")).toBeInTheDocument();
+  expect(screen.getByTestId("calendar-vehicle-filter")).toBeInTheDocument();
+  expect(screen.getByTestId("calendar-resource-filter")).toBeInTheDocument();
+  expect(screen.getByTestId("calendar-attention-filter")).toBeInTheDocument();
   expect(screen.queryByText("Gary shift")).not.toBeInTheDocument();
   expect(screen.queryByText("Maria PTO")).not.toBeInTheDocument();
   expect(screen.queryByText("Internal team meeting")).not.toBeInTheDocument();
@@ -144,12 +167,22 @@ test("URL context opens create appointment with supported linked record IDs", as
   expect(within(dialog).getByTestId("calendar-event-customer-id")).toHaveValue("customer-1");
   expect(within(dialog).getByTestId("calendar-event-order-id")).toHaveValue("order-1");
   expect(within(dialog).getByTestId("calendar-event-work-order-id")).toHaveValue("work-order-1");
+  expect(within(dialog).getByTestId("calendar-people-resources-section")).toBeInTheDocument();
+  await user.click(await within(dialog).findByRole("checkbox", { name: "Bill" }));
+  await user.click(await within(dialog).findByRole("checkbox", { name: "HP Latex" }));
+  await user.click(await within(dialog).findByRole("checkbox", { name: "Install Van" }));
+  await user.click(await within(dialog).findByRole("checkbox", { name: "Install Bay 1" }));
+  expect(within(dialog).getByTestId("calendar-selected-resource-summary")).toHaveTextContent("Bill");
 
   await user.click(within(dialog).getByRole("button", { name: "Create" }));
 
   await waitFor(() => expect(api.post).toHaveBeenCalledWith("/calendar/events", expect.objectContaining({
     title: "Install appointment",
     event_type: "installation",
+    assigned_employee_ids: ["employee-2"],
+    reserved_equipment_ids: ["equipment-1"],
+    reserved_vehicle_ids: ["vehicle-1"],
+    reserved_resource_ids: ["resource-1"],
     customer_id: "customer-1",
     order_id: "order-1",
     work_order_id: "work-order-1",
@@ -170,8 +203,51 @@ test("Appointments view edits stored calendar events through the canonical event
 
   await waitFor(() => expect(api.patch).toHaveBeenCalledWith("/calendar/events/event-1", expect.objectContaining({
     title: "Updated install appointment",
+    assigned_employee_ids: ["employee-1", "employee-2"],
+    reserved_equipment_ids: ["equipment-1"],
+    reserved_vehicle_ids: ["vehicle-1"],
+    reserved_resource_ids: ["resource-1"],
     customer_id: "customer-1",
     order_id: "order-1",
     work_order_id: "work-order-1",
   })));
+});
+
+test("availability conflicts identify the blocked resource and prevent normal save", async () => {
+  api.post.mockImplementation((url) => {
+    if (url === "/calendar/availability") {
+      return Promise.resolve({ data: {
+        conflicts: [{
+          resource_type: "resource",
+          resource_id: "resource-1",
+          resource_name: "Install Bay 1",
+          title: "Trailer install",
+          start_at: "2026-08-14T13:00:00.000Z",
+          end_at: "2026-08-14T15:00:00.000Z",
+        }],
+        warnings: [],
+        summary: { assigned_employees: 1, reserved_equipment: 1, reserved_vehicles: 1, available_resources: 0 },
+      } });
+    }
+    return Promise.resolve({ data: { id: "event-created" } });
+  });
+  const user = userEvent.setup();
+  renderWithProviders(<ShopSchedulePage />, { route: "/shop-schedule?view=appointments&new=1&date=2026-08-14" });
+
+  const dialog = await screen.findByTestId("calendar-appointment-dialog");
+  await user.type(within(dialog).getByTestId("calendar-event-title"), "Conflicting install");
+  await user.click(await within(dialog).findByRole("checkbox", { name: "Install Bay 1" }));
+  expect(await within(dialog).findByTestId("calendar-resource-conflicts")).toHaveTextContent("Install Bay 1");
+
+  await user.click(within(dialog).getByRole("button", { name: "Create" }));
+
+  expect(await within(dialog).findByTestId("calendar-conflict-warning")).toHaveTextContent("Install Bay 1");
+  expect(api.post).not.toHaveBeenCalledWith("/calendar/events", expect.anything());
+});
+
+test("agenda and appointments display assigned people and reserved resources", async () => {
+  renderWithProviders(<ShopSchedulePage />, { route: "/shop-schedule?view=agenda&date=2026-08-14" });
+
+  expect(await screen.findByTestId("shop-schedule-agenda-list")).toBeInTheDocument();
+  expect(screen.getByTestId("shop-schedule-row-assignment-event-1")).toHaveTextContent("HP Latex");
 });
