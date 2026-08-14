@@ -115,12 +115,16 @@ function renderShell(initialPath = "/", authOverrides = {}) {
           <Route path="/customers" element={<><LocationProbe /><Page name="customers" /></>} />
           <Route path="/customers/:id" element={<><LocationProbe /><Page name="customer-detail" /></>} />
           <Route path="/work-orders" element={<><LocationProbe /><Page name="production" /></>} />
+          <Route path="/work-orders/board" element={<><LocationProbe /><Page name="production-board" /></>} />
           <Route path="/webstores" element={<><LocationProbe /><Page name="webstores" /></>} />
           <Route path="/approval-center" element={<><LocationProbe /><Page name="approval-center" /></>} />
           <Route path="/webstores/:id" element={<><LocationProbe /><Page name="webstore-detail" /></>} />
           <Route path="/wrap-lab" element={<><LocationProbe /><Page name="wrap-lab" /></>} />
           <Route path="/finance" element={<><LocationProbe /><Page name="finance" /></>} />
           <Route path="/studio/design-image" element={<><LocationProbe /><Page name="design-image" /></>} />
+          <Route path="/pricing-calculator" element={<><LocationProbe /><Page name="pricing-calculator" /></>} />
+          <Route path="/team/tasks" element={<><LocationProbe /><Page name="tasks" /></>} />
+          <Route path="/team/time-clock" element={<><LocationProbe /><Page name="time-clock" /></>} />
           <Route path="/team/messages" element={<><LocationProbe /><Page name="messages" /></>} />
           <Route path="/platform-admin" element={<><LocationProbe /><Page name="platform-admin" /></>} />
         </Route>
@@ -319,6 +323,170 @@ test("mobile navigation drawer trigger remains accessible and closes after selec
   await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent("/"));
 });
 
+test("Quick Access replaces the old generic left header shortcuts with useful authorized destinations", async () => {
+  renderShell("/orders");
+
+  const header = screen.getByTestId("global-header");
+  const quickAccess = within(header).getByTestId("quick-access-bar");
+  const links = within(quickAccess).getAllByRole("link");
+
+  expect(links.map((link) => link.getAttribute("aria-label"))).toEqual([
+    "Time Clock",
+    "New Order",
+    "Pricing Calculator",
+    "Production Board",
+    "Task List",
+  ]);
+  expect(links.map((link) => link.getAttribute("href"))).toEqual([
+    "/team/time-clock",
+    "/orders?new=1",
+    "/pricing-calculator",
+    "/work-orders/board",
+    "/team/tasks",
+  ]);
+  for (const link of links) {
+    expect(link).toHaveAttribute("title", link.getAttribute("aria-label"));
+  }
+
+  expect(within(header).queryByRole("link", { name: "Apps" })).not.toBeInTheDocument();
+  expect(within(header).queryByRole("link", { name: "Search" })).not.toBeInTheDocument();
+  expect(within(header).queryByRole("link", { name: "Create" })).not.toBeInTheDocument();
+  expect(within(header).queryByRole("link", { name: "Home" })).not.toBeInTheDocument();
+  expect(within(header).queryByRole("link", { name: "Customer Communications" })).not.toBeInTheDocument();
+});
+
+test("responsive header defines direct and compact Quick Access breakpoints without changing destinations", async () => {
+  renderShell("/orders");
+
+  const quickAccess = screen.getByTestId("quick-access-bar");
+  const compactTrigger = screen.getByTestId("quick-access-menu-trigger");
+  const links = within(quickAccess).getAllByRole("link");
+
+  expect(quickAccess).toHaveClass("min-[1400px]:flex");
+  expect(compactTrigger).toHaveClass("min-[1400px]:hidden");
+  expect(compactTrigger).toHaveAccessibleName("Quick Access");
+  expect(links).toHaveLength(5);
+  expect(screen.getByTestId("quick-access-newOrder")).toHaveAttribute("href", "/orders?new=1");
+});
+
+test("Search and Create remain reachable in full and compact header modes", async () => {
+  const user = userEvent.setup();
+  renderShell("/orders");
+
+  expect(screen.getByTestId("global-search")).toHaveClass("min-[1024px]:block");
+  expect(screen.getByLabelText("Global search")).toBeInTheDocument();
+
+  const compactSearchTrigger = screen.getByTestId("global-search-compact-trigger");
+  expect(compactSearchTrigger).toHaveAccessibleName("Open global search");
+  expect(compactSearchTrigger).toHaveClass("min-[1024px]:hidden");
+  await user.click(compactSearchTrigger);
+  expect(screen.getByTestId("global-search-compact")).toBeInTheDocument();
+  expect(screen.getByLabelText("Compact global search")).toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByTestId("global-search-compact")).not.toBeInTheDocument());
+
+  const create = screen.getByTestId("global-create-menu");
+  expect(create).toHaveAccessibleName("Create");
+  expect(create).toHaveClass("min-[900px]:px-3");
+  await user.click(create);
+  expect(screen.getByTestId("create-action-newOrder")).toHaveTextContent("New Order");
+});
+
+test("global header centers the title independently and constrains horizontal shell overflow", async () => {
+  renderShell("/shop-operations");
+
+  const shell = screen.getByTestId("authenticated-app-shell");
+  const header = screen.getByTestId("global-header");
+  expect(shell).toHaveClass("overflow-x-hidden");
+  expect(within(header).getByTestId("global-header-left")).toHaveClass("min-w-0");
+  expect(within(header).getByTestId("global-header-right")).toHaveClass("min-w-0");
+  expect(within(header).getByTestId("global-header-title-frame")).toHaveClass("absolute");
+  expect(within(header).getByTestId("global-header-title")).toHaveTextContent("Shop Operations");
+  expect(screen.getByTestId("secondary-navigation-row")).toContainElement(screen.getByTestId("module-tab-row"));
+  expect(screen.getByTestId("contextual-ribbon").firstElementChild).toHaveClass("overflow-x-auto");
+  expect(screen.getByTestId("workspace-dock")).toBeInTheDocument();
+});
+
+test.each([
+  ["quick-access-timeClock", "/team/time-clock", "time-clock-route"],
+  ["quick-access-newOrder", "/orders?new=1", "orders-route"],
+  ["quick-access-pricing", "/pricing-calculator", "pricing-calculator-route"],
+  ["quick-access-productionBoard", "/work-orders/board", "production-board-route"],
+  ["quick-access-taskList", "/team/tasks", "tasks-route"],
+])("%s opens its canonical destination", async (testId, expectedPath, routeTestId) => {
+  const user = userEvent.setup();
+  renderShell("/orders");
+
+  await user.click(screen.getByTestId(testId));
+
+  await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent(expectedPath));
+  expect(screen.getByTestId(routeTestId)).toBeInTheDocument();
+});
+
+test("Quick Access filters unauthorized shortcuts without empty slots and preserves order", async () => {
+  renderShell("/orders", { permissions: ["order:read", "order:write", "pricing:read"] });
+
+  const links = within(screen.getByTestId("quick-access-bar")).getAllByRole("link");
+  expect(links.map((link) => link.getAttribute("aria-label"))).toEqual(["New Order", "Pricing Calculator"]);
+  expect(screen.queryByTestId("quick-access-timeClock")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("quick-access-productionBoard")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("quick-access-taskList")).not.toBeInTheDocument();
+});
+
+test("keyboard users can reach and activate every displayed Quick Access shortcut", async () => {
+  const user = userEvent.setup();
+  renderShell("/orders");
+
+  await user.tab();
+  expect(screen.getByTestId("primary-nav-home")).toHaveFocus();
+  for (const testId of [
+    "primary-nav-shop-operations",
+    "primary-nav-business-finance",
+    "primary-nav-team-productivity",
+    "primary-nav-tools-resources",
+    "primary-nav-control-center",
+    "primary-nav-help-community",
+    "sidebar-account-menu",
+    "sidebar-notifications-button",
+    "sidebar-sign-out-button",
+    "mobile-sidebar-menu-button",
+    "quick-access-timeClock",
+  ]) {
+    await user.tab();
+    expect(screen.getByTestId(testId)).toHaveFocus();
+  }
+
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent("/team/time-clock"));
+});
+
+test("responsive Quick Access menu is labeled accurately, lists icon/text items, and restores focus on Escape", async () => {
+  const user = userEvent.setup();
+  renderShell("/orders");
+
+  const trigger = screen.getByTestId("quick-access-menu-trigger");
+  expect(trigger).toHaveAccessibleName("Quick Access");
+  expect(trigger).toHaveTextContent("Quick Access");
+  expect(trigger).not.toHaveTextContent("Apps");
+
+  await user.click(trigger);
+  const menu = screen.getByTestId("quick-access-menu");
+  const menuItems = within(menu).getAllByRole("menuitem");
+  expect(menuItems.map((item) => item.textContent)).toEqual([
+    "Time Clock",
+    "New Order",
+    "Pricing Calculator",
+    "Production Board",
+    "Task List",
+  ]);
+  for (const item of menuItems) {
+    expect(item.querySelector("svg")).toBeInTheDocument();
+  }
+
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(trigger).toHaveFocus());
+});
+
 test("mobile drawer has an accessible close control and restores focus after close", async () => {
   const user = userEvent.setup();
   renderShell("/orders");
@@ -347,7 +515,7 @@ test("mobile drawer closes from backdrop selection and restores opener focus", a
   await waitFor(() => expect(mobileMenu).toHaveFocus());
 });
 
-test("global header contains breadcrumbs, search, create, messages, notifications, and account controls", async () => {
+test("global header contains breadcrumbs, search, create, and Quick Access without duplicate desktop account controls", async () => {
   renderShell("/orders/order-1042?tab=items");
 
   const header = screen.getByTestId("global-header");
@@ -357,9 +525,11 @@ test("global header contains breadcrumbs, search, create, messages, notification
   expect(within(header).getByTestId("global-breadcrumbs")).toHaveTextContent("Shop Operations/Orders/Order #order-1042");
   expect(within(header).getByTestId("global-search")).toBeInTheDocument();
   expect(within(header).getByTestId("global-create-menu")).toBeInTheDocument();
-  expect(within(header).getByTestId("global-messages-button")).toBeInTheDocument();
-  expect(within(header).getByTestId("notification-bell")).toBeInTheDocument();
-  expect(within(header).getByTestId("global-account-menu")).toBeInTheDocument();
+  expect(within(header).getByTestId("quick-access-bar")).toBeInTheDocument();
+  expect(within(header).queryByTestId("global-messages-button")).not.toBeInTheDocument();
+  expect(within(header).queryByTestId("global-account-menu")).not.toBeInTheDocument();
+  expect(within(screen.getByTestId("sidebar-bottom-controls")).getByTestId("sidebar-account-menu")).toBeInTheDocument();
+  expect(within(screen.getByTestId("sidebar-bottom-controls")).getByTestId("sidebar-notifications-button")).toBeInTheDocument();
 });
 
 test("Orders hierarchy uses one compact header, one module tab row, and one combined Sales command bar", async () => {
@@ -514,7 +684,7 @@ test("authorized platform users switch through the account menu, not the custome
   renderShell("/orders");
 
   expect(screen.queryByTestId("primary-nav-platform-admin")).not.toBeInTheDocument();
-  await user.click(screen.getByTestId("global-account-menu"));
+  await user.click(screen.getByTestId("sidebar-account-menu"));
   await user.click(screen.getByTestId("account-platform-admin-link"));
 
   await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent("/platform-admin"));

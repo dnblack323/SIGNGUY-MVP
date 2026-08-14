@@ -1,20 +1,22 @@
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Bot,
+  Calculator,
   CalendarDays,
   CheckCircle2,
   CircleHelp,
   ClipboardCheck,
   ClipboardList,
+  ClipboardPlus,
+  Clock3,
   CopyPlus,
   DollarSign,
   Download,
   ExternalLink,
   Filter,
   FileText,
-  Grid3X3,
+  KanbanSquare,
   LayoutDashboard,
-  List,
   LogOut,
   Mail,
   Menu,
@@ -31,6 +33,7 @@ import {
   User,
   UserCheck,
   UserPlus,
+  Zap,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -67,14 +70,14 @@ const COMMANDS = {
   newIntake: { key: "newIntake", label: "New Intake", icon: ClipboardList, to: "/intake/new", permission: "intake:write" },
   newCustomer: { key: "newCustomer", label: "New Customer", icon: UserPlus, to: "/customers", permission: "customer:write" },
   newQuote: { key: "newQuote", label: "New Quote", icon: FileText, to: "/quotes", permission: "quote:write" },
-  newOrder: { key: "newOrder", label: "New Order", icon: ShoppingBag, to: "/orders?new=1", permission: "order:write" },
+  newOrder: { key: "newOrder", label: "New Order", icon: ClipboardPlus, to: "/orders?new=1", permission: "order:write" },
   sendQuote: { key: "sendQuote", label: "Send Quote", icon: Mail, to: "/quotes", permission: "quote:write" },
   followUp: { key: "followUp", label: "Follow Up", icon: MessageSquare, to: "/quotes", permission: "quote:read" },
   convertOrder: { key: "convertOrder", label: "Convert to Order", icon: ShoppingBag, to: "/quotes", permission: "order:write" },
   invitePortal: { key: "invitePortal", label: "Invite Customer to Portal", icon: UserPlus, to: "/customers?portalInvite=1", permission: "customer:write" },
   newWebstore: { key: "newWebstore", label: "New Webstore", icon: Store, to: "/webstores", permission: "webstore:write" },
   newWrapProject: { key: "newWrapProject", label: "New Wrap Project", icon: Plus, to: "/wrap-lab", permission: "wrap_lab:write" },
-  pricing: { key: "pricing", label: "Pricing Calculator", icon: DollarSign, to: "/pricing-calculator", permission: "pricing:read" },
+  pricing: { key: "pricing", label: "Pricing Calculator", icon: DollarSign, quickIcon: Calculator, to: "/pricing-calculator", permission: "pricing:read" },
   sendProof: { key: "sendProof", label: "Send Proof", icon: Send, to: "/decision-rooms", permission: "decision_room:read" },
   scheduleInstall: { key: "scheduleInstall", label: "Schedule Install", icon: CalendarDays, to: "/shop-schedule", permission: "schedule:read" },
   filter: { key: "filter", label: "Filter", icon: Filter, to: "#", permission: null },
@@ -92,6 +95,7 @@ const COMMANDS = {
   newDecisionRoom: { key: "newDecisionRoom", label: "New Decision Room", icon: FileText, to: "/decision-rooms", permission: "decision_room:read" },
   openRoom: { key: "openRoom", label: "Open Room", icon: ExternalLink, to: "/decision-rooms", permission: "decision_room:read" },
   workOrders: { key: "workOrders", label: "Work Orders", icon: ClipboardList, to: "/work-orders", permission: "work_order:read" },
+  productionBoard: { key: "productionBoard", label: "Production Board", icon: KanbanSquare, to: "/work-orders/board", permission: "work_order:read" },
   openKiosk: { key: "openKiosk", label: "Open Kiosk", icon: Monitor, to: "/kiosk/production", permission: "work_order:read" },
   assignWork: { key: "assignWork", label: "Assign", icon: UserPlus, to: "/work-orders", permission: "work_order:read" },
   startWork: { key: "startWork", label: "Start", icon: CheckCircle2, to: "/work-orders", permission: "work_order:read" },
@@ -102,6 +106,8 @@ const COMMANDS = {
   addNote: { key: "addNote", label: "Add Note", icon: FileText, to: "/work-orders", permission: "work_order:read" },
   refresh: { key: "refresh", label: "Refresh", icon: RefreshCw, to: "#", permission: null },
   task: { key: "task", label: "Task", icon: CheckCircle2, to: "/team/tasks", permission: "task:read" },
+  taskList: { key: "taskList", label: "Task List", icon: ClipboardList, to: "/team/tasks", permission: "task:read" },
+  timeClock: { key: "timeClock", label: "Time Clock", icon: Clock3, to: "/team/time-clock", permission: "timeclock:self" },
   calendar: { key: "calendar", label: "Calendar", icon: CalendarDays, to: "/shop-schedule", permission: "schedule:read" },
   assistant: { key: "assistant", label: "Assistant", icon: Bot, to: "/studio/assistant", permission: "ai_assistant:use" },
   help: { key: "help", label: "Help", icon: CircleHelp, to: "/help", permission: "help:read" },
@@ -116,6 +122,7 @@ const COMMANDS = {
 };
 
 const CREATE_KEYS = ["newIntake", "newCustomer", "newQuote", "newOrder", "invitePortal", "newWebstore", "newWrapProject"];
+const QUICK_ACCESS_KEYS = ["timeClock", "newOrder", "pricing", "productionBoard", "taskList"];
 const DESKTOP_SIDEBAR_WIDTH = 96;
 
 const COMMAND_COLOR_CLASSES = {
@@ -413,13 +420,15 @@ function SidebarInner({ selectedAreaKey, onSelectArea, onNavigate, mobile = fals
 
         <div className="space-y-1.5 border-t border-white/10 px-2 py-2" data-testid="sidebar-bottom-controls">
           <AccountMenu sidebar />
-          <NotificationBell
-            testId="sidebar-notifications-button"
-            tooltip="Notifications"
-            className="mx-auto size-10 text-white hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/80"
-            iconClassName="size-5"
-            badgeClassName="bg-blue-600 text-white"
-          />
+          {!mobile && (
+            <NotificationBell
+              testId="sidebar-notifications-button"
+              tooltip="Notifications"
+              className="mx-auto size-10 text-white hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/80"
+              iconClassName="size-5"
+              badgeClassName="bg-blue-600 text-white"
+            />
+          )}
           <SidebarSignOutButton mobile={mobile} />
         </div>
       </div>
@@ -560,6 +569,7 @@ function GlobalSearch({ blue = false }) {
   const [results, setResults] = useState([]);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  const [compactOpen, setCompactOpen] = useState(false);
   const navigate = useNavigate();
   const { permissions } = useAuth();
 
@@ -617,66 +627,119 @@ function GlobalSearch({ blue = false }) {
     };
   }, [query, permissions]);
 
-  return (
-    <form
-      className="relative hidden w-full max-w-[250px] md:block"
-      role="search"
-      data-testid="global-search"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const q = query.trim();
-        const first = results.flatMap((group) => group.items)[0];
-        if (first) {
-          navigate(first.to);
-          setOpen(false);
-        } else if (q) {
-          navigate(`/customers?search=${encodeURIComponent(q)}`);
-        }
-      }}
-    >
-      <Search className={cn("pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2", blue ? "text-white" : "text-slate-400")} />
-      <input
-        type="search"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search"
-        className={cn(
-          "h-9 w-full rounded-md border pl-8 pr-3 text-sm outline-none",
-          blue
-            ? "border-white/80 bg-white/5 text-white placeholder:text-white focus:border-white focus:ring-2 focus:ring-white/30"
-            : "border-slate-200 bg-white text-slate-950 placeholder:text-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100",
-        )}
-        aria-label="Global search"
-        onFocus={() => setOpen(true)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") setOpen(false);
-        }}
-      />
-      {open && (query.trim().length >= 2 || busy) && (
-        <div className="absolute left-0 right-0 top-10 z-50 max-h-96 overflow-y-auto rounded-md border bg-white p-2 shadow-xl" data-testid="global-search-results">
-          {busy && <div className="px-2 py-2 text-xs text-slate-500">Searching...</div>}
-          {!busy && results.length === 0 && <div className="px-2 py-2 text-xs text-slate-500">No permitted records found.</div>}
-          {results.map((group) => (
-            <section key={group.type} className="py-1" data-testid={`global-search-group-${group.type.toLowerCase().replace(/\s+/g, "-")}`}>
-              <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{group.type}</div>
-              {group.items.map((item) => (
-                <button
-                  key={`${group.type}-${item.to}`}
-                  type="button"
-                  className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
-                  onClick={() => {
-                    navigate(item.to);
-                    setOpen(false);
-                  }}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </section>
+  const submitSearch = (event) => {
+    event.preventDefault();
+    const q = query.trim();
+    const first = results.flatMap((group) => group.items)[0];
+    if (first) {
+      navigate(first.to);
+      setOpen(false);
+      setCompactOpen(false);
+    } else if (q) {
+      navigate(`/customers?search=${encodeURIComponent(q)}`);
+      setCompactOpen(false);
+    }
+  };
+
+  const searchResults = (
+    <>
+      {busy && <div className="px-2 py-2 text-xs text-slate-500">Searching...</div>}
+      {!busy && results.length === 0 && <div className="px-2 py-2 text-xs text-slate-500">No permitted records found.</div>}
+      {results.map((group) => (
+        <section key={group.type} className="py-1" data-testid={`global-search-group-${group.type.toLowerCase().replace(/\s+/g, "-")}`}>
+          <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{group.type}</div>
+          {group.items.map((item) => (
+            <button
+              key={`${group.type}-${item.to}`}
+              type="button"
+              className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+              onClick={() => {
+                navigate(item.to);
+                setOpen(false);
+                setCompactOpen(false);
+              }}
+            >
+              {item.label}
+            </button>
           ))}
-        </div>
-      )}
-    </form>
+        </section>
+      ))}
+    </>
+  );
+
+  return (
+    <>
+      <form
+        className="relative hidden w-[clamp(190px,20vw,250px)] min-[1024px]:block"
+        role="search"
+        data-testid="global-search"
+        onSubmit={submitSearch}
+      >
+        <Search className={cn("pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2", blue ? "text-white" : "text-slate-400")} />
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search"
+          className={cn(
+            "h-9 w-full rounded-md border pl-8 pr-3 text-sm outline-none",
+            blue
+              ? "border-white/80 bg-white/5 text-white placeholder:text-white focus:border-white focus:ring-2 focus:ring-white/30"
+              : "border-slate-200 bg-white text-slate-950 placeholder:text-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100",
+          )}
+          aria-label="Global search"
+          onFocus={() => setOpen(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setOpen(false);
+          }}
+        />
+        {open && (query.trim().length >= 2 || busy) && (
+          <div className="absolute left-0 right-0 top-10 z-50 max-h-96 overflow-y-auto rounded-md border bg-white p-2 shadow-xl" data-testid="global-search-results">
+            {searchResults}
+          </div>
+        )}
+      </form>
+      <DropdownMenu open={compactOpen} onOpenChange={setCompactOpen}>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="grid size-10 shrink-0 place-items-center rounded-md text-white/95 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 min-[1024px]:hidden"
+            data-testid="global-search-compact-trigger"
+            aria-label="Open global search"
+            title="Search"
+          >
+            <Search className="size-5 stroke-[1.9]" aria-hidden="true" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-72 p-2" data-testid="global-search-compact-menu">
+          <form role="search" data-testid="global-search-compact" onSubmit={submitSearch}>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search"
+                className="h-9 w-full rounded-md border border-slate-200 bg-white pl-8 pr-3 text-sm text-slate-950 outline-none placeholder:text-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
+                aria-label="Compact global search"
+                onFocus={() => setOpen(true)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setOpen(false);
+                    setCompactOpen(false);
+                  }
+                }}
+              />
+            </div>
+          </form>
+          {(open || compactOpen) && (query.trim().length >= 2 || busy) && (
+            <div className="mt-2 max-h-80 overflow-y-auto rounded-md border bg-white p-2 shadow-sm" data-testid="global-search-compact-results">
+              {searchResults}
+            </div>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   );
 }
 
@@ -688,9 +751,12 @@ function CreateMenu({ permissions, blue = false }) {
         <Button
           size="sm"
           data-testid="global-create-menu"
-          className={cn("h-9", blue && "border border-slate-950 bg-slate-950 text-white hover:bg-slate-900")}
+          aria-label="Create"
+          title="Create"
+          className={cn("h-9 min-w-9 px-2 min-[900px]:px-3", blue && "border border-slate-950 bg-slate-950 text-white hover:bg-slate-900")}
         >
-          <Plus className="mr-1 size-4" />Create
+          <Plus className="size-4 min-[900px]:mr-1" />
+          <span className="hidden min-[900px]:inline">Create</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
@@ -704,6 +770,87 @@ function CreateMenu({ permissions, blue = false }) {
         })}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function quickAccessCommands(permissions) {
+  return QUICK_ACCESS_KEYS
+    .map((key) => COMMANDS[key])
+    .filter((command) => command && allowedCommand(command, permissions));
+}
+
+function QuickAccessLink({ command, mode = "desktop", onSelect }) {
+  const Icon = command.quickIcon || command.icon;
+  const label = command.label;
+  if (mode === "menu") {
+    return (
+      <DropdownMenuItem asChild data-testid={`quick-access-menu-${command.key}`}>
+        <Link to={command.to} aria-label={label} title={label} onClick={onSelect}>
+          <Icon className="mr-2 size-4 text-slate-600" aria-hidden="true" />
+          {label}
+        </Link>
+      </DropdownMenuItem>
+    );
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          to={command.to}
+          data-testid={`quick-access-${command.key}`}
+          aria-label={label}
+          title={label}
+          className="grid size-9 shrink-0 place-items-center rounded-md text-white/90 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+        >
+          <Icon className="size-5 stroke-[1.9]" aria-hidden="true" />
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function QuickAccessBar({ permissions }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const triggerRef = useRef(null);
+  const commands = quickAccessCommands(permissions);
+
+  const closeMenu = () => {
+    setMenuOpen(false);
+    requestAnimationFrame(() => triggerRef.current?.focus?.());
+  };
+
+  if (!commands.length) {
+    return <div className="min-w-0" data-testid="quick-access-empty" />;
+  }
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <nav className="hidden items-center gap-1 min-[1400px]:flex" aria-label="Quick Access" data-testid="quick-access-bar">
+        {commands.map((command) => <QuickAccessLink key={command.key} command={command} />)}
+      </nav>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger asChild>
+          <button
+            ref={triggerRef}
+            type="button"
+            className="inline-flex h-10 min-w-10 items-center justify-center gap-2 rounded-md px-2 text-white/95 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 min-[1400px]:hidden"
+            data-testid="quick-access-menu-trigger"
+            aria-label="Quick Access"
+            title="Quick Access"
+          >
+            <Zap className="size-5 stroke-[1.9]" aria-hidden="true" />
+            <span className="hidden text-sm font-medium sm:inline">Quick Access</span>
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-64" data-testid="quick-access-menu">
+          <DropdownMenuLabel>Quick Access</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {commands.map((command) => <QuickAccessLink key={command.key} command={command} mode="menu" onSelect={closeMenu} />)}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </TooltipProvider>
   );
 }
 
@@ -779,60 +926,32 @@ function AccountMenu({ sidebar = false }) {
 
 function GlobalHeader({ area, module, permissions, onToggleNavigation }) {
   const headerTitle = area?.key === "shop-operations" ? "Shop Operations" : area?.label || module?.label || "Overview";
-  const quickIcons = [
-    { key: "menu", label: "Open navigation", icon: Menu, onClick: onToggleNavigation, mobileOnly: true },
-    { key: "create", label: "Create", icon: Plus, to: "/intake/new" },
-    { key: "search", label: "Search", icon: Search, to: "/customers" },
-    { key: "review", label: "Review", icon: CheckCircle2, to: "/approval-center" },
-    { key: "grid", label: "Apps", icon: Grid3X3, to: "/" },
-    { key: "list", label: "Queues", icon: List, to: "/orders" },
-  ];
   return (
-    <div className="bg-blue-600 px-4 text-white shadow-sm md:px-5" data-testid="global-header">
-      <div className="grid h-[58px] grid-cols-[auto_1fr_auto] items-center gap-3">
-        <div className="flex items-center gap-2">
-          {quickIcons.map((item) => {
-            const Icon = item.icon;
-            const className = cn(
-              "grid size-9 place-items-center rounded-md text-white/95 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80",
-              item.mobileOnly && "lg:hidden",
-            );
-            if (item.onClick) {
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={className}
-                  data-testid="mobile-sidebar-menu-button"
-                  aria-label={item.label}
-                  title={item.label}
-                  onClick={item.onClick}
-                >
-                  <Icon className="size-6" aria-hidden="true" />
-                </button>
-              );
-            }
-            return (
-              <Link key={item.key} to={item.to} className={className} aria-label={item.label} title={item.label}>
-                <Icon className="size-6" aria-hidden="true" />
-              </Link>
-            );
-          })}
+    <div className="bg-blue-600 px-3 text-white shadow-sm md:px-5" data-testid="global-header">
+      <div className="relative flex h-[58px] min-w-0 items-center justify-between gap-2 overflow-hidden">
+        <div className="z-10 flex min-w-0 flex-1 items-center gap-1.5 pr-2" data-testid="global-header-left">
+          <button
+            type="button"
+            className="grid size-10 place-items-center rounded-md text-white/95 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 lg:hidden"
+            data-testid="mobile-sidebar-menu-button"
+            aria-label="Open navigation"
+            title="Open navigation"
+            onClick={onToggleNavigation}
+          >
+            <Menu className="size-6" aria-hidden="true" />
+          </button>
+          <QuickAccessBar permissions={permissions} />
         </div>
-        <div className="min-w-0 text-center">
-          <h1 className="truncate text-xl font-bold leading-tight text-white" data-testid="global-header-title">{headerTitle}</h1>
+        <div className="pointer-events-none absolute inset-x-14 top-1/2 z-0 -translate-y-1/2 text-center sm:inset-x-20 lg:inset-x-36 min-[1400px]:inset-x-72" data-testid="global-header-title-frame">
+          <h1 className="mx-auto max-w-[180px] truncate text-lg font-bold leading-tight text-white sm:max-w-[240px] min-[1024px]:max-w-[340px] min-[1400px]:max-w-[440px] min-[1400px]:text-xl" data-testid="global-header-title">{headerTitle}</h1>
           <div className="sr-only" data-testid="global-breadcrumb-row">
             <Breadcrumbs area={area} module={module} />
           </div>
         </div>
-        <div className="flex min-w-0 shrink-0 items-center justify-end gap-2">
+        <div className="z-10 flex min-w-0 flex-1 items-center justify-end gap-1.5 pl-2" data-testid="global-header-right">
           <GlobalSearch blue />
           <CreateMenu permissions={permissions} blue />
-          <Button asChild size="icon" variant="ghost" className="size-9 text-white hover:bg-white/10" data-testid="global-messages-button" aria-label="Messages">
-            <Link to="/team/messages"><MessageSquare className="size-5" /></Link>
-          </Button>
-          <NotificationBell />
-          <AccountMenu />
+          <NotificationBell className="size-10 text-white hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/80 lg:hidden" />
         </div>
       </div>
     </div>
