@@ -75,16 +75,16 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
 
 ### P0 items
 
-- **SO-01 — Status: `In Progress`**
+- **SO-01 — Status: `Closed`**
   - **Exact frontend evidence:** `frontend/src/lib/navigation.js`, `frontend/src/App.js`, `frontend/src/components/app-shell/AppShell.jsx`.
   - **Exact backend evidence:** Existing tenant-scoped backend routers remain the authority for customers, quotes, orders, work orders, Decision Rooms, Webstores, and Wrap Lab; no separate Shop Operations backend shell exists.
-  - **Relevant tests:** `frontend/src/__tests__/AppShellNavigation.test.jsx`, `frontend/src/__tests__/PricingCalculatorPage.test.jsx`.
-  - **Already implemented:** Home/default route ownership, grouped Sales, Approval Center shell, Production tab, Webstores tab, fixed sidebar, compact header/ribbon, Workspace Dock, and Quick Access are merged.
-  - **Still missing:** Schedule is not a permanent Shop Operations tab, `/shop-schedule` is not owned by the Shop Operations module row, and Wrap Lab is still a permanent tab instead of contextual access.
-  - **Original closure check passes:** No.
+  - **Relevant tests:** `frontend/src/__tests__/AppShellNavigation.test.jsx`, `frontend/src/__tests__/PricingCalculatorPage.test.jsx`, `frontend/src/__tests__/ShopSchedulePage.test.jsx`.
+  - **Already implemented:** Home/default route ownership, grouped Sales, Approval Center shell, Production tab, Schedule tab, Webstores tab, fixed sidebar, compact header/ribbon, Workspace Dock, Quick Access, `/shop-schedule` Shop Operations ownership, and contextual-only Wrap Lab route matching are implemented.
+  - **Still missing:** None for the original navigation ownership closure check.
+  - **Original closure check passes:** Yes.
   - **Recommended implementation batch:** Batch 1 — Navigation, ownership, and scheduling foundation.
   - **Dependencies:** `SO-28`; Wrap Lab contextual links must preserve existing deep links and records.
-  - **Residual limitations:** Do not reopen the approved shell visuals while replacing the Wrap Lab tab with Schedule.
+  - **Residual limitations:** Full vehicle-wrap contextual launch/workflow replacement remains tracked under `SO-22`; existing `/wrap-lab` routes and deep links remain preserved.
 
 - **SO-19 — Status: `In Progress`**
   - **Exact frontend evidence:** `frontend/src/pages/ApprovalCenterPage.jsx`, `frontend/src/lib/navigation.js`, `frontend/src/App.js`.
@@ -276,15 +276,15 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Residual limitations:** Stored signature records are not the final signed artifact.
 
 - **SO-28 — Status: `In Progress`**
-  - **Exact frontend evidence:** `frontend/src/pages/ShopSchedulePage.jsx`, `frontend/src/App.js`.
+  - **Exact frontend evidence:** `frontend/src/pages/ShopSchedulePage.jsx`, `frontend/src/App.js`, `frontend/src/lib/navigation.js`, `frontend/src/components/app-shell/AppShell.jsx`.
   - **Exact backend evidence:** `backend/app/models/calendar.py`, `backend/app/services/calendar_service.py`, `backend/app/routers/calendar.py`, `backend/app/models/schedule.py`, `backend/app/routers/schedule.py`.
-  - **Relevant tests:** `backend/tests/test_ec12_phase12d_calendar_appointments.py`.
-  - **Already implemented:** Shared `calendar_events` foundation supports tenant scope, status, timezone, customer/order/order_item/work_order/production_stage links, history, conflict overrides, feed projections, reschedule/cancel/archive/restore. Team schedule/shift records are separate.
-  - **Still missing:** Permanent Shop Operations Schedule tab, route ownership, Calendar/Agenda/Appointments local views, contact/quote links, bay/equipment/resource reservations, completion workflow, duplicate-prevention across views, and redirects/deep links.
+  - **Relevant tests:** `backend/tests/test_ec12_phase12d_calendar_appointments.py`, `frontend/src/__tests__/ShopSchedulePage.test.jsx`, `frontend/src/__tests__/AppShellNavigation.test.jsx`.
+  - **Already implemented:** Shared `calendar_events` foundation supports tenant scope, status, timezone, customer/order/order_item/work_order/production_stage links, history, conflict overrides, feed projections, reschedule/cancel/archive/restore. Team schedule/shift records are separate. Shop Operations now owns a permanent Schedule tab at `/shop-schedule`, with Calendar/Agenda/Appointments local views, operational filtering over the shared feed, create/update/cancel appointment flows, schedule-specific ribbon links, and contextual Schedule actions from Customer, Quote, Order, and Work Order detail pages where supported IDs exist.
+  - **Still missing:** Direct contact and quote event links, bay/equipment/resource reservation modeling, crew assignment beyond employee assignment, appointment completion workflow, stronger duplicate-prevention UX across linked views, and any external/shared calendar synchronization.
   - **Original closure check passes:** No.
   - **Recommended implementation batch:** Batch 1 — Navigation, ownership, and scheduling foundation.
   - **Dependencies:** Precedes Order readiness, production planning, Wrap Lab scheduling, communications, and Team overlay work.
-  - **Residual limitations:** Backend is a strong foundation, but approved placement and resource modeling are not complete.
+  - **Residual limitations:** Backend remains the canonical source, but this checkpoint intentionally does not add new backend fields for contacts, quotes, crews, bays, equipment/resource reservations, recurrence automation, optimization, analytics, or external calendar sync.
 
 ### P2 and P3 items
 
@@ -389,13 +389,13 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
 
 ### P0 — Immediate release, integrity, or product-boundary gate
 
-- [ ] **SO-01 — Replace the current Shop Operations navigation with the agreed structure**
+- [x] **SO-01 — Replace the current Shop Operations navigation with the agreed structure**
   - **Source classification:** Previously identified P0; source priority: P0 from prior audit
   - **Priority basis:** Previously identified P0 and the routing foundation for every Shop Operations workflow.
   - **Baseline gap:** Current navigation still exposes Intake, Quotes, and Orders separately; places Pricing, Shop Schedule, and Library in Shop Operations; and omits the agreed grouped Sales and Approval Center structure.
   - **Required outcome:** Implement the one-level sidebar plus internal top tabs. Move Library to Tools & Resources, Pricing Foundation to Control Center, add Schedule as the permanent Shop Operations home for the operational Shop Schedule, and move Wrap Lab out of the permanent tab row into contextual vehicle-wrap access while preserving deep links.
   - **Done when:** Every Shop Operations route has one correct primary owner; Schedule replaces the permanent Wrap Lab tab; existing deep links continue to work; no flyouts are introduced.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-schedule-foundation` | Tests/Evidence: `frontend/src/__tests__/AppShellNavigation.test.jsx`, `frontend/src/__tests__/ShopSchedulePage.test.jsx` | Residual limitations: Full vehicle-wrap contextual launch/workflow replacement remains tracked under `SO-22`.
 
 - [ ] **SO-19 — Build the unified staff Approval Center**
   - **Source classification:** Previously identified P0; source priority: P0 from prior audit
@@ -541,7 +541,7 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Baseline gap:** A shared `calendar_events` foundation and `/shop-schedule` page exist, but Shop Operations does not yet own a permanent Schedule top tab, Schedule local views are incomplete, and Team Schedule versus Shop Schedule ownership is not fully enforced in navigation, routes, tests, and resource modeling.
   - **Required outcome:** Provide the canonical schedule/event model and service. Add Shop Operations > Schedule. Provide Calendar, Agenda, and Appointments views. Support operational event types and resource reservations. Link appointments and schedule events to their relevant customer and commercial/production records. Provide permissions, timezone handling, status, ownership, audit history, and conflict detection. Prevent duplicate schedule records when the same event appears in Customer, Order, Production, or Team views.
   - **Done when:** Staff can create, find, update, reschedule, cancel, and complete operational appointments and events; events appear consistently from Shop Schedule and every linked record; Team Schedule remains separate from Shop Schedule while both use the shared calendar foundation; no second calendar database or conflicting event record is created; existing schedule deep links continue to work or receive tested redirects.
-  - **Tracking:** Status: `In Progress — re-audit complete` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `backend/tests/test_ec12_phase12d_calendar_appointments.py`, `frontend/src/pages/ShopSchedulePage.jsx` | Residual limitations: placement, local views, resource reservations, quote/contact links, completion workflow, and redirects remain open.
+  - **Tracking:** Status: `In Progress — Batch 1 foundation implemented` | Owner: `Codex` | PR/Commit: `codex/shop-schedule-foundation` | Tests/Evidence: `backend/tests/test_ec12_phase12d_calendar_appointments.py`, `frontend/src/__tests__/ShopSchedulePage.test.jsx`, `frontend/src/__tests__/AppShellNavigation.test.jsx`, `frontend/src/pages/ShopSchedulePage.jsx` | Residual limitations: contact/quote links, crew/bay/equipment/resource reservations, completion workflow, stronger duplicate-prevention UX, and external calendar sync remain open.
 
 ### P2 — High-value operational completeness
 

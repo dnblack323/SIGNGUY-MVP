@@ -40,6 +40,7 @@ const FULL_PERMISSIONS = [
   "work_order:read",
   "decision_room:read",
   "schedule:read",
+  "schedule:manage",
   "document:read",
   "webstore:read",
   "webstore:write",
@@ -116,6 +117,7 @@ function renderShell(initialPath = "/", authOverrides = {}) {
           <Route path="/customers/:id" element={<><LocationProbe /><Page name="customer-detail" /></>} />
           <Route path="/work-orders" element={<><LocationProbe /><Page name="production" /></>} />
           <Route path="/work-orders/board" element={<><LocationProbe /><Page name="production-board" /></>} />
+          <Route path="/shop-schedule" element={<><LocationProbe /><Page name="shop-schedule" /></>} />
           <Route path="/webstores" element={<><LocationProbe /><Page name="webstores" /></>} />
           <Route path="/approval-center" element={<><LocationProbe /><Page name="approval-center" /></>} />
           <Route path="/webstores/:id" element={<><LocationProbe /><Page name="webstore-detail" /></>} />
@@ -236,13 +238,18 @@ test.each([
   ["/orders", "Sales", "module-nav-sales"],
   ["/approval-center", "Approval Center", "module-nav-approval-center"],
   ["/work-orders", "Production", "module-nav-production"],
+  ["/shop-schedule", "Schedule", "module-nav-schedule"],
   ["/webstores", "Webstores", "module-nav-webstores"],
-  ["/wrap-lab", "Wrap Lab", "module-nav-wrap-lab"],
+  ["/wrap-lab", "Wrap Lab", null],
 ])("%s belongs to Shop Operations and activates %s", async (route, _moduleLabel, testId) => {
   renderShell(route);
 
   expectActiveArea("Shop Operations");
-  expect(screen.getByTestId(testId)).toHaveAttribute("aria-current", "page");
+  if (testId) {
+    expect(screen.getByTestId(testId)).toHaveAttribute("aria-current", "page");
+  } else {
+    expect(screen.queryByTestId("module-nav-wrap-lab")).not.toBeInTheDocument();
+  }
 });
 
 test("Production Kiosk route renders outside AppShell", async () => {
@@ -554,11 +561,25 @@ test("Shop Operations secondary navigation uses Sales and omits direct Intake, Q
   renderShell("/orders");
 
   const labels = within(screen.getByTestId("module-tab-row")).getAllByRole("link").map((link) => link.textContent);
-  expect(labels).toEqual(["Overview", "Customers", "Sales", "Approval Center", "Production", "Webstores", "Wrap Lab"]);
+  expect(labels).toEqual(["Overview", "Customers", "Sales", "Approval Center", "Production", "Schedule", "Webstores"]);
   expect(screen.getByTestId("module-nav-sales")).toHaveAttribute("aria-current", "page");
   expect(screen.queryByTestId("module-nav-intake")).not.toBeInTheDocument();
   expect(screen.queryByTestId("module-nav-quotes")).not.toBeInTheDocument();
   expect(screen.queryByTestId("module-nav-orders")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("module-nav-wrap-lab")).not.toBeInTheDocument();
+});
+
+test("Shop Schedule has a permanent tab and a functional contextual ribbon", async () => {
+  renderShell("/shop-schedule");
+
+  expectActiveArea("Shop Operations");
+  expect(screen.getByTestId("module-nav-schedule")).toHaveAttribute("aria-current", "page");
+  expect(screen.getByTestId("shop-schedule-route")).toBeInTheDocument();
+  expect(screen.getByTestId("contextual-ribbon")).toHaveAttribute("data-module-key", "schedule");
+  expect(screen.getByTestId("ribbon-command-newAppointment")).toHaveAttribute("href", "/shop-schedule?view=appointments&new=1");
+  expect(screen.getByTestId("ribbon-command-scheduleCalendar")).toHaveAttribute("href", "/shop-schedule?view=calendar");
+  expect(screen.getByTestId("ribbon-command-scheduleAgenda")).toHaveAttribute("href", "/shop-schedule?view=agenda");
+  expect(screen.getByTestId("ribbon-command-scheduleAppointments")).toHaveAttribute("href", "/shop-schedule?view=appointments");
 });
 
 test("Sales selector preserves Intake Request, Quote, and Order routes in order", async () => {

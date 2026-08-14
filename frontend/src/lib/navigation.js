@@ -7,6 +7,7 @@
  * - contextual ribbon = page/module-specific command surface.
  */
 import {
+  CalendarDays,
   CircleHelp,
   DollarSign,
   HelpCircle,
@@ -81,6 +82,15 @@ export const PRIMARY_NAV_AREAS = [
         match: ["/work-orders"],
       },
       {
+        key: "schedule",
+        label: "Schedule",
+        icon: CalendarDays,
+        to: "/shop-schedule",
+        perm: "schedule:read",
+        testId: "module-nav-schedule",
+        match: ["/shop-schedule"],
+      },
+      {
         key: "webstores",
         label: "Webstores",
         to: "/webstores",
@@ -95,6 +105,8 @@ export const PRIMARY_NAV_AREAS = [
         perm: "wrap_lab:read",
         testId: "module-nav-wrap-lab",
         match: ["/wrap-lab"],
+        hidden: true,
+        contextual: true,
       },
     ],
   },
@@ -518,7 +530,9 @@ export function findAreaForPath(pathname) {
 
 export function firstAvailableModule(area, permissions, user = null) {
   return (
-    filterNavItemsByPermissions(area?.moduleNav || [], permissions, user)[0] ||
+    filterNavItemsByPermissions(area?.moduleNav || [], permissions, user).find(
+      (item) => !item.hidden,
+    ) ||
     null
   );
 }

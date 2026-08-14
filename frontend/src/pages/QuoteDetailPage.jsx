@@ -18,7 +18,8 @@ import { toast } from "sonner";
 import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import StatusPill from "@/components/common/StatusPill";
 import { centsToDollarsString } from "@/lib/format";
-import { ArrowLeft, ArrowRightCircle, Save, Mail, Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { buildShopScheduleUrl } from "@/lib/shopScheduleLinks";
+import { ArrowLeft, ArrowRightCircle, CalendarDays, Save, Mail, Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import ComposeEmailDialog from "@/components/email/ComposeEmailDialog";
 import LineItemDialog from "@/components/commerce/LineItemDialog";
@@ -380,6 +381,18 @@ export default function QuoteDetailPage() {
                   suggestedBody={`Hi ${customer.name},\n\nHere's your quote for ${q.job_name}.\nTotal: ${centsToDollarsString(totals.total_cents ?? q.total_cents ?? 0)}`}
                   trigger={<Button variant="outline" size="sm" data-testid="quote-email-button"><Mail className="size-4 mr-1" />Email quote</Button>}
                 />
+              )}
+              {hasPerm("schedule:manage") && q.customer_id && (
+                <Button asChild variant="outline" size="sm" data-testid="quote-schedule-customer-button">
+                  <Link to={buildShopScheduleUrl({
+                    create: true,
+                    customerId: q.customer_id,
+                    eventType: "customer_meeting",
+                    title: `${q.job_name} appointment`,
+                  })}>
+                    <CalendarDays className="size-4 mr-1" />Schedule
+                  </Link>
+                </Button>
               )}
               {canConvert && (
                 <ConvertToOrderDialog quote={q} onConverted={(d) => navigate(`/orders/${d.order.id}`)} />
