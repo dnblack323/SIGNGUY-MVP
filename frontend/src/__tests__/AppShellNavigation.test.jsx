@@ -122,6 +122,7 @@ function renderShell(initialPath = "/", authOverrides = {}) {
           <Route path="/approval-center" element={<><LocationProbe /><Page name="approval-center" /></>} />
           <Route path="/webstores/:id" element={<><LocationProbe /><Page name="webstore-detail" /></>} />
           <Route path="/wrap-lab" element={<><LocationProbe /><Page name="wrap-lab" /></>} />
+          <Route path="/wrap-lab/:id" element={<><LocationProbe /><Page name="wrap-lab-detail" /></>} />
           <Route path="/finance" element={<><LocationProbe /><Page name="finance" /></>} />
           <Route path="/studio/design-image" element={<><LocationProbe /><Page name="design-image" /></>} />
           <Route path="/pricing-calculator" element={<><LocationProbe /><Page name="pricing-calculator" /></>} />
@@ -240,16 +241,12 @@ test.each([
   ["/work-orders", "Production", "module-nav-production"],
   ["/shop-schedule", "Schedule", "module-nav-schedule"],
   ["/webstores", "Webstores", "module-nav-webstores"],
-  ["/wrap-lab", "Wrap Lab", null],
+  ["/wrap-lab", "Wrap Lab", "module-nav-wrap-lab"],
 ])("%s belongs to Shop Operations and activates %s", async (route, _moduleLabel, testId) => {
   renderShell(route);
 
   expectActiveArea("Shop Operations");
-  if (testId) {
-    expect(screen.getByTestId(testId)).toHaveAttribute("aria-current", "page");
-  } else {
-    expect(screen.queryByTestId("module-nav-wrap-lab")).not.toBeInTheDocument();
-  }
+  expect(screen.getByTestId(testId)).toHaveAttribute("aria-current", "page");
 });
 
 test("Production Kiosk route renders outside AppShell", async () => {
@@ -557,16 +554,63 @@ test("Orders hierarchy uses one compact header, one module tab row, and one comb
   expect(secondaryNav.compareDocumentPosition(ribbon) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
-test("Shop Operations secondary navigation uses Sales and omits direct Intake, Quotes, and Orders modules", async () => {
+test("Shop Operations secondary navigation uses the approved eight permanent tabs", async () => {
   renderShell("/orders");
 
   const labels = within(screen.getByTestId("module-tab-row")).getAllByRole("link").map((link) => link.textContent);
-  expect(labels).toEqual(["Overview", "Customers", "Sales", "Approval Center", "Production", "Schedule", "Webstores"]);
+  expect(labels).toEqual(["Overview", "Customers", "Sales", "Approval Center", "Production", "Schedule", "Webstores", "Wrap Lab"]);
   expect(screen.getByTestId("module-nav-sales")).toHaveAttribute("aria-current", "page");
+  expect(screen.getByTestId("module-nav-schedule")).toBeVisible();
+  expect(screen.getByTestId("module-nav-wrap-lab")).toBeVisible();
   expect(screen.queryByTestId("module-nav-intake")).not.toBeInTheDocument();
   expect(screen.queryByTestId("module-nav-quotes")).not.toBeInTheDocument();
   expect(screen.queryByTestId("module-nav-orders")).not.toBeInTheDocument();
-  expect(screen.queryByTestId("module-nav-wrap-lab")).not.toBeInTheDocument();
+});
+
+test("Wrap Lab is a permanent tab reachable by mouse and keyboard with contextual ribbon", async () => {
+  const user = userEvent.setup();
+  const first = renderShell("/shop-schedule");
+
+  const tab = screen.getByTestId("module-nav-wrap-lab");
+  expect(tab).toHaveAttribute("href", "/wrap-lab");
+  await user.click(tab);
+  await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent("/wrap-lab"));
+  expect(tab).toHaveAttribute("aria-current", "page");
+  expect(screen.getByTestId("contextual-ribbon")).toHaveAttribute("data-module-key", "wrap-lab");
+  expect(screen.getByTestId("ribbon-command-newWrapProject")).toHaveAttribute("href", "/wrap-lab");
+  first.unmount();
+
+  renderShell("/shop-schedule");
+  const keyboardTab = screen.getByTestId("module-nav-wrap-lab");
+  keyboardTab.focus();
+  expect(keyboardTab).toHaveFocus();
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent("/wrap-lab"));
+});
+
+test("Wrap Lab deep links stay in Shop Operations without adding a primary sidebar destination", async () => {
+  renderShell("/wrap-lab/wrap-1042");
+
+  expectActiveArea("Shop Operations");
+  expect(screen.getByTestId("wrap-lab-detail-route")).toBeInTheDocument();
+  expect(screen.getByTestId("module-nav-wrap-lab")).toHaveAttribute("aria-current", "page");
+  expect(screen.getByTestId("contextual-ribbon")).toHaveAttribute("data-module-key", "wrap-lab");
+  expect(screen.queryByTestId("primary-nav-wrap-lab")).not.toBeInTheDocument();
+  expect(screen.getAllByText("Wrap Lab").filter((node) => node.closest('[data-testid="primary-sidebar-nav"]')).length).toBe(0);
+});
+
+test("module tab overflow stays contained and keeps the active tab available", async () => {
+  window.innerWidth = 768;
+  renderShell("/wrap-lab");
+
+  const row = screen.getByTestId("module-tab-row");
+  const scrollContainer = screen.getByTestId("module-tab-scroll-container");
+  expect(row).toHaveClass("overflow-hidden");
+  expect(scrollContainer).toHaveClass("overflow-x-auto");
+  expect(scrollContainer).toHaveClass("overscroll-x-contain");
+  expect(screen.getByTestId("module-nav-wrap-lab")).toHaveAttribute("aria-current", "page");
+  expect(screen.getByTestId("module-nav-schedule")).toBeInTheDocument();
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth);
 });
 
 test("Shop Schedule has a permanent tab and a functional contextual ribbon", async () => {
