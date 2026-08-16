@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import DecisionRoomCustomerView from "@/components/decisionRoom/DecisionRoomCustomerView";
 import PublicWebstorePage from "@/pages/PublicWebstorePage";
 import { API_BASE } from "@/lib/apiBase";
+import { centsToDollarsString } from "@/lib/format";
 
 const API = API_BASE;
 
@@ -110,6 +111,108 @@ function QuoteRequest() {
           </form>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function PublicQuote() {
+  const { qid } = useParams();
+  const [sp] = useSearchParams();
+  const t = sp.get("t");
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
+  const [name, setName] = useState("");
+  const [reason, setReason] = useState("");
+  const [comment, setComment] = useState("");
+  const [done, setDone] = useState(null);
+
+  function load() {
+    if (!t) { setErr("Missing access link token."); return; }
+    axios.get(`${API}/public/quotes/${qid}`, { params: { t } })
+      .then((r) => setData(r.data))
+      .catch((e) => setErr(e?.response?.data?.detail || "This quote is not available."));
+  }
+
+  useEffect(() => { load(); }, [qid, t]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function submit(action) {
+    try {
+      const r = await axios.post(
+        `${API}/public/quotes/${qid}/approval`,
+        { action, reason: reason || undefined, comment: comment || undefined, signer_name: name || undefined },
+        { params: { t } },
+      );
+      setDone(r.data);
+      toast.success(action === "approve" ? "Quote approved" : "Quote declined");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Something went wrong");
+    }
+  }
+
+  if (err) return <div className="min-h-screen bg-slate-50 grid place-items-center p-6"><div className="text-rose-700 text-sm max-w-md text-center" data-testid="public-quote-error">{err}</div></div>;
+  if (!data) return <div className="min-h-screen bg-slate-50 grid place-items-center p-6 text-sm text-slate-500" data-testid="public-quote-loading">Loading…</div>;
+  if (done) return (
+    <div className="min-h-screen bg-slate-50 grid place-items-center p-6" data-testid="public-quote-done">
+      <Card className="max-w-lg w-full"><CardHeader><CardTitle>Thank you</CardTitle></CardHeader><CardContent>Your quote response has been recorded.</CardContent></Card>
+    </div>
+  );
+
+  const quote = data.quote || {};
+  const items = data.line_items || [];
+  const total = data.totals?.total_cents ?? quote.total_cents ?? 0;
+  const actionable = ["sent", "viewed"].includes(quote.status) && !quote.expired;
+
+  return (
+    <div className="min-h-screen bg-slate-50 py-8 px-4" data-testid="public-quote-page">
+      <div className="max-w-3xl mx-auto space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Quote Q-{quote.number}</CardTitle>
+            <div className="text-sm text-slate-600">{quote.job_name} · Revision {quote.revision_number}</div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {quote.notes_customer && <div className="text-sm">{quote.notes_customer}</div>}
+            <div className="rounded-md border divide-y" data-testid="public-quote-line-items">
+              {items.map((item) => (
+                <div key={item.id} className="grid grid-cols-[1fr_80px_120px] gap-2 p-3 text-sm">
+                  <div>
+                    <div className="font-medium">{item.description}</div>
+                    <div className="text-xs text-slate-500">{item.quantity} {item.unit_of_measure || "each"}</div>
+                  </div>
+                  <div className="text-right">{centsToDollarsString(item.unit_price_cents || 0)}</div>
+                  <div className="text-right font-medium">{centsToDollarsString(item.line_total_cents || 0)}</div>
+                </div>
+              ))}
+              <div className="grid grid-cols-[1fr_120px] gap-2 p-3 text-sm font-semibold">
+                <div className="text-right">Total</div>
+                <div className="text-right" data-testid="public-quote-total">{centsToDollarsString(total)}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Respond</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {!actionable && <div className="text-sm text-slate-600" data-testid="public-quote-not-actionable">This quote is no longer open for approval.</div>}
+            <div className="grid gap-1.5">
+              <Label>Your name</Label>
+              <Input value={name} onChange={(event) => setName(event.target.value)} data-testid="public-quote-name" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Comment</Label>
+              <Textarea rows={3} value={comment} onChange={(event) => setComment(event.target.value)} data-testid="public-quote-comment" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Decline reason</Label>
+              <Textarea rows={2} value={reason} onChange={(event) => setReason(event.target.value)} data-testid="public-quote-reason" />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={() => submit("approve")} disabled={!actionable} data-testid="public-quote-approve">Approve quote</Button>
+              <Button type="button" variant="outline" onClick={() => submit("decline")} disabled={!actionable || !reason.trim()} data-testid="public-quote-decline">Decline quote</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -237,6 +340,7 @@ export default function PublicApp() {
   return (
     <Routes>
       <Route path="proofs/:pid" element={<ProofAction />} />
+      <Route path="quotes/:qid" element={<PublicQuote />} />
       <Route path="quote-request" element={<QuoteRequest />} />
       <Route path="decision-rooms/:rid" element={<PublicDecisionRoom />} />
       <Route path="webstores/:slug" element={<PublicWebstorePage />} />

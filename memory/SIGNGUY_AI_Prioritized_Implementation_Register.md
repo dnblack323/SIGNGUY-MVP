@@ -431,37 +431,37 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Done when:** Business customers, organizations, billing contacts, production contacts, and multiple locations can be represented without overwriting prior data.
   - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-customer-foundation` | Tests/Evidence: `backend/tests/test_shop_operations_customer_foundation.py`, `frontend/src/__tests__/CustomersFoundation.test.jsx`, `backend/app/models/customer.py`, `backend/app/routers/customers.py`, `frontend/src/pages/CustomerDetailPage.jsx` | Residual limitations: future customer portal-specific preference workflows must reuse the same contacts/addresses instead of adding parallel customer identity fields.
 
-- [ ] **SO-03 — Back quote approval status with Approval records**
+- [x] **SO-03 — Back quote approval status with Approval records**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** Quote detail allows manual status handling, while formal approvals exist elsewhere.
   - **Required outcome:** Connect quote approval state to canonical Approval records, including approver, decision, comments, timestamps, revision context, and audit history.
   - **Done when:** Quote status cannot claim approved or declined without the corresponding approval event or authorized override.
-  - **Tracking:** Status: `In Progress — staff approval/decline status writes canonical Approval rows` | Owner: `Codex` | PR/Commit: `codex/shop-operations-approval-authority` | Tests/Evidence: `backend/tests/test_shop_operations_approval_authority.py`, `frontend/src/__tests__/ApprovalCenterAuthority.test.jsx`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx` | Residual limitations: complete customer-facing quote approval experience, quote delivery history, override policy, and final quote artifact handling remain open.
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-quote-completion` | Tests/Evidence: `backend/tests/test_quotes_ec3.py`, `backend/tests/test_shop_operations_approval_authority.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/app/services/quote_completion_service.py`, `backend/app/routers/quotes.py`, `backend/app/routers/public_actions.py` | Residual limitations: future customer-portal UI polish must continue using this same quote Approval authority rather than writing quote status directly.
 
-- [ ] **SO-04 — Add Create/Open Decision Room actions to Quote detail**
+- [x] **SO-04 — Add Create/Open Decision Room actions to Quote detail**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** Decision Rooms exist, but staff cannot naturally create or open the correct room from a Quote.
   - **Required outcome:** Add contextual creation, existing-room discovery, status, and share actions on Quote detail.
   - **Done when:** A staff user can start and manage the Quote’s Decision Room without copying raw identifiers.
-  - **Tracking:** Status: `In Progress — Quote detail can create/open Decision Room work and shows approval history/share controls` | Owner: `Codex` | PR/Commit: `codex/shop-operations-approval-authority` | Tests/Evidence: `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `frontend/src/__tests__/ApprovalCenterAuthority.test.jsx` | Residual limitations: complete quote-facing preview/delivery history and file/proof coverage remain tracked under `SO-05`, `SO-06`, and `SO-07`.
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-quote-completion` | Tests/Evidence: `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/tests/test_shop_operations_approval_authority.py`, `frontend/src/pages/QuoteDetailPage.jsx` | Residual limitations: advanced Decision Room option authoring remains owned by the Decision Room workspace; Quote detail now provides create/open/status/history/share entry points.
 
-- [ ] **SO-05 — Expose proofs, artwork, and documents on Quote detail**
+- [x] **SO-05 — Expose proofs, artwork, and documents on Quote detail**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** Quote detail handles line items, revisions, email, and Order conversion but lacks a complete connected file and proof experience.
   - **Required outcome:** Show linked proofs, artwork, attachments, and Library-backed documents with the proper record relationships and permissions.
   - **Done when:** All quote-related files are discoverable from the quote without relocating the canonical Library.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-quote-completion` | Tests/Evidence: `backend/tests/test_quotes_ec3.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/app/services/quote_completion_service.py`, `frontend/src/pages/QuoteDetailPage.jsx` | Residual limitations: this exposes existing authoritative quote-linked `attachments`, `document_links`, and proof records; richer upload/edit workflows remain owned by the Library/proof systems.
 
-- [ ] **SO-06 — Complete Quote preview, sharing, and delivery history**
+- [x] **SO-06 — Complete Quote preview, sharing, and delivery history**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** A complete customer-facing preview/share and resend workflow is not exposed from Quote detail.
   - **Required outcome:** Provide secure preview/share links, delivery events, viewed state, resend controls, expiration behavior, and recipient history.
   - **Done when:** Staff can verify what was sent, to whom, when it was viewed, and whether the link remains valid.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-quote-completion` | Tests/Evidence: `backend/tests/test_quotes_ec3.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `frontend/src/public/PublicApp.jsx`, `backend/app/routers/public_actions.py` | Residual limitations: quote sharing truthfully creates secure copy links and token history; it does not claim email or SMS delivery success because no quote delivery worker is part of this batch.
 
 - [x] **SO-20 — Add contextual Approval Center launch and share actions**
   - **Source classification:** Open implementation gap
@@ -545,21 +545,21 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
 
 ### P2 — High-value operational completeness
 
-- [ ] **SO-07 — Add printable and downloadable Quote output**
+- [x] **SO-07 — Add printable and downloadable Quote output**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Closes a common operational gap after the underlying records and authorities are stable.
   - **Baseline gap:** Quote detail does not provide a complete printable/downloadable customer quote artifact.
   - **Required outcome:** Generate an authoritative quote document from snapshot-backed data and make print/download available from Quote detail.
   - **Done when:** The output matches the stored quote totals, line items, terms, tax treatment, and revision.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-quote-completion` | Tests/Evidence: `backend/tests/test_quotes_ec3.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/app/routers/quotes.py`, `frontend/src/pages/QuoteDetailPage.jsx` | Residual limitations: the artifact is a snapshot-backed printable/downloadable quote response; future branded PDF rendering must use the same snapshot payload rather than creating a separate quote source.
 
-- [ ] **SO-08 — Complete Quote lifecycle event history**
+- [x] **SO-08 — Complete Quote lifecycle event history**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Closes a common operational gap after the underlying records and authorities are stable.
   - **Baseline gap:** Expired, viewed, approved, declined, sent, resent, and converted events are not presented as one clear history.
   - **Required outcome:** Add a chronological audit timeline sourced from real delivery, approval, revision, and conversion events.
   - **Done when:** Staff can explain the full quote lifecycle without reconstructing it from multiple pages.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-quote-completion` | Tests/Evidence: `backend/tests/test_quotes_ec3.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/app/services/quote_completion_service.py`, `frontend/src/pages/QuoteDetailPage.jsx` | Residual limitations: future email/SMS delivery workers should append to the same token/audit-backed lifecycle rather than introducing a separate quote history.
 
 - [ ] **SO-12 — Add customer communications and portal-sharing history to Order detail**
   - **Source classification:** Open implementation gap

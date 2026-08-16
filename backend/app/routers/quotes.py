@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from ..core.db import db
@@ -26,7 +26,6 @@ from ..deps import require_permission
 from ..models.quote import Quote
 from ..models.quote_line_item import QuoteLineItem
 from ..services.audit import record_audit
-from ..services.approvals_signatures_service import record_approval
 from ..services.commerce_totals import compute_line_totals, compute_pricing_summary
 from ..services.order_pricing import (
     PricingTransferError,
@@ -37,6 +36,7 @@ from ..services.order_pricing import (
 from ..services.pricing import get_or_init_pricing_settings
 from ..services.pricing_snapshot_records import create_snapshot_record
 from ..services.quote_conversion import convert_quote_to_order
+from ..services import quote_completion_service as quote_completion
 from ..services.quote_revisions import get_revision, list_revisions, snapshot_current
 from ..services.sequence import next_number
 
@@ -68,6 +68,18 @@ class QuoteStatusIn(BaseModel):
     status: Literal["draft", "sent", "viewed", "approved", "declined", "void"]
     reason: Optional[str] = None
     source: Optional[str] = None  # e.g. staff / portal
+
+
+class QuoteApprovalOverrideIn(BaseModel):
+    action: Literal["approve", "decline"]
+    reason: str = Field(min_length=1, max_length=1000)
+    comment: Optional[str] = Field(None, max_length=2000)
+
+
+class QuoteShareIn(BaseModel):
+    audience_email: Optional[str] = None
+    ttl_hours: int = Field(168, ge=1, le=24 * 60)
+    note: Optional[str] = None
 
 
 class LineItemIn(BaseModel):
@@ -314,6 +326,204 @@ async def get_quote(quote_id: str, user: dict = Depends(require_permission(Perm.
     }
 
 
+@router.get("/{quote_id}/public-preview")
+async def staff_public_preview(quote_id: str, user: dict = Depends(require_permission(Perm.QUOTE_READ))) -> dict:
+    try:
+        return await quote_completion.quote_snapshot(
+            tenant_id=user["tenant_id"],
+            quote_id=quote_id,
+            customer_safe=True,
+        )
+    except ValueError as ex:
+        if str(ex) == "quote_not_found":
+            raise HTTPException(status_code=404, detail="Quote not found")
+        raise HTTPException(status_code=400, detail=str(ex))
+
+
+@router.get("/{quote_id}/artifact")
+async def quote_artifact(quote_id: str, user: dict = Depends(require_permission(Perm.QUOTE_READ))) -> dict:
+    try:
+        snapshot = await quote_completion.quote_snapshot(
+            tenant_id=user["tenant_id"],
+            quote_id=quote_id,
+            customer_safe=True,
+        )
+    except ValueError as ex:
+        if str(ex) == "quote_not_found":
+            raise HTTPException(status_code=404, detail="Quote not found")
+        raise HTTPException(status_code=400, detail=str(ex))
+    quote = snapshot["quote"]
+    lines = snapshot["line_items"]
+    text_lines = [
+        f"Quote Q-{quote.get('number')} - {quote.get('job_name')}",
+        f"Revision {quote.get('revision_number')}",
+        f"Status: {quote.get('effective_status') or quote.get('status')}",
+        "",
+        "Line Items",
+    ]
+    for item in lines:
+        text_lines.append(
+            f"- {item.get('description')} x {item.get('quantity')}: {item.get('line_total_cents', 0)} cents"
+        )
+    text_lines.extend(["", f"Total: {snapshot['totals'].get('total_cents', quote.get('total_cents', 0))} cents"])
+    return {
+        "artifact_type": "quote_printable_snapshot",
+        "content_type": "text/plain",
+        "snapshot": snapshot["snapshot"],
+        "quote": quote,
+        "line_items": lines,
+        "totals": snapshot["totals"],
+        "content": "\n".join(text_lines),
+    }
+
+
+@router.get("/{quote_id}/download")
+async def download_quote_artifact(quote_id: str, user: dict = Depends(require_permission(Perm.QUOTE_READ))):
+    artifact = await quote_artifact(quote_id, user)
+    quote = artifact["quote"]
+    filename = f"quote-Q-{quote.get('number')}-rev-{quote.get('revision_number')}.txt"
+    return Response(
+        content=artifact["content"],
+        media_type="text/plain",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/{quote_id}/linked-assets")
+async def quote_linked_assets(quote_id: str, user: dict = Depends(require_permission(Perm.QUOTE_READ))) -> dict:
+    try:
+        return await quote_completion.linked_quote_assets(tenant_id=user["tenant_id"], quote_id=quote_id)
+    except ValueError as ex:
+        if str(ex) == "quote_not_found":
+            raise HTTPException(status_code=404, detail="Quote not found")
+        raise HTTPException(status_code=400, detail=str(ex))
+
+
+@router.get("/{quote_id}/timeline")
+async def quote_lifecycle_timeline(quote_id: str, user: dict = Depends(require_permission(Perm.QUOTE_READ))) -> dict:
+    try:
+        return await quote_completion.quote_timeline(tenant_id=user["tenant_id"], quote_id=quote_id)
+    except ValueError as ex:
+        if str(ex) == "quote_not_found":
+            raise HTTPException(status_code=404, detail="Quote not found")
+        raise HTTPException(status_code=400, detail=str(ex))
+
+
+@router.post("/{quote_id}/staff-approval")
+async def staff_approval_override(
+    quote_id: str,
+    payload: QuoteApprovalOverrideIn,
+    user: dict = Depends(require_permission(Perm.QUOTE_APPROVE)),
+) -> dict:
+    if payload.action == "decline" and Perm.QUOTE_DECLINE.value not in permissions_for_role(user.get("role", "staff")):
+        raise HTTPException(status_code=403, detail=f"Missing permission: {Perm.QUOTE_DECLINE.value}")
+    try:
+        return await quote_completion.decide_quote(
+            tenant_id=user["tenant_id"],
+            quote_id=quote_id,
+            action=payload.action,
+            actor_type="staff",
+            actor_ref=user["id"],
+            actor_display=user["email"],
+            source="staff_override",
+            reason=payload.reason,
+            comment=payload.comment,
+        )
+    except ValueError as ex:
+        detail_map = {
+            "quote_not_found": (404, "Quote not found"),
+            "quote_expired": (400, "Quote has expired"),
+            "quote_inactive": (400, "Quote is inactive"),
+            "stale_quote_revision": (409, "Quote revision is no longer current"),
+            "reason_required": (400, "Reason required"),
+        }
+        status_code, detail = detail_map.get(str(ex), (400, str(ex)))
+        raise HTTPException(status_code=status_code, detail=detail)
+
+
+@router.post("/{quote_id}/share", status_code=201)
+async def create_quote_share(
+    quote_id: str,
+    payload: QuoteShareIn,
+    request: Request,
+    user: dict = Depends(require_permission(Perm.DOCUMENT_SHARE)),
+) -> dict:
+    try:
+        return await quote_completion.create_quote_share_token(
+            tenant_id=user["tenant_id"],
+            quote_id=quote_id,
+            audience_email=payload.audience_email,
+            ttl_hours=payload.ttl_hours,
+            note=payload.note,
+            actor_user_id=user["id"],
+            actor_email=user["email"],
+            ip_issued=(request.client.host if request.client else None),
+        )
+    except ValueError as ex:
+        if str(ex) == "quote_not_found":
+            raise HTTPException(status_code=404, detail="Quote not found")
+        raise HTTPException(status_code=400, detail=str(ex))
+
+
+@router.get("/{quote_id}/share-tokens")
+async def quote_share_tokens(quote_id: str, user: dict = Depends(require_permission(Perm.QUOTE_READ))) -> dict:
+    try:
+        return await quote_completion.list_quote_share_tokens(tenant_id=user["tenant_id"], quote_id=quote_id)
+    except ValueError as ex:
+        if str(ex) == "quote_not_found":
+            raise HTTPException(status_code=404, detail="Quote not found")
+        raise HTTPException(status_code=400, detail=str(ex))
+
+
+@router.post("/{quote_id}/share-tokens/{token_id}/resend", status_code=201)
+async def resend_quote_share(
+    quote_id: str,
+    token_id: str,
+    request: Request,
+    user: dict = Depends(require_permission(Perm.DOCUMENT_SHARE)),
+) -> dict:
+    token = await db.public_action_tokens.find_one(
+        {"tenant_id": user["tenant_id"], "id": token_id, "action": "quote_view", "parent_type": "quote", "parent_id": quote_id},
+        {"_id": 0},
+    )
+    if not token:
+        raise HTTPException(status_code=404, detail="Share link not found")
+    return await quote_completion.create_quote_share_token(
+        tenant_id=user["tenant_id"],
+        quote_id=quote_id,
+        audience_email=token.get("audience_email"),
+        ttl_hours=168,
+        note=f"Resent replacement for {token_id}",
+        actor_user_id=user["id"],
+        actor_email=user["email"],
+        ip_issued=(request.client.host if request.client else None),
+    )
+
+
+@router.delete("/share-tokens/{token_id}", status_code=204)
+async def revoke_quote_share(token_id: str, user: dict = Depends(require_permission(Perm.DOCUMENT_SHARE))):
+    await quote_completion.revoke_or_expire_quote_token(
+        tenant_id=user["tenant_id"],
+        token_id=token_id,
+        mode="revoke",
+        actor_user_id=user["id"],
+        actor_email=user["email"],
+    )
+    return Response(status_code=204)
+
+
+@router.post("/share-tokens/{token_id}/expire", status_code=204)
+async def expire_quote_share(token_id: str, user: dict = Depends(require_permission(Perm.DOCUMENT_SHARE))):
+    await quote_completion.revoke_or_expire_quote_token(
+        tenant_id=user["tenant_id"],
+        token_id=token_id,
+        mode="expire",
+        actor_user_id=user["id"],
+        actor_email=user["email"],
+    )
+    return Response(status_code=204)
+
+
 @router.patch("/{quote_id}")
 async def update_quote(quote_id: str, payload: QuoteUpdateIn, user: dict = Depends(require_permission(Perm.QUOTE_WRITE))) -> dict:
     doc = await db.quotes.find_one({"id": quote_id, "tenant_id": user["tenant_id"]})
@@ -379,61 +589,32 @@ async def set_status(quote_id: str, payload: QuoteStatusIn, user: dict = Depends
         updates["sent_at"] = now
     elif target == "viewed":
         updates["viewed_at"] = now
-    elif target == "approved":
+    elif target in {"approved", "declined"}:
+        # Backward-compatible staff status route, now delegated to the
+        # canonical quote Approval authority instead of writing status alone.
         try:
-            approval = await record_approval(
+            decided = await quote_completion.decide_quote(
                 tenant_id=user["tenant_id"],
-                parent_type="quote_revision",
-                parent_id=quote_id,
-                parent_version=int(doc.get("revision_number") or 1),
-                action="approve",
+                quote_id=quote_id,
+                action="approve" if target == "approved" else "decline",
                 actor_type="staff",
                 actor_ref=user["id"],
                 actor_display=user["email"],
-                snapshot={
-                    "quote_id": quote_id,
-                    "customer_id": doc.get("customer_id"),
-                    "job_name": doc.get("job_name"),
-                    "number": doc.get("number"),
-                    "revision_number": int(doc.get("revision_number") or 1),
-                    "status_before": current,
-                    "total_cents": doc.get("total_cents"),
-                },
-            )
-        except ValueError as ex:
-            raise HTTPException(status_code=400, detail=str(ex))
-        updates["approved_at"] = now
-        updates["approved_revision"] = int(doc.get("revision_number") or 1)
-        updates["approved_actor_user_id"] = user["id"]
-        updates["approved_source"] = payload.source or "staff"
-        updates["approved_approval_id"] = approval.get("id")
-    elif target == "declined":
-        try:
-            approval = await record_approval(
-                tenant_id=user["tenant_id"],
-                parent_type="quote_revision",
-                parent_id=quote_id,
-                parent_version=int(doc.get("revision_number") or 1),
-                action="decline",
-                actor_type="staff",
-                actor_ref=user["id"],
-                actor_display=user["email"],
+                source=payload.source or "staff",
                 reason=payload.reason,
-                snapshot={
-                    "quote_id": quote_id,
-                    "customer_id": doc.get("customer_id"),
-                    "job_name": doc.get("job_name"),
-                    "number": doc.get("number"),
-                    "revision_number": int(doc.get("revision_number") or 1),
-                    "status_before": current,
-                    "total_cents": doc.get("total_cents"),
-                },
+                parent_version=int(doc.get("revision_number") or 1),
             )
+            return _serialize_quote(decided["quote"])
         except ValueError as ex:
-            raise HTTPException(status_code=400, detail=str(ex))
-        updates["declined_at"] = now
-        updates["declined_reason"] = payload.reason
-        updates["declined_approval_id"] = approval.get("id")
+            detail_map = {
+                "quote_not_found": (404, "Quote not found"),
+                "quote_expired": (400, "Quote has expired"),
+                "quote_inactive": (400, "Quote is inactive"),
+                "stale_quote_revision": (409, "Quote revision is no longer current"),
+                "reason_required": (400, "Reason required"),
+            }
+            status_code, detail = detail_map.get(str(ex), (400, str(ex)))
+            raise HTTPException(status_code=status_code, detail=detail)
 
     await db.quotes.update_one({"id": quote_id, "tenant_id": user["tenant_id"]}, {"$set": prepare_for_mongo(updates)})
     await record_audit(

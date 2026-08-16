@@ -33,6 +33,7 @@ from ..services.decision_room_service import (
 from ..services.portal_tokens import consume_public_action_token
 from ..services.proofs_service import transition_proof
 from ..services.audit import record_audit
+from ..services import quote_completion_service as quote_completion
 from ..services import storage
 
 logger = logging.getLogger(__name__)
@@ -56,15 +57,61 @@ async def public_view_quote(qid: str, request: Request, t: str = Query(...)) -> 
         request, raw_token=t,
         expected_action="quote_view", expected_parent_type="quote", expected_parent_id=qid,
     )
-    q = await db.quotes.find_one({"id": qid, "tenant_id": token["tenant_id"]}, {"_id": 0, "notes_internal": 0})
-    if not q:
-        raise HTTPException(status_code=404, detail="Quote not found")
-    lines = [serialize_doc(li) async for li in db.quote_line_items.find(
-        {"tenant_id": token["tenant_id"], "quote_id": qid,
-         "revision_number": q.get("current_revision", q.get("revision_number", 1))},
-        {"_id": 0, "cost_cents": 0, "margin_percent": 0},
-    ).sort("position", 1)]
-    return {"quote": serialize_doc(q), "line_items": lines}
+    try:
+        return await quote_completion.quote_snapshot(
+            tenant_id=token["tenant_id"],
+            quote_id=qid,
+            revision_number=token.get("parent_version"),
+            customer_safe=True,
+            mark_viewed=True,
+            public_token_id=token["id"],
+            ip=(request.client.host if request.client else None),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except ValueError as ex:
+        status = 404 if str(ex) in {"quote_not_found", "quote_revision_not_found"} else 400
+        raise HTTPException(status_code=status, detail=str(ex))
+
+
+class PublicQuoteApprovalIn(BaseModel):
+    action: str
+    reason: Optional[str] = None
+    comment: Optional[str] = None
+    signer_name: Optional[str] = None
+
+
+@router.post("/quotes/{qid}/approval", status_code=201)
+async def public_quote_approval(qid: str, payload: PublicQuoteApprovalIn, request: Request, t: str = Query(...)) -> dict:
+    token = await resolve_public_token(
+        request, raw_token=t,
+        expected_action="quote_view", expected_parent_type="quote", expected_parent_id=qid,
+    )
+    try:
+        return await quote_completion.decide_quote(
+            tenant_id=token["tenant_id"],
+            quote_id=qid,
+            action=payload.action,
+            actor_type="public_token",
+            actor_ref=f"token:{token['id']}",
+            actor_display=payload.signer_name or token.get("audience_email"),
+            source="public_token",
+            reason=payload.reason,
+            comment=payload.comment,
+            parent_version=token.get("parent_version"),
+            ip=(request.client.host if request.client else None),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except ValueError as ex:
+        detail_map = {
+            "quote_not_found": (404, "Quote not found"),
+            "quote_expired": (400, "Quote has expired"),
+            "quote_inactive": (400, "Quote is inactive"),
+            "stale_quote_revision": (409, "Quote revision is no longer current"),
+            "reason_required": (400, "Reason required"),
+            "invalid_action": (400, "Invalid quote action"),
+        }
+        status, detail = detail_map.get(str(ex), (400, str(ex)))
+        raise HTTPException(status_code=status, detail=detail)
 
 
 @router.get("/invoices/{iid}")

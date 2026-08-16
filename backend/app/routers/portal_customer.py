@@ -13,7 +13,7 @@ from pydantic import BaseModel, EmailStr, Field
 from ..core.db import db
 from ..core.time_utils import serialize_doc, utc_now
 from ..deps_portal import get_current_portal_identity, require_portal_permission
-from ..services.approvals_signatures_service import record_approval
+from ..services import quote_completion_service as quote_completion
 from ..services.proofs_service import transition_proof
 from ..services.audit import record_audit
 from ..services.email import send_email
@@ -55,21 +55,29 @@ class QuoteApprovalIn(BaseModel):
 @router.post("/quotes/{qid}/approval", status_code=201)
 async def portal_quote_approval(qid: str, payload: QuoteApprovalIn, request: Request,
                                 identity: dict = Depends(require_portal_permission("portal:approve_quotes"))) -> dict:
-    q = await db.quotes.find_one({"id": qid, **_scope(identity)})
-    if not q:
-        raise HTTPException(status_code=404, detail="Quote not found")
     try:
-        return await record_approval(
-            tenant_id=identity["tenant_id"], parent_type="quote_revision", parent_id=qid,
-            parent_version=q.get("current_revision", q.get("revision_number", 1)),
-            action=payload.action, actor_type="portal_customer", actor_ref=identity["id"],
+        return await quote_completion.decide_quote(
+            tenant_id=identity["tenant_id"],
+            quote_id=qid,
+            action="approve" if payload.action == "approve" else "decline",
+            actor_type="portal_customer",
+            actor_ref=identity["id"],
             actor_display=identity.get("full_name") or identity["email"],
+            source="portal_customer",
             reason=payload.reason,
+            parent_version=None,
             ip=(request.client.host if request.client else None),
             user_agent=request.headers.get("user-agent"),
         )
     except ValueError as ex:
-        raise HTTPException(status_code=400, detail=str(ex))
+        detail_map = {
+            "quote_not_found": (404, "Quote not found"),
+            "quote_expired": (400, "Quote has expired"),
+            "quote_inactive": (400, "Quote is inactive"),
+            "reason_required": (400, "Reason required"),
+        }
+        status, detail = detail_map.get(str(ex), (400, str(ex)))
+        raise HTTPException(status_code=status, detail=detail)
 
 
 @router.get("/orders")
