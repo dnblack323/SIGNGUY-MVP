@@ -423,13 +423,13 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Done when:** Users can move through intake-to-quote-to-order from one coherent workspace without losing existing records or permissions.
   - **Tracking:** Status: `In Progress — grouped Sales shell and direct routes implemented` | Owner: `Codex` | PR/Commit: `codex/navupdate` | Tests/Evidence: `frontend/src/__tests__/AppShellNavigation.test.jsx` | Residual limitations: deeper Sales workflow completion remains tracked by the Quote, Order, and Intake-specific SO items.
 
-- [ ] **SO-15 — Expand the Customer data model**
+- [x] **SO-15 — Expand the Customer data model**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** The current Customer model supports one contact identity and one address. It lacks customer type/status, multiple contacts, and multiple addresses.
   - **Required outcome:** Add customer classification and status plus normalized contact and address records with primary/default designation and history.
   - **Done when:** Business customers, organizations, billing contacts, production contacts, and multiple locations can be represented without overwriting prior data.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-customer-foundation` | Tests/Evidence: `backend/tests/test_shop_operations_customer_foundation.py`, `frontend/src/__tests__/CustomersFoundation.test.jsx`, `backend/app/models/customer.py`, `backend/app/routers/customers.py`, `frontend/src/pages/CustomerDetailPage.jsx` | Residual limitations: future customer portal-specific preference workflows must reuse the same contacts/addresses instead of adding parallel customer identity fields.
 
 - [ ] **SO-03 — Back quote approval status with Approval records**
   - **Source classification:** Open implementation gap
@@ -511,13 +511,13 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Done when:** Each blocker identifies its source, required action, owner, and resolution state before production begins.
   - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
 
-- [ ] **SO-16 — Add Customer duplicate detection and merge**
+- [x] **SO-16 — Add Customer duplicate detection and merge**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** There is no complete duplicate-customer detection or controlled merge workflow.
   - **Required outcome:** Detect likely duplicates, show match reasons, allow reviewed merge decisions, preserve relationships, and record the merge history.
   - **Done when:** Quotes, Orders, invoices, payments, files, and communications remain linked after a controlled merge.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-customer-foundation` | Tests/Evidence: `backend/tests/test_shop_operations_customer_foundation.py`, `frontend/src/__tests__/CustomersFoundation.test.jsx`, `backend/app/services/customer_service.py`, `frontend/src/pages/CustomersPage.jsx` | Residual limitations: duplicate matching intentionally displays explicit match reasons rather than unexplained scoring; future data sources should add new reason extractors to the same merge service.
 
 - [ ] **SO-23 — Implement detailed production-stage timers**
   - **Source classification:** Reserved implementation gap
@@ -577,21 +577,21 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Done when:** An Order can be closed with evidence of completion and the correct aftercare instructions delivered.
   - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
 
-- [ ] **SO-17 — Complete Customer related-record coverage**
+- [x] **SO-17 — Complete Customer related-record coverage**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Closes a common operational gap after the underlying records and authorities are stable.
   - **Baseline gap:** The customer-related endpoint promises documents but returns only Quotes, Orders, Work Orders, Invoices, and emails. Payments, Decision Rooms, Proofs, Webstores, portal access, and documents are absent.
   - **Required outcome:** Return and display every supported customer relationship with counts, filters, permission checks, and direct links.
   - **Done when:** Customer detail becomes the reliable cross-module record without inventing duplicate data.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-customer-foundation` | Tests/Evidence: `backend/tests/test_shop_operations_customer_foundation.py`, `frontend/src/__tests__/CustomersFoundation.test.jsx`, `backend/app/services/customer_service.py`, `frontend/src/pages/CustomerDetailPage.jsx` | Residual limitations: the Customer page surfaces existing linked communications only; the future full Customer Communications inbox remains tracked separately and was not built in this batch.
 
-- [ ] **SO-18 — Finish Customer archive, restore, and archived filtering**
+- [x] **SO-18 — Finish Customer archive, restore, and archived filtering**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Closes a common operational gap after the underlying records and authorities are stable.
   - **Baseline gap:** The frontend does not complete archive/restore, archived-customer filtering, or duplicate resolution.
   - **Required outcome:** Expose controlled archive and restore actions, clear archived states, filters, and rules preventing destructive loss of linked records.
   - **Done when:** Archived customers remain reportable and restorable but do not clutter active workflows.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-customer-foundation` | Tests/Evidence: `backend/tests/test_shop_operations_customer_foundation.py`, `frontend/src/__tests__/CustomersFoundation.test.jsx`, `backend/app/routers/customers.py`, `frontend/src/pages/CustomersPage.jsx`, `frontend/src/pages/CustomerDetailPage.jsx` | Residual limitations: merged source customers stay archived and cannot be restored independently; staff must open the surviving customer instead.
 
 - [ ] **SO-24 — Track multi-employee contributions by production stage**
   - **Source classification:** Reserved implementation gap

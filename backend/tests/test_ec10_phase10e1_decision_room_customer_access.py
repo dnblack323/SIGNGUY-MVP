@@ -37,9 +37,24 @@ async def _anon_client():
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
+def _body(resp):
+    try:
+        return resp.json()
+    except Exception:
+        return resp.text
+
+
+def _assert_response(resp, status_code: int, label: str):
+    assert resp.status_code == status_code, (
+        f"{label} expected HTTP {status_code}, got {resp.status_code}; body={_body(resp)!r}"
+    )
+    return resp.json()
+
+
 @pytest.fixture
-async def ctx():
-    suffix = uuid.uuid4().hex[:8]
+async def ctx(request):
+    worker = getattr(request.config, "workerinput", {}).get("workerid", "master")
+    suffix = f"{worker}-{uuid.uuid4().hex[:8]}"
     ta = f"t-ec10e1-a-{suffix}"
     tb = f"t-ec10e1-b-{suffix}"
     owner_a = {"id": f"u-a-{suffix}", "tenant_id": ta, "email": f"a-{suffix}@example.com", "role": "owner", "is_active": True}
@@ -74,33 +89,72 @@ async def ctx():
     token_a2 = create_portal_token(portal_identity_id=portal_identity_a2["id"], tenant_id=ta, customer_id=customer_a2["id"], portal_type="customer")
     token_noperm = create_portal_token(portal_identity_id=portal_identity_no_perm["id"], tenant_id=ta, customer_id=customer_a["id"], portal_type="customer")
 
-    yield {
-        "owner_a": owner_a, "owner_b": owner_b, "ta": ta, "tb": tb,
-        "customer_a": customer_a, "customer_a2": customer_a2, "order_a": order_a,
-        "portal_token_a": token_a, "portal_token_a2": token_a2, "portal_token_noperm": token_noperm,
-    }
-    _clear()
+    try:
+        yield {
+            "owner_a": owner_a, "owner_b": owner_b, "ta": ta, "tb": tb,
+            "customer_a": customer_a, "customer_a2": customer_a2, "order_a": order_a,
+            "portal_token_a": token_a, "portal_token_a2": token_a2, "portal_token_noperm": token_noperm,
+        }
+    finally:
+        _clear()
+        tenant_ids = [ta, tb]
+        for collection in (
+            "audit_events",
+            "customer_decisions",
+            "decision_room_overlays",
+            "decision_room_questions",
+            "decision_room_versions",
+            "decision_rooms",
+            "orders",
+            "portal_identities",
+            "public_action_tokens",
+            "saved_for_later",
+            "users",
+            "customers",
+        ):
+            await db[collection].delete_many({"tenant_id": {"$in": tenant_ids}})
+        await db.tenants.delete_many({"id": {"$in": tenant_ids}})
 
 
 async def _create_published_room(c, *, customer_id, order_id, title="Wrap options"):
     """Creates a room with 2 active options + 1 archived option, publishes
     it, and returns the room id + the (frozen) published options snapshot."""
-    room = (await c.post("/api/decision-rooms", json={
+    room = _assert_response(await c.post("/api/decision-rooms", json={
         "title": title, "internal_name": "internal codename", "customer_safe_intro": "Pick the option that fits.",
         "customer_id": customer_id, "order_id": order_id,
-    })).json()
+    }), 201, "create decision room")
     rid = room["id"]
-    opt_a = (await c.post(f"/api/decision-rooms/{rid}/options", json={
+    _assert_response(await c.post(f"/api/decision-rooms/{rid}/options", json={
         "customer_label": "Standard", "customer_safe_description": "Good everyday option.",
         "manual_price_cents": 25000, "internal_notes": "Cost $80, margin 68%",
-    })).json()["options"][0]
-    await c.post(f"/api/decision-rooms/{rid}/options", json={"customer_label": "Premium", "manual_price_cents": 45000})
-    archived = (await c.post(f"/api/decision-rooms/{rid}/options", json={"customer_label": "Discontinued", "manual_price_cents": 1000})).json()
+    }), 201, f"add standard option to decision room {rid}")
+    _assert_response(
+        await c.post(f"/api/decision-rooms/{rid}/options", json={"customer_label": "Premium", "manual_price_cents": 45000}),
+        201,
+        f"add premium option to decision room {rid}",
+    )
+    archived = _assert_response(
+        await c.post(f"/api/decision-rooms/{rid}/options", json={"customer_label": "Discontinued", "manual_price_cents": 1000}),
+        201,
+        f"add archived-candidate option to decision room {rid}",
+    )
     archived_id = next(o["id"] for o in archived["options"] if o["customer_label"] == "Discontinued")
-    await c.post(f"/api/decision-rooms/{rid}/options/{archived_id}/archive")
+    _assert_response(
+        await c.post(f"/api/decision-rooms/{rid}/options/{archived_id}/archive"),
+        200,
+        f"archive discontinued option {archived_id} in decision room {rid}",
+    )
 
-    await c.post(f"/api/decision-rooms/{rid}/transition", json={"target": "ready"})
-    published = (await c.post(f"/api/decision-rooms/{rid}/publish")).json()
+    _assert_response(
+        await c.post(f"/api/decision-rooms/{rid}/transition", json={"target": "ready"}),
+        200,
+        f"transition decision room {rid} to ready",
+    )
+    published = _assert_response(
+        await c.post(f"/api/decision-rooms/{rid}/publish"),
+        200,
+        f"publish decision room {rid}",
+    )
     return rid, published
 
 
