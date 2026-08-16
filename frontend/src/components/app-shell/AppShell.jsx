@@ -453,26 +453,44 @@ function SidebarInner({ selectedAreaKey, onSelectArea, onNavigate, mobile = fals
 function ModuleTabs({ area, permissions, user }) {
   const location = useLocation();
   const visibleItems = filterNavItemsByPermissions(area?.moduleNav || [], permissions, user).filter((item) => !item.hidden);
+  const tabRefs = useRef({});
+  const activeKey = visibleItems.find((item) => itemMatchesPath(item, location.pathname))?.key;
+
+  useEffect(() => {
+    if (!activeKey) return;
+    tabRefs.current[activeKey]?.scrollIntoView?.({
+      block: "nearest",
+      inline: "nearest",
+    });
+  }, [activeKey]);
+
   if (!area || !visibleItems.length) return null;
   return (
     <div
       data-testid="module-tab-row"
       data-area-key={area.key}
-      className="flex min-w-0 flex-1 justify-center"
+      className="flex min-w-0 flex-1 overflow-hidden"
       aria-label={`${area.label} secondary navigation`}
     >
-      <div className="flex h-11 items-center gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div
+        className="flex h-11 max-w-full items-center gap-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        data-testid="module-tab-scroll-container"
+      >
         {visibleItems.map((item) => {
           const active = itemMatchesPath(item, location.pathname);
           return (
             <Link
+              ref={(node) => {
+                if (node) tabRefs.current[item.key] = node;
+                else delete tabRefs.current[item.key];
+              }}
               key={item.key}
               to={item.to}
               data-testid={item.testId}
               aria-current={active ? "page" : undefined}
               data-active={active ? "true" : "false"}
               className={cn(
-                "inline-flex h-11 shrink-0 items-center border-b-2 px-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+                "inline-flex h-11 shrink-0 items-center border-b-2 px-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
                 active
                   ? "border-blue-600 text-blue-700"
                   : "border-transparent text-slate-950 hover:border-blue-200 hover:text-blue-700",

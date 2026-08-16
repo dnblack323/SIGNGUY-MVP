@@ -61,12 +61,12 @@
 ## Shop Operations locked placement decisions — August 14, 2026
 
 - One canonical scheduling/calendar data foundation is required. Shop Operations and Team & Productivity may present filtered views of the same canonical records, but must not create disconnected calendar databases.
-- Final Shop Operations top-tab order to implement: Overview, Customers, Sales, Approval Center, Production, Schedule, Webstores.
+- Final Shop Operations top-tab order to implement: Overview, Customers, Sales, Approval Center, Production, Schedule, Webstores, Wrap Lab.
 - Shop Operations > Schedule is the primary home for the operational Shop Schedule: customer appointments, site surveys, production milestones and deadlines, installations, deliveries, customer pickups, shop events, workload and capacity, bay reservations, and vehicle/equipment reservations tied to operational work.
 - Shop Operations > Schedule local views are Calendar, Agenda, and Appointments. These are not new sidebar destinations. Filters such as event type, status, assigned resource, bay, equipment, employee/crew, and date range belong in the Schedule ribbon unless a future workflow requires a separate workspace.
 - Appointment and schedule records must link to Customer, Contact, Quote, Order, Order Item, Work Order, and installation or delivery context when applicable. Source records may expose contextual actions such as Schedule Appointment or View Schedule, but the canonical appointment remains owned by Shop Operations > Schedule.
 - Team & Productivity > Schedule remains the primary home for employee shifts, employee availability, time-off requests, training schedules, and internal meetings. It may display operational assignments as linked overlays, but it does not own or duplicate Shop Schedule records.
-- Wrap Lab is not a permanent Shop Operations top tab. It remains a real capability opened contextually from a vehicle-wrap Quote or Quote Item, Order or Order Item, Work Order, or customer project history. Existing Wrap Lab deep links and records must be preserved with redirects or contextual access when the permanent tab is replaced by Schedule.
+- Wrap Lab remains a permanent Shop Operations top tab and also supports contextual access from a vehicle-wrap Quote or Quote Item, Order or Order Item, Work Order, or customer project history. Order Items remain commercially authoritative; Wrap Lab provides specialized wrap workflow without duplicating Orders.
 - Calendar is a view of Schedule, not another main sidebar area, permanent Shop Operations tab, or duplicate module.
 
 ## Current Shop Operations re-audit — August 14, 2026
@@ -79,11 +79,11 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Exact frontend evidence:** `frontend/src/lib/navigation.js`, `frontend/src/App.js`, `frontend/src/components/app-shell/AppShell.jsx`.
   - **Exact backend evidence:** Existing tenant-scoped backend routers remain the authority for customers, quotes, orders, work orders, Decision Rooms, Webstores, and Wrap Lab; no separate Shop Operations backend shell exists.
   - **Relevant tests:** `frontend/src/__tests__/AppShellNavigation.test.jsx`, `frontend/src/__tests__/PricingCalculatorPage.test.jsx`, `frontend/src/__tests__/ShopSchedulePage.test.jsx`.
-  - **Already implemented:** Home/default route ownership, grouped Sales, Approval Center shell, Production tab, Schedule tab, Webstores tab, fixed sidebar, compact header/ribbon, Workspace Dock, Quick Access, `/shop-schedule` Shop Operations ownership, and contextual-only Wrap Lab route matching are implemented.
+  - **Already implemented:** Home/default route ownership, grouped Sales, Approval Center shell, Production tab, Schedule tab, Webstores tab, Wrap Lab tab, fixed sidebar, compact header/ribbon, Workspace Dock, Quick Access, `/shop-schedule` Shop Operations ownership, and Wrap Lab route matching are implemented.
   - **Still missing:** None for the original navigation ownership closure check.
   - **Original closure check passes:** Yes.
   - **Recommended implementation batch:** Batch 1 — Navigation, ownership, and scheduling foundation.
-  - **Dependencies:** `SO-28`; Wrap Lab contextual links must preserve existing deep links and records.
+  - **Dependencies:** `SO-28`; Wrap Lab permanent navigation and contextual links must preserve existing deep links and records.
   - **Residual limitations:** Full vehicle-wrap contextual launch/workflow replacement remains tracked under `SO-22`; existing `/wrap-lab` routes and deep links remain preserved.
 
 - **SO-19 — Status: `In Progress`**
@@ -106,7 +106,7 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Original closure check passes:** No.
   - **Recommended implementation batch:** Batch 7 — Wrap Lab replacement workflows.
   - **Dependencies:** Batch 1 Schedule/contextual routing, Batch 5 Order/Work Order context.
-  - **Residual limitations:** Existing `/wrap-lab` deep links must keep working while permanent tab ownership is removed.
+  - **Residual limitations:** Existing `/wrap-lab` deep links must keep working while permanent tab ownership and contextual access are preserved.
 
 ### P1 items
 
@@ -393,8 +393,8 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Source classification:** Previously identified P0; source priority: P0 from prior audit
   - **Priority basis:** Previously identified P0 and the routing foundation for every Shop Operations workflow.
   - **Baseline gap:** Current navigation still exposes Intake, Quotes, and Orders separately; places Pricing, Shop Schedule, and Library in Shop Operations; and omits the agreed grouped Sales and Approval Center structure.
-  - **Required outcome:** Implement the one-level sidebar plus internal top tabs. Move Library to Tools & Resources, Pricing Foundation to Control Center, add Schedule as the permanent Shop Operations home for the operational Shop Schedule, and move Wrap Lab out of the permanent tab row into contextual vehicle-wrap access while preserving deep links.
-  - **Done when:** Every Shop Operations route has one correct primary owner; Schedule replaces the permanent Wrap Lab tab; existing deep links continue to work; no flyouts are introduced.
+  - **Required outcome:** Implement the one-level sidebar plus internal top tabs. Move Library to Tools & Resources, Pricing Foundation to Control Center, add Schedule as the permanent Shop Operations home for the operational Shop Schedule, and keep Wrap Lab as both a permanent workspace tab and contextual vehicle-wrap access while preserving deep links.
+  - **Done when:** Every Shop Operations route has one correct primary owner; Schedule and Wrap Lab are both permanent Shop Operations tabs; existing deep links continue to work; no flyouts are introduced.
   - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-schedule-foundation` | Tests/Evidence: `frontend/src/__tests__/AppShellNavigation.test.jsx`, `frontend/src/__tests__/ShopSchedulePage.test.jsx` | Residual limitations: Full vehicle-wrap contextual launch/workflow replacement remains tracked under `SO-22`.
 
 - [ ] **SO-19 — Build the unified staff Approval Center**
@@ -667,7 +667,7 @@ Do not combine all Shop Operations gaps into one implementation PR. Use these de
 
 7. **Wrap Lab replacement workflows**
    - **Included SO IDs:** `SO-22`, plus contextual access dependencies from `SO-01` and schedule integration from `SO-28`
-   - **Why they belong together:** Removing fixed example payloads requires editable staff workflows and contextual launch points while preserving existing Wrap Lab records and deep links.
+   - **Why they belong together:** Removing fixed example payloads requires editable staff workflows, permanent workspace access, and contextual launch points while preserving existing Wrap Lab records and deep links.
    - **Required predecessor batches:** Batch 1; Batch 5 for order/work-order context; Batch 6 if install labor is tied to wrap stages.
    - **Suggested branch name:** `codex/shop-operations-wrap-lab-workflows`
    - **Closure tests and evidence required:** Frontend form tests replacing fixed payload buttons, backend validation and permission tests, deep-link/redirect tests, Wrap Lab contextual screenshots.

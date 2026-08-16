@@ -379,9 +379,10 @@ test("Shop Operations navigation omits Pricing as a permanent module", () => {
     "production",
     "schedule",
     "webstores",
+    "wrap-lab",
   ]);
   expect(shopOperations.moduleNav.some((item) => item.key === "pricing")).toBe(false);
-  expect(shopOperations.moduleNav.find((item) => item.key === "wrap-lab")).toMatchObject({ hidden: true, contextual: true });
+  expect(shopOperations.moduleNav.find((item) => item.key === "wrap-lab")).toMatchObject({ to: "/wrap-lab" });
   expect(shopOperations.flyout).toBeUndefined();
 });
 

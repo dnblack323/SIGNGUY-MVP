@@ -105,8 +105,6 @@ export const PRIMARY_NAV_AREAS = [
         perm: "wrap_lab:read",
         testId: "module-nav-wrap-lab",
         match: ["/wrap-lab"],
-        hidden: true,
-        contextual: true,
       },
     ],
   },
