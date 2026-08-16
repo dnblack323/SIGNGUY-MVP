@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -6,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatusPill } from "@/components/common/StatusPill";
 import DecisionOptionPricingSection from "@/components/decisionRoom/DecisionOptionPricingSection";
 import DecisionOptionMediaSection from "@/components/decisionRoom/DecisionOptionMediaSection";
+import ApprovalTargetSelector from "@/components/approvals/ApprovalTargetSelector";
 import { BADGE_TYPES, BADGE_LABELS } from "@/lib/decisionRoom";
 import { ArrowDown, ArrowUp, Copy, Archive, ArchiveRestore } from "lucide-react";
 
@@ -23,6 +25,13 @@ export default function DecisionOptionCard({
   option, disabled, onChange, onDuplicate, onArchiveToggle, onMoveUp, onMoveDown,
   onAttachSnapshot, onDetachSnapshot, onAttachField, onDetachField, canMoveUp, canMoveDown, testIdPrefix,
 }) {
+  const [commercialTargetType, setCommercialTargetType] = useState(option.quote_line_item_id ? "quote_line_item" : "order_item");
+  const selectedCommercialTarget = option.quote_line_item_id
+    ? { id: option.quote_line_item_id, target_type: "quote_line_item", label: `Quote line item ${option.quote_line_item_id}` }
+    : option.order_item_id
+      ? { id: option.order_item_id, target_type: "order_item", label: `Order item ${option.order_item_id}` }
+      : null;
+
   return (
     <div
       className={`rounded-xl border bg-card p-4 grid gap-3 ${option.active === false ? "opacity-60" : ""}`}
@@ -99,6 +108,45 @@ export default function DecisionOptionCard({
 
       <DecisionOptionPricingSection option={option} onChange={onChange} onAttachSnapshot={onAttachSnapshot} onDetachSnapshot={onDetachSnapshot} testIdPrefix={testIdPrefix} />
       <DecisionOptionMediaSection option={option} onFilesChange={(ids) => onChange({ file_ids: ids })} onAttachField={onAttachField} onDetachField={onDetachField} testIdPrefix={testIdPrefix} />
+
+      <div className="rounded-lg border p-3 grid gap-3">
+        <div>
+          <div className="text-sm font-medium">Commercial apply target</div>
+          <div className="text-xs text-muted-foreground">
+            Link this option to the Quote line item or Order item that should be updated when staff applies a customer decision.
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-[180px_1fr]">
+          <div className="grid gap-1.5">
+            <Label className="text-xs">Target type</Label>
+            <Select
+              disabled={disabled}
+              value={commercialTargetType}
+              onValueChange={(value) => {
+                setCommercialTargetType(value);
+                onChange(value === "quote_line_item"
+                  ? { quote_line_item_id: null, order_item_id: null }
+                  : { order_item_id: null, quote_line_item_id: null });
+              }}
+            >
+              <SelectTrigger data-testid={`${testIdPrefix}-commercial-target-type-select`}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="quote_line_item">Quote line item</SelectItem>
+                <SelectItem value="order_item">Order item</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <ApprovalTargetSelector
+            targetType={commercialTargetType}
+            selectedTarget={selectedCommercialTarget}
+            disabled={disabled}
+            onSelect={(target) => onChange(commercialTargetType === "quote_line_item"
+              ? { quote_line_item_id: target.id, order_item_id: null }
+              : { order_item_id: target.id, quote_line_item_id: null })}
+            testIdPrefix={`${testIdPrefix}-commercial-target`}
+          />
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-1.5">

@@ -26,6 +26,7 @@ from ..deps import require_permission
 from ..models.quote import Quote
 from ..models.quote_line_item import QuoteLineItem
 from ..services.audit import record_audit
+from ..services.approvals_signatures_service import record_approval
 from ..services.commerce_totals import compute_line_totals, compute_pricing_summary
 from ..services.order_pricing import (
     PricingTransferError,
@@ -379,20 +380,67 @@ async def set_status(quote_id: str, payload: QuoteStatusIn, user: dict = Depends
     elif target == "viewed":
         updates["viewed_at"] = now
     elif target == "approved":
+        try:
+            approval = await record_approval(
+                tenant_id=user["tenant_id"],
+                parent_type="quote_revision",
+                parent_id=quote_id,
+                parent_version=int(doc.get("revision_number") or 1),
+                action="approve",
+                actor_type="staff",
+                actor_ref=user["id"],
+                actor_display=user["email"],
+                snapshot={
+                    "quote_id": quote_id,
+                    "customer_id": doc.get("customer_id"),
+                    "job_name": doc.get("job_name"),
+                    "number": doc.get("number"),
+                    "revision_number": int(doc.get("revision_number") or 1),
+                    "status_before": current,
+                    "total_cents": doc.get("total_cents"),
+                },
+            )
+        except ValueError as ex:
+            raise HTTPException(status_code=400, detail=str(ex))
         updates["approved_at"] = now
         updates["approved_revision"] = int(doc.get("revision_number") or 1)
         updates["approved_actor_user_id"] = user["id"]
         updates["approved_source"] = payload.source or "staff"
+        updates["approved_approval_id"] = approval.get("id")
     elif target == "declined":
+        try:
+            approval = await record_approval(
+                tenant_id=user["tenant_id"],
+                parent_type="quote_revision",
+                parent_id=quote_id,
+                parent_version=int(doc.get("revision_number") or 1),
+                action="decline",
+                actor_type="staff",
+                actor_ref=user["id"],
+                actor_display=user["email"],
+                reason=payload.reason,
+                snapshot={
+                    "quote_id": quote_id,
+                    "customer_id": doc.get("customer_id"),
+                    "job_name": doc.get("job_name"),
+                    "number": doc.get("number"),
+                    "revision_number": int(doc.get("revision_number") or 1),
+                    "status_before": current,
+                    "total_cents": doc.get("total_cents"),
+                },
+            )
+        except ValueError as ex:
+            raise HTTPException(status_code=400, detail=str(ex))
         updates["declined_at"] = now
         updates["declined_reason"] = payload.reason
+        updates["declined_approval_id"] = approval.get("id")
 
     await db.quotes.update_one({"id": quote_id, "tenant_id": user["tenant_id"]}, {"$set": prepare_for_mongo(updates)})
     await record_audit(
         tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
         action=f"quote.{target}", entity_type="quote", entity_id=quote_id,
         summary=f"Quote Q-{doc['number']} → {target}",
-        diff={"from": current, "to": target, "reason": payload.reason},
+        diff={"from": current, "to": target, "reason": payload.reason, "approval_id": updates.get("approved_approval_id") or updates.get("declined_approval_id")},
     )
     doc = await db.quotes.find_one({"id": quote_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     return _serialize_quote(doc)

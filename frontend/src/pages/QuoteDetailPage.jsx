@@ -18,13 +18,16 @@ import { toast } from "sonner";
 import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import StatusPill from "@/components/common/StatusPill";
 import { centsToDollarsString } from "@/lib/format";
+import { buildApprovalCenterUrl } from "@/lib/approvalCenter";
 import { buildShopScheduleUrl } from "@/lib/shopScheduleLinks";
-import { ArrowLeft, ArrowRightCircle, CalendarDays, Save, Mail, Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, ArrowRightCircle, CalendarDays, Save, Mail, Plus, Pencil, Trash2, AlertTriangle, ClipboardCheck } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import ComposeEmailDialog from "@/components/email/ComposeEmailDialog";
 import LineItemDialog from "@/components/commerce/LineItemDialog";
 import DigitalPrintMinimumAdjustmentRow from "@/components/commerce/DigitalPrintMinimumAdjustmentRow";
 import AIContextualActions from "@/components/ai/AIContextualActions";
+import ApprovalHistoryPanel from "@/components/approvals/ApprovalHistoryPanel";
+import DecisionRoomSharePanel from "@/components/approvals/DecisionRoomSharePanel";
 import { useWorkspaceDirty } from "@/context/WorkspaceContext";
 
 // ------------- helpers -------------
@@ -307,6 +310,11 @@ export default function QuoteDetailPage() {
   const { data: audit } = useQuery({ queryKey: ["audit-quote", id], queryFn: async () => (await api.get(`/audit`, { params: { entity_type: "quote", entity_id: id } })).data, enabled: !!id });
   const { data: customer } = useQuery({ queryKey: ["customer", q?.customer_id], queryFn: async () => (await api.get(`/customers/${q.customer_id}`)).data, enabled: !!q?.customer_id });
   const { data: revs } = useQuery({ queryKey: ["quote-revs", id], queryFn: async () => (await api.get(`/quotes/${id}/revisions`)).data, enabled: !!id });
+  const { data: quoteRooms } = useQuery({
+    queryKey: ["quote-decision-rooms", id],
+    queryFn: async () => (await api.get("/decision-rooms", { params: { quote_id: id } })).data,
+    enabled: !!id && hasPerm("decision_room:read"),
+  });
 
   const [form, setForm] = useState({});
   useWorkspaceDirty(Object.keys(form).length > 0);
@@ -325,7 +333,7 @@ export default function QuoteDetailPage() {
     onError: (e) => toast.error(extractError(e)),
   });
   const setStatus = useMutation({
-    mutationFn: async (status) => (await api.post(`/quotes/${id}/status`, { status })).data,
+    mutationFn: async (payload) => (await api.post(`/quotes/${id}/status`, payload)).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["quote", id] });
       qc.invalidateQueries({ queryKey: ["audit-quote", id] });
@@ -343,6 +351,16 @@ export default function QuoteDetailPage() {
     }
   }
 
+  function requestStatusChange(status) {
+    if (status === "declined") {
+      const reason = window.prompt("Reason for declining this quote");
+      if (!reason?.trim()) return;
+      setStatus.mutate({ status, reason: reason.trim(), source: "staff" });
+      return;
+    }
+    setStatus.mutate({ status, source: "staff" });
+  }
+
   if (isLoading) return <div className="text-sm text-muted-foreground" data-testid="quote-loading">Loading quote…</div>;
   if (isError) return <div className="text-sm text-destructive" data-testid="quote-error">{extractError(error)}</div>;
   if (!q) return <div className="text-sm text-muted-foreground">Quote not found.</div>;
@@ -351,6 +369,7 @@ export default function QuoteDetailPage() {
   const canWrite = hasPerm("quote:write");
   const canConvert = hasPerm("quote:convert") && q.status !== "converted" && q.status !== "void" && q.status !== "declined";
   const edit = { ...q, ...form };
+  const approvalRoom = (quoteRooms?.items || []).find((room) => !["archived", "closed", "expired"].includes(room.status));
 
   return (
     <div className="space-y-4" data-testid="quote-detail-page">
@@ -391,6 +410,20 @@ export default function QuoteDetailPage() {
                     title: `${q.job_name} appointment`,
                   })}>
                     <CalendarDays className="size-4 mr-1" />Schedule
+                  </Link>
+                </Button>
+              )}
+              {hasPerm("decision_room:read") && (
+                <Button asChild variant="outline" size="sm" data-testid="quote-approval-work-button">
+                  <Link to={approvalRoom ? `/decision-rooms/${approvalRoom.id}` : buildApprovalCenterUrl({
+                    create: true,
+                    targetType: "quote",
+                    targetId: q.id,
+                    customerId: q.customer_id,
+                    title: `Q-${q.number} ${q.job_name}`,
+                  })}>
+                    <ClipboardCheck className="size-4 mr-1" />
+                    {approvalRoom ? "Open approval work" : "Approval work"}
                   </Link>
                 </Button>
               )}
@@ -489,7 +522,7 @@ export default function QuoteDetailPage() {
               {editable && canWrite && (
                 <div className="grid grid-cols-2 gap-2">
                   {["draft", "sent", "approved", "declined", "void"].filter((s) => s !== q.status).map((s) => (
-                    <Button key={s} size="sm" variant="outline" onClick={() => setStatus.mutate(s)} disabled={setStatus.isPending} data-testid={`quote-set-status-${s}`}>
+                    <Button key={s} size="sm" variant="outline" onClick={() => requestStatusChange(s)} disabled={setStatus.isPending} data-testid={`quote-set-status-${s}`}>
                       <span className="capitalize">{s}</span>
                     </Button>
                   ))}
@@ -497,6 +530,12 @@ export default function QuoteDetailPage() {
               )}
             </CardContent>
           </Card>
+          {hasPerm("decision_room:read") && (
+            <>
+              <ApprovalHistoryPanel sourceType="quote" sourceId={q.id} />
+              {approvalRoom && <DecisionRoomSharePanel roomId={approvalRoom.id} />}
+            </>
+          )}
         </aside>
       </div>
 

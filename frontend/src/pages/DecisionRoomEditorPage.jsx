@@ -13,6 +13,7 @@ import DecisionRoomVersionHistory from "@/components/decisionRoom/DecisionRoomVe
 import DecisionRoomPreviewDialog from "@/components/decisionRoom/DecisionRoomPreviewDialog";
 import DecisionRoomCustomerDecisionsPanel from "@/components/decisionRoom/DecisionRoomCustomerDecisionsPanel";
 import DecisionRoomQuestionsPanel from "@/components/decisionRoom/DecisionRoomQuestionsPanel";
+import DecisionRoomSharePanel from "@/components/approvals/DecisionRoomSharePanel";
 import { toast } from "sonner";
 import { AlertTriangle, Eye, History, Plus } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
@@ -99,12 +100,19 @@ export default function DecisionRoomEditorPage() {
             <Button size="sm" variant="outline" onClick={() => setShowPreview(true)} data-testid="decision-room-preview-button"><Eye className="size-4 mr-1" />Preview</Button>
             <Button size="sm" variant="outline" onClick={() => setShowVersions(true)} data-testid="decision-room-versions-button"><History className="size-4 mr-1" />Versions</Button>
             {canWrite && allowedTargets.map((t) => (
-              <Button key={t} size="sm" variant={t === "archived" ? "outline" : "default"} onClick={() => doTransition.mutate(t)} data-testid={`decision-room-transition-${t}-button`}>
+              <Button
+                key={t}
+                size="sm"
+                variant={t === "archived" ? "outline" : "default"}
+                onClick={() => doTransition.mutate(t)}
+                disabled={t === "ready" && readiness && !readiness.ready}
+                data-testid={`decision-room-transition-${t}-button`}
+              >
                 {ROOM_TRANSITION_LABELS[t]}
               </Button>
             ))}
             {canPublish && ["ready", "published"].includes(room.status) && (
-              <Button size="sm" onClick={() => publish.mutate()} data-testid="decision-room-publish-button">
+              <Button size="sm" onClick={() => publish.mutate()} disabled={readiness && !readiness.ready} data-testid="decision-room-publish-button">
                 {room.status === "published" ? "Publish new version" : "Publish"}
               </Button>
             )}
@@ -154,6 +162,8 @@ export default function DecisionRoomEditorPage() {
           </div>
         )}
       </div>
+
+      {hasPerm("decision_room:read") && <DecisionRoomSharePanel roomId={id} />}
 
       <div className="grid gap-3" data-testid="decision-room-options-section">
         <div className="flex items-center justify-between">

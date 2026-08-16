@@ -391,7 +391,7 @@ async def update_option(
     existing = _find_option(room, option_id)
 
     _reserved = {"id", "created_by_user_id", "created_at", "selected_display_price_cents", "display_order"}
-    changes = {k: v for k, v in changes.items() if k not in _reserved and v is not None}
+    changes = {k: v for k, v in changes.items() if k not in _reserved}
     if "custom_badge_text" in changes:
         changes["custom_badge_text"] = _sanitize_custom_badge_text(changes["custom_badge_text"])
     merged = {**existing, **changes}
@@ -610,6 +610,7 @@ def validate_readiness(room: dict[str, Any]) -> dict[str, Any]:
         errors.append("title_required")
     if not room.get("customer_id"):
         errors.append("customer_required")
+    metadata = room.get("metadata") or {}
     if not any(room.get(k) for k in ("intake_id", "quote_id", "order_id", "order_item_id")):
         errors.append("commercial_or_intake_context_required")
 
@@ -627,6 +628,15 @@ def validate_readiness(room: dict[str, Any]) -> dict[str, Any]:
             errors.append(f"option:{oid}:price_required")
         if o.get("badge_type") == "recommended":
             recommended_count += 1
+        if metadata.get("created_from") == "approval_center" and metadata.get("target_type") in {"quote_line_item", "order_item"}:
+            has_apply_target = bool(
+                o.get("quote_line_item_id")
+                or o.get("order_item_id")
+                or room.get("order_item_id")
+                or metadata.get("quote_line_item_id")
+            )
+            if not has_apply_target:
+                errors.append(f"option:{oid}:commercial_apply_target_required")
     if recommended_count > 1:
         errors.append("multiple_recommended_options")
 
@@ -1374,14 +1384,15 @@ async def apply_customer_decision(
         if not snapshot_record:
             raise DecisionRoomError("pricing_snapshot_not_found", "Pricing snapshot not found for this tenant")
 
+    room_metadata = room.get("metadata") or {}
     if option.get("order_item_id") or room.get("order_item_id"):
         target_type, target_id, snapshot_id = await _apply_option_to_order_item(
             tenant_id=tenant_id, order_item_id=option.get("order_item_id") or room.get("order_item_id"),
             option=option, snapshot_record=snapshot_record, actor_user_id=actor_user_id, actor_email=actor_email, note=note,
         )
-    elif option.get("quote_line_item_id"):
+    elif option.get("quote_line_item_id") or room_metadata.get("quote_line_item_id"):
         target_type, target_id, snapshot_id = await _apply_option_to_quote_line_item(
-            tenant_id=tenant_id, quote_line_item_id=option["quote_line_item_id"],
+            tenant_id=tenant_id, quote_line_item_id=option.get("quote_line_item_id") or room_metadata.get("quote_line_item_id"),
             option=option, snapshot_record=snapshot_record, actor_user_id=actor_user_id, actor_email=actor_email, note=note,
         )
     else:

@@ -13,6 +13,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
+from ..core.db import db
 from ..core.permissions import Perm, permissions_for_role
 from ..core.time_utils import serialize_doc
 from ..deps import require_permission
@@ -425,9 +426,33 @@ async def mint_share(room_id: str, payload: ShareMintIn, request: Request, user:
     return {"token": raw, "record": serialize_doc(token_doc)}
 
 
+@router.get("/{room_id}/share-tokens")
+async def list_share_tokens(room_id: str, user: dict = Depends(require_permission(Perm.DECISION_ROOM_READ))) -> dict:
+    try:
+        await svc.get_room(tenant_id=user["tenant_id"], room_id=room_id)
+    except DecisionRoomError as ex:
+        _raise(ex)
+    cursor = db.public_action_tokens.find(
+        {
+            "tenant_id": user["tenant_id"],
+            "action": "decision_room_view",
+            "parent_type": "decision_room",
+            "parent_id": room_id,
+        },
+        {"_id": 0, "token_hash": 0},
+    ).sort("created_at", -1)
+    return {"items": [serialize_doc(token) async for token in cursor]}
+
+
 @router.delete("/share-tokens/{token_id}", status_code=204)
 async def revoke_share(token_id: str, user: dict = Depends(require_permission(Perm.DECISION_ROOM_WRITE))):
-    await revoke_public_action_token(token_id, user["tenant_id"])
+    revoked = await revoke_public_action_token(token_id, user["tenant_id"])
+    if revoked:
+        await record_audit(
+            tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
+            action="decision_room.share_token_revoke", entity_type="public_action_token", entity_id=token_id,
+            summary="Decision Room share token revoked", diff={},
+        )
     return Response(status_code=204)
 
 
