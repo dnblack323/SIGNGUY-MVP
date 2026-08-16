@@ -6,6 +6,7 @@ import PageHeader from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,7 +16,7 @@ import ProductionTimeline from "@/components/production/ProductionTimeline";
 import { centsToDollarsString } from "@/lib/format";
 import { buildApprovalCenterUrl } from "@/lib/approvalCenter";
 import { buildShopScheduleUrl } from "@/lib/shopScheduleLinks";
-import { ArrowLeft, CalendarDays, Plus, Pencil, Trash2, Wrench, Receipt, Zap, RefreshCw, ClipboardCheck } from "lucide-react";
+import { ArrowLeft, CalendarDays, Plus, Pencil, Trash2, Wrench, Receipt, Zap, RefreshCw, ClipboardCheck, AlertTriangle, CheckCircle2, FileText, Link as LinkIcon, Lock, CreditCard, History } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import LineItemDialog from "@/components/commerce/LineItemDialog";
 import DigitalPrintMinimumAdjustmentRow, { digitalPrintMinimumAdjustmentCents } from "@/components/commerce/DigitalPrintMinimumAdjustmentRow";
@@ -172,6 +173,182 @@ function ItemsPanel({ orderId, items, totals, pricingSummary, canWrite, orderSta
   );
 }
 
+function ReadinessPanel({ readiness, onHandoff, disabled }) {
+  const blockers = readiness?.blockers || [];
+  const warnings = readiness?.warnings || [];
+  return (
+    <Card data-testid="order-readiness-panel">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-base flex items-center gap-2">
+          {readiness?.ready ? <CheckCircle2 className="size-4 text-emerald-600" /> : <AlertTriangle className="size-4 text-amber-600" />}
+          Production readiness
+        </CardTitle>
+        <Badge variant={readiness?.ready ? "default" : "outline"} data-testid="order-readiness-status">
+          {readiness?.ready ? "Ready" : "Not ready"}
+        </Badge>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="rounded border p-2"><div className="text-muted-foreground">Items</div><div className="font-medium">{readiness?.summary?.item_count ?? 0}</div></div>
+          <div className="rounded border p-2"><div className="text-muted-foreground">Production</div><div className="font-medium">{readiness?.summary?.production_required_count ?? 0}</div></div>
+          <div className="rounded border p-2"><div className="text-muted-foreground">Approvals</div><div className="font-medium">{readiness?.summary?.approval_count ?? 0}</div></div>
+        </div>
+        {blockers.length === 0 ? (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-emerald-900" data-testid="order-readiness-clear">
+            No production blockers found by the server readiness check.
+          </div>
+        ) : (
+          <div className="space-y-2" data-testid="order-readiness-blockers">
+            {blockers.map((blocker, index) => (
+              <div key={`${blocker.code}-${index}`} className="rounded-md border p-3">
+                <div className="font-medium">{blocker.label}</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Source: {blocker.source}{blocker.source_id ? ` ${blocker.source_id}` : ""} · Owner: {blocker.owner}
+                </div>
+                <div className="text-xs mt-1">Next action: {blocker.required_action}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {warnings.length > 0 && (
+          <div className="space-y-1" data-testid="order-readiness-warnings">
+            {warnings.map((warning, index) => (
+              <div key={`${warning.code}-${index}`} className="text-xs text-amber-700">{warning.label}</div>
+            ))}
+          </div>
+        )}
+        <Button size="sm" className="w-full" onClick={onHandoff} disabled={disabled} data-testid="order-readiness-handoff-button">
+          <Wrench className="size-4 mr-1" />Production handoff
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FinancialPanel({ financial, canSeeFinancials, onCreateInvoice, invoicePending }) {
+  if (!canSeeFinancials || financial?.restricted) {
+    return (
+      <Card data-testid="order-financial-restricted">
+        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Lock className="size-4" />Financial status</CardTitle></CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          Financial details are restricted by role. Production-only users can still see readiness blockers without invoice totals.
+        </CardContent>
+      </Card>
+    );
+  }
+  const invoices = financial?.invoices || [];
+  return (
+    <Card data-testid="order-financial-summary">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-base flex items-center gap-2"><CreditCard className="size-4" />Invoice and deposit status</CardTitle>
+        <Button size="sm" onClick={onCreateInvoice} disabled={invoicePending} data-testid="order-financial-create-invoice">
+          <Receipt className="size-4 mr-1" />Create/open invoice
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded border p-2"><div className="text-muted-foreground text-xs">Invoiced</div><div className="font-medium">{centsToDollarsString(financial?.total_invoiced_cents ?? 0)}</div></div>
+          <div className="rounded border p-2"><div className="text-muted-foreground text-xs">Paid</div><div className="font-medium">{centsToDollarsString(financial?.amount_paid_cents ?? 0)}</div></div>
+          <div className="rounded border p-2"><div className="text-muted-foreground text-xs">Remaining</div><div className="font-medium">{centsToDollarsString(financial?.balance_due_cents ?? 0)}</div></div>
+        </div>
+        {invoices.length === 0 ? (
+          <div className="text-muted-foreground">No invoice has been created for this Order.</div>
+        ) : invoices.map((invoice) => (
+          <div key={invoice.id} className="rounded-md border p-3 flex items-center justify-between gap-3" data-testid={`order-invoice-row-${invoice.id}`}>
+            <div>
+              <div className="font-medium">I-{invoice.number} · {invoice.title}</div>
+              <div className="text-xs text-muted-foreground">{invoice.document_status || "draft"} · {invoice.financial_status || invoice.status || "unpaid"}</div>
+            </div>
+            <Button asChild variant="outline" size="sm"><Link to={`/invoices/${invoice.id}`}>Open</Link></Button>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function LinkedAssetsPanel({ linkedAssets }) {
+  const files = linkedAssets?.files || [];
+  const documents = linkedAssets?.documents || [];
+  const attachments = linkedAssets?.attachments || [];
+  return (
+    <Card data-testid="order-linked-assets">
+      <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="size-4" />Files, artwork, and documents</CardTitle></CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="rounded border p-2"><div className="text-muted-foreground">Files</div><div className="font-medium">{files.length}</div></div>
+          <div className="rounded border p-2"><div className="text-muted-foreground">Documents</div><div className="font-medium">{documents.length}</div></div>
+          <div className="rounded border p-2"><div className="text-muted-foreground">Attachments</div><div className="font-medium">{attachments.length}</div></div>
+        </div>
+        {[...files, ...documents].length === 0 ? (
+          <div className="text-muted-foreground">No linked files or Library documents found for this Order or its Items.</div>
+        ) : (
+          <div className="space-y-2">
+            {files.map((file) => <div key={file.id} className="rounded border p-2" data-testid={`order-file-row-${file.id}`}>{file.filename || file.name || file.id}</div>)}
+            {documents.map((doc) => <div key={doc.id} className="rounded border p-2" data-testid={`order-document-row-${doc.id}`}>{doc.title || doc.name || doc.id}</div>)}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ApprovalDecisionSummary({ approvals, rooms, proofs }) {
+  return (
+    <Card data-testid="order-approval-decision-summary">
+      <CardHeader><CardTitle className="text-base flex items-center gap-2"><ClipboardCheck className="size-4" />Approvals and customer decisions</CardTitle></CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="rounded border p-2"><div className="text-muted-foreground">Approvals</div><div className="font-medium">{(approvals || []).length}</div></div>
+          <div className="rounded border p-2"><div className="text-muted-foreground">Decision Rooms</div><div className="font-medium">{(rooms || []).length}</div></div>
+          <div className="rounded border p-2"><div className="text-muted-foreground">Proofs</div><div className="font-medium">{(proofs || []).length}</div></div>
+        </div>
+        {(rooms || []).length === 0 ? (
+          <div className="text-muted-foreground">No linked Decision Rooms yet.</div>
+        ) : rooms.map((room) => (
+          <div key={room.id} className="rounded border p-2 flex items-center justify-between gap-3" data-testid={`order-decision-room-row-${room.id}`}>
+            <div><div className="font-medium">{room.title || "Decision Room"}</div><div className="text-xs text-muted-foreground">{room.status}</div></div>
+            <Button asChild size="sm" variant="outline"><Link to={`/decision-rooms/${room.id}`}><LinkIcon className="size-3 mr-1" />Open</Link></Button>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function OrderLifecycleTimeline({ order, readiness, financial, approvals, rooms, proofs, workOrders }) {
+  const events = [];
+  const add = (at, label, source) => { if (at) events.push({ at, label, source }); };
+  add(order.created_at, `Order O-${order.number} created`, "Order");
+  add(order.updated_at, "Order updated", "Order");
+  add(order.archived_at, "Order archived", "Order");
+  (financial?.invoices || []).forEach((invoice) => add(invoice.created_at, `Invoice I-${invoice.number} created`, "Invoice"));
+  (financial?.payments || []).forEach((payment) => add(payment.created_at, `Payment ${centsToDollarsString(payment.amount_cents || 0)} recorded`, "Payment"));
+  (approvals || []).forEach((approval) => add(approval.created_at, `Approval ${approval.action}`, "Approval"));
+  (rooms || []).forEach((room) => add(room.updated_at || room.created_at, `Decision Room ${room.status}`, "Decision Room"));
+  (proofs || []).forEach((proof) => add(proof.updated_at || proof.created_at, `Proof ${proof.status}`, "Proof"));
+  (workOrders || []).forEach((wo) => add(wo.created_at, `Work Order W-${wo.number} created`, "Work Order"));
+  add(readiness?.evaluated_at, `Readiness ${readiness?.ready ? "passed" : "blocked"}`, "Readiness");
+  events.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  return (
+    <Card data-testid="order-lifecycle-timeline">
+      <CardHeader><CardTitle className="text-base flex items-center gap-2"><History className="size-4" />Order lifecycle timeline</CardTitle></CardHeader>
+      <CardContent>
+        {events.length === 0 ? <div className="text-sm text-muted-foreground">No lifecycle events yet.</div> : (
+          <ul className="divide-y text-sm">
+            {events.map((event, index) => (
+              <li key={`${event.source}-${event.at}-${index}`} className="py-2" data-testid="order-lifecycle-event">
+                <div className="font-medium">{event.label}</div>
+                <div className="text-xs text-muted-foreground">{event.source} · {String(event.at).slice(0, 16)}</div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function OrderDetailPage() {
   const { id } = useParams();
   const qc = useQueryClient();
@@ -205,6 +382,13 @@ export default function OrderDetailPage() {
   const totals = data?.totals || {};
   const digitalPrintAdjustmentCents = digitalPrintMinimumAdjustmentCents(totals);
   const pricingSummary = data?.pricing_summary || {};
+  const readiness = data?.readiness;
+  const financialSummary = data?.financial_summary || {};
+  const linkedAssets = data?.linked_assets || {};
+  const approvals = data?.approvals || [];
+  const decisionRooms = data?.decision_rooms || orderRooms?.items || [];
+  const proofs = data?.proofs || [];
+  const canSeeFinancials = data?.permissions?.financials_visible ?? (hasPerm("invoice:read") || hasPerm("payment:read"));
 
   const { data: workOrders } = useQuery({
     queryKey: ["order-work-orders", id],
@@ -238,7 +422,7 @@ export default function OrderDetailPage() {
   if (!order) return <div className="text-sm text-muted-foreground">Order not found.</div>;
 
   const edit = { ...order, ...form };
-  const approvalRoom = (orderRooms?.items || []).find((room) => !["archived", "closed", "expired"].includes(room.status));
+  const approvalRoom = (decisionRooms || []).find((room) => !["archived", "closed", "expired"].includes(room.status));
 
   return (
     <div className="space-y-4" data-testid="order-detail-page">
@@ -309,7 +493,7 @@ export default function OrderDetailPage() {
                   </Button>
                 </>
               ) : (
-                <Button variant="outline" size="sm" onClick={() => setGenWOOpen(true)} disabled={items.length === 0} data-testid="order-create-workorder-button">
+                <Button variant="outline" size="sm" onClick={() => setGenWOOpen(true)} disabled={items.length === 0 || !readiness} data-testid="order-create-workorder-button">
                   <Wrench className="size-4 mr-1" />Generate work order
                 </Button>
               )}
@@ -333,6 +517,7 @@ export default function OrderDetailPage() {
             <TabsTrigger value="activity" data-testid="detail-tab-activity">Activity</TabsTrigger>
           </TabsList>
           <TabsContent value="overview" className="space-y-4">
+            <ReadinessPanel readiness={readiness} onHandoff={() => setGenWOOpen(true)} disabled={!canWrite || items.length === 0} />
             <Card>
               <CardHeader><CardTitle>Overview</CardTitle></CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-2">
@@ -358,6 +543,7 @@ export default function OrderDetailPage() {
             <ItemsPanel orderId={id} items={items} totals={totals} pricingSummary={pricingSummary} canWrite={canWrite} orderStatus={order.status} />
           </TabsContent>
           <TabsContent value="production" className="space-y-4">
+            <ReadinessPanel readiness={readiness} onHandoff={() => setGenWOOpen(true)} disabled={!canWrite || items.length === 0} />
             <Card>
               <CardHeader><CardTitle>Production</CardTitle></CardHeader>
               <CardContent className="space-y-3">
@@ -373,6 +559,7 @@ export default function OrderDetailPage() {
             </Card>
           </TabsContent>
           <TabsContent value="documents-approvals" className="space-y-4">
+            <ApprovalDecisionSummary approvals={approvals} rooms={decisionRooms} proofs={proofs} />
             <ProofsPanel orderId={id} customerId={order?.customer_id} />
             {hasPerm("decision_room:read") && (
               <>
@@ -382,14 +569,15 @@ export default function OrderDetailPage() {
             )}
           </TabsContent>
           <TabsContent value="files-artwork" className="space-y-4">
-            <Card>
-              <CardHeader><CardTitle>Files & Artwork</CardTitle></CardHeader>
-              <CardContent className="text-sm text-muted-foreground">
-                Customer uploads, Intake photos and sketches, artwork, proofs, mockups, questionnaires, production files, installation photos, and other attachments remain linked to the Order or Order Item they belong to.
-              </CardContent>
-            </Card>
+            <LinkedAssetsPanel linkedAssets={linkedAssets} />
           </TabsContent>
           <TabsContent value="financial" className="space-y-4">
+            <FinancialPanel
+              financial={financialSummary}
+              canSeeFinancials={canSeeFinancials}
+              onCreateInvoice={() => createInvoice.mutate()}
+              invoicePending={createInvoice.isPending}
+            />
             <Card>
               <CardHeader><CardTitle>Financial</CardTitle></CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-2">
@@ -405,7 +593,10 @@ export default function OrderDetailPage() {
               </CardContent>
             </Card>
           </TabsContent>
-          <TabsContent value="activity"><ProductionTimeline scope="order" orderId={id} /></TabsContent>
+          <TabsContent value="activity" className="space-y-4">
+            <OrderLifecycleTimeline order={order} readiness={readiness} financial={financialSummary} approvals={approvals} rooms={decisionRooms} proofs={proofs} workOrders={workOrders?.items || data?.work_orders || []} />
+            <ProductionTimeline scope="order" orderId={id} />
+          </TabsContent>
         </Tabs>
 
         <aside className="space-y-4">
@@ -424,6 +615,7 @@ export default function OrderDetailPage() {
               )}
             </CardContent>
           </Card>
+          <ReadinessPanel readiness={readiness} onHandoff={() => setGenWOOpen(true)} disabled={!canWrite || items.length === 0} />
           <Card>
             <CardHeader><CardTitle className="text-base">Totals</CardTitle></CardHeader>
             <CardContent className="space-y-1 text-sm">
@@ -461,6 +653,8 @@ export default function OrderDetailPage() {
         orderId={id}
         open={genWOOpen}
         onOpenChange={setGenWOOpen}
+        useHandoff
+        readiness={readiness}
         onCreated={(wo) => { qc.invalidateQueries({ queryKey: ["order-work-orders", id] }); if (!wo.already_exists) navigate(`/work-orders/${wo.id}`); }}
       />
       {activeWO && (

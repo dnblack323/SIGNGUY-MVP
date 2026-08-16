@@ -165,49 +165,49 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Dependencies:** Communication/delivery history conventions.
   - **Residual limitations:** Staff cannot prove quote delivery from the quote record.
 
-- **SO-09 — Status: `In Progress`**
+- **SO-09 — Status: `Closed`**
   - **Exact frontend evidence:** `frontend/src/pages/OrderDetailPage.jsx`.
-  - **Exact backend evidence:** `backend/app/models/order.py`, `backend/app/routers/invoices.py`, `backend/app/routers/payments.py`, `backend/app/services/invoice_reconciliation.py`, `backend/app/services/payment_service.py`.
-  - **Relevant tests:** `backend/tests/test_payments_ec4.py`, `backend/tests/test_invoice_reconciliation.py`.
-  - **Already implemented:** Canonical invoice/payment records exist; orders carry financial summary fields; Order detail can create an invoice.
-  - **Still missing:** Unified linked invoice/deposit/payment/refund/balance cards and drill-throughs on Order detail.
-  - **Original closure check passes:** No.
-  - **Recommended implementation batch:** Batch 5 — Order operational readiness.
+  - **Exact backend evidence:** `backend/app/services/order_readiness_service.py`, `backend/app/routers/orders.py`, `backend/app/routers/invoices.py`, `backend/app/routers/payments.py`, `backend/app/services/invoice_reconciliation.py`, `backend/app/services/payment_service.py`.
+  - **Relevant tests:** `backend/tests/test_shop_operations_order_readiness.py`, `backend/tests/test_payments_ec4.py`, `backend/tests/test_invoice_reconciliation.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`.
+  - **Already implemented:** Order detail receives a canonical financial summary sourced from invoices/payments, shows invoiced/paid/refunded/balance state, links to invoice drill-throughs, and keeps financial data hidden when the user lacks invoice/payment visibility.
+  - **Still missing:** None for this gap; future finance workflows remain owned by Business & Finance.
+  - **Original closure check passes:** Yes.
+  - **Recommended implementation batch:** Completed in Order Readiness.
   - **Dependencies:** Finance records remain authoritative; Shop Operations should read, not mutate finance state directly.
-  - **Residual limitations:** Financial source of truth exists but is not fully operationally visible.
+  - **Residual limitations:** Shop Operations reads billing/payment state and can open/create invoices; it does not become the finance ledger or payment authority.
 
-- **SO-10 — Status: `In Progress`**
+- **SO-10 — Status: `Closed`**
   - **Exact frontend evidence:** `frontend/src/pages/OrderDetailPage.jsx`.
-  - **Exact backend evidence:** `backend/app/models/order.py`, `backend/app/routers/decision_room.py`, `backend/app/routers/decision_room_apply.py`.
+  - **Exact backend evidence:** `backend/app/services/order_readiness_service.py`, `backend/app/routers/orders.py`, `backend/app/routers/decision_room.py`, `backend/app/routers/decision_room_apply.py`.
   - **Relevant tests:** `backend/tests/test_shop_operations_approval_authority.py`, `backend/tests/test_ec10_phase10f_decision_apply.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`.
-  - **Already implemented:** Order detail now discovers existing order Decision Rooms and links to create Approval Center work with order/customer context preserved. Approval Center creation supports order-item targets where the current model allows them.
-  - **Still missing:** Order detail still needs active/historical room summaries, approval/proof/comment timeline, and computed next-action/readiness blockers.
-  - **Original closure check passes:** No.
-  - **Recommended implementation batch:** Batch 5 — Order operational readiness.
+  - **Already implemented:** Order workspace aggregation exposes active and historical Decision Rooms, approvals, proofs, and readiness next actions; Order detail shows the combined approval/decision summary, approval history, share controls, and blockers before production handoff.
+  - **Still missing:** None for the Order authority surface; richer customer communication history remains `SO-12`.
+  - **Original closure check passes:** Yes.
+  - **Recommended implementation batch:** Completed in Order Readiness.
   - **Dependencies:** Batch 2 Approval Center and Decision Room authority.
-  - **Residual limitations:** Apply safety exists, but the Order UI does not expose the full approval state.
+  - **Residual limitations:** This reuses the existing Approval Center and Decision Room authorities; it does not add a separate customer communications inbox.
 
-- **SO-11 — Status: `Open`**
+- **SO-11 — Status: `Closed`**
   - **Exact frontend evidence:** `frontend/src/pages/OrderDetailPage.jsx`.
-  - **Exact backend evidence:** `backend/app/services/documents_service.py`, file/document/proof models and routers.
-  - **Relevant tests:** `backend/tests/test_ec6_portal_docs.py`.
-  - **Already implemented:** Document and file foundations exist.
-  - **Still missing:** Linked artwork, production files, signed documents, attachments, and Library documents are not fully reachable from Order and Order Items.
-  - **Original closure check passes:** No.
-  - **Recommended implementation batch:** Batch 5 — Order operational readiness.
+  - **Exact backend evidence:** `backend/app/services/order_readiness_service.py`, `backend/app/services/documents_service.py`, file/document/proof models and routers.
+  - **Relevant tests:** `backend/tests/test_shop_operations_order_readiness.py`, `backend/tests/test_ec6_portal_docs.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`.
+  - **Already implemented:** Order workspace aggregation resolves Order and Order Item attachments, files, document links, Library documents, and proofs; Order detail exposes the linked files/artwork/documents panel without moving the canonical Library.
+  - **Still missing:** None for discoverability of existing linked Order/Item assets.
+  - **Original closure check passes:** Yes.
+  - **Recommended implementation batch:** Completed in Order Readiness.
   - **Dependencies:** Document/link policy and source-record UI work.
-  - **Residual limitations:** Current UI signals intended coverage without implementing it.
+  - **Residual limitations:** Upload/edit/version workflows remain owned by their existing file, proof, and Library systems.
 
-- **SO-13 — Status: `Open`**
+- **SO-13 — Status: `Closed`**
   - **Exact frontend evidence:** `frontend/src/pages/OrderDetailPage.jsx`, `frontend/src/pages/ProductionBoardPage.jsx`.
-  - **Exact backend evidence:** `backend/app/services/production_board_service.py`, `backend/app/routers/production_stages.py`.
-  - **Relevant tests:** `backend/tests/test_ec11_phase11c_production_stages.py`.
-  - **Already implemented:** Some production-stage readiness gates, including proof gate behavior, exist.
-  - **Still missing:** Computed Order readiness panel with blocker source, required action, owner, and resolution state across approval, deposit, artwork, material, qualification, and scheduling.
-  - **Original closure check passes:** No.
-  - **Recommended implementation batch:** Batch 5 — Order operational readiness.
+  - **Exact backend evidence:** `backend/app/services/order_readiness_service.py`, `backend/app/routers/orders.py`, `backend/app/services/production_board_service.py`, `backend/app/routers/production_stages.py`.
+  - **Relevant tests:** `backend/tests/test_shop_operations_order_readiness.py`, `backend/tests/test_ec11_phase11c_production_stages.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`.
+  - **Already implemented:** Order readiness is computed from authoritative customer, Order Item, proof, approval, Decision Room, invoice/payment, file/document, and Work Order records. Order detail displays blockers with source, owner, required action, warnings, and handoff state before production starts.
+  - **Still missing:** None for Order-level readiness blockers.
+  - **Original closure check passes:** Yes.
+  - **Recommended implementation batch:** Completed in Order Readiness.
   - **Dependencies:** Approvals, finance visibility, files/artwork, and Schedule foundation.
-  - **Residual limitations:** Readiness is fragmented across subsystems.
+  - **Residual limitations:** Schedule-specific resource constraints remain `SO-28`; detailed production timers remain `SO-23`.
 
 - **SO-15 — Status: `Open`**
   - **Exact frontend evidence:** `frontend/src/pages/CustomersPage.jsx`, `frontend/src/pages/CustomerDetailPage.jsx`.
@@ -479,37 +479,37 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Done when:** Every approved option maps safely to the intended Quote Line Item or Order Item.
   - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-approval-authority` | Tests/Evidence: `backend/tests/test_shop_operations_approval_authority.py`, `frontend/src/__tests__/ApprovalCenterAuthority.test.jsx` | Residual limitations: future commercial target types must reuse the same tenant-scoped selector pattern.
 
-- [ ] **SO-09 — Add authoritative billing and payment status to Order detail**
+- [x] **SO-09 — Add authoritative billing and payment status to Order detail**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** Order detail does not provide a unified view of invoices, deposits, payments, balance, refunds, and billing state.
   - **Required outcome:** Add linked financial summary cards and drill-through views sourced from canonical invoices and payments.
   - **Done when:** Order staff can see whether production or delivery is financially blocked without editing finance data.
-  - **Tracking:** Status: `In Progress — Order detail can create/open Decision Room work and shows approval history/share controls` | Owner: `Codex` | PR/Commit: `codex/shop-operations-approval-authority` | Tests/Evidence: `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/tests/test_shop_operations_approval_authority.py` | Residual limitations: unified order readiness, financial blockers, artwork/document coverage, and customer communication history remain open.
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-order-readiness` | Tests/Evidence: `backend/tests/test_shop_operations_order_readiness.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/app/services/order_readiness_service.py`, `frontend/src/pages/OrderDetailPage.jsx` | Residual limitations: Shop Operations reads and links canonical finance records; Business & Finance remains the ledger/payment authority.
 
-- [ ] **SO-10 — Connect Order detail to Decision Rooms, proofs, and approvals**
+- [x] **SO-10 — Connect Order detail to Decision Rooms, proofs, and approvals**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** Order-level approval and Decision Room activity exists in pieces but is not presented as one operational workflow on the Order.
   - **Required outcome:** Show active and historical Decision Rooms, proof revisions, approval state, comments, and required next action.
   - **Done when:** The Order clearly indicates what the customer has approved and what still blocks production.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-order-readiness` | Tests/Evidence: `backend/tests/test_shop_operations_order_readiness.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/app/services/order_readiness_service.py`, `frontend/src/pages/OrderDetailPage.jsx` | Residual limitations: customer-facing communication history remains `SO-12`.
 
-- [ ] **SO-11 — Complete Order document and artwork coverage**
+- [x] **SO-11 — Complete Order document and artwork coverage**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** Order detail does not provide complete access to artwork and documents beyond the narrower Proof records.
   - **Required outcome:** Expose linked artwork, production files, signed documents, attachments, and Library documents with correct permissions.
   - **Done when:** All files needed to fulfill the Order are reachable from the Order and its Order Items.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-order-readiness` | Tests/Evidence: `backend/tests/test_shop_operations_order_readiness.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/app/services/order_readiness_service.py`, `frontend/src/pages/OrderDetailPage.jsx` | Residual limitations: upload/edit/version workflows remain with the existing file, proof, and Library systems.
 
-- [ ] **SO-13 — Expose production-readiness blockers**
+- [x] **SO-13 — Expose production-readiness blockers**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** The Order does not clearly summarize missing approval, deposit, artwork, material, qualification, scheduling, or other readiness conditions.
   - **Required outcome:** Create a computed readiness panel using authoritative linked records; do not duplicate statuses manually.
   - **Done when:** Each blocker identifies its source, required action, owner, and resolution state before production begins.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-order-readiness` | Tests/Evidence: `backend/tests/test_shop_operations_order_readiness.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/app/services/order_readiness_service.py`, `frontend/src/pages/OrderDetailPage.jsx` | Residual limitations: schedule resource constraints remain `SO-28`; production labor timers remain `SO-23`.
 
 - [x] **SO-16 — Add Customer duplicate detection and merge**
   - **Source classification:** Open implementation gap

@@ -19,6 +19,7 @@ from ..models.order import Order, OrderItem
 from ..services.audit import record_audit
 from ..services.commerce_totals import compute_line_totals, compute_pricing_summary
 from ..services.order_item_rules import default_production_required
+from ..services import order_readiness_service
 from ..services.order_pricing import (
     PricingTransferError,
     build_item_pricing_fields,
@@ -128,6 +129,15 @@ class RecalculatePreviewIn(BaseModel):
     height_inches: Optional[float] = None
 
 
+class ProductionHandoffIn(BaseModel):
+    priority: Literal["low", "normal", "high", "rush"] = "normal"
+    due_date: Optional[str] = None
+    production_instructions: Optional[str] = None
+    internal_notes: Optional[str] = None
+    assigned_user_ids: list[str] = Field(default_factory=list)
+    override_reason: Optional[str] = None
+
+
 # ---- Helpers ----
 
 
@@ -146,9 +156,12 @@ async def _recompute_order_totals(tenant_id: str, order_id: str) -> dict[str, in
     return totals
 
 
-def _ensure_order_items_editable(order: dict[str, Any]) -> None:
+async def _ensure_order_items_editable(tenant_id: str, order: dict[str, Any]) -> None:
     if order.get("status") in ORDER_ITEM_EDIT_TERMINAL_STATUSES:
         raise HTTPException(status_code=400, detail="Cannot edit items on a completed, cancelled, or archived order")
+    blocker = await order_readiness_service.order_item_mutation_blocker(tenant_id, order["id"])
+    if blocker:
+        raise HTTPException(status_code=400, detail=blocker)
 
 
 async def _resolve_item_pricing(
@@ -250,14 +263,16 @@ async def create_order(payload: OrderCreateIn, user: dict = Depends(require_perm
 
 @router.get("/{order_id}")
 async def get_order(order_id: str, user: dict = Depends(require_permission(Perm.ORDER_READ))) -> dict:
-    doc = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
-    if not doc:
+    try:
+        return await order_readiness_service.workspace_payload(
+            tenant_id=user["tenant_id"],
+            order_id=order_id,
+            user=user,
+        )
+    except ValueError as ex:
+        if str(ex) != "order_not_found":
+            raise
         raise HTTPException(status_code=404, detail="Order not found")
-    items = await _list_items(user["tenant_id"], order_id)
-    return {
-        "order": serialize_doc(doc), "items": items, "totals": compute_document_totals_with_pricing_adjustments(items),
-        "pricing_summary": compute_pricing_summary(items),
-    }
 
 
 @router.patch("/{order_id}")
@@ -320,9 +335,47 @@ async def recalculate(order_id: str, user: dict = Depends(require_permission(Per
     order = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    _ensure_order_items_editable(order)
+    await _ensure_order_items_editable(user["tenant_id"], order)
     totals = await _recompute_order_totals(user["tenant_id"], order_id)
     return {"totals": totals}
+
+
+@router.get("/{order_id}/readiness")
+async def get_readiness(order_id: str, user: dict = Depends(require_permission(Perm.ORDER_READ))) -> dict:
+    try:
+        return await order_readiness_service.evaluate_readiness(
+            tenant_id=user["tenant_id"],
+            order_id=order_id,
+            user=user,
+            include_financial_details=order_readiness_service.can_read_financials(user),
+        )
+    except ValueError as ex:
+        if str(ex) == "order_not_found":
+            raise HTTPException(status_code=404, detail="Order not found")
+        raise
+
+
+@router.post("/{order_id}/production-handoff", status_code=201)
+async def production_handoff(
+    order_id: str,
+    payload: ProductionHandoffIn,
+    user: dict = Depends(require_permission(Perm.WORK_ORDER_WRITE)),
+) -> dict:
+    try:
+        return await order_readiness_service.production_handoff(
+            tenant_id=user["tenant_id"],
+            order_id=order_id,
+            payload=payload.model_dump(),
+            user=user,
+        )
+    except ValueError as ex:
+        detail_map = {
+            "order_not_found": (404, "Order not found"),
+            "no_production_required_items": (400, "No production-required items on this order"),
+            "readiness_override_reason_required": (400, "Order is not production-ready; provide an override reason to hand off anyway."),
+        }
+        status, detail = detail_map.get(str(ex), (400, str(ex)))
+        raise HTTPException(status_code=status, detail=detail)
 
 
 # ---- Order Items ----
@@ -333,7 +386,7 @@ async def add_item(order_id: str, payload: OrderItemIn, user: dict = Depends(req
     order = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    _ensure_order_items_editable(order)
+    await _ensure_order_items_editable(user["tenant_id"], order)
     position = await db.order_items.count_documents({"tenant_id": user["tenant_id"], "order_id": order_id})
     prod_req = payload.production_required
     if prod_req is None:
@@ -403,7 +456,7 @@ async def update_item(order_id: str, item_id: str, payload: OrderItemPatchIn,
     order = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    _ensure_order_items_editable(order)
+    await _ensure_order_items_editable(user["tenant_id"], order)
     line = await db.order_items.find_one({"id": item_id, "order_id": order_id, "tenant_id": user["tenant_id"]})
     if not line:
         raise HTTPException(status_code=404, detail="Order item not found")
@@ -500,6 +553,7 @@ async def recalculate_item_preview(
     order = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    await _ensure_order_items_editable(user["tenant_id"], order)
     if order.get("status") != "draft":
         raise HTTPException(status_code=400, detail="Recalculation preview is only available for draft orders")
     line = await db.order_items.find_one({"id": item_id, "order_id": order_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
@@ -531,7 +585,7 @@ async def delete_item(order_id: str, item_id: str, user: dict = Depends(require_
     order = await db.orders.find_one({"id": order_id, "tenant_id": user["tenant_id"]})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    _ensure_order_items_editable(order)
+    await _ensure_order_items_editable(user["tenant_id"], order)
     line = await db.order_items.find_one({"id": item_id, "order_id": order_id, "tenant_id": user["tenant_id"]})
     if not line:
         raise HTTPException(status_code=404, detail="Order item not found")
