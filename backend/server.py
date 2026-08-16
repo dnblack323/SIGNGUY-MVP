@@ -216,6 +216,9 @@ api_router.include_router(decision_room_portal_router_module.router)
 from app.routers import decision_room_review_queue as decision_room_review_queue_router_module
 api_router.include_router(decision_room_review_queue_router_module.router)
 
+from app.routers import approval_center as approval_center_router_module
+api_router.include_router(approval_center_router_module.router)
+
 from app.routers import templates as templates_router_module
 api_router.include_router(templates_router_module.router)
 from app.routers import forms as forms_router_module

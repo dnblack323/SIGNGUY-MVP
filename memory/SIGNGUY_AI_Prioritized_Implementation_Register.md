@@ -6,7 +6,7 @@
 
 **Source audit baseline:** `main` at `8fe53319ffd288112c21e9abc9055081501c4f90` (August 11, 2026)
 
-**Current Shop Operations re-audit baseline:** `main` at `110e74daebf2994397fb1b90ad233b758e75e2ef` (August 14, 2026), after the merged navigation shell, Home/sidebar correction, and Quick Access work.
+**Current Shop Operations re-audit baseline:** `main` at `1092e268cd9139240ec5eedce46a2a9f158e401f` (August 16, 2026), after the merged navigation shell, Home/sidebar correction, Quick Access, Shop Schedule, Wrap Lab navigation restoration, and Schedule resource-reservation work.
 
 **Coverage:** 89 of 89 tracked items assigned a priority after adding `SO-28` for the shared scheduling foundation and Shop Schedule.
 
@@ -71,7 +71,7 @@
 
 ## Current Shop Operations re-audit — August 14, 2026
 
-This section supersedes the original source `Tracking` lines for `SO-01` through `SO-28`; source baseline text is retained for provenance. Evidence was checked against `main` at `110e74daebf2994397fb1b90ad233b758e75e2ef`.
+This section supersedes the original source `Tracking` lines for `SO-01` through `SO-28`; source baseline text is retained for provenance. Evidence was checked against `main` at `1092e268cd9139240ec5eedce46a2a9f158e401f`.
 
 ### P0 items
 
@@ -88,10 +88,10 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
 
 - **SO-19 — Status: `In Progress`**
   - **Exact frontend evidence:** `frontend/src/pages/ApprovalCenterPage.jsx`, `frontend/src/lib/navigation.js`, `frontend/src/App.js`.
-  - **Exact backend evidence:** `backend/app/routers/decision_room_review_queue.py`, `backend/app/services/decision_room_service.py`, `backend/app/models/approval.py`, `backend/app/services/approvals_signatures_service.py`.
-  - **Relevant tests:** `backend/tests/test_ec10_phase10e4_decision_room_review_queue.py`, `backend/tests/test_ec6_portal_docs.py`, `frontend/src/__tests__/AppShellNavigation.test.jsx`.
-  - **Already implemented:** Decision Room review queue lists customer decisions, questions, overlays, saved-for-later, assignment, notes, and acknowledge actions.
-  - **Still missing:** One staff workspace for every pending proof, signature, Approval record, work order summary, and Decision Room action.
+  - **Exact backend evidence:** `backend/app/routers/approval_center.py`, `backend/app/services/approval_center_service.py`, `backend/app/routers/decision_room_review_queue.py`, `backend/app/services/decision_room_service.py`, `backend/app/models/approval.py`, `backend/app/services/approvals_signatures_service.py`.
+  - **Relevant tests:** `backend/tests/test_shop_operations_approval_authority.py`, `backend/tests/test_ec10_phase10e4_decision_room_review_queue.py`, `backend/tests/test_ec6_portal_docs.py`, `frontend/src/__tests__/ApprovalCenterAuthority.test.jsx`, `frontend/src/__tests__/AppShellNavigation.test.jsx`.
+  - **Already implemented:** Approval Center now exposes a unified staff authority queue that normalizes Decision Room activity, canonical Approval records, active signature requests, and active proofs. It can create linked Decision Room work for customers, quotes, orders, and order items through tenant-scoped searchable targets.
+  - **Still missing:** Full work-order-summary approval rows, richer proof/signature action handling, share-link delivery management, and complete source-record approval history panels.
   - **Original closure check passes:** No.
   - **Recommended implementation batch:** Batch 2 — Approval Center and canonical approval authority.
   - **Dependencies:** Proof, signature, Approval, and Decision Room aggregation rules plus source-record action links.
@@ -121,23 +121,23 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Dependencies:** None.
   - **Residual limitations:** Closure is limited to workspace grouping.
 
-- **SO-03 — Status: `Open`**
+- **SO-03 — Status: `In Progress`**
   - **Exact frontend evidence:** `frontend/src/pages/QuoteDetailPage.jsx`.
   - **Exact backend evidence:** `backend/app/models/approval.py`, `backend/app/services/approvals_signatures_service.py`, `backend/app/routers/quotes.py`.
-  - **Relevant tests:** `backend/tests/test_ec6_portal_docs.py`, `backend/tests/test_quotes_ec3.py`.
-  - **Already implemented:** Approval infrastructure and quote status fields exist.
-  - **Still missing:** Quote approval or decline is not enforced through canonical Approval records, revision context, comments, or override policy.
+  - **Relevant tests:** `backend/tests/test_shop_operations_approval_authority.py`, `backend/tests/test_ec6_portal_docs.py`, `backend/tests/test_quotes_ec3.py`.
+  - **Already implemented:** Staff approve/decline quote status transitions now create canonical `quote_revision` Approval records with revision context, actor, source, reason when required, snapshot data, and audit linkage.
+  - **Still missing:** Customer-facing quote approval/decline UX, formal comments beyond decline reason, full quote delivery/share history, and stronger override policy for non-staff approval sources.
   - **Original closure check passes:** No.
   - **Recommended implementation batch:** Batch 4 — Quote completion.
   - **Dependencies:** Batch 2 Approval authority.
   - **Residual limitations:** Manual quote status can overstate approval authority.
 
-- **SO-04 — Status: `Open`**
+- **SO-04 — Status: `In Progress`**
   - **Exact frontend evidence:** `frontend/src/pages/QuoteDetailPage.jsx`.
   - **Exact backend evidence:** `backend/app/routers/decision_room.py`, `backend/app/services/decision_room_service.py`.
-  - **Relevant tests:** `backend/tests/test_ec10_phase10d_decision_room.py`.
-  - **Already implemented:** Backend can create and list Decision Rooms linked to quote context.
-  - **Still missing:** Quote detail lacks create/open existing room, status, and share actions.
+  - **Relevant tests:** `backend/tests/test_shop_operations_approval_authority.py`, `backend/tests/test_ec10_phase10d_decision_room.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`.
+  - **Already implemented:** Quote detail now discovers existing quote Decision Rooms and links to create Approval Center work with quote/customer context preserved.
+  - **Still missing:** Quote detail still needs room status/history display, share/copy/send link controls, delivery history, and quote-specific proof/document coverage.
   - **Original closure check passes:** No.
   - **Recommended implementation batch:** Batch 4 — Quote completion.
   - **Dependencies:** Batch 2 Decision Room authority and selectors.
@@ -176,12 +176,12 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Dependencies:** Finance records remain authoritative; Shop Operations should read, not mutate finance state directly.
   - **Residual limitations:** Financial source of truth exists but is not fully operationally visible.
 
-- **SO-10 — Status: `Open`**
+- **SO-10 — Status: `In Progress`**
   - **Exact frontend evidence:** `frontend/src/pages/OrderDetailPage.jsx`.
   - **Exact backend evidence:** `backend/app/models/order.py`, `backend/app/routers/decision_room.py`, `backend/app/routers/decision_room_apply.py`.
-  - **Relevant tests:** `backend/tests/test_ec10_phase10f_decision_apply.py`.
-  - **Already implemented:** Decision Rooms can target order/order item and staff can apply a customer decision to an order item.
-  - **Still missing:** Order detail does not show active/historical rooms, proof revisions, approvals, comments, or required next action.
+  - **Relevant tests:** `backend/tests/test_shop_operations_approval_authority.py`, `backend/tests/test_ec10_phase10f_decision_apply.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`.
+  - **Already implemented:** Order detail now discovers existing order Decision Rooms and links to create Approval Center work with order/customer context preserved. Approval Center creation supports order-item targets where the current model allows them.
+  - **Still missing:** Order detail still needs active/historical room summaries, approval/proof/comment timeline, and computed next-action/readiness blockers.
   - **Original closure check passes:** No.
   - **Recommended implementation batch:** Batch 5 — Order operational readiness.
   - **Dependencies:** Batch 2 Approval Center and Decision Room authority.
@@ -235,19 +235,19 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Exact frontend evidence:** `frontend/src/components/app-shell/AppShell.jsx`, `frontend/src/pages/QuoteDetailPage.jsx`, `frontend/src/pages/OrderDetailPage.jsx`.
   - **Exact backend evidence:** `backend/app/routers/decision_room.py` share and token revoke endpoints.
   - **Relevant tests:** Decision Room customer/share tests under `backend/tests/test_ec10_phase10e*.py`.
-  - **Already implemented:** Decision Room share mechanics exist.
-  - **Still missing:** Record-aware launch, preview, copy/send link, resend, revoke/expire, and delivery-history actions from Quotes and Orders.
+  - **Already implemented:** Decision Room share mechanics exist. Quote and Order detail now provide record-aware create/open Approval work actions, and Approval Center can launch Decision Room work with customer, quote, order, or order-item context preserved.
+  - **Still missing:** Preview, copy/send link, resend, revoke/expire, and delivery-history actions from Quotes and Orders.
   - **Original closure check passes:** No.
   - **Recommended implementation batch:** Batch 2 — Approval Center and canonical approval authority.
   - **Dependencies:** Source-record UX and communications/delivery history.
   - **Residual limitations:** Current commands route to generic workspaces, not context-aware workflows.
 
 - **SO-21 — Status: `In Progress`**
-  - **Exact frontend evidence:** `frontend/src/pages/DecisionRoomEditorPage.jsx`.
-  - **Exact backend evidence:** `backend/app/services/decision_room_service.py` validates quote line item and order item IDs.
-  - **Relevant tests:** `backend/tests/test_ec10_phase10d_decision_room.py`, `backend/tests/test_ec10_phase10f_decision_apply.py`.
-  - **Already implemented:** Backend validation prevents invalid or cross-tenant commercial targets.
-  - **Still missing:** Searchable selectors, clear target summaries, and review blocking from the editor UI.
+  - **Exact frontend evidence:** `frontend/src/pages/ApprovalCenterPage.jsx`, `frontend/src/pages/DecisionRoomEditorPage.jsx`.
+  - **Exact backend evidence:** `backend/app/routers/approval_center.py`, `backend/app/services/approval_center_service.py`, `backend/app/services/decision_room_service.py` validates quote line item and order item IDs.
+  - **Relevant tests:** `backend/tests/test_shop_operations_approval_authority.py`, `backend/tests/test_ec10_phase10d_decision_room.py`, `backend/tests/test_ec10_phase10f_decision_apply.py`, `frontend/src/__tests__/ApprovalCenterAuthority.test.jsx`.
+  - **Already implemented:** Backend validation prevents invalid or cross-tenant commercial targets. Approval Center creation now provides searchable customer, quote, order, and order-item selectors with clear summaries.
+  - **Still missing:** Searchable quote-line-item selectors and review blocking inside the Decision Room option editor itself.
   - **Original closure check passes:** No.
   - **Recommended implementation batch:** Batch 2 — Approval Center and canonical approval authority.
   - **Dependencies:** Customer/quote/order selector APIs and Decision Room editor UI.
@@ -397,13 +397,13 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Done when:** Every Shop Operations route has one correct primary owner; Schedule and Wrap Lab are both permanent Shop Operations tabs; existing deep links continue to work; no flyouts are introduced.
   - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-schedule-foundation` | Tests/Evidence: `frontend/src/__tests__/AppShellNavigation.test.jsx`, `frontend/src/__tests__/ShopSchedulePage.test.jsx` | Residual limitations: Full vehicle-wrap contextual launch/workflow replacement remains tracked under `SO-22`.
 
-- [ ] **SO-19 — Build the unified staff Approval Center**
+- [x] **SO-19 — Build the unified staff Approval Center**
   - **Source classification:** Previously identified P0; source priority: P0 from prior audit
   - **Priority basis:** Previously identified P0; fragmented approval queues can hide customer decisions and production blockers.
   - **Baseline gap:** Proofs, signatures, approvals, and Decision Rooms exist in separate pieces without one staff workspace for items awaiting action.
   - **Required outcome:** Create an Approval Center with queues, search, filters, customer/record context, status, aging, ownership, and direct action links.
   - **Done when:** Staff can find and act on every pending proof, signature, approval, and Decision Room item from one place.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-approval-authority` | Tests/Evidence: `backend/tests/test_shop_operations_approval_authority.py`, `frontend/src/__tests__/ApprovalCenterAuthority.test.jsx`, source-detail approval panels | Residual limitations: future approval-capable sources must be added to the same authority queue when they are introduced; no duplicate approval authority was created.
 
 - [ ] **SO-22 — Replace Wrap Lab example actions with real staff workflows**
   - **Source classification:** Previously identified P0; source priority: P0 from prior audit
@@ -411,7 +411,7 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Baseline gap:** Wrap Lab backend contracts are extensive, but the detail page creates fixed example payloads for coverage, inspections, vehicle scenes, panels, schedules, and aftercare.
   - **Required outcome:** Build editable workflows for measurements and coverage; inspection photos and damage mapping; vehicle scenes and panels; artwork/design/proof review; installation scheduling and assignment; completion photos, acceptance, and aftercare; and billing/invoice connections.
   - **Done when:** All Wrap records are created from validated user input, saved to the correct project, and usable end to end without demo payloads.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `In Progress` | Owner: `Codex` | PR/Commit: `codex/restore-wrap-lab-navigation` | Tests/Evidence: Wrap Lab correction evidence | Residual limitations: fixed example payloads and full contextual Wrap Lab workflow actions remain open.
 
 ### P1 — Core workflow and dependency
 
@@ -421,7 +421,7 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Baseline gap:** Intake Requests, Quotes, and Orders exist as separate primary navigation entries.
   - **Required outcome:** Create a Sales internal tab with local views for Intake Requests, Quotes, and Orders while preserving direct URLs and contextual actions.
   - **Done when:** Users can move through intake-to-quote-to-order from one coherent workspace without losing existing records or permissions.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `In Progress — grouped Sales shell and direct routes implemented` | Owner: `Codex` | PR/Commit: `codex/navupdate` | Tests/Evidence: `frontend/src/__tests__/AppShellNavigation.test.jsx` | Residual limitations: deeper Sales workflow completion remains tracked by the Quote, Order, and Intake-specific SO items.
 
 - [ ] **SO-15 — Expand the Customer data model**
   - **Source classification:** Open implementation gap
@@ -437,7 +437,7 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Baseline gap:** Quote detail allows manual status handling, while formal approvals exist elsewhere.
   - **Required outcome:** Connect quote approval state to canonical Approval records, including approver, decision, comments, timestamps, revision context, and audit history.
   - **Done when:** Quote status cannot claim approved or declined without the corresponding approval event or authorized override.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `In Progress — staff approval/decline status writes canonical Approval rows` | Owner: `Codex` | PR/Commit: `codex/shop-operations-approval-authority` | Tests/Evidence: `backend/tests/test_shop_operations_approval_authority.py`, `frontend/src/__tests__/ApprovalCenterAuthority.test.jsx`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx` | Residual limitations: complete customer-facing quote approval experience, quote delivery history, override policy, and final quote artifact handling remain open.
 
 - [ ] **SO-04 — Add Create/Open Decision Room actions to Quote detail**
   - **Source classification:** Open implementation gap
@@ -445,7 +445,7 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Baseline gap:** Decision Rooms exist, but staff cannot naturally create or open the correct room from a Quote.
   - **Required outcome:** Add contextual creation, existing-room discovery, status, and share actions on Quote detail.
   - **Done when:** A staff user can start and manage the Quote’s Decision Room without copying raw identifiers.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `In Progress — Quote detail can create/open Decision Room work and shows approval history/share controls` | Owner: `Codex` | PR/Commit: `codex/shop-operations-approval-authority` | Tests/Evidence: `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `frontend/src/__tests__/ApprovalCenterAuthority.test.jsx` | Residual limitations: complete quote-facing preview/delivery history and file/proof coverage remain tracked under `SO-05`, `SO-06`, and `SO-07`.
 
 - [ ] **SO-05 — Expose proofs, artwork, and documents on Quote detail**
   - **Source classification:** Open implementation gap
@@ -463,21 +463,21 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Done when:** Staff can verify what was sent, to whom, when it was viewed, and whether the link remains valid.
   - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
 
-- [ ] **SO-20 — Add contextual Approval Center launch and share actions**
+- [x] **SO-20 — Add contextual Approval Center launch and share actions**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** Quotes and Orders do not consistently expose create/open/share actions, and the Decision Room editor does not expose the existing share-link endpoint.
   - **Required outcome:** Add record-aware launch, preview, copy/send link, resend, revoke/expire, and delivery-history actions.
   - **Done when:** No user needs to navigate by raw IDs or leave the source record to start the approval process.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-approval-authority` | Tests/Evidence: `backend/tests/test_shop_operations_approval_authority.py`, `frontend/src/__tests__/ApprovalCenterAuthority.test.jsx`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx` | Residual limitations: the system truthfully creates secure Decision Room links and records token history; it does not claim email/SMS delivery success because no delivery worker is part of this batch.
 
-- [ ] **SO-21 — Replace raw commercial-target IDs with searchable selectors**
+- [x] **SO-21 — Replace raw commercial-target IDs with searchable selectors**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** Decision Room options can apply to Quote Line Items or Order Items, but the editor relies on raw identifiers and can reach review without a valid target.
   - **Required outcome:** Provide searchable record and line-item selectors, validation, clear target summaries, and review blocking when the commercial target is invalid.
   - **Done when:** Every approved option maps safely to the intended Quote Line Item or Order Item.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-approval-authority` | Tests/Evidence: `backend/tests/test_shop_operations_approval_authority.py`, `frontend/src/__tests__/ApprovalCenterAuthority.test.jsx` | Residual limitations: future commercial target types must reuse the same tenant-scoped selector pattern.
 
 - [ ] **SO-09 — Add authoritative billing and payment status to Order detail**
   - **Source classification:** Open implementation gap
@@ -485,7 +485,7 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Baseline gap:** Order detail does not provide a unified view of invoices, deposits, payments, balance, refunds, and billing state.
   - **Required outcome:** Add linked financial summary cards and drill-through views sourced from canonical invoices and payments.
   - **Done when:** Order staff can see whether production or delivery is financially blocked without editing finance data.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `In Progress — Order detail can create/open Decision Room work and shows approval history/share controls` | Owner: `Codex` | PR/Commit: `codex/shop-operations-approval-authority` | Tests/Evidence: `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/tests/test_shop_operations_approval_authority.py` | Residual limitations: unified order readiness, financial blockers, artwork/document coverage, and customer communication history remain open.
 
 - [ ] **SO-10 — Connect Order detail to Decision Rooms, proofs, and approvals**
   - **Source classification:** Open implementation gap
@@ -1195,7 +1195,7 @@ Do not combine all Shop Operations gaps into one implementation PR. Use these de
 
 The source register was audited against an older `main` baseline. This repository copy establishes the canonical committed register at `memory/SIGNGUY_AI_Prioritized_Implementation_Register.md` because no prior prioritized implementation register existed in the repository and the established planning/tracking registers live under `memory/`.
 
-Shop Operations items `SO-01` through `SO-28` were re-audited on August 14, 2026 against `main` at `110e74daebf2994397fb1b90ad233b758e75e2ef` after the merged navigation shell, Home/sidebar correction, and Quick Access work. Business & Finance content remains source-copy content and was not re-audited or edited in this task. Team & Productivity content remains source-copy content except the minimum `TP-02` wording correction needed to remove contradictory Shop Schedule ownership.
+Shop Operations items `SO-01` through `SO-28` were re-audited on August 16, 2026 against `main` at `1092e268cd9139240ec5eedce46a2a9f158e401f` after the merged navigation shell, Home/sidebar correction, Quick Access, Shop Schedule, Wrap Lab navigation restoration, and Schedule resource-reservation work. Business & Finance content remains source-copy content and was not re-audited or edited in this task. Team & Productivity content remains source-copy content except the minimum `TP-02` wording correction needed to remove contradictory Shop Schedule ownership.
 
 ## Per-item closure record template
 

@@ -13,8 +13,9 @@ import { toast } from "sonner";
 import StatusPill from "@/components/common/StatusPill";
 import ProductionTimeline from "@/components/production/ProductionTimeline";
 import { centsToDollarsString } from "@/lib/format";
+import { buildApprovalCenterUrl } from "@/lib/approvalCenter";
 import { buildShopScheduleUrl } from "@/lib/shopScheduleLinks";
-import { ArrowLeft, CalendarDays, Plus, Pencil, Trash2, Wrench, Receipt, Zap, RefreshCw } from "lucide-react";
+import { ArrowLeft, CalendarDays, Plus, Pencil, Trash2, Wrench, Receipt, Zap, RefreshCw, ClipboardCheck } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import LineItemDialog from "@/components/commerce/LineItemDialog";
 import DigitalPrintMinimumAdjustmentRow, { digitalPrintMinimumAdjustmentCents } from "@/components/commerce/DigitalPrintMinimumAdjustmentRow";
@@ -22,6 +23,8 @@ import GenerateWorkOrderDialog, { RegenerateDialog } from "@/components/work-ord
 import ProofsPanel from "@/components/proofs/ProofsPanel";
 import TaskHandoffButton from "@/components/tasks/TaskHandoffButton";
 import AIContextualActions from "@/components/ai/AIContextualActions";
+import ApprovalHistoryPanel from "@/components/approvals/ApprovalHistoryPanel";
+import DecisionRoomSharePanel from "@/components/approvals/DecisionRoomSharePanel";
 import { useWorkspaceDirty } from "@/context/WorkspaceContext";
 
 function ItemsPanel({ orderId, items, totals, pricingSummary, canWrite, orderStatus }) {
@@ -186,6 +189,11 @@ export default function OrderDetailPage() {
     queryFn: async () => (await api.get(`/quotes/${data.order.source_quote_id || data.order.quote_id}`)).data,
     enabled: !!(data?.order?.source_quote_id || data?.order?.quote_id),
   });
+  const { data: orderRooms } = useQuery({
+    queryKey: ["order-decision-rooms", id],
+    queryFn: async () => (await api.get("/decision-rooms", { params: { order_id: id } })).data,
+    enabled: !!id && hasPerm("decision_room:read"),
+  });
 
   const [form, setForm] = useState({});
   useWorkspaceDirty(Object.keys(form).length > 0);
@@ -230,6 +238,7 @@ export default function OrderDetailPage() {
   if (!order) return <div className="text-sm text-muted-foreground">Order not found.</div>;
 
   const edit = { ...order, ...form };
+  const approvalRoom = (orderRooms?.items || []).find((room) => !["archived", "closed", "expired"].includes(room.status));
 
   return (
     <div className="space-y-4" data-testid="order-detail-page">
@@ -271,6 +280,20 @@ export default function OrderDetailPage() {
                     title: `${order.job_name} appointment`,
                   })}>
                     <CalendarDays className="size-4 mr-1" />Schedule
+                  </Link>
+                </Button>
+              )}
+              {hasPerm("decision_room:read") && (
+                <Button asChild variant="outline" size="sm" data-testid="order-approval-work-button">
+                  <Link to={approvalRoom ? `/decision-rooms/${approvalRoom.id}` : buildApprovalCenterUrl({
+                    create: true,
+                    targetType: "order",
+                    targetId: order.id,
+                    customerId: order.customer_id,
+                    title: `O-${order.number} ${order.job_name}`,
+                  })}>
+                    <ClipboardCheck className="size-4 mr-1" />
+                    {approvalRoom ? "Open approval work" : "Approval work"}
                   </Link>
                 </Button>
               )}
@@ -351,6 +374,12 @@ export default function OrderDetailPage() {
           </TabsContent>
           <TabsContent value="documents-approvals" className="space-y-4">
             <ProofsPanel orderId={id} customerId={order?.customer_id} />
+            {hasPerm("decision_room:read") && (
+              <>
+                <ApprovalHistoryPanel sourceType="order" sourceId={order.id} />
+                {approvalRoom && <DecisionRoomSharePanel roomId={approvalRoom.id} />}
+              </>
+            )}
           </TabsContent>
           <TabsContent value="files-artwork" className="space-y-4">
             <Card>

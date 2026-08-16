@@ -103,6 +103,25 @@ test("Order detail shows the backend-evidence Digital Print adjustment in item a
   expect(screen.getByTestId("order-derived-total")).toHaveTextContent("$38.00");
 });
 
+test("Quote detail links into Approval Center with preserved quote context", async () => {
+  renderWithProviders(<QuoteDetailPage />, { route: "/quotes/quote-1", path: "/quotes/:id" });
+
+  expect(await screen.findByTestId("quote-detail-page")).toBeInTheDocument();
+  expect(screen.getByTestId("approval-history-quote")).toBeInTheDocument();
+  expect(screen.getByTestId("quote-approval-work-button")).toHaveAttribute("href", expect.stringContaining("/approval-center?new=1"));
+  expect(screen.getByTestId("quote-approval-work-button")).toHaveAttribute("href", expect.stringContaining("target_type=quote"));
+  expect(screen.getByTestId("quote-approval-work-button")).toHaveAttribute("href", expect.stringContaining("target_id=quote-1"));
+});
+
+test("Order detail links into Approval Center with preserved order context", async () => {
+  renderWithProviders(<OrderDetailPage />, { route: "/orders/order-1", path: "/orders/:id" });
+
+  expect(await screen.findByTestId("order-detail-page")).toBeInTheDocument();
+  expect(screen.getByTestId("order-approval-work-button")).toHaveAttribute("href", expect.stringContaining("/approval-center?new=1"));
+  expect(screen.getByTestId("order-approval-work-button")).toHaveAttribute("href", expect.stringContaining("target_type=order"));
+  expect(screen.getByTestId("order-approval-work-button")).toHaveAttribute("href", expect.stringContaining("target_id=order-1"));
+});
+
 test("Digital Print adjustment row is omitted when backend evidence is zero or absent", async () => {
   api.get.mockImplementation((url) => {
     if (url === "/quotes/quote-1") {
