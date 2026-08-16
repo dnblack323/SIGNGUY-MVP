@@ -710,6 +710,28 @@ async def ensure_indexes() -> None:
     await db.production_stage_instances.create_index([("tenant_id", 1), ("order_item_id", 1), ("sequence", 1)])
     await db.production_stage_instances.create_index([("tenant_id", 1), ("assigned_employee_id", 1), ("status", 1)])
 
+    # ---- Shop Operations SO-23/SO-24 - production timing, separate from payroll time clock ----
+    await db.production_timer_sessions.create_index("id", unique=True)
+    await db.production_timer_sessions.create_index([("tenant_id", 1), ("stage_id", 1), ("status", 1)])
+    await db.production_timer_sessions.create_index([("tenant_id", 1), ("employee_id", 1), ("status", 1)])
+    await db.production_timer_sessions.create_index([("tenant_id", 1), ("order_item_id", 1), ("stage_id", 1), ("status", 1)])
+    await db.production_timer_sessions.create_index(
+        [("tenant_id", 1), ("idempotency_key", 1)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
+    )
+    await db.production_timer_events.create_index("id", unique=True)
+    await db.production_timer_events.create_index([("tenant_id", 1), ("stage_id", 1), ("occurred_at", -1)])
+    await db.production_timer_events.create_index([("tenant_id", 1), ("session_id", 1), ("occurred_at", -1)])
+    await db.production_pricing_feedback.create_index("id", unique=True)
+    await db.production_pricing_feedback.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
+    await db.production_pricing_feedback.create_index([("tenant_id", 1), ("stage_id", 1), ("status", 1)])
+    await db.production_pricing_feedback.create_index(
+        [("tenant_id", 1), ("evidence_key", 1), ("status", 1)],
+        unique=True,
+        partialFilterExpression={"status": {"$in": ["pending", "unmapped"]}},
+    )
+
     # EC11 Phase 11F - shared-device production kiosk sessions and one-time supervisor overrides.
     await db.production_kiosk_sessions.create_index("id", unique=True)
     await db.production_kiosk_sessions.create_index("device_token_hash", unique=True)

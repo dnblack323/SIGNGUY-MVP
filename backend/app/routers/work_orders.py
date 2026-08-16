@@ -40,6 +40,33 @@ def _raise(ex: Exception) -> None:
     raise HTTPException(status_code=st, detail=det)
 
 
+def _can_read_financials(user: dict) -> bool:
+    if "permissions" in user:
+        perms = set(user.get("permissions") or [])
+    else:
+        from ..core.permissions import permissions_for_role
+        perms = set(permissions_for_role(user.get("role", "staff")))
+    return "invoice:read" in perms
+
+
+def _sanitize_work_order(doc: dict, user: dict) -> dict:
+    data = serialize_doc(doc)
+    if _can_read_financials(user):
+        return data
+    safe_items = []
+    forbidden = {
+        "unit_price_cents", "line_total_cents", "line_subtotal_cents",
+        "discount_cents", "tax_cents", "pricing_snapshot",
+        "estimated_cost_cents", "estimated_profit_cents", "estimated_margin_percent",
+        "manual_price_cents", "suggested_price_cents",
+    }
+    for item in data.get("items_snapshot") or []:
+        safe_items.append({k: v for k, v in item.items() if k not in forbidden})
+    data["items_snapshot"] = safe_items
+    data["financials_restricted"] = True
+    return data
+
+
 # ---- Payloads ----
 
 
@@ -142,7 +169,7 @@ async def list_wos(
         q["current_version"] = True
     total = await db.work_orders.count_documents(q)
     cursor = db.work_orders.find(q, {"_id": 0}).sort("number", -1).skip(skip).limit(limit)
-    return {"items": [serialize_doc(d) async for d in cursor], "total": total, "limit": limit, "skip": skip}
+    return {"items": [_sanitize_work_order(d, user) async for d in cursor], "total": total, "limit": limit, "skip": skip}
 
 
 @router.get("/{wo_id}")
@@ -150,7 +177,7 @@ async def get_wo(wo_id: str, user: dict = Depends(require_permission(Perm.WORK_O
     doc = await db.work_orders.find_one({"id": wo_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Work order not found")
-    return serialize_doc(doc)
+    return _sanitize_work_order(doc, user)
 
 
 # ---- Generation ----
@@ -216,8 +243,8 @@ async def patch_wo(wo_id: str, payload: PatchIn, user: dict = Depends(require_pe
         action="work_order.update", entity_type="work_order", entity_id=wo_id,
         summary="Work order updated", diff={"changes": updates},
     )
-    doc = await db.work_orders.find_one({"id": wo_id}, {"_id": 0})
-    return serialize_doc(doc)
+    doc = await db.work_orders.find_one({"id": wo_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    return _sanitize_work_order(doc, user)
 
 
 @router.post("/{wo_id}/transition")

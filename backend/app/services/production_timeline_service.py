@@ -69,6 +69,9 @@ SAFE_METADATA_KEYS = {
     "visibility",
     "workflow_instance_id",
     "workflow_name",
+    "employee_id",
+    "elapsed_seconds",
+    "session_id",
 }
 
 
@@ -309,6 +312,11 @@ async def _collect_related(tenant_id: str, data: dict[str, Any]) -> dict[str, An
     else:
         stage_query["id"] = "__none__"
     production_stages = await _docs("production_stage_instances", stage_query)
+    stage_ids = _id_list(s.get("id") for s in production_stages)
+    timer_sessions = await _docs(
+        "production_timer_sessions",
+        {"tenant_id": tenant_id, "stage_id": {"$in": stage_ids}},
+    ) if stage_ids else []
 
     return {
         "proofs": proofs,
@@ -320,6 +328,7 @@ async def _collect_related(tenant_id: str, data: dict[str, Any]) -> dict[str, An
         "payments": payments,
         "workflow_instances": workflow_instances,
         "production_stages": production_stages,
+        "timer_sessions": timer_sessions,
     }
 
 
@@ -596,6 +605,82 @@ def _project_direct_events(tenant_id: str, data: dict[str, Any], related: dict[s
                 status_to="in_progress",
             ))
 
+    for session in related.get("timer_sessions") or []:
+        base = {
+            "tenant_id": tenant_id,
+            "event_category": "production",
+            "source_type": "production_timer_session",
+            "source_id": session["id"],
+            "order_id": session.get("order_id"),
+            "order_item_id": session.get("order_item_id"),
+            "work_order_id": session.get("work_order_id"),
+            "related_workflow_id": session.get("workflow_instance_id"),
+            "metadata": {
+                "stage_key": session.get("stage_key"),
+                "stage_name": session.get("stage_name"),
+                "workflow_instance_id": session.get("workflow_instance_id"),
+                "employee_id": session.get("employee_id"),
+                "session_id": session.get("id"),
+                "elapsed_seconds": session.get("effective_elapsed_seconds") or session.get("elapsed_seconds"),
+                "paused_duration_seconds": session.get("paused_duration_seconds"),
+                "corrected_elapsed_seconds": session.get("corrected_elapsed_seconds"),
+                "status": session.get("status"),
+            },
+        }
+        _add_event(events, _make_event(
+            **base,
+            event_type="timer_started",
+            occurred_at=session.get("started_at"),
+            title=f"Timer started: {session.get('stage_name')}",
+            internal_summary=f"Production timer started for {session.get('stage_name')}.",
+            actor=_actor_from_user(session.get("started_by_user_id")),
+            status_to="active",
+        ))
+        for segment in session.get("pause_segments") or []:
+            if segment.get("paused_at"):
+                _add_event(events, _make_event(
+                    **base,
+                    event_type="timer_paused",
+                    occurred_at=segment.get("paused_at"),
+                    title=f"Timer paused: {session.get('stage_name')}",
+                    internal_summary=segment.get("reason") or "Production timer paused.",
+                    actor=_actor_from_user(segment.get("paused_by_user_id")),
+                    status_to="paused",
+                ))
+            if segment.get("resumed_at"):
+                _add_event(events, _make_event(
+                    **base,
+                    event_type="timer_resumed",
+                    occurred_at=segment.get("resumed_at"),
+                    title=f"Timer resumed: {session.get('stage_name')}",
+                    internal_summary=segment.get("resume_notes") or "Production timer resumed.",
+                    actor=_actor_from_user(segment.get("resumed_by_user_id")),
+                    status_to="active",
+                ))
+        if session.get("stopped_at"):
+            _add_event(events, _make_event(
+                **base,
+                event_type="timer_stopped",
+                occurred_at=session.get("stopped_at"),
+                title=f"Timer stopped: {session.get('stage_name')}",
+                internal_summary=f"Production timer recorded {int(session.get('effective_elapsed_seconds') or session.get('elapsed_seconds') or 0) // 60} effective minute(s).",
+                actor=_actor_from_user(session.get("stopped_by_user_id")),
+                status_to="completed",
+                duration_seconds=int(session.get("effective_elapsed_seconds") or session.get("elapsed_seconds") or 0),
+            ))
+        for correction in session.get("corrections") or []:
+            action = correction.get("action")
+            _add_event(events, _make_event(
+                **base,
+                event_type=f"timer_{action}",
+                occurred_at=correction.get("at"),
+                title=f"Timer {action}: {session.get('stage_name')}",
+                internal_summary=correction.get("reason") or f"Production timer {action}.",
+                actor=_actor_from_user(correction.get("actor_user_id")),
+                status_to=session.get("status"),
+                duration_seconds=correction.get("corrected_elapsed_seconds") or correction.get("effective_elapsed_seconds"),
+            ))
+
     return events
 
 
@@ -734,6 +819,12 @@ def _map_audit_event(audit: dict[str, Any], data: dict[str, Any], related: dict[
             "completed": "stage_completed",
             "skipped": "stage_skipped",
             "reopened": "stage_reopened",
+            "timer_started": "timer_started",
+            "timer_paused": "timer_paused",
+            "timer_resumed": "timer_resumed",
+            "timer_stopped": "timer_stopped",
+            "timer_corrected": "timer_corrected",
+            "timer_voided": "timer_voided",
             "due_date_changed": "due_date_changed",
             "production_note_added": "production_note_added",
         }.get(stage_action)

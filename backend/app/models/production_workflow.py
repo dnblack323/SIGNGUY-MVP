@@ -17,6 +17,9 @@ ProductionWorkflowScope = Literal[
 ProductionStageStatus = Literal["not_started", "in_progress", "waiting", "blocked", "completed", "skipped"]
 ProductionWorkflowInstanceStatus = Literal["active", "manual_no_workflow", "completed", "cancelled"]
 ProductionWorkflowInstanceSource = Literal["order_item_override", "category", "tenant_default", "explicit_workflow", "manual_no_workflow"]
+ProductionTimerStatus = Literal["active", "paused", "completed", "voided"]
+ProductionTimerEventType = Literal["started", "paused", "resumed", "stopped", "voided", "corrected"]
+ProductionPricingFeedbackStatus = Literal["pending", "approved", "rejected", "unmapped", "superseded"]
 
 
 class ProductionWorkflowStageDefinition(BaseDoc):
@@ -129,4 +132,93 @@ class ProductionStageInstance(BaseDoc):
     employee_visible: bool = True
     requires_previous_stage_complete: bool = True
     production_notes: list[dict[str, Any]] = Field(default_factory=list)
+    history: list[dict[str, Any]] = Field(default_factory=list)
+    active_timer_session_id: Optional[str] = None
+    active_timer_employee_id: Optional[str] = None
+    active_timer_started_at: Optional[str] = None
+    actual_duration_seconds: int = 0
+    timing_entry_count: int = 0
+
+
+class ProductionTimerSession(BaseDoc):
+    tenant_id: str
+    work_order_id: str
+    order_id: str
+    order_item_id: str
+    workflow_instance_id: str
+    stage_id: str
+    stage_key: str
+    stage_name: str
+    employee_id: str
+    employee_user_id: Optional[str] = None
+    status: ProductionTimerStatus = "active"
+    started_at: str
+    paused_at: Optional[str] = None
+    stopped_at: Optional[str] = None
+    elapsed_seconds: int = 0
+    effective_elapsed_seconds: int = 0
+    paused_duration_seconds: int = 0
+    corrected_elapsed_seconds: Optional[int] = None
+    voided_at: Optional[str] = None
+    voided_by_user_id: Optional[str] = None
+    void_reason: Optional[str] = None
+    notes: Optional[str] = None
+    interruption_reason: Optional[str] = None
+    idempotency_key: Optional[str] = None
+    started_by_user_id: str
+    stopped_by_user_id: Optional[str] = None
+    pause_segments: list[dict[str, Any]] = Field(default_factory=list)
+    corrections: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ProductionTimerEvent(BaseDoc):
+    tenant_id: str
+    session_id: str
+    event_type: ProductionTimerEventType
+    work_order_id: str
+    order_id: str
+    order_item_id: str
+    workflow_instance_id: str
+    stage_id: str
+    employee_id: str
+    actor_user_id: str
+    occurred_at: str
+    elapsed_seconds: Optional[int] = None
+    reason: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ProductionPricingFeedback(BaseDoc):
+    tenant_id: str
+    work_order_id: str
+    order_id: str
+    order_item_id: str
+    workflow_instance_id: str
+    stage_id: str
+    stage_key: str
+    stage_name: str
+    timing_session_ids: list[str] = Field(default_factory=list)
+    evidence_key: str
+    production_category: Optional[str] = None
+    pricing_snapshot_id: Optional[str] = None
+    pricing_snapshot_summary: dict[str, Any] = Field(default_factory=dict)
+    planned_seconds: int = 0
+    effective_actual_seconds: int = 0
+    variance_seconds: int = 0
+    variance_percent: Optional[float] = None
+    target_path: Optional[str] = None
+    existing_value: Optional[float] = None
+    suggested_value: Optional[float] = None
+    suggested_adjustment: Optional[float] = None
+    mapped: bool = False
+    mapping_status: str = "unmapped"
+    explanation: str
+    status: ProductionPricingFeedbackStatus = "pending"
+    created_by_user_id: str
+    reviewed_by_user_id: Optional[str] = None
+    reviewed_at: Optional[str] = None
+    decision_reason: Optional[str] = None
+    prior_value: Optional[float] = None
+    approved_value: Optional[float] = None
+    applied_at: Optional[str] = None
     history: list[dict[str, Any]] = Field(default_factory=list)

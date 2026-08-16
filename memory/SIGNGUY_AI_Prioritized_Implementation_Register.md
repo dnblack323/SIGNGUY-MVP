@@ -207,7 +207,7 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Original closure check passes:** Yes.
   - **Recommended implementation batch:** Completed in Order Readiness.
   - **Dependencies:** Approvals, finance visibility, files/artwork, and Schedule foundation.
-  - **Residual limitations:** Schedule-specific resource constraints remain `SO-28`; detailed production timers remain `SO-23`.
+  - **Residual limitations:** Schedule-specific resource constraints remain `SO-28`; detailed production timers are now covered by closed `SO-23`.
 
 - **SO-15 — Status: `Open`**
   - **Exact frontend evidence:** `frontend/src/pages/CustomersPage.jsx`, `frontend/src/pages/CustomerDetailPage.jsx`.
@@ -253,16 +253,16 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Dependencies:** Customer/quote/order selector APIs and Decision Room editor UI.
   - **Residual limitations:** Backend safety exists, but usability still depends on raw identifiers.
 
-- **SO-23 — Status: `Open`**
+- **SO-23 — Status: `Closed`**
   - **Exact frontend evidence:** `frontend/src/pages/ProductionBoardPage.jsx`, `frontend/src/pages/ProductionKioskPage.jsx`.
-  - **Exact backend evidence:** `backend/app/routers/production_stages.py`, `backend/app/services/production_stage_service.py`.
-  - **Relevant tests:** `backend/tests/test_ec11_phase11c_production_stages.py`, `backend/tests/test_ec11_phase11e_employee_production_kiosk.py`.
-  - **Already implemented:** Stage lifecycle actions exist.
-  - **Still missing:** Detailed active timer sessions, pause/resume/stop rules, overlap prevention, corrections, and timer audit history. Existing tests assert `production_timer_sessions` and `production_timer_events` remain unchanged.
-  - **Original closure check passes:** No.
+  - **Exact backend evidence:** `backend/app/models/production_workflow.py`, `backend/app/routers/production_stages.py`, `backend/app/services/production_stage_service.py`, `backend/app/services/production_board_service.py`, `backend/app/services/production_timeline_service.py`.
+  - **Relevant tests:** `backend/tests/test_shop_operations_production_timing.py`, `backend/tests/test_ec11_phase11c_production_stages.py`, `backend/tests/test_ec11_phase11e_employee_production_kiosk.py`, `frontend/src/__tests__/ProductionTiming.test.jsx`.
+  - **Already implemented:** Stage lifecycle actions exist. Production timer sessions and events now capture employee, Work Order, Order Item, stage, start/pause/resume/stop, effective elapsed working time, paused duration, reasons/notes, active and paused timer state, idempotent duplicate timer actions, owner/manager control permissions, manager correction/void workflow, audit history, and item/stage timeline projection without creating payroll records.
+  - **Still missing:** None for the detailed production-stage timer acceptance criteria. Payroll integration remains intentionally excluded.
+  - **Original closure check passes:** Yes.
   - **Recommended implementation batch:** Batch 6 — Production timing and attribution.
   - **Dependencies:** Stage lifecycle stability and employee attribution model.
-  - **Residual limitations:** Stage status timestamps are not trustworthy labor timers.
+  - **Residual limitations:** Time tracking remains production-operation evidence only and does not become payroll.
 
 - **SO-27 — Status: `Open`**
   - **Exact frontend evidence:** No final signed packet action found on quote/order/document/signature pages.
@@ -354,27 +354,27 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Dependencies:** Related-record coverage and archive policy.
   - **Residual limitations:** Archived records may become hard to find or restore.
 
-- **SO-24 — Status: `Open`**
+- **SO-24 — Status: `Closed`**
   - **Exact frontend evidence:** `frontend/src/pages/ProductionBoardPage.jsx`, `frontend/src/pages/ProductionKioskPage.jsx`.
-  - **Exact backend evidence:** `backend/app/models/production_workflow.py`, `backend/app/services/production_stage_service.py`.
-  - **Relevant tests:** `backend/tests/test_ec11_phase11c_production_stages.py`.
-  - **Already implemented:** Single-assignee stage work exists.
-  - **Still missing:** Multiple employee contributions, roles, timestamps, and allocation rules per stage.
-  - **Original closure check passes:** No.
+  - **Exact backend evidence:** `backend/app/models/production_workflow.py`, `backend/app/services/production_stage_service.py`, `backend/app/services/production_board_service.py`.
+  - **Relevant tests:** `backend/tests/test_shop_operations_production_timing.py`, `backend/tests/test_ec11_phase11c_production_stages.py`, `frontend/src/__tests__/ProductionTiming.test.jsx`.
+  - **Already implemented:** Single-assignee stage work exists. Multiple completed timer sessions accumulate against the same production stage with employee, user, role-context, timestamps, raw elapsed, effective elapsed, paused duration, corrected/voided state, stage totals, active timer ownership, manager correction/void governance, and audit history.
+  - **Still missing:** None for contribution attribution. Advanced payroll allocation remains outside Shop Operations.
+  - **Original closure check passes:** Yes.
   - **Recommended implementation batch:** Batch 6 — Production timing and attribution.
   - **Dependencies:** `SO-23` timer/session model.
-  - **Residual limitations:** Collaborative production labor cannot be accurately attributed yet.
+  - **Residual limitations:** Contribution totals are operational labor evidence; payroll allocation remains excluded.
 
-- **SO-25 — Status: `Open`**
-  - **Exact frontend evidence:** Production and pricing pages contain no planned-versus-actual labor feedback workflow.
-  - **Exact backend evidence:** Production timers are absent; pricing snapshots exist but no labor variance feedback loop was found.
-  - **Relevant tests:** Pricing snapshot/calculation tests and production stage tests, but no labor variance tests.
-  - **Already implemented:** Planned pricing/labor inputs exist in pricing workflows.
-  - **Still missing:** Actual labor capture, variance summaries, and manager-controlled pricing feedback.
-  - **Original closure check passes:** No.
+- **SO-25 — Status: `Closed`**
+  - **Exact frontend evidence:** `frontend/src/pages/ProductionBoardPage.jsx`, `frontend/src/components/production/WorkOrderStagesPanel.jsx`; pricing pages contain no approved pricing-feedback workflow.
+  - **Exact backend evidence:** `backend/app/services/production_board_service.py`, `backend/app/services/production_stage_service.py`; pricing snapshots exist but no approved labor-variance feedback loop was found.
+  - **Relevant tests:** `backend/tests/test_shop_operations_production_timing.py`, `frontend/src/__tests__/ProductionTiming.test.jsx`, pricing snapshot/calculation tests.
+  - **Already implemented:** Planned labor minutes from workflow definitions and effective actual timer totals are projected onto production board/stage surfaces as variance context. Managers with pricing permission can create production pricing-feedback records from authoritative stage evidence, review mapped/unmapped suggestions, approve mapped suggestions through the canonical Pricing Foundation category update service, or reject suggestions while preserving history.
+  - **Still missing:** None for the manual manager-approved pricing-feedback loop. Automated AI interpretation and pricing calculator redesign remain intentionally excluded.
+  - **Original closure check passes:** Yes.
   - **Recommended implementation batch:** Batch 6 — Production timing and attribution.
   - **Dependencies:** `SO-23`, `SO-24`.
-  - **Residual limitations:** Without actual time records, variance analytics would be speculative.
+  - **Residual limitations:** Feedback remains manager-reviewed and evidence-backed; it does not automatically change prices.
 
 - **SO-26 — Status: `Open`**
   - **Exact frontend evidence:** `frontend/src/pages/ProductionBoardPage.jsx`.
@@ -509,7 +509,7 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Baseline gap:** The Order does not clearly summarize missing approval, deposit, artwork, material, qualification, scheduling, or other readiness conditions.
   - **Required outcome:** Create a computed readiness panel using authoritative linked records; do not duplicate statuses manually.
   - **Done when:** Each blocker identifies its source, required action, owner, and resolution state before production begins.
-  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-order-readiness` | Tests/Evidence: `backend/tests/test_shop_operations_order_readiness.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/app/services/order_readiness_service.py`, `frontend/src/pages/OrderDetailPage.jsx` | Residual limitations: schedule resource constraints remain `SO-28`; production labor timers remain `SO-23`.
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-order-readiness` | Tests/Evidence: `backend/tests/test_shop_operations_order_readiness.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/app/services/order_readiness_service.py`, `frontend/src/pages/OrderDetailPage.jsx` | Residual limitations: schedule-specific resource constraints remain `SO-28`; production labor timers are covered by closed `SO-23`.
 
 - [x] **SO-16 — Add Customer duplicate detection and merge**
   - **Source classification:** Open implementation gap
@@ -519,13 +519,13 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Done when:** Quotes, Orders, invoices, payments, files, and communications remain linked after a controlled merge.
   - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-customer-foundation` | Tests/Evidence: `backend/tests/test_shop_operations_customer_foundation.py`, `frontend/src/__tests__/CustomersFoundation.test.jsx`, `backend/app/services/customer_service.py`, `frontend/src/pages/CustomersPage.jsx` | Residual limitations: duplicate matching intentionally displays explicit match reasons rather than unexplained scoring; future data sources should add new reason extractors to the same merge service.
 
-- [ ] **SO-23 — Implement detailed production-stage timers**
+- [x] **SO-23 — Implement detailed production-stage timers**
   - **Source classification:** Reserved implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** Production stage lifecycle and board actions exist, but detailed active timers per stage are not implemented.
   - **Required outcome:** Add start/pause/resume/stop rules, overlapping-time prevention, corrections, audit history, and Order Item/stage context.
   - **Done when:** Actual stage time can be trusted for labor analysis without changing financial visibility for production staff.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-production-timing` | Tests/Evidence: `backend/tests/test_shop_operations_production_timing.py`, `frontend/src/__tests__/ProductionTiming.test.jsx`, `backend/app/services/production_stage_service.py`, `backend/app/services/production_board_service.py`, `backend/app/services/production_timeline_service.py`, `frontend/src/pages/ProductionBoardPage.jsx`, `frontend/src/components/production/WorkOrderStagesPanel.jsx` | Residual limitations: time tracking remains production-operation evidence only and does not become payroll.
 
 - [ ] **SO-27 — Generate the final signed document packet**
   - **Source classification:** Open implementation gap
@@ -593,23 +593,23 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Done when:** Archived customers remain reportable and restorable but do not clutter active workflows.
   - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-customer-foundation` | Tests/Evidence: `backend/tests/test_shop_operations_customer_foundation.py`, `frontend/src/__tests__/CustomersFoundation.test.jsx`, `backend/app/routers/customers.py`, `frontend/src/pages/CustomersPage.jsx`, `frontend/src/pages/CustomerDetailPage.jsx` | Residual limitations: merged source customers stay archived and cannot be restored independently; staff must open the surviving customer instead.
 
-- [ ] **SO-24 — Track multi-employee contributions by production stage**
+- [x] **SO-24 — Track multi-employee contributions by production stage**
   - **Source classification:** Reserved implementation gap
   - **Priority basis:** Closes a common operational gap after the underlying records and authorities are stable.
   - **Baseline gap:** Current production timing does not fully attribute multiple employees’ contributions to the same stage.
   - **Required outcome:** Record each employee’s time contribution, assignment, role, correction history, and totals while preserving stage-level status.
   - **Done when:** Labor totals reconcile from individual contributions without double counting.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-production-timing` | Tests/Evidence: `backend/tests/test_shop_operations_production_timing.py`, `frontend/src/__tests__/ProductionTiming.test.jsx`, `backend/app/models/production_workflow.py`, `backend/app/services/production_stage_service.py`, `frontend/src/components/production/WorkOrderStagesPanel.jsx` | Residual limitations: contribution totals are operational labor evidence; payroll allocation remains excluded.
 
 ### P3 — Efficiency, automation, integration, or analytics
 
-- [ ] **SO-25 — Add planned-versus-actual labor and pricing feedback**
+- [x] **SO-25 — Add planned-versus-actual labor and pricing feedback**
   - **Source classification:** Reserved implementation gap
   - **Priority basis:** Improves efficiency, automation, integration, or analysis after core workflows are dependable.
   - **Baseline gap:** Planned labor, actual stage labor, and Pricing Foundation feedback are not connected as a complete analysis loop.
   - **Required outcome:** Compare estimated and actual time/cost by Order Item and stage, explain variance, and feed approved insights back to pricing analysis without automatically changing prices.
   - **Done when:** Managers can see variance and choose whether to update pricing defaults.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-production-timing` | Tests/Evidence: `backend/tests/test_shop_operations_production_timing.py`, `frontend/src/__tests__/ProductionTiming.test.jsx`, `backend/app/services/production_stage_service.py`, `backend/app/services/production_board_service.py`, `frontend/src/pages/ProductionBoardPage.jsx`, `frontend/src/components/production/WorkOrderStagesPanel.jsx` | Residual limitations: feedback remains manager-reviewed and evidence-backed; it does not automatically change prices.
 
 - [ ] **SO-26 — Add production bottleneck analytics**
   - **Source classification:** Reserved implementation gap

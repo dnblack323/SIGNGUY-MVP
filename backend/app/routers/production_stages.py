@@ -7,7 +7,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..core.permissions import Perm
-from ..deps import require_permission
+from ..deps import get_current_user, require_permission
 from ..services import production_stage_service as svc
 from ..services.production_stage_service import ProductionStageError
 
@@ -34,6 +34,21 @@ _ERROR_STATUS = {
     "assignment_blocked": 409,
     "assignment_warning_override_required": 409,
     "note_required": 400,
+    "stage_terminal": 400,
+    "stage_not_in_progress": 400,
+    "timer_employee_forbidden": 403,
+    "timer_stop_forbidden": 403,
+    "timer_control_forbidden": 403,
+    "timer_not_active": 404,
+    "timer_conflict": 409,
+    "timer_invalid_state": 400,
+    "timer_manager_required": 403,
+    "confirmation_required": 400,
+    "pricing_permission_required": 403,
+    "pricing_feedback_not_found": 404,
+    "pricing_feedback_invalid_state": 400,
+    "pricing_feedback_unmapped": 400,
+    "pricing_feedback_no_evidence": 400,
 }
 
 
@@ -65,6 +80,45 @@ class DueDateIn(BaseModel):
 
 class NoteIn(BaseModel):
     note: str = Field(min_length=1, max_length=2000)
+
+
+class TimerStartIn(BaseModel):
+    employee_id: Optional[str] = None
+    idempotency_key: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class TimerStopIn(BaseModel):
+    session_id: Optional[str] = None
+    notes: Optional[str] = None
+    interruption_reason: Optional[str] = None
+
+
+class TimerPauseIn(BaseModel):
+    session_id: Optional[str] = None
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class TimerResumeIn(BaseModel):
+    session_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class TimerCorrectIn(BaseModel):
+    session_id: str
+    corrected_elapsed_seconds: int = Field(ge=0)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class TimerVoidIn(BaseModel):
+    session_id: str
+    reason: str = Field(min_length=1, max_length=500)
+    confirm: bool = False
+
+
+class PricingFeedbackDecisionIn(BaseModel):
+    reason: Optional[str] = None
+    approved_value: Optional[float] = None
 
 
 @router.get("/orders/{order_id}/items/{item_id}/production-workflow-preview")
@@ -233,5 +287,111 @@ async def update_stage_due_date(stage_id: str, payload: DueDateIn, user: dict = 
 async def add_stage_note(stage_id: str, payload: NoteIn, user: dict = Depends(require_permission(Perm.WORK_ORDER_WRITE))) -> dict:
     try:
         return await svc.add_stage_note(tenant_id=user["tenant_id"], stage_id=stage_id, note=payload.note, user=user)
+    except ProductionStageError as ex:
+        _raise(ex)
+
+
+@router.post("/production-stages/{stage_id}/timer/start")
+async def start_stage_timer(stage_id: str, payload: TimerStartIn = Body(default_factory=TimerStartIn), user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.start_stage_timer(
+            tenant_id=user["tenant_id"], stage_id=stage_id, user=user,
+            employee_id=payload.employee_id, idempotency_key=payload.idempotency_key,
+            notes=payload.notes,
+        )
+    except ProductionStageError as ex:
+        _raise(ex)
+
+
+@router.post("/production-stages/{stage_id}/timer/stop")
+async def stop_stage_timer(stage_id: str, payload: TimerStopIn = Body(default_factory=TimerStopIn), user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.stop_stage_timer(
+            tenant_id=user["tenant_id"], stage_id=stage_id, user=user,
+            session_id=payload.session_id, notes=payload.notes,
+            interruption_reason=payload.interruption_reason,
+        )
+    except ProductionStageError as ex:
+        _raise(ex)
+
+
+@router.post("/production-stages/{stage_id}/timer/pause")
+async def pause_stage_timer(stage_id: str, payload: TimerPauseIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.pause_stage_timer(
+            tenant_id=user["tenant_id"], stage_id=stage_id, user=user,
+            session_id=payload.session_id, reason=payload.reason,
+        )
+    except ProductionStageError as ex:
+        _raise(ex)
+
+
+@router.post("/production-stages/{stage_id}/timer/resume")
+async def resume_stage_timer(stage_id: str, payload: TimerResumeIn = Body(default_factory=TimerResumeIn), user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.resume_stage_timer(
+            tenant_id=user["tenant_id"], stage_id=stage_id, user=user,
+            session_id=payload.session_id, notes=payload.notes,
+        )
+    except ProductionStageError as ex:
+        _raise(ex)
+
+
+@router.post("/production-stages/{stage_id}/timer/correct")
+async def correct_stage_timer(stage_id: str, payload: TimerCorrectIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.correct_stage_timer(
+            tenant_id=user["tenant_id"], stage_id=stage_id, user=user,
+            session_id=payload.session_id, corrected_elapsed_seconds=payload.corrected_elapsed_seconds,
+            reason=payload.reason,
+        )
+    except ProductionStageError as ex:
+        _raise(ex)
+
+
+@router.post("/production-stages/{stage_id}/timer/void")
+async def void_stage_timer(stage_id: str, payload: TimerVoidIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.void_stage_timer(
+            tenant_id=user["tenant_id"], stage_id=stage_id, user=user,
+            session_id=payload.session_id, reason=payload.reason, confirm=payload.confirm,
+        )
+    except ProductionStageError as ex:
+        _raise(ex)
+
+
+@router.post("/production-stages/{stage_id}/pricing-feedback")
+async def create_pricing_feedback(stage_id: str, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.create_pricing_feedback_from_stage(tenant_id=user["tenant_id"], stage_id=stage_id, user=user)
+    except ProductionStageError as ex:
+        _raise(ex)
+
+
+@router.get("/production/pricing-feedback")
+async def list_pricing_feedback(status: Optional[str] = None, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.list_pricing_feedback(tenant_id=user["tenant_id"], status=status, user=user)
+    except ProductionStageError as ex:
+        _raise(ex)
+
+
+@router.post("/production/pricing-feedback/{feedback_id}/approve")
+async def approve_pricing_feedback(feedback_id: str, payload: PricingFeedbackDecisionIn = Body(default_factory=PricingFeedbackDecisionIn), user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.approve_pricing_feedback(
+            tenant_id=user["tenant_id"], feedback_id=feedback_id, approved_value=payload.approved_value,
+            reason=payload.reason, user=user,
+        )
+    except ProductionStageError as ex:
+        _raise(ex)
+
+
+@router.post("/production/pricing-feedback/{feedback_id}/reject")
+async def reject_pricing_feedback(feedback_id: str, payload: PricingFeedbackDecisionIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.reject_pricing_feedback(
+            tenant_id=user["tenant_id"], feedback_id=feedback_id, reason=payload.reason or "", user=user,
+        )
     except ProductionStageError as ex:
         _raise(ex)

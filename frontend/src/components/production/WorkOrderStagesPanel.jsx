@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Clock3, Play, RotateCcw, UserPlus, Wrench } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Pause, Play, RotateCcw, UserPlus, Wrench } from "lucide-react";
 import api, { extractError } from "@/lib/api";
 import { useAuth } from "@/auth/AuthContext";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,21 @@ function stageNamesToPayload(names, workflow) {
   }).filter(Boolean);
 }
 
+function formatDuration(seconds) {
+  const total = Math.max(0, Number(seconds || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.round((total % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value).slice(0, 16);
+  return parsed.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 function useStageAction(workOrderId) {
   const qc = useQueryClient();
   return useMutation({
@@ -52,7 +67,7 @@ function useStageAction(workOrderId) {
   });
 }
 
-function StageRow({ stage, employees, canWrite, canManage, action }) {
+function StageRow({ stage, employees, canWrite, canManage, canReadPricing, action }) {
   const [employeeId, setEmployeeId] = useState(stage.assigned_employee_id || "");
   const [dueAt, setDueAt] = useState(stage.due_at || "");
   const [note, setNote] = useState("");
@@ -60,6 +75,10 @@ function StageRow({ stage, employees, canWrite, canManage, action }) {
   function reason(label) {
     return window.prompt(label) || "";
   }
+
+  const currentTimer = stage.current_timer || stage.active_timer || null;
+  const timerStatus = stage.timer_status || currentTimer?.status;
+  const completedEntries = (stage.timer_history || []).filter((entry) => ["completed", "voided"].includes(entry.status));
 
   return (
     <div className="rounded-md border p-3" data-testid={`production-stage-${stage.id}`}>
@@ -74,9 +93,36 @@ function StageRow({ stage, employees, canWrite, canManage, action }) {
           </div>
           {stage.description && <div className="mt-1 text-xs text-muted-foreground">{stage.description}</div>}
           {stage.blocker_reason && <div className="mt-1 text-xs text-rose-700">Blocked: {stage.blocker_reason}</div>}
+          {currentTimer && (
+            <div className={`mt-1 text-xs ${timerStatus === "paused" ? "text-amber-700" : "text-blue-700"}`} data-testid={`stage-active-timer-${stage.id}`}>
+              {timerStatus === "paused" ? "Paused" : "Timing"}: {currentTimer.employee_name || "Employee"} since {formatDateTime(currentTimer.started_at)}
+              {currentTimer.effective_elapsed_seconds ? <> / working {formatDuration(currentTimer.effective_elapsed_seconds)}</> : null}
+              {currentTimer.paused_duration_seconds ? <> / paused {formatDuration(currentTimer.paused_duration_seconds)}</> : null}
+            </div>
+          )}
+          {(stage.actual_duration_seconds || stage.timing_entry_count || stage.default_estimated_duration_minutes) && (
+            <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <span>Actual {formatDuration(stage.actual_duration_seconds)}</span>
+              {stage.default_estimated_duration_minutes ? <span>Planned {stage.default_estimated_duration_minutes}m</span> : null}
+              {stage.timing_entry_count ? <span>{stage.timing_entry_count} time entr{stage.timing_entry_count === 1 ? "y" : "ies"}</span> : null}
+            </div>
+          )}
           {stage.production_notes?.length > 0 && (
             <div className="mt-2 text-xs text-muted-foreground">
               Latest note: {stage.production_notes[stage.production_notes.length - 1]?.note}
+            </div>
+          )}
+          {completedEntries.length > 0 && (
+            <div className="mt-2 rounded-md border bg-muted/20 p-2 text-xs" data-testid={`stage-timer-history-${stage.id}`}>
+              <div className="font-medium text-foreground">Time history</div>
+              {completedEntries.slice(0, 3).map((entry) => (
+                <div key={entry.id} className="mt-1 text-muted-foreground">
+                  {entry.employee_name || "Employee"}: {entry.status === "voided" ? "voided" : formatDuration(entry.corrected_elapsed_seconds ?? entry.effective_elapsed_seconds ?? entry.elapsed_seconds)}
+                  {entry.corrected_elapsed_seconds != null ? " / corrected" : ""}
+                  {entry.paused_duration_seconds ? ` / paused ${formatDuration(entry.paused_duration_seconds)}` : ""}
+                  {entry.void_reason ? ` / ${entry.void_reason}` : ""}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -117,6 +163,50 @@ function StageRow({ stage, employees, canWrite, canManage, action }) {
           <Button size="sm" variant="outline" disabled={action.isPending || stage.status !== "not_started"} onClick={() => action.mutate({ stageId: stage.id, action: "start" })}>
             <Play className="size-3 mr-1" />Start
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={action.isPending || !!currentTimer || !["not_started", "in_progress"].includes(stage.status)}
+            onClick={() => action.mutate({ stageId: stage.id, action: "timer/start" })}
+          >
+            <Clock3 className="size-3 mr-1" />Check Out & Start
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={action.isPending || timerStatus !== "active"}
+            onClick={() => action.mutate({
+              stageId: stage.id,
+              action: "timer/pause",
+              payload: { session_id: currentTimer?.id || null, reason: reason("Pause reason") },
+            })}
+          >
+            <Pause className="size-3 mr-1" />Pause
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={action.isPending || timerStatus !== "paused"}
+            onClick={() => action.mutate({
+              stageId: stage.id,
+              action: "timer/resume",
+              payload: { session_id: currentTimer?.id || null },
+            })}
+          >
+            Resume Timer
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={action.isPending || !currentTimer}
+            onClick={() => action.mutate({
+              stageId: stage.id,
+              action: "timer/stop",
+              payload: { session_id: currentTimer?.id || null, notes: reason("Timer note") },
+            })}
+          >
+            Check In
+          </Button>
           <Button size="sm" variant="outline" disabled={action.isPending || stage.status !== "in_progress"} onClick={() => action.mutate({ stageId: stage.id, action: "wait" })}>
             <Clock3 className="size-3 mr-1" />Wait
           </Button>
@@ -137,6 +227,35 @@ function StageRow({ stage, employees, canWrite, canManage, action }) {
               <Button size="sm" variant="outline" disabled={action.isPending || !["completed", "skipped"].includes(stage.status)} onClick={() => action.mutate({ stageId: stage.id, action: "reopen", payload: { reason: reason("Reopen reason") } })}>
                 <RotateCcw className="size-3 mr-1" />Reopen
               </Button>
+              {completedEntries.length > 0 && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={action.isPending}
+                    onClick={() => {
+                      const seconds = Number(reason("Corrected working seconds"));
+                      const why = reason("Correction reason");
+                      action.mutate({ stageId: stage.id, action: "timer/correct", payload: { session_id: completedEntries[0].id, corrected_elapsed_seconds: seconds, reason: why } });
+                    }}
+                  >
+                    Correct Time
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={action.isPending}
+                    onClick={() => action.mutate({ stageId: stage.id, action: "timer/void", payload: { session_id: completedEntries[0].id, reason: reason("Void reason"), confirm: true } })}
+                  >
+                    Void Time
+                  </Button>
+                  {canManage && canReadPricing && (
+                    <Button size="sm" variant="outline" disabled={action.isPending} onClick={() => action.mutate({ stageId: stage.id, action: "pricing-feedback" })}>
+                      Pricing Feedback
+                    </Button>
+                  )}
+                </>
+              )}
             </>
           )}
         </div>
@@ -165,6 +284,7 @@ export default function WorkOrderStagesPanel({ workOrderId }) {
   const qc = useQueryClient();
   const { hasPerm, user } = useAuth();
   const canWrite = hasPerm("work_order:write");
+  const canReadPricing = hasPerm("pricing:read");
   const canManage = canWrite && ["owner", "admin", "production_manager"].includes(user?.role);
   const [selectedWorkflowByItem, setSelectedWorkflowByItem] = useState({});
   const [customStagesByItem, setCustomStagesByItem] = useState({});
@@ -314,6 +434,7 @@ export default function WorkOrderStagesPanel({ workOrderId }) {
                   employees={employeesQuery.data?.items || []}
                   canWrite={canWrite}
                   canManage={canManage}
+                  canReadPricing={canReadPricing}
                   action={action}
                 />
               ))}

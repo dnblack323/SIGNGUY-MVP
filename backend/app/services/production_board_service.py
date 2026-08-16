@@ -116,8 +116,14 @@ def _allowed_actions(row: dict, user: dict) -> list[str]:
         return actions
     status = row.get("current_stage_status") or "not_started"
     if status == "not_started":
-        actions.append("start")
+        actions.extend(["start", "timer_start"])
     elif status == "in_progress":
+        if row.get("timer_status") == "active":
+            actions.extend(["timer_pause", "timer_stop"])
+        elif row.get("timer_status") == "paused":
+            actions.extend(["timer_resume", "timer_stop"])
+        else:
+            actions.append("timer_start")
         actions.extend(["wait", "block", "complete"])
     elif status == "waiting":
         actions.extend(["resume", "block"])
@@ -132,6 +138,8 @@ def _allowed_actions(row: dict, user: dict) -> list[str]:
             actions.append("skip")
         if status in TERMINAL_STAGE_STATUSES:
             actions.append("reopen")
+        if row.get("timing_entry_count"):
+            actions.extend(["timer_correct", "timer_void", "pricing_feedback"])
     return actions
 
 
@@ -255,6 +263,8 @@ def _summary_counts(rows: list[dict]) -> dict[str, int]:
         "unassigned": sum(1 for r in rows if not r.get("assigned_employee_id") and r.get("current_stage_id")),
         "completed_recently": sum(1 for r in rows if r.get("completed_recently")),
         "manual_no_workflow": sum(1 for r in rows if r.get("current_stage_status") == "manual_no_workflow"),
+        "active_timers": sum(1 for r in rows if r.get("timer_status") == "active"),
+        "paused_timers": sum(1 for r in rows if r.get("timer_status") == "paused"),
     }
 
 
@@ -274,6 +284,7 @@ async def _build_rows(tenant_id: str, work_orders: list[dict], user: dict) -> li
     stages = [
         serialize_doc(s) async for s in db.production_stage_instances.find({"tenant_id": tenant_id, "work_order_id": {"$in": work_order_ids}}, {"_id": 0})
     ] if work_order_ids else []
+    timer_summaries = await stage_service._stage_timer_summary(tenant_id, [s["id"] for s in stages if s.get("id")])
     item_ids = list({i.get("order_item_id") for i in instances if i.get("order_item_id")})
     items = {
         item["id"]: serialize_doc(item) async for item in db.order_items.find({"tenant_id": tenant_id, "id": {"$in": item_ids}}, {"_id": 0})
@@ -299,7 +310,7 @@ async def _build_rows(tenant_id: str, work_orders: list[dict], user: dict) -> li
             rows.append(_safe_row(
                 work_order=wo, order=orders.get(wo.get("order_id"), {}), customer=customers.get(wo.get("customer_id"), {}),
                 item={}, instance={}, stage=None, all_stages=[], employee={}, user=user,
-                resolution_state="manual_no_workflow", proof_gate_state=None,
+                resolution_state="manual_no_workflow", proof_gate_state=None, timer_summary={},
             ))
             continue
         for instance in wo_instances:
@@ -311,6 +322,7 @@ async def _build_rows(tenant_id: str, work_orders: list[dict], user: dict) -> li
                 work_order=wo, order=orders.get(wo.get("order_id"), {}), customer=customers.get(wo.get("customer_id"), {}),
                 item=items.get(instance.get("order_item_id"), {}), instance=instance, stage=stage, all_stages=instance_stages,
                 employee=employee, user=user, resolution_state=state, proof_gate_state=proof_state,
+                timer_summary=timer_summaries.get((stage or {}).get("id"), {}),
             )
             due = _date_part(row.get("due_at"))
             row["overdue"] = bool(due and due < today and not row.get("workflow_complete"))
@@ -332,12 +344,24 @@ def _safe_row(
     user: dict,
     resolution_state: str,
     proof_gate_state: Optional[str],
+    timer_summary: dict[str, Any],
 ) -> dict:
     completed_count = sum(1 for s in all_stages if s.get("status") in TERMINAL_STAGE_STATUSES)
     total_count = len(all_stages)
     progress = round((completed_count / total_count) * 100) if total_count else 0
     status = (stage or {}).get("status") or ("manual_no_workflow" if not stage else "not_started")
     workflow_complete = bool(total_count and completed_count == total_count)
+    active_timer = timer_summary.get("active_timer")
+    current_timer = timer_summary.get("current_timer")
+    actual_duration_seconds = int(timer_summary.get("actual_duration_seconds") or (stage or {}).get("actual_duration_seconds") or 0)
+    planned_minutes = None
+    for definition in instance.get("stage_definitions") or []:
+        if definition.get("stage_key") == (stage or {}).get("stage_key"):
+            planned_minutes = definition.get("default_estimated_duration_minutes")
+            break
+    variance_seconds = None
+    if planned_minutes is not None and actual_duration_seconds:
+        variance_seconds = actual_duration_seconds - int(planned_minutes or 0) * 60
     row = {
         "id": f"{work_order['id']}:{instance.get('id')}" if instance.get("id") else work_order["id"],
         "work_order_id": work_order["id"],
@@ -365,6 +389,23 @@ def _safe_row(
         "blocker_reason": (stage or {}).get("blocker_reason"),
         "waiting_since": (stage or {}).get("waiting_since"),
         "started_at": (stage or {}).get("started_at"),
+        "active_timer": active_timer,
+        "current_timer": current_timer,
+        "timer_status": (current_timer or {}).get("status"),
+        "timer_paused_at": (current_timer or {}).get("paused_at"),
+        "active_timer_session_id": (current_timer or {}).get("id"),
+        "active_timer_employee_id": (current_timer or {}).get("employee_id"),
+        "active_timer_employee_name": (current_timer or {}).get("employee_name"),
+        "active_timer_started_at": (current_timer or {}).get("started_at"),
+        "active_timer_effective_elapsed_seconds": (current_timer or {}).get("effective_elapsed_seconds"),
+        "active_timer_paused_duration_seconds": (current_timer or {}).get("paused_duration_seconds"),
+        "timer_history": timer_summary.get("timer_history") or [],
+        "actual_duration_seconds": actual_duration_seconds,
+        "actual_duration_minutes": round(actual_duration_seconds / 60),
+        "timing_entry_count": int(timer_summary.get("timing_entry_count") or (stage or {}).get("timing_entry_count") or 0),
+        "planned_duration_minutes": planned_minutes,
+        "labor_variance_seconds": variance_seconds,
+        "labor_variance_minutes": round(variance_seconds / 60) if variance_seconds is not None else None,
         "completed_stage_count": completed_count,
         "total_stage_count": total_count,
         "progress_percent": progress,
@@ -469,6 +510,22 @@ def _portal_row(row: dict, *, employee_id: str) -> dict:
         "blocker_reason": row.get("blocker_reason"),
         "waiting_since": row.get("waiting_since"),
         "started_at": row.get("started_at"),
+        "active_timer": row.get("active_timer"),
+        "current_timer": row.get("current_timer"),
+        "timer_status": row.get("timer_status"),
+        "timer_paused_at": row.get("timer_paused_at"),
+        "active_timer_session_id": row.get("active_timer_session_id"),
+        "active_timer_employee_id": row.get("active_timer_employee_id"),
+        "active_timer_employee_name": row.get("active_timer_employee_name"),
+        "active_timer_started_at": row.get("active_timer_started_at"),
+        "active_timer_effective_elapsed_seconds": row.get("active_timer_effective_elapsed_seconds"),
+        "active_timer_paused_duration_seconds": row.get("active_timer_paused_duration_seconds"),
+        "actual_duration_seconds": row.get("actual_duration_seconds"),
+        "actual_duration_minutes": row.get("actual_duration_minutes"),
+        "timing_entry_count": row.get("timing_entry_count"),
+        "timer_history": row.get("timer_history"),
+        "planned_duration_minutes": row.get("planned_duration_minutes"),
+        "labor_variance_minutes": row.get("labor_variance_minutes"),
         "completed_stage_count": row.get("completed_stage_count"),
         "total_stage_count": row.get("total_stage_count"),
         "progress_percent": row.get("progress_percent"),
