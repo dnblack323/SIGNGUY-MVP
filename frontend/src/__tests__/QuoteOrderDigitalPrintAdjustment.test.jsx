@@ -1,6 +1,7 @@
 import React from "react";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test-utils";
 import QuoteDetailPage from "@/pages/QuoteDetailPage";
 import OrderDetailPage from "@/pages/OrderDetailPage";
@@ -34,7 +35,14 @@ jest.mock("@/components/production/ProductionTimeline", () => () => null);
 jest.mock("@/components/proofs/ProofsPanel", () => () => null);
 jest.mock("@/components/tasks/TaskHandoffButton", () => () => null);
 jest.mock("@/components/work-orders/GenerateWorkOrderDialog", () => {
-  const Mock = () => null;
+  const Mock = ({ open, useHandoff, readiness }) => (
+    open ? (
+      <div data-testid="generate-wo-dialog">
+        {useHandoff ? "Server readiness gate enabled" : "Direct work order generation"}
+        {readiness && !readiness.ready ? <div data-testid="gen-wo-readiness-override">Order is not ready for production.</div> : null}
+      </div>
+    ) : null
+  );
   return { __esModule: true, default: Mock, RegenerateDialog: Mock };
 });
 
@@ -83,6 +91,34 @@ beforeEach(() => {
           items: [digitalPrintLine],
           totals: totalsWithAdjustment,
           pricing_summary: {},
+          work_orders: [],
+          approvals: [{ id: "approval-1", action: "approve", status: "current", created_at: "2026-08-16T10:00:00+00:00" }],
+          decision_rooms: [{ id: "room-1", title: "Poster decision room", status: "closed", created_at: "2026-08-16T10:05:00+00:00" }],
+          proofs: [{ id: "proof-1", title: "Poster proof", status: "approved", created_at: "2026-08-16T10:10:00+00:00" }],
+          linked_assets: {
+            attachments: [{ id: "att-1", file_id: "file-1" }],
+            files: [{ id: "file-1", filename: "poster-artwork.pdf" }],
+            documents: [{ id: "doc-1", title: "Signed terms" }],
+          },
+          financial_summary: {
+            available: true,
+            restricted: false,
+            invoices: [{ id: "invoice-1", number: 301, title: "Poster invoice", status: "sent", document_status: "issued", financial_status: "partial", total_cents: 3800, amount_paid_cents: 1000, balance_due_cents: 2800 }],
+            payments: [],
+            total_invoiced_cents: 3800,
+            amount_paid_cents: 1000,
+            amount_refunded_cents: 0,
+            balance_due_cents: 2800,
+          },
+          readiness: {
+            ready: true,
+            status: "ready",
+            blockers: [],
+            warnings: [],
+            summary: { item_count: 1, production_required_count: 1, approval_count: 1, decision_room_count: 1, proof_count: 1, file_count: 1, document_count: 1 },
+            evaluated_at: "2026-08-16T10:15:00+00:00",
+          },
+          permissions: { financials_visible: true },
         },
       });
     }
@@ -148,6 +184,68 @@ test("Order detail links into Approval Center with preserved order context", asy
   expect(screen.getByTestId("order-approval-work-button")).toHaveAttribute("href", expect.stringContaining("/approval-center?new=1"));
   expect(screen.getByTestId("order-approval-work-button")).toHaveAttribute("href", expect.stringContaining("target_type=order"));
   expect(screen.getByTestId("order-approval-work-button")).toHaveAttribute("href", expect.stringContaining("target_id=order-1"));
+});
+
+test("Order detail shows readiness, finance, approval, and linked asset coverage", async () => {
+  const user = userEvent.setup();
+  renderWithProviders(<OrderDetailPage />, { route: "/orders/order-1", path: "/orders/:id" });
+
+  expect(await screen.findByTestId("order-detail-page")).toBeInTheDocument();
+  expect(screen.getAllByTestId("order-readiness-status")[0]).toHaveTextContent("Ready");
+  expect(screen.getAllByTestId("order-readiness-clear")[0]).toHaveTextContent("No production blockers");
+  await user.click(screen.getByTestId("detail-tab-financial"));
+  expect(await screen.findByTestId("order-financial-summary")).toHaveTextContent("Invoice and deposit status");
+  expect(screen.getByTestId("order-invoice-row-invoice-1")).toHaveTextContent("I-301");
+  await user.click(screen.getByTestId("detail-tab-files-artwork"));
+  expect(await screen.findByTestId("order-linked-assets")).toHaveTextContent("poster-artwork.pdf");
+  expect(screen.getByTestId("order-linked-assets")).toHaveTextContent("Signed terms");
+  await user.click(screen.getByTestId("detail-tab-documents-approvals"));
+  expect(await screen.findByTestId("order-approval-decision-summary")).toHaveTextContent("Poster decision room");
+  await user.click(screen.getByTestId("detail-tab-activity"));
+  expect((await screen.findAllByTestId("order-lifecycle-event")).length).toBeGreaterThan(0);
+});
+
+test("Order detail launches production handoff with readiness blockers preserved", async () => {
+  api.get.mockImplementation((url) => {
+    if (url === "/orders/order-1") {
+      return Promise.resolve({
+        data: {
+          order: { id: "order-1", number: 202, customer_id: "customer-1", job_name: "Poster order", status: "confirmed" },
+          items: [digitalPrintLine],
+          totals: totalsWithAdjustment,
+          pricing_summary: {},
+          work_orders: [],
+          approvals: [],
+          decision_rooms: [],
+          proofs: [],
+          linked_assets: { attachments: [], files: [], documents: [] },
+          financial_summary: { available: true, restricted: false, invoices: [], payments: [], total_invoiced_cents: 0, amount_paid_cents: 0, amount_refunded_cents: 0, balance_due_cents: 0 },
+          readiness: {
+            ready: false,
+            status: "not_ready",
+            blockers: [{ code: "missing_proof", label: "Proof approval is required but no active proof exists.", source: "proof", owner: "staff", required_action: "Create and send a proof for approval." }],
+            warnings: [],
+            summary: { item_count: 1, production_required_count: 1, approval_count: 0 },
+            evaluated_at: "2026-08-16T10:15:00+00:00",
+          },
+          permissions: { financials_visible: true },
+        },
+      });
+    }
+    if (url === "/customers/customer-1") return Promise.resolve({ data: { id: "customer-1", name: "Donnell Black" } });
+    if (url === "/audit") return Promise.resolve({ data: { items: [] } });
+    if (url === "/work-orders") return Promise.resolve({ data: { items: [] } });
+    return Promise.resolve({ data: {} });
+  });
+
+  renderWithProviders(<OrderDetailPage />, { route: "/orders/order-1", path: "/orders/:id" });
+
+  expect(await screen.findByTestId("order-detail-page")).toBeInTheDocument();
+  expect(screen.getAllByTestId("order-readiness-status")[0]).toHaveTextContent("Not ready");
+  expect(screen.getAllByTestId("order-readiness-blockers")[0]).toHaveTextContent("Proof approval is required");
+  fireEvent.click(screen.getAllByTestId("order-readiness-handoff-button")[0]);
+  expect(screen.getByTestId("generate-wo-dialog")).toHaveTextContent("Server readiness gate enabled");
+  expect(screen.getByTestId("gen-wo-readiness-override")).toHaveTextContent("Order is not ready for production");
 });
 
 test("Digital Print adjustment row is omitted when backend evidence is zero or absent", async () => {

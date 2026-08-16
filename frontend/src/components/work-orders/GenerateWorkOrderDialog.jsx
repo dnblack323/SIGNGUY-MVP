@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { toast } from "sonner";
 import { Wrench, Ban, AlertTriangle } from "lucide-react";
 
-export default function GenerateWorkOrderDialog({ orderId, open, onOpenChange, onCreated }) {
+export default function GenerateWorkOrderDialog({ orderId, open, onOpenChange, onCreated, useHandoff = false, readiness = null }) {
   const qc = useQueryClient();
   const { data: users } = useQuery({
     queryKey: ["users"],
@@ -24,24 +24,29 @@ export default function GenerateWorkOrderDialog({ orderId, open, onOpenChange, o
   const [instructions, setInstructions] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
   const [assigneeIds, setAssigneeIds] = useState([]);
+  const [overrideReason, setOverrideReason] = useState("");
 
   useEffect(() => {
     if (open) {
-      setPriority("normal"); setDueDate(""); setInstructions(""); setInternalNotes(""); setAssigneeIds([]);
+      setPriority("normal"); setDueDate(""); setInstructions(""); setInternalNotes(""); setAssigneeIds([]); setOverrideReason("");
     }
   }, [open]);
 
   const create = useMutation({
-    mutationFn: async () => (await api.post("/work-orders", {
+    mutationFn: async () => (await api.post(useHandoff ? `/orders/${orderId}/production-handoff` : "/work-orders", {
       order_id: orderId,
       priority,
       due_date: dueDate || null,
       production_instructions: instructions || null,
       internal_notes: internalNotes || null,
       assigned_user_ids: assigneeIds,
+      override_reason: overrideReason || null,
     })).data,
-    onSuccess: (wo) => {
-      if (wo.already_exists) {
+    onSuccess: (res) => {
+      const wo = res.work_order || res;
+      if (res.override_applied) {
+        toast.warning(`Readiness override recorded for W-${wo.number}`);
+      } else if (res.already_exists || wo.already_exists) {
         toast.info(`Work order W-${wo.number} already exists for this order`);
       } else {
         toast.success(`Work order W-${wo.number} generated`);
@@ -49,7 +54,7 @@ export default function GenerateWorkOrderDialog({ orderId, open, onOpenChange, o
       qc.invalidateQueries({ queryKey: ["prod-board"] });
       qc.invalidateQueries({ queryKey: ["work-orders"] });
       onOpenChange(false);
-      onCreated?.(wo);
+      onCreated?.({ ...wo, already_exists: res.already_exists || wo.already_exists });
     },
     onError: (e) => toast.error(extractError(e)),
   });
@@ -59,9 +64,23 @@ export default function GenerateWorkOrderDialog({ orderId, open, onOpenChange, o
       <DialogContent data-testid="generate-wo-dialog" className="max-w-lg">
         <DialogHeader>
           <DialogTitle><Wrench className="inline size-4 mr-1" />Generate Work Order</DialogTitle>
-          <DialogDescription>Snapshot production-required items into a new work order.</DialogDescription>
+          <DialogDescription>Snapshot production-required items into a new work order after the server readiness gate.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
+          {useHandoff && readiness && !readiness.ready && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm" data-testid="gen-wo-readiness-override">
+              <div className="font-medium text-amber-900">Order is not ready for production.</div>
+              <ul className="mt-2 list-disc pl-5 text-amber-900">
+                {(readiness.blockers || []).slice(0, 4).map((blocker) => (
+                  <li key={blocker.code}>{blocker.label}</li>
+                ))}
+              </ul>
+              <div className="grid gap-1.5 mt-3">
+                <Label>Override reason <span className="text-rose-600">*</span></Label>
+                <Textarea rows={2} value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} data-testid="gen-wo-override-reason" />
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label>Priority</Label>
@@ -95,7 +114,7 @@ export default function GenerateWorkOrderDialog({ orderId, open, onOpenChange, o
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="gen-wo-cancel">Cancel</Button>
-          <Button onClick={() => create.mutate()} disabled={create.isPending} data-testid="gen-wo-submit">
+          <Button onClick={() => create.mutate()} disabled={create.isPending || (useHandoff && readiness && !readiness.ready && !overrideReason.trim())} data-testid="gen-wo-submit">
             Generate
           </Button>
         </DialogFooter>
