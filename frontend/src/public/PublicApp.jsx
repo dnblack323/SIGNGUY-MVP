@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Route, Routes, useParams, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -217,6 +218,104 @@ function PublicQuote() {
   );
 }
 
+function PublicWrapInspection() {
+  const { inspectionId } = useParams();
+  const [sp] = useSearchParams();
+  const t = sp.get("t");
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
+  const [form, setForm] = useState({ signer_name: "", signer_email: "", signature_data: "" });
+  const [done, setDone] = useState(null);
+
+  function load() {
+    if (!t) { setErr("Missing access link token."); return; }
+    axios.get(`${API}/public/wrap-inspections/${inspectionId}`, { params: { t } })
+      .then((r) => setData(r.data))
+      .catch((e) => setErr(e?.response?.data?.detail || "This inspection review is not available."));
+  }
+
+  useEffect(() => { load(); }, [inspectionId, t]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function submit() {
+    try {
+      const r = await axios.post(`${API}/public/wrap-inspections/${inspectionId}/signature`, form, { params: { t } });
+      setDone(r.data);
+      toast.success("Inspection acknowledged");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Something went wrong");
+    }
+  }
+
+  if (err) return <div className="min-h-screen bg-slate-50 grid place-items-center p-6"><div className="text-rose-700 text-sm max-w-md text-center" data-testid="public-wrap-inspection-error">{err}</div></div>;
+  if (!data) return <div className="min-h-screen bg-slate-50 grid place-items-center p-6 text-sm text-slate-500" data-testid="public-wrap-inspection-loading">Loading...</div>;
+  if (done) return (
+    <div className="min-h-screen bg-slate-50 grid place-items-center p-6" data-testid="public-wrap-inspection-done">
+      <Card className="max-w-lg w-full"><CardHeader><CardTitle>Thank you</CardTitle></CardHeader><CardContent>Your inspection acknowledgment has been recorded.</CardContent></Card>
+    </div>
+  );
+
+  const project = data.project || {};
+  const vehicle = data.vehicle || {};
+  const inspection = data.inspection || {};
+  const token = data.token || {};
+  const completed = token.status === "completed" || inspection.status === "signed" || inspection.status === "completed";
+  const actionable = !completed && ["active", "viewed"].includes(token.status);
+
+  return (
+    <div className="min-h-screen bg-slate-50 py-8 px-4" data-testid="public-wrap-inspection-page">
+      <div className="max-w-3xl mx-auto space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Wrap inspection review</CardTitle>
+            <div className="text-sm text-slate-600">{project.project_name} · Version {inspection.version}</div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline">{inspection.status}</Badge>
+              <Badge variant="outline">{token.status}</Badge>
+            </div>
+            <div className="grid gap-2 rounded-md border p-3 text-sm md:grid-cols-2">
+              <div><span className="text-slate-500">Vehicle:</span> {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") || "Vehicle"}</div>
+              <div><span className="text-slate-500">Coverage:</span> {project.coverage_summary || project.project_type || "Wrap project"}</div>
+              <div><span className="text-slate-500">Inspection:</span> {String(inspection.inspection_type || "").replace(/_/g, " ")}</div>
+              <div><span className="text-slate-500">Expires:</span> {token.expires_at ? String(token.expires_at).slice(0, 16) : "No date"}</div>
+            </div>
+            <div className="rounded-md border divide-y" data-testid="public-wrap-inspection-damage">
+              {(inspection.damage_items || []).map((item, idx) => (
+                <div key={`${item.panel || "panel"}-${idx}`} className="p-3 text-sm">
+                  <div className="font-medium">{item.panel || "Vehicle area"} · {item.type || "condition"}</div>
+                  <div className="text-xs text-slate-500">{item.severity || "not rated"}{item.notes ? ` · ${item.notes}` : ""}</div>
+                </div>
+              ))}
+              {(!inspection.damage_items || inspection.damage_items.length === 0) && <div className="p-3 text-sm text-slate-500">No damage items were recorded for this inspection version.</div>}
+            </div>
+            <div className="text-xs text-slate-500">This page is pinned to the issued inspection version. Later addenda require a new link.</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Acknowledgment</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {completed && <div className="text-sm text-slate-600" data-testid="public-wrap-inspection-completed">This inspection version has already been signed.</div>}
+            <div className="grid gap-1.5">
+              <Label>Your name</Label>
+              <Input value={form.signer_name} onChange={(event) => setForm({ ...form, signer_name: event.target.value })} data-testid="public-wrap-inspection-name" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Email</Label>
+              <Input type="email" value={form.signer_email} onChange={(event) => setForm({ ...form, signer_email: event.target.value })} data-testid="public-wrap-inspection-email" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Typed signature</Label>
+              <Input value={form.signature_data} onChange={(event) => setForm({ ...form, signature_data: event.target.value })} data-testid="public-wrap-inspection-signature" />
+            </div>
+            <Button type="button" onClick={submit} disabled={!actionable || !form.signer_name.trim() || !form.signature_data.trim()} data-testid="public-wrap-inspection-submit">Sign inspection</Button>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 /**
  * EC10 Phase 10E-1/10E-2/10E-3 — Public Token access to a published
  * Decision Room, including customer decision submission (select/reject/
@@ -341,6 +440,7 @@ export default function PublicApp() {
     <Routes>
       <Route path="proofs/:pid" element={<ProofAction />} />
       <Route path="quotes/:qid" element={<PublicQuote />} />
+      <Route path="wrap-inspections/:inspectionId" element={<PublicWrapInspection />} />
       <Route path="quote-request" element={<QuoteRequest />} />
       <Route path="decision-rooms/:rid" element={<PublicDecisionRoom />} />
       <Route path="webstores/:slug" element={<PublicWebstorePage />} />

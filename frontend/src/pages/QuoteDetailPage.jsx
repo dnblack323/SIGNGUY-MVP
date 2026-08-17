@@ -23,7 +23,7 @@ import { buildShopScheduleUrl } from "@/lib/shopScheduleLinks";
 import {
   ArrowLeft, ArrowRightCircle, CalendarDays, Save, Mail, Plus, Pencil, Trash2,
   AlertTriangle, ClipboardCheck, Copy, Download, ExternalLink, Eye, FileText,
-  Link2, RotateCw, ShieldOff, TimerOff,
+  Link2, RotateCw, ShieldOff, TimerOff, Truck,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import ComposeEmailDialog from "@/components/email/ComposeEmailDialog";
@@ -45,6 +45,11 @@ function tokenStatus(token) {
   if (token.consumed_at) return "used";
   if (token.expires_at && new Date(token.expires_at).getTime() < Date.now()) return "expired";
   return "active";
+}
+
+function isWrapLineItem(item) {
+  return [item?.category, item?.product_type, item?.description, item?.item_name, item?.material_key].join(" ").toLowerCase().includes("wrap")
+    || item?.category === "vehicle_graphics";
 }
 
 function buildPublicQuoteUrl(quoteId, token) {
@@ -591,6 +596,7 @@ export default function QuoteDetailPage() {
   });
   const q = qResp?.quote || qResp;
   const lineItems = qResp?.line_items || [];
+  const wrapLineItem = lineItems.find(isWrapLineItem);
   const totals = qResp?.totals || {};
   const pricingSummary = qResp?.pricing_summary || {};
   const { data: audit } = useQuery({ queryKey: ["audit-quote", id], queryFn: async () => (await api.get(`/audit`, { params: { entity_type: "quote", entity_id: id } })).data, enabled: !!id });
@@ -710,6 +716,13 @@ export default function QuoteDetailPage() {
                     title: `${q.job_name} appointment`,
                   })}>
                     <CalendarDays className="size-4 mr-1" />Schedule
+                  </Link>
+                </Button>
+              )}
+              {hasPerm("wrap_lab:read") && (
+                <Button asChild variant="outline" size="sm" data-testid="quote-open-wrap-lab-button">
+                  <Link to={`/wrap-lab?quote_id=${q.id}${q.customer_id ? `&customer_id=${q.customer_id}` : ""}${wrapLineItem?.id ? `&quote_line_item_id=${wrapLineItem.id}` : ""}`}>
+                    <Truck className="size-4 mr-1" />Wrap Lab
                   </Link>
                 </Button>
               )}

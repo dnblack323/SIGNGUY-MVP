@@ -29,7 +29,7 @@ WrapProjectStatus = Literal[
     "archived",
 ]
 WrapVehicleType = Literal["sedan", "suv", "pickup", "van", "box_truck", "sprinter_van", "trailer", "semi_truck", "race_car", "other"]
-CoverageLevel = Literal["spot_graphics", "partial_wrap", "half_wrap", "full_wrap", "custom"]
+CoverageLevel = Literal["spot_graphics", "partial_wrap", "half_wrap", "full_wrap", "lettering", "color_change", "removal", "custom"]
 CoveragePanelStatus = Literal["not_started", "measured", "designed", "printed", "prepped", "wrapped", "quality_checked", "skipped"]
 InspectionType = Literal["pre_install", "completion"]
 InspectionStatus = Literal["draft", "ready_for_signature", "signed", "completed", "superseded"]
@@ -42,6 +42,7 @@ PacketStatus = Literal["generated", "sent", "signed", "superseded"]
 ScheduleType = Literal["production", "install", "pickup"]
 ScheduleStatus = Literal["scheduled", "in_progress", "completed", "canceled"]
 WarrantyStatus = Literal["draft", "active", "expired", "voided"]
+InstallationStatus = Literal["planned", "in_progress", "blocked", "completed", "rework_required", "canceled"]
 
 
 class WrapVehicle(BaseDoc):
@@ -51,12 +52,24 @@ class WrapVehicle(BaseDoc):
     make: str
     model: str
     trim: Optional[str] = None
+    body_style: Optional[str] = None
     vin: Optional[str] = None
     license_plate: Optional[str] = None
     color: Optional[str] = None
+    unit_number: Optional[str] = None
+    odometer: Optional[int] = Field(default=None, ge=0)
     vehicle_type: WrapVehicleType = "other"
     template_key: Optional[str] = None
     dimensions: dict[str, Any] = Field(default_factory=dict)
+    measured_wrap_areas: list[dict[str, Any]] = Field(default_factory=list)
+    requested_coverage: Optional[str] = None
+    existing_graphics: Optional[str] = None
+    removal_requirements: Optional[str] = None
+    installation_location: Optional[str] = None
+    target_install_at: Optional[str] = None
+    target_delivery_at: Optional[str] = None
+    customer_instructions: Optional[str] = None
+    internal_notes: Optional[str] = None
     photo_file_ids: list[str] = Field(default_factory=list)
     notes: Optional[str] = None
 
@@ -68,7 +81,9 @@ class WrapProject(BaseDoc):
     intake_id: Optional[str] = None
     quote_id: Optional[str] = None
     order_id: Optional[str] = None
+    order_item_id: Optional[str] = None
     work_order_id: Optional[str] = None
+    work_order_summary_id: Optional[str] = None
     commercial_feature_key: str = "wrap_lab"
     project_name: str
     project_type: CoverageLevel = "custom"
@@ -80,6 +95,14 @@ class WrapProject(BaseDoc):
     labor_estimate_cents: StrictInt = Field(default=0, ge=0)
     assigned_user_ids: list[str] = Field(default_factory=list)
     due_at: Optional[str] = None
+    specifications: dict[str, Any] = Field(default_factory=dict)
+    approval_revision: StrictInt = Field(default=1, ge=1)
+    approval_fingerprint: Optional[str] = None
+    approval_revision_changed_at: Optional[str] = None
+    approval_revision_changed_reason: Optional[str] = None
+    approval_sensitive_change_log: list[dict[str, Any]] = Field(default_factory=list)
+    readiness_overrides: list[dict[str, Any]] = Field(default_factory=list)
+    production_handoff: dict[str, Any] = Field(default_factory=dict)
     completed_at: Optional[str] = None
     archived_at: Optional[str] = None
     notes: Optional[str] = None
@@ -100,9 +123,13 @@ class WrapInspection(BaseDoc):
     tenant_id: str
     project_id: str
     inspection_type: InspectionType
+    version: StrictInt = Field(default=1, ge=1)
+    previous_inspection_id: Optional[str] = None
     status: InspectionStatus = "draft"
     inspector_user_id: Optional[str] = None
+    required_views: list[str] = Field(default_factory=list)
     damage_items: list[dict[str, Any]] = Field(default_factory=list)
+    surface_conditions: list[dict[str, Any]] = Field(default_factory=list)
     acknowledgements: list[dict[str, Any]] = Field(default_factory=list)
     diagram_marks: list[dict[str, Any]] = Field(default_factory=list)
     before_photo_file_ids: list[str] = Field(default_factory=list)
@@ -110,6 +137,8 @@ class WrapInspection(BaseDoc):
     signature_request_id: Optional[str] = None
     signature_id: Optional[str] = None
     signed_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    locked_at: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -181,6 +210,24 @@ class WrapWarranty(BaseDoc):
     care_instructions: list[str] = Field(default_factory=list)
     issue_refs: list[dict[str, Any]] = Field(default_factory=list)
     warranty_value_cents: StrictInt = Field(default=0, ge=0)
+    notes: Optional[str] = None
+
+
+class WrapInstallationRecord(BaseDoc):
+    tenant_id: str
+    project_id: str
+    status: InstallationStatus = "planned"
+    installer_user_ids: list[str] = Field(default_factory=list)
+    crew_names: list[str] = Field(default_factory=list)
+    actual_start_at: Optional[str] = None
+    actual_end_at: Optional[str] = None
+    location: Optional[str] = None
+    preparation_checklist: list[dict[str, Any]] = Field(default_factory=list)
+    installation_checklist: list[dict[str, Any]] = Field(default_factory=list)
+    issues: list[dict[str, Any]] = Field(default_factory=list)
+    completion_photo_file_ids: list[str] = Field(default_factory=list)
+    quality_notes: Optional[str] = None
+    customer_acknowledgement: dict[str, Any] = Field(default_factory=dict)
     notes: Optional[str] = None
 
 

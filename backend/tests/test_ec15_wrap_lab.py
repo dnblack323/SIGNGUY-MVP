@@ -30,6 +30,11 @@ async def _token_client(token: str) -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"Authorization": f"Bearer {token}"})
 
 
+async def _public_client() -> AsyncClient:
+    app.dependency_overrides.pop(get_current_user, None)
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
 @pytest_asyncio.fixture
 async def ctx():
     suffix = uuid.uuid4().hex[:8]
@@ -89,6 +94,35 @@ async def _create_project(client: AsyncClient, customer_id: str, suffix: str) ->
     )
     assert project_resp.status_code == 201, project_resp.text
     return {"vehicle": vehicle, "project": project_resp.json()}
+
+
+async def _seed_wrap_order(ctx: dict) -> dict:
+    order = {
+        "id": f"order-{ctx['suffix']}",
+        "tenant_id": ctx["tenant_id"],
+        "number": 8100,
+        "customer_id": ctx["customer"]["id"],
+        "job_name": "Fleet wrap order",
+        "status": "confirmed",
+        "created_by": ctx["owner"]["id"],
+        "total_cents": 0,
+    }
+    item = {
+        "id": f"item-wrap-{ctx['suffix']}",
+        "tenant_id": ctx["tenant_id"],
+        "order_id": order["id"],
+        "position": 1,
+        "description": "Full vehicle wrap",
+        "category": "vehicle_graphics",
+        "product_type": "full_wrap",
+        "quantity": 1,
+        "unit_price_cents": 0,
+        "line_total_cents": 0,
+        "production_required": True,
+    }
+    await db.orders.insert_one(order)
+    await db.order_items.insert_one(item)
+    return {"order": order, "item": item}
 
 
 @pytest.mark.asyncio
@@ -236,3 +270,254 @@ async def test_wrap_lab_lifecycle_packets_vector_and_boundaries(ctx):
     assert await db.feature_entitlements.count_documents({"tenant_id": ctx["tenant_id"]}) == before_entitlements
     assert await db.webstore_buyer_orders.count_documents({"tenant_id": ctx["tenant_id"]}) == before_webstore_orders
     assert await db.calendar_events.count_documents({"tenant_id": ctx["tenant_id"]}) == before_calendar
+
+
+@pytest.mark.asyncio
+async def test_wrap_lab_targets_duplicates_signature_lock_and_handoff(ctx):
+    seeded = await _seed_wrap_order(ctx)
+    async with await _client_as(ctx["owner"]) as owner_client:
+        targets = await owner_client.get("/api/wrap-lab/targets", params={"search": "vehicle wrap", "target_type": "order_item"})
+        assert targets.status_code == 200, targets.text
+        assert targets.json()["items"][0]["id"] == seeded["item"]["id"]
+
+        vehicle = await owner_client.post(
+            "/api/wrap-lab/vehicles",
+            json={
+                "customer_id": ctx["customer"]["id"],
+                "make": "Mercedes",
+                "model": "Sprinter",
+                "body_style": "High roof cargo",
+                "unit_number": "Fleet 42",
+                "requested_coverage": "Full wrap with rear door spot graphics",
+            },
+        )
+        assert vehicle.status_code == 201, vehicle.text
+        project_payload = {
+            "customer_id": ctx["customer"]["id"],
+            "vehicle_id": vehicle.json()["id"],
+            "order_id": seeded["order"]["id"],
+            "order_item_id": seeded["item"]["id"],
+            "project_name": "Sprinter wrap",
+            "project_type": "full_wrap",
+            "specifications": {"material": "cast wrap film", "laminate": "gloss", "panels_included": ["driver side", "passenger side"]},
+        }
+        project_resp = await owner_client.post("/api/wrap-lab/projects", json=project_payload)
+        assert project_resp.status_code == 201, project_resp.text
+        project = project_resp.json()
+        duplicate = await owner_client.post("/api/wrap-lab/projects", json={**project_payload, "project_name": "Duplicate"})
+        assert duplicate.status_code == 409
+        assert duplicate.json()["detail"] == "A Wrap Project already exists for this commercial item: Sprinter wrap"
+
+        inspection = await owner_client.post(
+            f"/api/wrap-lab/projects/{project['id']}/inspections",
+            json={
+                "inspection_type": "pre_install",
+                "required_views": ["front", "left", "right", "rear"],
+                "damage_items": [{"panel": "left rear", "type": "dent", "severity": "moderate", "notes": "Before install"}],
+            },
+        )
+        assert inspection.status_code == 201, inspection.text
+        ack = await owner_client.post(
+            f"/api/wrap-lab/inspections/{inspection.json()['id']}/acknowledgement",
+            json={"signer_name": "Wrap Customer", "signer_email": ctx["customer"]["email"], "signature_data": "Wrap Customer"},
+        )
+        assert ack.status_code == 200, ack.text
+        signed = ack.json()["inspection"]
+        assert signed["status"] == "signed"
+        assert signed["locked_at"]
+
+        locked = await owner_client.patch(f"/api/wrap-lab/inspections/{inspection.json()['id']}", json={"notes": "Mutate signed record"})
+        assert locked.status_code == 409
+        addendum = await owner_client.patch(
+            f"/api/wrap-lab/inspections/{inspection.json()['id']}",
+            json={"create_addendum": True, "notes": "Customer noted extra scratch", "damage_items": [{"panel": "hood", "type": "scratch", "severity": "minor"}]},
+        )
+        assert addendum.status_code == 200, addendum.text
+        assert addendum.json()["previous_inspection_id"] == inspection.json()["id"]
+        assert addendum.json()["version"] == 2
+
+        panel_plan = await owner_client.post(
+            f"/api/wrap-lab/projects/{project['id']}/panel-plans",
+            json={"status": "ready_for_production", "panels": [{"name": "Driver side", "width_inches": 180, "height_inches": 70}]},
+        )
+        assert panel_plan.status_code == 201, panel_plan.text
+        handoff = await owner_client.post(f"/api/wrap-lab/projects/{project['id']}/production-handoff", json={"override_reason": "Proof will be attached to generated Work Order before production starts"})
+        assert handoff.status_code == 201, handoff.text
+        body = handoff.json()
+        assert body["work_order"]["order_id"] == seeded["order"]["id"]
+        assert body["project"]["work_order_id"] == body["work_order"]["id"]
+        assert "Wrap Project: Sprinter wrap" in body["work_order"]["production_instructions"]
+
+    other_order = {"id": f"other-order-{ctx['suffix']}", "tenant_id": ctx["other_tenant_id"], "number": 1, "customer_id": ctx["other_customer"]["id"], "job_name": "Other", "created_by": ctx["other_owner"]["id"]}
+    await db.orders.insert_one(other_order)
+    async with await _client_as(ctx["owner"]) as owner_client:
+        cross_tenant = await owner_client.patch(f"/api/wrap-lab/projects/{project['id']}", json={"order_id": other_order["id"]})
+        assert cross_tenant.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_wrap_inspection_public_link_lifecycle_signature_and_version_pinning(ctx):
+    async with await _client_as(ctx["owner"]) as owner_client:
+        built = await _create_project(owner_client, ctx["customer"]["id"], ctx["suffix"])
+        project = built["project"]
+        inspection = await owner_client.post(
+            f"/api/wrap-lab/projects/{project['id']}/inspections",
+            json={
+                "inspection_type": "pre_install",
+                "status": "ready_for_signature",
+                "required_views": ["front"],
+                "damage_items": [{"panel": "front bumper", "type": "scratch", "severity": "minor", "notes": "pre-existing"}],
+            },
+        )
+        assert inspection.status_code == 201, inspection.text
+        inspection_id = inspection.json()["id"]
+        link = await owner_client.post(
+            f"/api/wrap-lab/inspections/{inspection_id}/review-links",
+            json={"audience_email": ctx["customer"]["email"], "ttl_hours": 24},
+        )
+        assert link.status_code == 201, link.text
+        body = link.json()
+        assert body["delivery_status"] == "manual_link_ready"
+        assert body["record"]["parent_version"] == 1
+        assert "token_hash" not in body["record"]
+        raw = body["token"]
+
+    async with await _public_client() as public:
+        preview = await public.get(f"/api/public/wrap-inspections/{inspection_id}", params={"t": raw})
+        assert preview.status_code == 200, preview.text
+        payload = preview.json()
+        assert payload["inspection"]["version"] == 1
+        assert payload["inspection"]["damage_items"][0]["panel"] == "front bumper"
+        assert "vin" not in payload["vehicle"]
+        assert payload["token"]["status"] == "viewed"
+
+        signed = await public.post(
+            f"/api/public/wrap-inspections/{inspection_id}/signature",
+            params={"t": raw},
+            json={"signer_name": "Wrap Customer", "signer_email": ctx["customer"]["email"], "signature_data": "Wrap Customer"},
+        )
+        assert signed.status_code == 201, signed.text
+        assert signed.json()["inspection"]["status"] == "signed"
+        again = await public.post(
+            f"/api/public/wrap-inspections/{inspection_id}/signature",
+            params={"t": raw},
+            json={"signer_name": "Wrap Customer", "signer_email": ctx["customer"]["email"], "signature_data": "Wrap Customer"},
+        )
+        assert again.status_code == 409
+        completed_view = await public.get(f"/api/public/wrap-inspections/{inspection_id}", params={"t": raw})
+        assert completed_view.status_code == 200
+        assert completed_view.json()["token"]["status"] == "completed"
+
+    async with await _client_as(ctx["owner"]) as owner_client:
+        revision_two = await owner_client.patch(
+            f"/api/wrap-lab/inspections/{inspection_id}",
+            json={"create_addendum": True, "damage_items": [{"panel": "hood", "type": "dent", "severity": "minor"}]},
+        )
+        assert revision_two.status_code == 200, revision_two.text
+        assert revision_two.json()["version"] == 2
+
+        unsigned = await owner_client.post(
+            f"/api/wrap-lab/projects/{project['id']}/inspections",
+            json={"inspection_type": "completion", "status": "ready_for_signature"},
+        )
+        assert unsigned.status_code == 201, unsigned.text
+        unsigned_id = unsigned.json()["id"]
+        revoke_link = await owner_client.post(f"/api/wrap-lab/inspections/{unsigned_id}/review-links", json={"ttl_hours": 24})
+        assert revoke_link.status_code == 201, revoke_link.text
+        revoke_token = revoke_link.json()["token"]
+        revoke_id = revoke_link.json()["record"]["id"]
+        revoked = await owner_client.delete(f"/api/wrap-lab/inspection-review-links/{revoke_id}")
+        assert revoked.status_code == 204, revoked.text
+
+        expire_link = await owner_client.post(f"/api/wrap-lab/inspections/{unsigned_id}/review-links", json={"ttl_hours": 24})
+        assert expire_link.status_code == 201, expire_link.text
+        expire_token = expire_link.json()["token"]
+        expire_id = expire_link.json()["record"]["id"]
+        expired = await owner_client.post(f"/api/wrap-lab/inspection-review-links/{expire_id}/expire")
+        assert expired.status_code == 204, expired.text
+
+    async with await _public_client() as public:
+        revoked_view = await public.get(f"/api/public/wrap-inspections/{unsigned_id}", params={"t": revoke_token})
+        assert revoked_view.status_code == 410
+        assert "revoked" in revoked_view.json()["detail"]
+        expired_view = await public.get(f"/api/public/wrap-inspections/{unsigned_id}", params={"t": expire_token})
+        assert expired_view.status_code == 410
+        assert "expired" in expired_view.json()["detail"]
+
+    other_inspection = await db.wrap_inspections.find_one({"tenant_id": ctx["other_tenant_id"]}, {"_id": 0})
+    assert other_inspection is None
+
+
+@pytest.mark.asyncio
+async def test_wrap_approval_revision_invalidates_stale_evidence_and_blocks_handoff(ctx):
+    seeded = await _seed_wrap_order(ctx)
+    async with await _client_as(ctx["owner"]) as owner_client:
+        vehicle = await owner_client.post("/api/wrap-lab/vehicles", json={"customer_id": ctx["customer"]["id"], "make": "Ford", "model": "Transit"})
+        assert vehicle.status_code == 201, vehicle.text
+        project_resp = await owner_client.post(
+            "/api/wrap-lab/projects",
+            json={
+                "customer_id": ctx["customer"]["id"],
+                "vehicle_id": vehicle.json()["id"],
+                "order_id": seeded["order"]["id"],
+                "order_item_id": seeded["item"]["id"],
+                "project_name": "Revision-sensitive wrap",
+                "project_type": "partial_wrap",
+                "coverage_summary": "Partial sides",
+                "specifications": {"material": "cast wrap film", "laminate": "gloss"},
+            },
+        )
+        assert project_resp.status_code == 201, project_resp.text
+        project = project_resp.json()
+
+        inspection = await owner_client.post(
+            f"/api/wrap-lab/projects/{project['id']}/inspections",
+            json={"inspection_type": "pre_install", "status": "ready_for_signature"},
+        )
+        assert inspection.status_code == 201, inspection.text
+        ack = await owner_client.post(
+            f"/api/wrap-lab/inspections/{inspection.json()['id']}/acknowledgement",
+            json={"signer_name": "Wrap Customer", "signer_email": ctx["customer"]["email"], "signature_data": "Wrap Customer"},
+        )
+        assert ack.status_code == 200, ack.text
+        panel_plan = await owner_client.post(
+            f"/api/wrap-lab/projects/{project['id']}/panel-plans",
+            json={"status": "ready_for_production", "panels": [{"name": "Driver side", "width_inches": 180, "height_inches": 70}]},
+        )
+        assert panel_plan.status_code == 201, panel_plan.text
+        current = await owner_client.get(f"/api/wrap-lab/projects/{project['id']}")
+        assert current.status_code == 200, current.text
+        revision = current.json()["project"]["approval_revision"]
+        approval = {
+            "id": f"approval-wrap-{ctx['suffix']}",
+            "tenant_id": ctx["tenant_id"],
+            "parent_type": "order_item",
+            "parent_id": seeded["item"]["id"],
+            "parent_version": 1,
+            "action": "approve",
+            "actor_type": "staff",
+            "actor_ref": ctx["owner"]["id"],
+            "actor_display": ctx["owner"]["email"],
+            "snapshot": {"customer_id": ctx["customer"]["id"], "order_id": seeded["order"]["id"], "order_item_id": seeded["item"]["id"], "wrap_project_id": project["id"], "wrap_project_revision": revision},
+            "status": "current",
+        }
+        await db.approvals.insert_one(approval)
+        ready = await owner_client.get(f"/api/wrap-lab/projects/{project['id']}")
+        assert ready.status_code == 200, ready.text
+        assert ready.json()["readiness"]["ready"] is True
+
+        changed = await owner_client.patch(
+            f"/api/wrap-lab/projects/{project['id']}",
+            json={"specifications": {"material": "cast wrap film", "laminate": "matte"}},
+        )
+        assert changed.status_code == 200, changed.text
+        assert changed.json()["approval_revision"] == revision + 1
+        stale_approval = await db.approvals.find_one({"tenant_id": ctx["tenant_id"], "id": approval["id"]}, {"_id": 0})
+        assert stale_approval["status"] == "superseded"
+        stale_detail = await owner_client.get(f"/api/wrap-lab/projects/{project['id']}")
+        assert stale_detail.status_code == 200, stale_detail.text
+        blockers = stale_detail.json()["readiness"]["blockers"]
+        assert any(blocker["code"] == "approval_evidence_stale" for blocker in blockers)
+        handoff = await owner_client.post(f"/api/wrap-lab/projects/{project['id']}/production-handoff", json={"override_reason": "manager override"})
+        assert handoff.status_code == 409
+        assert handoff.json()["detail"] == "Wrap approval evidence is stale; create a current approval before production handoff."
