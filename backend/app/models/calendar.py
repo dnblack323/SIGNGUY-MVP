@@ -34,10 +34,16 @@ class CalendarEvent(BaseDoc):
     location: Optional[str] = None
     status: CalendarEventStatus = "scheduled"
     customer_id: Optional[str] = None
+    contact_id: Optional[str] = None
+    quote_id: Optional[str] = None
     order_id: Optional[str] = None
     order_item_id: Optional[str] = None
     work_order_id: Optional[str] = None
     production_stage_id: Optional[str] = None
+    wrap_project_id: Optional[str] = None
+    vehicle_inspection_id: Optional[str] = None
+    installation_id: Optional[str] = None
+    task_id: Optional[str] = None
     employee_id: Optional[str] = None
     assigned_employee_ids: list[str] = Field(default_factory=list)
     reserved_equipment_ids: list[str] = Field(default_factory=list)

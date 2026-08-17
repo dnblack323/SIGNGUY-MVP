@@ -52,7 +52,19 @@ const feedItems = [
       vehicles: [{ id: "vehicle-1", name: "Install Van" }],
       resources: [{ id: "resource-1", name: "Install Bay 1" }],
     },
-    allowed_actions: ["update", "cancel"],
+    allowed_actions: ["update", "cancel", "complete"],
+  },
+  {
+    id: "calendar_event:event-3",
+    source_type: "calendar_event",
+    source_id: "event-3",
+    event_type: "vehicle_pickup",
+    title: "Pickup completed",
+    display_title: "Pickup completed",
+    start_at: "2026-08-18T13:00:00.000Z",
+    end_at: "2026-08-18T14:00:00.000Z",
+    status: "completed",
+    allowed_actions: ["reopen"],
   },
   {
     id: "production_stage:stage-1",
@@ -159,14 +171,19 @@ test("Shop Schedule shows operational calendar items without employee shift or a
 test("URL context opens create appointment with supported linked record IDs", async () => {
   const user = userEvent.setup();
   renderWithProviders(<ShopSchedulePage />, {
-    route: "/shop-schedule?view=appointments&new=1&customer_id=customer-1&order_id=order-1&work_order_id=work-order-1&type=installation&title=Install%20appointment",
+    route: "/shop-schedule?view=appointments&new=1&customer_id=customer-1&quote_id=quote-1&order_id=order-1&order_item_id=item-1&work_order_id=work-order-1&production_stage_id=stage-1&wrap_project_id=wrap-1&source_type=order_item_installation&source_id=item-1&type=installation&title=Install%20appointment",
   });
 
   const dialog = await screen.findByTestId("calendar-appointment-dialog");
   expect(within(dialog).getByTestId("calendar-event-title")).toHaveValue("Install appointment");
   expect(within(dialog).getByTestId("calendar-event-customer-id")).toHaveValue("customer-1");
+  expect(within(dialog).getByTestId("calendar-event-quote-id")).toHaveValue("quote-1");
   expect(within(dialog).getByTestId("calendar-event-order-id")).toHaveValue("order-1");
+  expect(within(dialog).getByTestId("calendar-event-order-item-id")).toHaveValue("item-1");
   expect(within(dialog).getByTestId("calendar-event-work-order-id")).toHaveValue("work-order-1");
+  expect(within(dialog).getByTestId("calendar-event-production-stage-id")).toHaveValue("stage-1");
+  expect(within(dialog).getByTestId("calendar-event-wrap-project-id")).toHaveValue("wrap-1");
+  expect(within(dialog).getByTestId("calendar-event-source-id")).toHaveValue("item-1");
   expect(within(dialog).getByTestId("calendar-people-resources-section")).toBeInTheDocument();
   await user.click(await within(dialog).findByRole("checkbox", { name: "Bill" }));
   await user.click(await within(dialog).findByRole("checkbox", { name: "HP Latex" }));
@@ -184,8 +201,14 @@ test("URL context opens create appointment with supported linked record IDs", as
     reserved_vehicle_ids: ["vehicle-1"],
     reserved_resource_ids: ["resource-1"],
     customer_id: "customer-1",
+    quote_id: "quote-1",
     order_id: "order-1",
+    order_item_id: "item-1",
     work_order_id: "work-order-1",
+    production_stage_id: "stage-1",
+    wrap_project_id: "wrap-1",
+    source_type: "order_item_installation",
+    source_id: "item-1",
   })));
 });
 
@@ -250,4 +273,16 @@ test("agenda and appointments display assigned people and reserved resources", a
 
   expect(await screen.findByTestId("shop-schedule-agenda-list")).toBeInTheDocument();
   expect(screen.getByTestId("shop-schedule-row-assignment-event-1")).toHaveTextContent("HP Latex");
+});
+
+test("appointment lifecycle actions complete and reopen canonical calendar events", async () => {
+  const user = userEvent.setup();
+  renderWithProviders(<ShopSchedulePage />, { route: "/shop-schedule?view=appointments&date=2026-08-14" });
+
+  expect(await screen.findByTestId("shop-schedule-appointments-list")).toBeInTheDocument();
+  await user.click(screen.getByTestId("shop-schedule-complete-event-1"));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith("/calendar/events/event-1/complete", { outcome_note: "Completed from Shop Schedule" }));
+
+  await user.click(screen.getByTestId("shop-schedule-reopen-event-3"));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith("/calendar/events/event-3/reopen", { reason: "Reopened from Shop Schedule" }));
 });

@@ -33,6 +33,7 @@ import {
   updateWrapProject,
   updateWrapVehicle,
 } from "@/lib/wrapLab";
+import { buildShopScheduleUrl } from "@/lib/shopScheduleLinks";
 import { toast } from "sonner";
 
 const statusOrder = ["lead_intake", "vehicle_recorded", "measurement_planning", "estimate_ready", "quote_linked", "contract_deposit_pending", "pre_install_ready", "pre_install_signed", "design_in_progress", "proof_ready", "proof_approved", "panel_plan_ready", "production_ready", "install_scheduled", "installing", "completion_packet_ready", "completed", "warranty_active"];
@@ -308,6 +309,23 @@ export default function WrapLabDetailPage() {
             <TextField label="Production notes" value={panelForm.notes} onChange={(v) => setPanelForm({ ...panelForm, notes: v })} />
           </FormCard>
           <FormCard title="Installation schedule" icon={CalendarClock} action="Schedule install" onSubmit={() => schedule.mutate()} disabled={schedule.isPending}>
+            <Button asChild variant="outline" size="sm" className="mb-3" data-testid="wrap-lab-open-shop-schedule-button">
+              <Link to={buildShopScheduleUrl({
+                create: true,
+                customerId: project?.customer_id,
+                quoteId: project?.quote_id,
+                orderId: project?.order_id,
+                orderItemId: project?.order_item_id,
+                workOrderId: project?.work_order_id,
+                wrapProjectId: id,
+                eventType: "installation",
+                title: `${project?.project_name || "Wrap"} installation`,
+                sourceType: "wrap_project",
+                sourceId: id,
+              })}>
+                <CalendarClock className="mr-1 size-4" />Open Shop Schedule
+              </Link>
+            </Button>
             <Field label="Title" value={scheduleForm.title} onChange={(v) => setScheduleForm({ ...scheduleForm, title: v })} />
             <Field label="Start ISO" value={scheduleForm.start_at} onChange={(v) => setScheduleForm({ ...scheduleForm, start_at: v })} />
             <Field label="End ISO" value={scheduleForm.end_at} onChange={(v) => setScheduleForm({ ...scheduleForm, end_at: v })} />

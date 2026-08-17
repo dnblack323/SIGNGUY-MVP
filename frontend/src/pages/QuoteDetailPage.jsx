@@ -712,8 +712,11 @@ export default function QuoteDetailPage() {
                   <Link to={buildShopScheduleUrl({
                     create: true,
                     customerId: q.customer_id,
+                    quoteId: q.id,
                     eventType: "customer_meeting",
                     title: `${q.job_name} appointment`,
+                    sourceType: "quote",
+                    sourceId: q.id,
                   })}>
                     <CalendarDays className="size-4 mr-1" />Schedule
                   </Link>

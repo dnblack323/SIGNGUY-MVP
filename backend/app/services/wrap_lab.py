@@ -27,7 +27,7 @@ from ..models.wrap_lab import (
 )
 from ..repositories.wrap_lab import WrapLabRepository
 from .activity import record_activity_with_audit
-from . import order_readiness_service
+from . import calendar_service, order_readiness_service
 from .approvals_signatures_service import create_signature_request, record_signature
 from .portal_tokens import mint_public_action_token
 
@@ -1654,10 +1654,16 @@ async def create_schedule(user: dict, project_id: str, fields: dict[str, Any]) -
     _require_staff_perm(user, Perm.WRAP_LAB_WRITE)
     project = await _get_project(user["tenant_id"], project_id)
     await _ensure_open_project(project)
+    schedule_type = fields["schedule_type"]
+    event_type = {
+        "install": "installation",
+        "pickup": "vehicle_pickup",
+        "production": "production_milestone",
+    }.get(schedule_type, "custom")
     schedule = WrapSchedule(
         tenant_id=user["tenant_id"],
         project_id=project_id,
-        schedule_type=fields["schedule_type"],
+        schedule_type=schedule_type,
         status=fields.get("status", "scheduled"),
         title=_clean_text(fields.get("title"), "title"),
         start_at=_clean_text(fields.get("start_at"), "start_at", limit=80),
@@ -1667,6 +1673,34 @@ async def create_schedule(user: dict, project_id: str, fields: dict[str, Any]) -
         calendar_event_id=fields.get("calendar_event_id"),
         notes=_optional_text(fields.get("notes")),
     ).model_dump()
+    if not schedule.get("calendar_event_id"):
+        try:
+            event = await calendar_service.create_event(
+                tenant_id=user["tenant_id"],
+                actor_user_id=user["id"],
+                actor_email=user["email"],
+                actor_role=user.get("role"),
+                payload={
+                    "title": schedule["title"],
+                    "event_type": event_type,
+                    "start_at": schedule["start_at"],
+                    "end_at": schedule["end_at"],
+                    "timezone": fields.get("timezone") or "America/New_York",
+                    "customer_id": project.get("customer_id"),
+                    "quote_id": project.get("quote_id"),
+                    "order_id": project.get("order_id"),
+                    "order_item_id": project.get("order_item_id"),
+                    "work_order_id": project.get("work_order_id"),
+                    "wrap_project_id": project_id,
+                    "location": schedule.get("location"),
+                    "description": schedule.get("notes"),
+                    "source_type": "wrap_schedule",
+                    "source_id": schedule["id"],
+                },
+            )
+        except calendar_service.CalendarError as exc:
+            raise WrapLabError(exc.code, exc.detail, exc.status_code) from exc
+        schedule["calendar_event_id"] = event.get("id") or event.get("source_id")
     await db.wrap_schedules.insert_one(prepare_for_mongo(schedule))
     await _audit(tenant_id=user["tenant_id"], project_id=project_id, user=user, action="wrap_lab.schedule_created", entity_type="wrap_schedule", entity_id=schedule["id"], summary="Wrap Lab schedule record created", metadata={"schedule_type": schedule["schedule_type"], "calendar_event_id": schedule.get("calendar_event_id")})
     return serialize_doc(schedule)  # type: ignore[return-value]

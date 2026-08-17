@@ -11,6 +11,9 @@ from ..models.schedulable_resource import SchedulableResource
 from .activity import record_activity_with_audit
 from . import notifications, time_off_service
 
+CALENDAR_OVERRIDE_ROLES = {"owner", "admin", "manager"}
+ACTIVE_EVENT_STATUSES = {"scheduled", "rescheduled"}
+
 
 class CalendarError(Exception):
     def __init__(self, code: str, detail: str, status_code: int = 400, *, metadata: Optional[dict] = None):
@@ -44,6 +47,10 @@ def _clean_ids(values: Any) -> list[str]:
     return out
 
 
+def _has_schedule_override_authority(role: Optional[str]) -> bool:
+    return str(role or "").lower() in CALENDAR_OVERRIDE_ROLES
+
+
 def _assignment_ids(payload: dict, existing: Optional[dict] = None) -> dict[str, list[str]]:
     existing = existing or {}
     employee_ids = _clean_ids(payload["assigned_employee_ids"] if "assigned_employee_ids" in payload else existing.get("assigned_employee_ids"))
@@ -71,10 +78,15 @@ async def _get_event(tenant_id: str, event_id: str) -> dict:
 async def _validate_links(tenant_id: str, payload: dict) -> None:
     collections = {
         "customer_id": "customers",
+        "quote_id": "quotes",
         "order_id": "orders",
         "order_item_id": "order_items",
         "work_order_id": "work_orders",
         "production_stage_id": "production_stage_instances",
+        "wrap_project_id": "wrap_projects",
+        "vehicle_inspection_id": "wrap_inspections",
+        "installation_id": "wrap_installation_records",
+        "task_id": "tasks",
         "employee_id": "employees",
         "assigned_user_id": "users",
     }
@@ -87,6 +99,24 @@ async def _validate_links(tenant_id: str, payload: dict) -> None:
             raise CalendarError("linked_record_not_found", f"{field} not found", 404)
         if field == "employee_id" and doc.get("status") != "active":
             raise CalendarError("inactive_employee", "Inactive employee cannot be assigned to appointment", 400)
+    if payload.get("contact_id"):
+        customer_id = payload.get("customer_id")
+        if not customer_id:
+            raise CalendarError("contact_customer_required", "A customer is required when scheduling for a customer contact", 400)
+        customer = await db.customers.find_one({"tenant_id": tenant_id, "id": customer_id}, {"_id": 0, "contacts": 1})
+        if not customer:
+            raise CalendarError("linked_record_not_found", "customer_id not found", 404)
+        contact_id = payload["contact_id"]
+        contacts = customer.get("contacts") or []
+        if not any(
+            contact_id in {
+                str(contact.get("id") or ""),
+                str(contact.get("email") or ""),
+                str(contact.get("name") or ""),
+            }
+            for contact in contacts
+        ):
+            raise CalendarError("linked_record_not_found", "contact_id not found on customer", 404)
 
 
 async def _validate_assignments(tenant_id: str, assignments: dict[str, list[str]]) -> dict[str, list[dict]]:
@@ -174,6 +204,7 @@ async def _employee_name(tenant_id: str, employee_id: Optional[str]) -> Optional
 def _conflict_entry(*, resource_type: str, resource_id: Optional[str], resource_name: Optional[str],
                     event: dict, reason: str) -> dict[str, Any]:
     return {
+        "conflict_type": reason,
         "resource_type": resource_type,
         "resource_id": resource_id,
         "resource_name": resource_name,
@@ -185,6 +216,8 @@ def _conflict_entry(*, resource_type: str, resource_id: Optional[str], resource_
         "end_at": event.get("end_at"),
         "reason": reason,
         "kind": reason,
+        "severity": "blocker",
+        "suggested_action": "Choose a different time or use a manager override with a reason.",
     }
 
 
@@ -204,6 +237,30 @@ async def _resource_names(tenant_id: str, assignments: dict[str, list[str]]) -> 
     return names
 
 
+def _unavailable_period_conflicts(resource: dict, start_at: str, end_at: str) -> list[dict[str, Any]]:
+    conflicts: list[dict[str, Any]] = []
+    for period in resource.get("unavailable_periods") or []:
+        period_start = period.get("start_at")
+        period_end = period.get("end_at")
+        if period_start and period_end and _overlaps(start_at, end_at, period_start, period_end):
+            conflicts.append({
+                "conflict_type": "resource_unavailable",
+                "resource_type": "resource",
+                "resource_id": resource.get("id"),
+                "resource_name": resource.get("name"),
+                "source_type": "resource_unavailable_period",
+                "source_id": period.get("id") or resource.get("id"),
+                "title": period.get("label") or period.get("reason") or "Unavailable period",
+                "start_at": period_start,
+                "end_at": period_end,
+                "reason": period.get("reason") or "resource_unavailable",
+                "kind": "resource_unavailable",
+                "severity": "blocker",
+                "suggested_action": "Choose an available resource or reschedule outside the unavailable period.",
+            })
+    return conflicts
+
+
 async def check_conflicts(*, tenant_id: str, start_at: str, end_at: str,
                           employee_id: Optional[str] = None,
                           assigned_employee_ids: Optional[list[str]] = None,
@@ -216,7 +273,7 @@ async def check_conflicts(*, tenant_id: str, start_at: str, end_at: str,
     if not start_at or not end_at or _parse_dt(end_at) <= _parse_dt(start_at):
         raise CalendarError("invalid_range", "Calendar event end must be after start", 400)
     conflicts: list[dict[str, Any]] = []
-    base: dict[str, Any] = {"tenant_id": tenant_id, "status": {"$nin": ["canceled", "completed"]}, "archived_at": None}
+    base: dict[str, Any] = {"tenant_id": tenant_id, "status": {"$in": list(ACTIVE_EVENT_STATUSES)}, "archived_at": None}
     if event_id:
         base["id"] = {"$ne": event_id}
     assignments = _assignment_ids({
@@ -274,13 +331,25 @@ async def check_conflicts(*, tenant_id: str, start_at: str, end_at: str,
                     event=ev, reason="vehicle_reservation_overlap",
                 ))
     for resource_id in assignments["reserved_resource_ids"]:
+        resource = await db.schedulable_resources.find_one({"tenant_id": tenant_id, "id": resource_id}, {"_id": 0})
+        capacity = int(resource.get("capacity") or 1) if resource else 1
+        overlapping: list[dict[str, Any]] = []
+        if resource:
+            conflicts.extend(_unavailable_period_conflicts(resource, start_at, end_at))
         async for ev in db.calendar_events.find({**base, "reserved_resource_ids": resource_id}, {"_id": 0}):
             if _overlaps(start_at, end_at, ev["start_at"], ev["end_at"]):
-                conflicts.append(_conflict_entry(
+                overlapping.append(ev)
+        if len(overlapping) >= max(capacity, 1):
+            for ev in overlapping:
+                entry = _conflict_entry(
                     resource_type="resource", resource_id=resource_id,
                     resource_name=names["resource"].get(resource_id),
-                    event=ev, reason="shop_resource_reservation_overlap",
-                ))
+                    event=ev, reason="capacity_exceeded" if capacity > 1 else "shop_resource_reservation_overlap",
+                )
+                if capacity > 1:
+                    entry["capacity"] = capacity
+                    entry["suggested_action"] = "Resource capacity is full for this time. Choose another resource or manager override."
+                conflicts.append(entry)
     if location:
         async for ev in db.calendar_events.find({**base, "location": location}, {"_id": 0}):
             if _overlaps(start_at, end_at, ev["start_at"], ev["end_at"]):
@@ -298,10 +367,26 @@ async def check_conflicts(*, tenant_id: str, start_at: str, end_at: str,
     return conflicts
 
 
-async def create_event(*, tenant_id: str, actor_user_id: str, actor_email: str, payload: dict) -> dict:
+async def create_event(*, tenant_id: str, actor_user_id: str, actor_email: str, payload: dict,
+                       actor_role: Optional[str] = None) -> dict:
     await _validate_links(tenant_id, payload)
     assignments = _assignment_ids(payload)
     assignment_summary = await _validate_assignments(tenant_id, assignments)
+    payload_source_type = payload.get("source_type") or "appointment"
+    payload_source_id = payload.get("source_id")
+    if payload_source_id:
+        existing = await db.calendar_events.find_one(
+            {
+                "tenant_id": tenant_id,
+                "source_type": payload_source_type,
+                "source_id": payload_source_id,
+                "status": {"$in": list(ACTIVE_EVENT_STATUSES)},
+                "archived_at": None,
+            },
+            {"_id": 0},
+        )
+        if existing:
+            return {**_safe_event(existing), "duplicate_prevented": True, "conflicts": []}
     conflicts = await check_conflicts(
         tenant_id=tenant_id,
         start_at=payload["start_at"],
@@ -314,6 +399,8 @@ async def create_event(*, tenant_id: str, actor_user_id: str, actor_email: str, 
     override_reason = payload.get("conflict_override_reason")
     if conflicts and not override_reason:
         raise CalendarError("conflict", "Calendar conflict requires manager override reason", 409, metadata={"conflicts": conflicts})
+    if conflicts and not _has_schedule_override_authority(actor_role):
+        raise CalendarError("conflict_override_forbidden", "Manager authority is required for this calendar conflict override", 403, metadata={"conflicts": conflicts})
     now = utc_now().isoformat()
     history = [{"action": "created", "actor_user_id": actor_user_id, "at": now, "conflict_count": len(conflicts)}]
     overrides = []
@@ -330,10 +417,16 @@ async def create_event(*, tenant_id: str, actor_user_id: str, actor_email: str, 
         timezone=payload.get("timezone"),
         location=payload.get("location"),
         customer_id=payload.get("customer_id"),
+        contact_id=payload.get("contact_id"),
+        quote_id=payload.get("quote_id"),
         order_id=payload.get("order_id"),
         order_item_id=payload.get("order_item_id"),
         work_order_id=payload.get("work_order_id"),
         production_stage_id=payload.get("production_stage_id"),
+        wrap_project_id=payload.get("wrap_project_id"),
+        vehicle_inspection_id=payload.get("vehicle_inspection_id"),
+        installation_id=payload.get("installation_id"),
+        task_id=payload.get("task_id"),
         employee_id=payload.get("employee_id") or (assignments["assigned_employee_ids"][0] if assignments["assigned_employee_ids"] else None),
         assigned_employee_ids=assignments["assigned_employee_ids"],
         reserved_equipment_ids=assignments["reserved_equipment_ids"],
@@ -345,14 +438,16 @@ async def create_event(*, tenant_id: str, actor_user_id: str, actor_email: str, 
         visibility=payload.get("visibility") or "staff",
         reminder_policy=payload.get("reminder_policy") or {},
         recurrence_rule=payload.get("recurrence_rule"),
-        source_id=None,
+        source_type=payload_source_type,
+        source_id=payload_source_id,
         history=history,
         conflict_overrides=overrides,
     ).model_dump()
     await db.calendar_events.insert_one(prepare_for_mongo(dict(doc)))
     clean = serialize_doc(doc)
-    await db.calendar_events.update_one({"tenant_id": tenant_id, "id": clean["id"]}, {"$set": {"source_id": clean["id"]}})
-    clean["source_id"] = clean["id"]
+    if not clean.get("source_id"):
+        await db.calendar_events.update_one({"tenant_id": tenant_id, "id": clean["id"]}, {"$set": {"source_id": clean["id"]}})
+        clean["source_id"] = clean["id"]
     await record_activity_with_audit(
         tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
         module="calendar", action="calendar_event.created", entity_type="calendar_event", entity_id=clean["id"],
@@ -364,7 +459,7 @@ async def create_event(*, tenant_id: str, actor_user_id: str, actor_email: str, 
             tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
             module="calendar", action="calendar_event.conflict_override", entity_type="calendar_event", entity_id=clean["id"],
             summary=f"Calendar conflict overridden: {clean['title']}", severity="warning",
-            metadata={"conflict_count": len(conflicts), "conflicts": conflicts},
+            metadata={"conflict_count": len(conflicts), "conflicts": conflicts, "override_reason": override_reason},
         )
     await _notify_event_assignment(tenant_id, clean, kind="calendar.assigned", title=f"Appointment assigned: {clean['title']}")
     return {**_safe_event(clean), "conflicts": conflicts}
@@ -374,8 +469,10 @@ async def list_events(*, tenant_id: str, start_at: str, end_at: str,
                       event_type: Optional[str] = None, employee_id: Optional[str] = None,
                       equipment_id: Optional[str] = None, vehicle_id: Optional[str] = None,
                       resource_id: Optional[str] = None, attention: Optional[str] = None,
-                      customer_id: Optional[str] = None, order_id: Optional[str] = None,
-                      work_order_id: Optional[str] = None, status: Optional[str] = None,
+                      customer_id: Optional[str] = None, quote_id: Optional[str] = None,
+                      order_id: Optional[str] = None, order_item_id: Optional[str] = None,
+                      work_order_id: Optional[str] = None, production_stage_id: Optional[str] = None,
+                      wrap_project_id: Optional[str] = None, status: Optional[str] = None,
                       source_type: Optional[str] = None, visibility: Optional[str] = None,
                       limit: int = 200, skip: int = 0) -> dict:
     filt: dict[str, Any] = {"tenant_id": tenant_id, "archived_at": None}
@@ -391,14 +488,20 @@ async def list_events(*, tenant_id: str, start_at: str, end_at: str,
         filt["reserved_resource_ids"] = resource_id
     if customer_id:
         filt["customer_id"] = customer_id
+    if quote_id:
+        filt["quote_id"] = quote_id
     if order_id:
         filt["order_id"] = order_id
+    if order_item_id:
+        filt["order_item_id"] = order_item_id
     if work_order_id:
         filt["work_order_id"] = work_order_id
+    if production_stage_id:
+        filt["production_stage_id"] = production_stage_id
+    if wrap_project_id:
+        filt["wrap_project_id"] = wrap_project_id
     if status:
         filt["status"] = status
-    if source_type:
-        filt["source_type"] = source_type
     if visibility:
         filt["visibility"] = visibility
     stored = []
@@ -409,7 +512,9 @@ async def list_events(*, tenant_id: str, start_at: str, end_at: str,
     items = [i for i in stored + projections if _feed_match(
         i, event_type=event_type, employee_id=employee_id, equipment_id=equipment_id,
         vehicle_id=vehicle_id, resource_id=resource_id, attention=attention,
-        customer_id=customer_id, order_id=order_id, work_order_id=work_order_id,
+        customer_id=customer_id, quote_id=quote_id, order_id=order_id,
+        order_item_id=order_item_id, work_order_id=work_order_id,
+        production_stage_id=production_stage_id, wrap_project_id=wrap_project_id,
         status=status, source_type=source_type, visibility=visibility,
     )]
     items.sort(key=lambda i: (i.get("start_at") or "", i.get("title") or ""))
@@ -417,14 +522,22 @@ async def list_events(*, tenant_id: str, start_at: str, end_at: str,
 
 
 def _normalize_stored_event(ev: dict) -> dict:
+    status = ev.get("status")
+    actions = ["update", "reschedule", "archive", "assign"]
+    if status in ACTIVE_EVENT_STATUSES:
+        actions.extend(["cancel", "complete"])
+    if status in {"canceled", "completed"}:
+        actions.append("reopen")
     return {
         **_safe_event(ev),
         "id": f"calendar_event:{ev['id']}",
         "source_type": "calendar_event",
         "source_id": ev["id"],
+        "linked_source_type": ev.get("source_type"),
+        "linked_source_id": ev.get("source_id"),
         "display_title": ev.get("title"),
         "color": _color_for_event(ev.get("event_type")),
-        "allowed_actions": ["update", "reschedule", "cancel", "archive", "assign"],
+        "allowed_actions": actions,
     }
 
 
@@ -490,7 +603,9 @@ async def _projected_items(*, tenant_id: str, start_at: str, end_at: str, employ
             "employee_id": task.get("assigned_employee_id"),
             "assigned_employee_ids": [task.get("assigned_employee_id")] if task.get("assigned_employee_id") else [],
             "customer_id": task.get("customer_id"),
+            "quote_id": task.get("quote_id"),
             "order_id": task.get("order_id"),
+            "order_item_id": task.get("order_item_id"),
             "work_order_id": task.get("work_order_id"),
             "production_stage_id": task.get("production_stage_id"),
             "visibility": "employee" if task.get("employee_visible") else "staff",
@@ -549,6 +664,8 @@ def _feed_match(item: dict, **filters) -> bool:
             return False
         if key in {"employee_id", "equipment_id", "vehicle_id", "resource_id", "attention"}:
             continue
+        if key in {"quote_id", "order_item_id", "production_stage_id", "wrap_project_id"} and item.get(key) != value:
+            return False
         if key != "event_type" and item.get(key) != value:
             return False
     return True
@@ -559,10 +676,25 @@ async def get_event(*, tenant_id: str, event_id: str) -> dict:
 
 
 async def update_event(*, tenant_id: str, event_id: str, actor_user_id: str, actor_email: str,
-                       payload: dict, action: str = "updated") -> dict:
+                       payload: dict, action: str = "updated", actor_role: Optional[str] = None) -> dict:
     existing = await _get_event(tenant_id, event_id)
     clean = {k: v for k, v in payload.items() if v is not None}
     await _validate_links(tenant_id, clean)
+    if clean.get("source_id"):
+        source_type = clean.get("source_type") or existing.get("source_type") or "appointment"
+        duplicate = await db.calendar_events.find_one(
+            {
+                "tenant_id": tenant_id,
+                "id": {"$ne": event_id},
+                "source_type": source_type,
+                "source_id": clean["source_id"],
+                "status": {"$in": list(ACTIVE_EVENT_STATUSES)},
+                "archived_at": None,
+            },
+            {"_id": 0},
+        )
+        if duplicate:
+            raise CalendarError("duplicate_source_event", "A schedule event already exists for this source record", 409)
     assignments = _assignment_ids(clean, existing)
     assignment_summary = await _validate_assignments(tenant_id, assignments)
     start_at = clean.get("start_at", existing["start_at"])
@@ -581,6 +713,8 @@ async def update_event(*, tenant_id: str, event_id: str, actor_user_id: str, act
     override_reason = clean.pop("conflict_override_reason", None)
     if conflicts and not override_reason:
         raise CalendarError("conflict", "Calendar conflict requires manager override reason", 409, metadata={"conflicts": conflicts})
+    if conflicts and not _has_schedule_override_authority(actor_role):
+        raise CalendarError("conflict_override_forbidden", "Manager authority is required for this calendar conflict override", 403, metadata={"conflicts": conflicts})
     now = utc_now().isoformat()
     assignment_updates = {
         **assignments,
@@ -638,6 +772,56 @@ async def cancel_event(*, tenant_id: str, event_id: str, actor_user_id: str, act
         summary=f"Calendar event canceled: {updated['title']}",
     )
     await _notify_event_assignment(tenant_id, updated, kind="calendar.canceled", title=f"Appointment canceled: {updated['title']}")
+    return _safe_event(updated)
+
+
+async def complete_event(*, tenant_id: str, event_id: str, actor_user_id: str, actor_email: str,
+                         outcome_note: Optional[str] = None) -> dict:
+    existing = await _get_event(tenant_id, event_id)
+    if existing.get("status") == "completed":
+        return _safe_event(existing)
+    if existing.get("status") not in ACTIVE_EVENT_STATUSES:
+        raise CalendarError("event_not_completable", "Only active schedule events can be completed", 400)
+    now = utc_now().isoformat()
+    await db.calendar_events.update_one(
+        {"tenant_id": tenant_id, "id": event_id},
+        {"$set": {"status": "completed", "updated_at": now, "completed_at": now, "version": int(existing.get("version", 1)) + 1},
+         "$push": {"history": {"action": "completed", "actor_user_id": actor_user_id, "at": now, "outcome_note": outcome_note}}},
+    )
+    updated = await _get_event(tenant_id, event_id)
+    await record_activity_with_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+        module="calendar", action="calendar_event.completed", entity_type="calendar_event", entity_id=event_id,
+        summary=f"Calendar event completed: {updated['title']}",
+        metadata={"outcome_note": outcome_note, "source_type": updated.get("source_type"), "source_id": updated.get("source_id")},
+    )
+    await _notify_event_assignment(tenant_id, updated, kind="calendar.completed", title=f"Appointment completed: {updated['title']}")
+    return _safe_event(updated)
+
+
+async def reopen_event(*, tenant_id: str, event_id: str, actor_user_id: str, actor_email: str,
+                       reason: str) -> dict:
+    if not reason or not reason.strip():
+        raise CalendarError("reason_required", "A reason is required to reopen a schedule event", 400)
+    existing = await _get_event(tenant_id, event_id)
+    if existing.get("status") in ACTIVE_EVENT_STATUSES:
+        return _safe_event(existing)
+    if existing.get("status") not in {"canceled", "completed"}:
+        raise CalendarError("event_not_reopenable", "Only canceled or completed schedule events can be reopened", 400)
+    now = utc_now().isoformat()
+    await db.calendar_events.update_one(
+        {"tenant_id": tenant_id, "id": event_id},
+        {"$set": {"status": "scheduled", "updated_at": now, "reopened_at": now, "version": int(existing.get("version", 1)) + 1},
+         "$push": {"history": {"action": "reopened", "actor_user_id": actor_user_id, "at": now, "reason": reason}}},
+    )
+    updated = await _get_event(tenant_id, event_id)
+    await record_activity_with_audit(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+        module="calendar", action="calendar_event.reopened", entity_type="calendar_event", entity_id=event_id,
+        summary=f"Calendar event reopened: {updated['title']}",
+        metadata={"reason": reason, "previous_status": existing.get("status"), "source_type": updated.get("source_type"), "source_id": updated.get("source_id")},
+    )
+    await _notify_event_assignment(tenant_id, updated, kind="calendar.reopened", title=f"Appointment reopened: {updated['title']}")
     return _safe_event(updated)
 
 
@@ -710,14 +894,19 @@ async def list_schedulable_resources(*, tenant_id: str, status: Optional[str] = 
 
 async def create_schedulable_resource(*, tenant_id: str, actor_user_id: str, actor_email: str,
                                       payload: dict) -> dict:
+    capacity = payload.get("capacity")
+    if capacity is not None and int(capacity) < 1:
+        raise CalendarError("invalid_capacity", "Resource capacity must be at least 1", 400)
     doc = SchedulableResource(
         tenant_id=tenant_id,
         name=payload["name"],
         resource_type=payload.get("resource_type") or "work_area",
         status=payload.get("status") or "active",
-        capacity=payload.get("capacity"),
+        capacity=capacity,
         location=payload.get("location"),
         description=payload.get("description"),
+        availability_windows=payload.get("availability_windows") or [],
+        unavailable_periods=payload.get("unavailable_periods") or [],
         created_by=actor_user_id,
         updated_by=actor_user_id,
     ).model_dump()
@@ -739,6 +928,8 @@ async def update_schedulable_resource(*, tenant_id: str, resource_id: str, actor
     updates = {k: v for k, v in payload.items() if v is not None}
     if not updates:
         raise CalendarError("no_updates", "No updates", 400)
+    if updates.get("capacity") is not None and int(updates["capacity"]) < 1:
+        raise CalendarError("invalid_capacity", "Resource capacity must be at least 1", 400)
     updates.update({"updated_at": utc_now().isoformat(), "updated_by": actor_user_id})
     await db.schedulable_resources.update_one({"tenant_id": tenant_id, "id": resource_id}, {"$set": prepare_for_mongo(updates)})
     await record_activity_with_audit(

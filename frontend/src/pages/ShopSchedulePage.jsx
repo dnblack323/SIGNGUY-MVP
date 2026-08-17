@@ -19,11 +19,13 @@ import {
   AlertCircle,
   CalendarCheck,
   CalendarDays,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
   MapPin,
   Plus,
+  RotateCcw,
   Search,
   Truck,
   Users,
@@ -116,8 +118,10 @@ function itemTitle(item) {
 
 function buildItemDestination(item) {
   if (item?.source_type === "production_stage" && item.work_order_id) return `/work-orders/${item.work_order_id}`;
+  if (item?.wrap_project_id) return `/wrap-lab/${item.wrap_project_id}`;
   if (item?.work_order_id) return `/work-orders/${item.work_order_id}`;
   if (item?.order_id) return `/orders/${item.order_id}`;
+  if (item?.quote_id) return `/quotes/${item.quote_id}`;
   if (item?.customer_id) return `/customers/${item.customer_id}`;
   if (item?.source_type === "task") return "/team/tasks";
   return null;
@@ -248,8 +252,18 @@ function AppointmentDialog({ open, onOpenChange, employees, equipment, vehicles,
       reserved_vehicle_ids: editing ? editingEvent.reserved_vehicle_ids || [] : [],
       reserved_resource_ids: editing ? editingEvent.reserved_resource_ids || [] : [],
       customer_id: editing ? editingEvent.customer_id || "" : initialContext.customerId || "",
+      contact_id: editing ? editingEvent.contact_id || "" : initialContext.contactId || "",
+      quote_id: editing ? editingEvent.quote_id || "" : initialContext.quoteId || "",
       order_id: editing ? editingEvent.order_id || "" : initialContext.orderId || "",
+      order_item_id: editing ? editingEvent.order_item_id || "" : initialContext.orderItemId || "",
       work_order_id: editing ? editingEvent.work_order_id || "" : initialContext.workOrderId || "",
+      production_stage_id: editing ? editingEvent.production_stage_id || "" : initialContext.productionStageId || "",
+      wrap_project_id: editing ? editingEvent.wrap_project_id || "" : initialContext.wrapProjectId || "",
+      vehicle_inspection_id: editing ? editingEvent.vehicle_inspection_id || "" : initialContext.vehicleInspectionId || "",
+      installation_id: editing ? editingEvent.installation_id || "" : initialContext.installationId || "",
+      task_id: editing ? editingEvent.task_id || "" : initialContext.taskId || "",
+      source_type: editing ? editingEvent.linked_source_type || editingEvent.source_type || "" : initialContext.sourceType || "",
+      source_id: editing ? editingEvent.linked_source_id || "" : initialContext.sourceId || "",
       location: editing ? editingEvent.location || "" : "",
       description: editing ? editingEvent.description || "" : "",
     });
@@ -275,9 +289,9 @@ function AppointmentDialog({ open, onOpenChange, employees, equipment, vehicles,
     reserved_equipment_ids: form.reserved_equipment_ids || [],
     reserved_vehicle_ids: form.reserved_vehicle_ids || [],
     reserved_resource_ids: form.reserved_resource_ids || [],
-    location: clean(form.location),
-    customer_id: clean(form.customer_id),
-  } : null, [editing, editingEvent, form, proposedRange]);
+      location: clean(form.location),
+      customer_id: clean(form.customer_id),
+    } : null, [editing, editingEvent, form, proposedRange]);
 
   const { data: availability, isFetching: availabilityLoading } = useQuery({
     queryKey: ["calendar-availability", availabilityPayload],
@@ -302,8 +316,18 @@ function AppointmentDialog({ open, onOpenChange, employees, equipment, vehicles,
       reserved_vehicle_ids: form.reserved_vehicle_ids || [],
       reserved_resource_ids: form.reserved_resource_ids || [],
       customer_id: clean(form.customer_id),
+      contact_id: clean(form.contact_id),
+      quote_id: clean(form.quote_id),
       order_id: clean(form.order_id),
+      order_item_id: clean(form.order_item_id),
       work_order_id: clean(form.work_order_id),
+      production_stage_id: clean(form.production_stage_id),
+      wrap_project_id: clean(form.wrap_project_id),
+      vehicle_inspection_id: clean(form.vehicle_inspection_id),
+      installation_id: clean(form.installation_id),
+      task_id: clean(form.task_id),
+      source_type: clean(form.source_type),
+      source_id: clean(form.source_id),
       location: clean(form.location),
       description: clean(form.description),
       visibility: clean(form.employee_id) ? "employee" : "staff",
@@ -439,18 +463,42 @@ function AppointmentDialog({ open, onOpenChange, employees, equipment, vehicles,
               <Input id="calendar-event-timezone" value={form.timezone || ""} onChange={(e) => setField("timezone", e.target.value)} />
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-3" data-testid="calendar-linked-records-section">
             <div className="grid gap-1.5">
-              <Label htmlFor="calendar-event-customer">Customer ID</Label>
+              <Label htmlFor="calendar-event-customer">Linked customer</Label>
               <Input id="calendar-event-customer" value={form.customer_id || ""} onChange={(e) => setField("customer_id", e.target.value)} data-testid="calendar-event-customer-id" />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="calendar-event-order">Order ID</Label>
+              <Label htmlFor="calendar-event-contact">Contact</Label>
+              <Input id="calendar-event-contact" value={form.contact_id || ""} onChange={(e) => setField("contact_id", e.target.value)} data-testid="calendar-event-contact-id" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="calendar-event-quote">Quote</Label>
+              <Input id="calendar-event-quote" value={form.quote_id || ""} onChange={(e) => setField("quote_id", e.target.value)} data-testid="calendar-event-quote-id" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="calendar-event-order">Order</Label>
               <Input id="calendar-event-order" value={form.order_id || ""} onChange={(e) => setField("order_id", e.target.value)} data-testid="calendar-event-order-id" />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="calendar-event-work-order">Work Order ID</Label>
+              <Label htmlFor="calendar-event-order-item">Order item</Label>
+              <Input id="calendar-event-order-item" value={form.order_item_id || ""} onChange={(e) => setField("order_item_id", e.target.value)} data-testid="calendar-event-order-item-id" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="calendar-event-work-order">Work Order</Label>
               <Input id="calendar-event-work-order" value={form.work_order_id || ""} onChange={(e) => setField("work_order_id", e.target.value)} data-testid="calendar-event-work-order-id" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="calendar-event-production-stage">Production stage</Label>
+              <Input id="calendar-event-production-stage" value={form.production_stage_id || ""} onChange={(e) => setField("production_stage_id", e.target.value)} data-testid="calendar-event-production-stage-id" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="calendar-event-wrap-project">Wrap Project</Label>
+              <Input id="calendar-event-wrap-project" value={form.wrap_project_id || ""} onChange={(e) => setField("wrap_project_id", e.target.value)} data-testid="calendar-event-wrap-project-id" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="calendar-event-source">Source record</Label>
+              <Input id="calendar-event-source" value={form.source_id || ""} onChange={(e) => setField("source_id", e.target.value)} data-testid="calendar-event-source-id" />
             </div>
           </div>
           <div className="grid gap-1.5">
@@ -479,7 +527,7 @@ function AppointmentDialog({ open, onOpenChange, employees, equipment, vehicles,
   );
 }
 
-function EventCard({ item, canManage, onOpen, onCancel }) {
+function EventCard({ item, canManage, onOpen, onCancel, onComplete, onReopen }) {
   const tone = item.source_type === "production_stage"
     ? "border-orange-200 bg-orange-50"
     : item.source_type === "task"
@@ -511,6 +559,26 @@ function EventCard({ item, canManage, onOpen, onCancel }) {
           onClick={() => onCancel(item)}
         >
           Cancel appointment
+        </button>
+      )}
+      {canManage && item.allowed_actions?.includes("complete") && (
+        <button
+          type="button"
+          className="ml-2 mt-1 text-[11px] font-medium text-emerald-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          onClick={() => onComplete(item)}
+          data-testid={`shop-schedule-card-complete-${item.source_id}`}
+        >
+          <CheckCircle2 className="mr-1 inline size-3" />Complete
+        </button>
+      )}
+      {canManage && item.allowed_actions?.includes("reopen") && (
+        <button
+          type="button"
+          className="ml-2 mt-1 text-[11px] font-medium text-blue-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          onClick={() => onReopen(item)}
+          data-testid={`shop-schedule-card-reopen-${item.source_id}`}
+        >
+          <RotateCcw className="mr-1 inline size-3" />Reopen
         </button>
       )}
     </div>
@@ -572,8 +640,18 @@ export default function ShopSchedulePage() {
 
   const initialContext = useMemo(() => ({
     customerId: query.get("customer_id") || "",
+    contactId: query.get("contact_id") || "",
+    quoteId: query.get("quote_id") || "",
     orderId: query.get("order_id") || "",
+    orderItemId: query.get("order_item_id") || "",
     workOrderId: query.get("work_order_id") || "",
+    productionStageId: query.get("production_stage_id") || "",
+    wrapProjectId: query.get("wrap_project_id") || "",
+    vehicleInspectionId: query.get("vehicle_inspection_id") || "",
+    installationId: query.get("installation_id") || "",
+    taskId: query.get("task_id") || "",
+    sourceType: query.get("source_type") || "",
+    sourceId: query.get("source_id") || "",
     eventType: EVENT_TYPE_LABELS[query.get("type")] ? query.get("type") : "customer_meeting",
     title: query.get("title") || "",
     date: query.get("date") && query.get("date") !== "today" ? query.get("date") : "",
@@ -614,8 +692,12 @@ export default function ShopSchedulePage() {
       attentionFilter,
       typeFilter,
       initialContext.customerId,
+      initialContext.quoteId,
       initialContext.orderId,
+      initialContext.orderItemId,
       initialContext.workOrderId,
+      initialContext.productionStageId,
+      initialContext.wrapProjectId,
     ],
     queryFn: async () => (await api.get("/calendar/feed", {
       params: {
@@ -627,8 +709,12 @@ export default function ShopSchedulePage() {
         attention: attentionFilter === "all" ? undefined : attentionFilter,
         event_type: typeFilter === "all" ? undefined : typeFilter,
         customer_id: clean(initialContext.customerId),
+        quote_id: clean(initialContext.quoteId),
         order_id: clean(initialContext.orderId),
+        order_item_id: clean(initialContext.orderItemId),
         work_order_id: clean(initialContext.workOrderId),
+        production_stage_id: clean(initialContext.productionStageId),
+        wrap_project_id: clean(initialContext.wrapProjectId),
       },
     })).data,
   });
@@ -707,6 +793,27 @@ export default function ShopSchedulePage() {
     }
   }
 
+  async function completeAppointment(item) {
+    try {
+      await api.post(`/calendar/events/${eventId(item)}/complete`, { outcome_note: "Completed from Shop Schedule" });
+      toast.success("Appointment completed");
+      refetch();
+    } catch (err) {
+      toast.error(extractError(err));
+    }
+  }
+
+  async function reopenAppointment(item) {
+    const reason = "Reopened from Shop Schedule";
+    try {
+      await api.post(`/calendar/events/${eventId(item)}/reopen`, { reason });
+      toast.success("Appointment reopened");
+      refetch();
+    } catch (err) {
+      toast.error(extractError(err));
+    }
+  }
+
   function invalidateSchedule() {
     refetch();
     qc.invalidateQueries({ queryKey: ["calendar-feed"] });
@@ -714,8 +821,12 @@ export default function ShopSchedulePage() {
 
   const activeFilters = [
     initialContext.customerId && "Customer",
+    initialContext.quoteId && "Quote",
     initialContext.orderId && "Order",
+    initialContext.orderItemId && "Order Item",
     initialContext.workOrderId && "Work Order",
+    initialContext.productionStageId && "Production Stage",
+    initialContext.wrapProjectId && "Wrap Project",
   ].filter(Boolean);
 
   return (
@@ -824,7 +935,17 @@ export default function ShopSchedulePage() {
             <Card key={day} className="min-h-[170px]">
               <CardHeader className="p-3 pb-1"><CardTitle className="text-sm">{fmtDate(`${day}T00:00:00`)}</CardTitle></CardHeader>
               <CardContent className="space-y-2 p-3 pt-1">
-                {(byDay[day] || []).map((item) => <EventCard key={item.id} item={item} canManage={canManageSchedule} onOpen={openItem} onCancel={cancelAppointment} />)}
+                {(byDay[day] || []).map((item) => (
+                  <EventCard
+                    key={item.id}
+                    item={item}
+                    canManage={canManageSchedule}
+                    onOpen={openItem}
+                    onCancel={cancelAppointment}
+                    onComplete={completeAppointment}
+                    onReopen={reopenAppointment}
+                  />
+                ))}
               </CardContent>
             </Card>
           ))}
@@ -854,6 +975,12 @@ export default function ShopSchedulePage() {
                     ) : null}
                     {canManageSchedule && item.allowed_actions?.includes("cancel") && (
                       <Button variant="ghost" size="sm" onClick={() => cancelAppointment(item)}>Cancel</Button>
+                    )}
+                    {canManageSchedule && item.allowed_actions?.includes("complete") && (
+                      <Button variant="ghost" size="sm" onClick={() => completeAppointment(item)} data-testid={`shop-schedule-complete-${item.source_id}`}>Complete</Button>
+                    )}
+                    {canManageSchedule && item.allowed_actions?.includes("reopen") && (
+                      <Button variant="ghost" size="sm" onClick={() => reopenAppointment(item)} data-testid={`shop-schedule-reopen-${item.source_id}`}>Reopen</Button>
                     )}
                   </div>
                 </div>
