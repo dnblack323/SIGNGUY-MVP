@@ -10,8 +10,18 @@ export async function getWrapProject(id) {
   return r.data;
 }
 
+export async function searchWrapTargets(params = {}) {
+  const r = await api.get("/wrap-lab/targets", { params });
+  return r.data;
+}
+
 export async function createWrapVehicle(payload) {
   const r = await api.post("/wrap-lab/vehicles", payload);
+  return r.data;
+}
+
+export async function updateWrapVehicle(id, payload) {
+  const r = await api.patch(`/wrap-lab/vehicles/${id}`, payload);
   return r.data;
 }
 
@@ -22,6 +32,11 @@ export async function listWrapVehicles(params = {}) {
 
 export async function createWrapProject(payload) {
   const r = await api.post("/wrap-lab/projects", payload);
+  return r.data;
+}
+
+export async function updateWrapProject(id, payload) {
+  const r = await api.patch(`/wrap-lab/projects/${id}`, payload);
   return r.data;
 }
 
@@ -37,6 +52,36 @@ export async function createCoveragePlan(projectId, payload) {
 
 export async function createInspection(projectId, payload) {
   const r = await api.post(`/wrap-lab/projects/${projectId}/inspections`, payload);
+  return r.data;
+}
+
+export async function updateInspection(inspectionId, payload) {
+  const r = await api.patch(`/wrap-lab/inspections/${inspectionId}`, payload);
+  return r.data;
+}
+
+export async function acknowledgeInspection(inspectionId, payload) {
+  const r = await api.post(`/wrap-lab/inspections/${inspectionId}/acknowledgement`, payload);
+  return r.data;
+}
+
+export async function listInspectionReviewLinks(inspectionId) {
+  const r = await api.get(`/wrap-lab/inspections/${inspectionId}/review-links`);
+  return r.data;
+}
+
+export async function createInspectionReviewLink(inspectionId, payload) {
+  const r = await api.post(`/wrap-lab/inspections/${inspectionId}/review-links`, payload);
+  return r.data;
+}
+
+export async function expireInspectionReviewLink(tokenId) {
+  const r = await api.post(`/wrap-lab/inspection-review-links/${tokenId}/expire`);
+  return r.data;
+}
+
+export async function revokeInspectionReviewLink(tokenId) {
+  const r = await api.delete(`/wrap-lab/inspection-review-links/${tokenId}`);
   return r.data;
 }
 
@@ -67,6 +112,16 @@ export async function createWrapSchedule(projectId, payload) {
 
 export async function createWrapWarranty(projectId, payload) {
   const r = await api.post(`/wrap-lab/projects/${projectId}/warranties`, payload);
+  return r.data;
+}
+
+export async function createInstallationRecord(projectId, payload) {
+  const r = await api.post(`/wrap-lab/projects/${projectId}/installation-records`, payload);
+  return r.data;
+}
+
+export async function handoffWrapProject(projectId, payload = {}) {
+  const r = await api.post(`/wrap-lab/projects/${projectId}/production-handoff`, payload);
   return r.data;
 }
 

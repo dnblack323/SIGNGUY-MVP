@@ -6,7 +6,7 @@
 
 **Source audit baseline:** `main` at `8fe53319ffd288112c21e9abc9055081501c4f90` (August 11, 2026)
 
-**Current Shop Operations re-audit baseline:** `main` at `1092e268cd9139240ec5eedce46a2a9f158e401f` (August 16, 2026), after the merged navigation shell, Home/sidebar correction, Quick Access, Shop Schedule, Wrap Lab navigation restoration, and Schedule resource-reservation work.
+**Current Shop Operations re-audit baseline:** `main` at `1d695cc7c9cc8c39e04a690ff29616711a6c267d` (August 17, 2026), after the merged navigation shell, Home/sidebar correction, Quick Access, Shop Schedule, Wrap Lab navigation restoration, Schedule resource-reservation work, Approval Authority, Customer Foundation, Quote Completion, Order Readiness, and Production Timing batches.
 
 **Coverage:** 89 of 89 tracked items assigned a priority after adding `SO-28` for the shared scheduling foundation and Shop Schedule.
 
@@ -97,16 +97,16 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Dependencies:** Proof, signature, Approval, and Decision Room aggregation rules plus source-record action links.
   - **Residual limitations:** Visible Approval Center shell is not yet complete approval authority.
 
-- **SO-22 — Status: `In Progress`**
-  - **Exact frontend evidence:** `frontend/src/pages/WrapLabPage.jsx`, `frontend/src/pages/WrapLabDetailPage.jsx`.
+- **SO-22 — Status: `Closed`**
+  - **Exact frontend evidence:** `frontend/src/pages/WrapLabPage.jsx`, `frontend/src/pages/WrapLabDetailPage.jsx`, `frontend/src/pages/QuoteDetailPage.jsx`, `frontend/src/pages/OrderDetailPage.jsx`.
   - **Exact backend evidence:** `backend/app/routers/wrap_lab.py`, `backend/app/services/wrap_lab.py`, `backend/app/models/wrap_lab.py`.
-  - **Relevant tests:** `backend/tests/test_ec15_wrap_lab.py`.
-  - **Already implemented:** Tenant-scoped backend records exist for vehicles, projects, coverage, inspections, design scenes, panel plans, packets, schedules, warranties, reports, and audit.
-  - **Still missing:** Frontend still creates fixed coverage, inspection, vector scene, panel plan, install schedule, and warranty/aftercare payloads from buttons; editable staff forms, billing/invoice links, canonical schedule integration, contextual launch, and explicit permission guards remain incomplete.
-  - **Original closure check passes:** No.
+  - **Relevant tests:** `backend/tests/test_ec15_wrap_lab.py`, `frontend/src/__tests__/WrapLabWorkflow.test.jsx`.
+  - **Already implemented:** Tenant-scoped backend records exist for vehicles, projects, coverage, inspections, design scenes, panel plans, packets, schedules, warranties, installation/QC records, reports, and audit. The active branch adds searchable source selectors, tenant-safe customer/quote/order/order-item/work-order linking, duplicate project prevention for the same commercial wrap item, editable vehicle intake and wrap specifications, user-entered coverage/panel/inspection/design/install forms, signed-inspection locking with addendum creation, linked approval/Decision Room/proof/file summaries, contextual Quote/Order Wrap Lab launch actions, derived project readiness, timeline aggregation, production handoff through the canonical Order readiness and Work Order generation service, secure customer inspection-review links with truthful manual-link delivery history, revocation/expiry/resend lifecycle controls, public inspection signing, and approval-sensitive wrap revision invalidation for stale proofs and approvals.
+  - **Still missing:** None for the original `SO-22` closure check. Deep profitability/reporting remains a separate Business & Finance reporting item.
+  - **Original closure check passes:** Yes.
   - **Recommended implementation batch:** Batch 7 — Wrap Lab replacement workflows.
   - **Dependencies:** Batch 1 Schedule/contextual routing, Batch 5 Order/Work Order context.
-  - **Residual limitations:** Existing `/wrap-lab` deep links must keep working while permanent tab ownership and contextual access are preserved.
+  - **Residual limitations:** None for the Wrap Lab workflow replacement closure check; future reporting and profitability views remain outside `SO-22`.
 
 ### P1 items
 
@@ -405,13 +405,13 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Done when:** Staff can find and act on every pending proof, signature, approval, and Decision Room item from one place.
   - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-approval-authority` | Tests/Evidence: `backend/tests/test_shop_operations_approval_authority.py`, `frontend/src/__tests__/ApprovalCenterAuthority.test.jsx`, source-detail approval panels | Residual limitations: future approval-capable sources must be added to the same authority queue when they are introduced; no duplicate approval authority was created.
 
-- [ ] **SO-22 — Replace Wrap Lab example actions with real staff workflows**
+- [x] **SO-22 — Replace Wrap Lab example actions with real staff workflows**
   - **Source classification:** Previously identified P0; source priority: P0 from prior audit
   - **Priority basis:** Previously identified P0; fixed example payloads must not remain in a real staff workflow.
   - **Baseline gap:** Wrap Lab backend contracts are extensive, but the detail page creates fixed example payloads for coverage, inspections, vehicle scenes, panels, schedules, and aftercare.
   - **Required outcome:** Build editable workflows for measurements and coverage; inspection photos and damage mapping; vehicle scenes and panels; artwork/design/proof review; installation scheduling and assignment; completion photos, acceptance, and aftercare; and billing/invoice connections.
   - **Done when:** All Wrap records are created from validated user input, saved to the correct project, and usable end to end without demo payloads.
-  - **Tracking:** Status: `In Progress` | Owner: `Codex` | PR/Commit: `codex/restore-wrap-lab-navigation` | Tests/Evidence: Wrap Lab correction evidence | Residual limitations: fixed example payloads and full contextual Wrap Lab workflow actions remain open.
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-wrap-lab-workflow` | Tests/Evidence: `backend/tests/test_ec15_wrap_lab.py`, `frontend/src/__tests__/WrapLabWorkflow.test.jsx` | Residual limitations: none for the original Wrap Lab workflow replacement closure check; deep profitability/reporting remains separate Business & Finance work.
 
 ### P1 — Core workflow and dependency
 

@@ -34,6 +34,7 @@ from ..services.portal_tokens import consume_public_action_token
 from ..services.proofs_service import transition_proof
 from ..services.audit import record_audit
 from ..services import quote_completion_service as quote_completion
+from ..services import wrap_lab as wrap_lab_service
 from ..services import storage
 
 logger = logging.getLogger(__name__)
@@ -112,6 +113,40 @@ async def public_quote_approval(qid: str, payload: PublicQuoteApprovalIn, reques
         }
         status, detail = detail_map.get(str(ex), (400, str(ex)))
         raise HTTPException(status_code=status, detail=detail)
+
+
+class PublicWrapInspectionSignatureIn(BaseModel):
+    signer_name: str
+    signer_email: Optional[str] = None
+    signature_type: str = "typed"
+    signature_data: str
+
+
+@router.get("/wrap-inspections/{inspection_id}")
+async def public_view_wrap_inspection(inspection_id: str, request: Request, t: str = Query(...)) -> dict:
+    try:
+        return await wrap_lab_service.public_view_inspection_review(
+            t,
+            inspection_id,
+            ip=(request.client.host if request.client else None),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except wrap_lab_service.WrapLabError as ex:
+        raise HTTPException(status_code=ex.status_code, detail=ex.detail)
+
+
+@router.post("/wrap-inspections/{inspection_id}/signature", status_code=201)
+async def public_sign_wrap_inspection(inspection_id: str, payload: PublicWrapInspectionSignatureIn, request: Request, t: str = Query(...)) -> dict:
+    try:
+        return await wrap_lab_service.public_sign_inspection_review(
+            t,
+            inspection_id,
+            payload.model_dump(exclude_none=True),
+            ip=(request.client.host if request.client else None),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except wrap_lab_service.WrapLabError as ex:
+        raise HTTPException(status_code=ex.status_code, detail=ex.detail)
 
 
 @router.get("/invoices/{iid}")

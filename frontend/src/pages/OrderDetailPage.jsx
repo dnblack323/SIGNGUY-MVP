@@ -16,7 +16,7 @@ import ProductionTimeline from "@/components/production/ProductionTimeline";
 import { centsToDollarsString } from "@/lib/format";
 import { buildApprovalCenterUrl } from "@/lib/approvalCenter";
 import { buildShopScheduleUrl } from "@/lib/shopScheduleLinks";
-import { ArrowLeft, CalendarDays, Plus, Pencil, Trash2, Wrench, Receipt, Zap, RefreshCw, ClipboardCheck, AlertTriangle, CheckCircle2, FileText, Link as LinkIcon, Lock, CreditCard, History } from "lucide-react";
+import { ArrowLeft, CalendarDays, Plus, Pencil, Trash2, Wrench, Receipt, Zap, RefreshCw, ClipboardCheck, AlertTriangle, CheckCircle2, FileText, Link as LinkIcon, Lock, CreditCard, History, Truck } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import LineItemDialog from "@/components/commerce/LineItemDialog";
 import DigitalPrintMinimumAdjustmentRow, { digitalPrintMinimumAdjustmentCents } from "@/components/commerce/DigitalPrintMinimumAdjustmentRow";
@@ -171,6 +171,11 @@ function ItemsPanel({ orderId, items, totals, pricingSummary, canWrite, orderSta
       />
     </Card>
   );
+}
+
+function isWrapOrderItem(item) {
+  return [item?.category, item?.product_type, item?.description, item?.item_name, item?.material_key].join(" ").toLowerCase().includes("wrap")
+    || item?.category === "vehicle_graphics";
 }
 
 function ReadinessPanel({ readiness, onHandoff, disabled }) {
@@ -379,6 +384,7 @@ export default function OrderDetailPage() {
 
   const order = data?.order;
   const items = data?.items || [];
+  const wrapOrderItem = items.find(isWrapOrderItem);
   const totals = data?.totals || {};
   const digitalPrintAdjustmentCents = digitalPrintMinimumAdjustmentCents(totals);
   const pricingSummary = data?.pricing_summary || {};
@@ -464,6 +470,13 @@ export default function OrderDetailPage() {
                     title: `${order.job_name} appointment`,
                   })}>
                     <CalendarDays className="size-4 mr-1" />Schedule
+                  </Link>
+                </Button>
+              )}
+              {hasPerm("wrap_lab:read") && (
+                <Button asChild variant="outline" size="sm" data-testid="order-open-wrap-lab-button">
+                  <Link to={`/wrap-lab?order_id=${order.id}&customer_id=${order.customer_id}${wrapOrderItem?.id ? `&order_item_id=${wrapOrderItem.id}` : ""}`}>
+                    <Truck className="size-4 mr-1" />Wrap Lab
                   </Link>
                 </Button>
               )}

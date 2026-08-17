@@ -20,6 +20,7 @@ PublicAction = Literal[
     "invoice_pay",
     "customer_intake",
     "decision_room_view",
+    "wrap_inspection_review",
 ]
 
 
