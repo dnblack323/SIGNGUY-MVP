@@ -353,6 +353,9 @@ async def maintenance_mode_middleware(request: Request, call_next):
             settings = await db.platform_settings.find_one({"id": "global"}, {"_id": 0, "maintenance": 1})
             maintenance = (settings or {}).get("maintenance") or {}
             if maintenance.get("enabled") is True and not await _request_is_platform_admin(request):
+                test_scope = maintenance.get("test_scope")
+                if test_scope and request.headers.get("x-test-maintenance-scope") != test_scope:
+                    return await call_next(request)
                 return JSONResponse(
                     status_code=503,
                     content={

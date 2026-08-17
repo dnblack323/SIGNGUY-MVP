@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Calendar, CheckCircle2, Clock3, FileText, MoreHorizontal, RefreshCw, Search, UserPlus } from "lucide-react";
+import { AlertTriangle, Calendar, CheckCircle2, Clock3, FileText, MoreHorizontal, Pause, RefreshCw, Search, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 import api, { extractError } from "@/lib/api";
@@ -60,14 +60,39 @@ function titleize(value) {
   return String(value || "unknown").replace(/_/g, " ");
 }
 
+function timerSessionIdFor(row, action) {
+  if (["timer_correct", "timer_void"].includes(action)) {
+    const completed = (row.timer_history || []).find((entry) => entry.status === "completed");
+    return completed?.id || null;
+  }
+  return row.active_timer_session_id || row.current_timer?.id || row.active_timer?.id || null;
+}
+
 function firstName(value) {
   return String(value || "Unassigned").split(" ")[0];
+}
+
+function formatDuration(seconds) {
+  const total = Math.max(0, Number(seconds || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.round((total % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value).slice(0, 16);
+  return parsed.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 export default function ProductionBoardPage() {
   const qc = useQueryClient();
   const { user, hasPerm } = useAuth();
   const canWrite = hasPerm("work_order:write");
+  const canReadPricing = hasPerm("pricing:read");
+  const canWritePricing = hasPerm("pricing:write");
   const isManager = ["owner", "admin", "production_manager"].includes(user?.role);
   const [view, setView] = useState("active");
   const [groupBy, setGroupBy] = useState("status");
@@ -98,6 +123,12 @@ export default function ProductionBoardPage() {
     enabled: isManager,
   });
 
+  const feedbackQuery = useQuery({
+    queryKey: ["production-pricing-feedback"],
+    queryFn: async () => (await api.get("/production/pricing-feedback")).data,
+    enabled: canReadPricing,
+  });
+
   const employees = useMemo(() => employeesQuery.data?.items || [], [employeesQuery.data]);
   const board = boardQuery.data || {};
   const rows = useMemo(() => boardQuery.data?.items || [], [boardQuery.data]);
@@ -112,6 +143,7 @@ export default function ProductionBoardPage() {
       toast.success("Stage updated");
       setDialog(null);
       qc.invalidateQueries({ queryKey: ["prod-board"] });
+      qc.invalidateQueries({ queryKey: ["production-pricing-feedback"] });
     },
     onError: (e) => toast.error(extractError(e)),
   });
@@ -138,7 +170,7 @@ export default function ProductionBoardPage() {
 
   function openAction(row, action) {
     if (!row.current_stage_id) return;
-    if (["start", "resume", "unassign"].includes(action)) {
+    if (["start", "resume", "unassign", "timer_start", "timer_resume", "pricing_feedback"].includes(action)) {
       stageAction.mutate({ row, action, payload: {} });
       return;
     }
@@ -154,13 +186,24 @@ export default function ProductionBoardPage() {
       due_at: dialog.due_at || null,
       employee_id: dialog.employee_id,
       override_reason: dialog.reason,
+      session_id: timerSessionIdFor(dialog.row, dialog.action),
+      corrected_elapsed_seconds: dialog.corrected_elapsed_seconds === "" ? null : Number(dialog.corrected_elapsed_seconds),
+      confirm: dialog.confirm === true,
     };
     if (dialog.action === "assign" && !payload.employee_id) {
       toast.error("Select an employee");
       return;
     }
-    if (["block", "skip", "reopen"].includes(dialog.action) && !payload.reason.trim()) {
+    if (["block", "skip", "reopen", "timer_pause", "timer_correct", "timer_void"].includes(dialog.action) && !payload.reason.trim()) {
       toast.error("Reason is required");
+      return;
+    }
+    if (dialog.action === "timer_correct" && (!Number.isFinite(payload.corrected_elapsed_seconds) || payload.corrected_elapsed_seconds < 0)) {
+      toast.error("Enter corrected working seconds");
+      return;
+    }
+    if (dialog.action === "timer_void" && !payload.confirm) {
+      toast.error("Confirm that this time entry should be voided");
       return;
     }
     if (dialog.action === "add_note" && !payload.note.trim()) {
@@ -193,7 +236,7 @@ export default function ProductionBoardPage() {
         actions={<Button asChild variant="outline" size="sm"><Link to="/work-orders">Work Orders</Link></Button>}
       />
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-8" data-testid="board-summary-counts">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-9" data-testid="board-summary-counts">
         <Summary label="Active" value={summary.active_production} icon={Clock3} />
         <Summary label="Ready" value={summary.ready_to_start} icon={CheckCircle2} />
         <Summary label="In Progress" value={summary.in_progress} icon={RefreshCw} />
@@ -201,6 +244,8 @@ export default function ProductionBoardPage() {
         <Summary label="Waiting" value={summary.waiting} icon={Clock3} />
         <Summary label="Overdue" value={summary.overdue} icon={Calendar} tone="text-rose-700" />
         <Summary label="Unassigned" value={summary.unassigned} icon={UserPlus} />
+        <Summary label="Active Timers" value={summary.active_timers} icon={Clock3} tone="text-blue-700" />
+        <Summary label="Paused Timers" value={summary.paused_timers} icon={Pause} tone="text-amber-700" />
         <Summary label="Recent Done" value={summary.completed_recently} icon={CheckCircle2} />
       </div>
 
@@ -322,6 +367,17 @@ export default function ProductionBoardPage() {
         onClose={() => setDialog(null)}
         onSubmit={submitDialog}
       />
+      {canReadPricing && (
+        <PricingFeedbackPanel
+          feedback={feedbackQuery.data?.items || []}
+          loading={feedbackQuery.isLoading}
+          canWrite={canWritePricing && isManager}
+          onUpdated={() => {
+            qc.invalidateQueries({ queryKey: ["production-pricing-feedback"] });
+            qc.invalidateQueries({ queryKey: ["prod-board"] });
+          }}
+        />
+      )}
       <BulkDialog
         dialog={bulkDialog}
         employees={employees}
@@ -340,6 +396,13 @@ async function runStageAction(row, action, payload) {
   if (action === "assign") return (await api.post(`/production-stages/${id}/assign`, { employee_id: payload.employee_id, override_reason: payload.override_reason || null })).data;
   if (action === "unassign") return (await api.post(`/production-stages/${id}/unassign`)).data;
   if (action === "start") return (await api.post(`/production-stages/${id}/start`)).data;
+  if (action === "timer_start") return (await api.post(`/production-stages/${id}/timer/start`, { notes: payload.note || null })).data;
+  if (action === "timer_pause") return (await api.post(`/production-stages/${id}/timer/pause`, { session_id: payload.session_id || timerSessionIdFor(row, action), reason: payload.reason })).data;
+  if (action === "timer_resume") return (await api.post(`/production-stages/${id}/timer/resume`, { session_id: payload.session_id || timerSessionIdFor(row, action) })).data;
+  if (action === "timer_stop") return (await api.post(`/production-stages/${id}/timer/stop`, { session_id: payload.session_id || timerSessionIdFor(row, action), notes: payload.note || null, interruption_reason: payload.reason || null })).data;
+  if (action === "timer_correct") return (await api.post(`/production-stages/${id}/timer/correct`, { session_id: payload.session_id, corrected_elapsed_seconds: payload.corrected_elapsed_seconds, reason: payload.reason })).data;
+  if (action === "timer_void") return (await api.post(`/production-stages/${id}/timer/void`, { session_id: payload.session_id, reason: payload.reason, confirm: payload.confirm })).data;
+  if (action === "pricing_feedback") return (await api.post(`/production-stages/${id}/pricing-feedback`)).data;
   if (action === "wait") return (await api.post(`/production-stages/${id}/wait`, { reason: payload.reason || null })).data;
   if (action === "block") return (await api.post(`/production-stages/${id}/block`, { reason: payload.reason })).data;
   if (action === "resume") return (await api.post(`/production-stages/${id}/resume`)).data;
@@ -377,6 +440,8 @@ function BoardRow({ row, canWrite, isManager, selected, onSelect, onAction }) {
   const { openWorkspaceTarget } = useWorkspace();
   const canSelect = isManager && row.current_stage_id;
   const allowed = row.allowed_actions || [];
+  const currentTimer = row.current_timer || row.active_timer || null;
+  const timerStatus = row.timer_status || currentTimer?.status;
   const openWorkOrderWorkspace = () => {
     if (!row.work_order_id) return;
     openWorkspaceTarget({
@@ -416,6 +481,27 @@ function BoardRow({ row, canWrite, isManager, selected, onSelect, onAction }) {
           </div>
           {row.blocker_reason && <div className="max-w-[260px] truncate text-xs text-orange-700">{row.blocker_reason}</div>}
           {row.eligibility_warning && <div className="max-w-[260px] truncate text-xs text-amber-700">{row.eligibility_warning}</div>}
+          {currentTimer && (
+            <div className={`max-w-[320px] truncate text-xs ${timerStatus === "paused" ? "text-amber-700" : "text-blue-700"}`} data-testid={`board-active-timer-${row.current_stage_id}`}>
+              {timerStatus === "paused" ? "Paused" : "Timing"}: {row.active_timer_employee_name || currentTimer.employee_name || "Employee"} since {formatDateTime(row.active_timer_started_at || currentTimer.started_at)}
+              {currentTimer.effective_elapsed_seconds ? <> / working {formatDuration(currentTimer.effective_elapsed_seconds)}</> : null}
+              {currentTimer.paused_duration_seconds ? <> / paused {formatDuration(currentTimer.paused_duration_seconds)}</> : null}
+            </div>
+          )}
+          {row.timer_history?.length > 0 && (
+            <div className="max-w-[320px] truncate text-xs text-muted-foreground">
+              Last time entry: {titleize(row.timer_history[0].status)}
+              {row.timer_history[0].corrected_elapsed_seconds != null ? " / corrected" : ""}
+              {row.timer_history[0].status === "voided" ? " / voided" : ""}
+            </div>
+          )}
+          {(row.actual_duration_seconds || row.planned_duration_minutes) && (
+            <div className="text-xs text-muted-foreground">
+              Actual {formatDuration(row.actual_duration_seconds)}
+              {row.planned_duration_minutes ? <> / planned {row.planned_duration_minutes}m</> : null}
+              {row.labor_variance_minutes ? <> / variance {row.labor_variance_minutes}m</> : null}
+            </div>
+          )}
         </div>
       </TableCell>
       <TableCell className="text-sm">
@@ -445,6 +531,10 @@ function BoardRow({ row, canWrite, isManager, selected, onSelect, onAction }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {allowed.includes("start") && <DropdownMenuItem onClick={() => onAction(row, "start")}>Start</DropdownMenuItem>}
+              {allowed.includes("timer_start") && <DropdownMenuItem onClick={() => onAction(row, "timer_start")}>Check Out & Start</DropdownMenuItem>}
+              {allowed.includes("timer_pause") && <DropdownMenuItem onClick={() => onAction(row, "timer_pause")}>Pause Timer</DropdownMenuItem>}
+              {allowed.includes("timer_resume") && <DropdownMenuItem onClick={() => onAction(row, "timer_resume")}>Resume Timer</DropdownMenuItem>}
+              {allowed.includes("timer_stop") && <DropdownMenuItem onClick={() => onAction(row, "timer_stop")}>Check In</DropdownMenuItem>}
               {allowed.includes("wait") && <DropdownMenuItem onClick={() => onAction(row, "wait")}>Mark Waiting</DropdownMenuItem>}
               {allowed.includes("block") && <DropdownMenuItem onClick={() => onAction(row, "block")}>Block</DropdownMenuItem>}
               {allowed.includes("resume") && <DropdownMenuItem onClick={() => onAction(row, "resume")}>Resume</DropdownMenuItem>}
@@ -455,6 +545,9 @@ function BoardRow({ row, canWrite, isManager, selected, onSelect, onAction }) {
               {isManager && allowed.filter((a) => MANAGER_ACTIONS.has(a)).map((action) => (
                 <DropdownMenuItem key={action} onClick={() => onAction(row, action)}>{titleize(action)}</DropdownMenuItem>
               ))}
+              {isManager && allowed.includes("timer_correct") && <DropdownMenuItem onClick={() => onAction(row, "timer_correct")}>Correct Time</DropdownMenuItem>}
+              {isManager && allowed.includes("timer_void") && <DropdownMenuItem onClick={() => onAction(row, "timer_void")}>Void Time</DropdownMenuItem>}
+              {isManager && allowed.includes("pricing_feedback") && <DropdownMenuItem onClick={() => onAction(row, "pricing_feedback")}>Create Pricing Feedback</DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -489,15 +582,33 @@ function ActionDialog({ dialog, employees, busy, onChange, onClose, onSubmit }) 
               <Input type="date" value={dialog.due_at || ""} onChange={(e) => onChange({ ...dialog, due_at: e.target.value })} />
             </div>
           )}
-          {["block", "wait", "skip", "reopen", "assign"].includes(action) && (
+          {action === "timer_correct" && (
             <div className="grid gap-1.5">
-              <Label>{["block", "skip", "reopen"].includes(action) ? "Reason" : "Reason or override note"}</Label>
+              <Label>Corrected working seconds</Label>
+              <Input
+                type="number"
+                min="0"
+                value={dialog.corrected_elapsed_seconds ?? ""}
+                onChange={(e) => onChange({ ...dialog, corrected_elapsed_seconds: e.target.value })}
+                data-testid="board-corrected-seconds-input"
+              />
+            </div>
+          )}
+          {["block", "wait", "skip", "reopen", "assign", "timer_stop", "timer_pause", "timer_correct", "timer_void"].includes(action) && (
+            <div className="grid gap-1.5">
+              <Label>{["timer_pause", "timer_correct", "timer_void", "block", "skip", "reopen"].includes(action) ? "Reason" : action === "timer_stop" ? "Interruption reason or note" : "Reason or override note"}</Label>
               <Textarea rows={3} value={dialog.reason || ""} onChange={(e) => onChange({ ...dialog, reason: e.target.value })} data-testid="board-reason-input" />
             </div>
           )}
-          {["complete", "add_note"].includes(action) && (
+          {action === "timer_void" && (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={dialog.confirm === true} onCheckedChange={(checked) => onChange({ ...dialog, confirm: checked === true })} />
+              Confirm this time entry should be excluded from totals.
+            </label>
+          )}
+          {["complete", "add_note", "timer_stop"].includes(action) && (
             <div className="grid gap-1.5">
-              <Label>{action === "complete" ? "Completion note" : "Production note"}</Label>
+              <Label>{action === "complete" ? "Completion note" : action === "timer_stop" ? "Timer note" : "Production note"}</Label>
               <Textarea rows={3} value={dialog.note || ""} onChange={(e) => onChange({ ...dialog, note: e.target.value })} data-testid="board-note-input" />
             </div>
           )}
@@ -508,6 +619,85 @@ function ActionDialog({ dialog, employees, busy, onChange, onClose, onSubmit }) 
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function PricingFeedbackPanel({ feedback, loading, canWrite, onUpdated }) {
+  const decision = useMutation({
+    mutationFn: async ({ item, action, payload }) => {
+      return (await api.post(`/production/pricing-feedback/${item.id}/${action}`, payload)).data;
+    },
+    onSuccess: () => {
+      toast.success("Pricing feedback updated");
+      onUpdated?.();
+    },
+    onError: (e) => toast.error(extractError(e)),
+  });
+
+  const items = feedback || [];
+  return (
+    <Card className="rounded-md shadow-none" data-testid="pricing-feedback-panel">
+      <CardContent className="space-y-3 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <div className="text-sm font-semibold">Pricing Foundation Feedback</div>
+            <div className="text-xs text-muted-foreground">Manager review of production timing variance suggestions.</div>
+          </div>
+          <Badge variant="outline">{items.length}</Badge>
+        </div>
+        {loading ? (
+          <div className="text-xs text-muted-foreground">Loading pricing feedback...</div>
+        ) : items.length === 0 ? (
+          <div className="text-xs text-muted-foreground">No active pricing feedback.</div>
+        ) : (
+          <div className="grid gap-2 lg:grid-cols-2">
+            {items.slice(0, 6).map((item) => (
+              <div key={item.id} className="rounded-md border p-2 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-medium">{item.stage_name || item.production_category || "Production stage"}</div>
+                  <Badge variant={item.status === "pending" ? "default" : "outline"}>{item.status}</Badge>
+                </div>
+                <div className="mt-1 text-muted-foreground">
+                  Planned {formatDuration(item.planned_seconds)} / Actual {formatDuration(item.effective_actual_seconds)} / Variance {formatDuration(Math.abs(item.variance_seconds))}
+                </div>
+                <div className="mt-1">
+                  {item.mapped ? (
+                    <>
+                      <span className="text-muted-foreground">{item.target_path}</span>
+                      <div>Existing {Number(item.existing_value ?? 0).toFixed(4)} / Suggested {Number(item.suggested_value ?? 0).toFixed(4)}</div>
+                    </>
+                  ) : (
+                    <span className="text-amber-700">Unmapped: {item.explanation}</span>
+                  )}
+                </div>
+                {canWrite && ["pending", "unmapped"].includes(item.status) && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {item.mapped && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={decision.isPending}
+                        onClick={() => decision.mutate({ item, action: "approve", payload: { approved_value: item.suggested_value, reason: "Manager approved production variance feedback" } })}
+                      >
+                        Approve
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={decision.isPending}
+                      onClick={() => decision.mutate({ item, action: "reject", payload: { reason: "Manager rejected production variance feedback" } })}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

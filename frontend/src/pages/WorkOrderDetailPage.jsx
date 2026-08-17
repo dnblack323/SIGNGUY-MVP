@@ -95,6 +95,8 @@ export default function WorkOrderDetailPage() {
   const currentStatus = w.production_status;
   const nextStates = ALLOWED[currentStatus] || [];
   const edit = { ...w, ...form };
+  const showItemFinancials = !w.financials_restricted && (w.items_snapshot || []).some((it) => typeof it.unit_price_cents === "number");
+  const itemGridClass = showItemFinancials ? "grid-cols-[1fr_80px_140px_140px]" : "grid-cols-[1fr_80px]";
 
   return (
     <div className="space-y-4" data-testid="work-order-detail-page">
@@ -171,12 +173,13 @@ export default function WorkOrderDetailPage() {
                   <div className="text-sm text-muted-foreground">No production-required items were on the order at generation.</div>
                 ) : (
                   <div className="rounded-lg border">
-                    <div className="grid grid-cols-[1fr_80px_140px_140px] gap-2 px-3 py-2 border-b text-xs font-medium text-muted-foreground">
-                      <div>Description</div><div className="text-right">Qty</div><div className="text-right">Unit</div><div className="text-right">Line total</div>
+                    <div className={`grid ${itemGridClass} gap-2 px-3 py-2 border-b text-xs font-medium text-muted-foreground`}>
+                      <div>Description</div><div className="text-right">Qty</div>
+                      {showItemFinancials && <><div className="text-right">Unit</div><div className="text-right">Line total</div></>}
                     </div>
                     <div className="divide-y">
                       {w.items_snapshot.map((it, i) => (
-                        <div key={i} className="grid grid-cols-[1fr_80px_140px_140px] gap-2 px-3 py-2 items-center text-sm" data-testid={`wo-item-row-${i}`}>
+                        <div key={i} className={`grid ${itemGridClass} gap-2 px-3 py-2 items-center text-sm`} data-testid={`wo-item-row-${i}`}>
                           <div>
                             <div>{it.description}</div>
                             {(it.width_inches || it.height_inches) && (
@@ -184,8 +187,12 @@ export default function WorkOrderDetailPage() {
                             )}
                           </div>
                           <div className="text-right tabular-nums">{it.quantity}</div>
-                          <div className="text-right tabular-nums">{centsToDollarsString(it.unit_price_cents)}</div>
-                          <div className="text-right tabular-nums">{centsToDollarsString((it.quantity || 1) * (it.unit_price_cents || 0))}</div>
+                          {showItemFinancials && (
+                            <>
+                              <div className="text-right tabular-nums">{centsToDollarsString(it.unit_price_cents)}</div>
+                              <div className="text-right tabular-nums">{centsToDollarsString((it.quantity || 1) * (it.unit_price_cents || 0))}</div>
+                            </>
+                          )}
                         </div>
                       ))}
                     </div>
