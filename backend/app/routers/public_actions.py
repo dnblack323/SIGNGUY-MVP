@@ -34,6 +34,7 @@ from ..services.portal_tokens import consume_public_action_token
 from ..services.proofs_service import transition_proof
 from ..services.audit import record_audit
 from ..services import quote_completion_service as quote_completion
+from ..services import order_completion_service
 from ..services import wrap_lab as wrap_lab_service
 from ..services import storage
 
@@ -81,6 +82,19 @@ class PublicQuoteApprovalIn(BaseModel):
     signer_name: Optional[str] = None
 
 
+class PublicOrderCompletionAckIn(BaseModel):
+    signer_name: str
+    signer_email: Optional[str] = None
+    signature_type: str = "typed"
+    signature_data: Optional[str] = None
+    comment: Optional[str] = None
+
+
+class PublicOrderCompletionIssueIn(BaseModel):
+    title: Optional[str] = None
+    description: str
+
+
 @router.post("/quotes/{qid}/approval", status_code=201)
 async def public_quote_approval(qid: str, payload: PublicQuoteApprovalIn, request: Request, t: str = Query(...)) -> dict:
     token = await resolve_public_token(
@@ -113,6 +127,89 @@ async def public_quote_approval(qid: str, payload: PublicQuoteApprovalIn, reques
         }
         status, detail = detail_map.get(str(ex), (400, str(ex)))
         raise HTTPException(status_code=status, detail=detail)
+
+
+@router.get("/order-completions/{order_id}")
+async def public_view_order_completion(order_id: str, request: Request, t: str = Query(...)) -> dict:
+    try:
+        return await order_completion_service.public_completion_view(
+            t,
+            order_id,
+            ip=(request.client.host if request.client else None),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except HTTPException:
+        raise
+    except ValueError as ex:
+        status = 404 if str(ex) in {"order_not_found", "packet_not_found"} else 400
+        raise HTTPException(status_code=status, detail=str(ex))
+
+
+@router.get("/order-completions/{order_id}/packet")
+async def public_download_order_completion_packet(order_id: str, request: Request, t: str = Query(...)) -> Response:
+    try:
+        view = await order_completion_service.public_completion_view(
+            t,
+            order_id,
+            ip=(request.client.host if request.client else None),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except HTTPException:
+        raise
+    except ValueError as ex:
+        status = 404 if str(ex) in {"order_not_found", "packet_not_found"} else 400
+        raise HTTPException(status_code=status, detail=str(ex))
+    packet = view["packet"]
+    content = order_completion_service.render_completion_packet_pdf({
+        "version": packet.get("version"),
+        "snapshot": packet.get("snapshot"),
+        "artifact_filename": f"order-completion-v{packet.get('version')}.pdf",
+    })
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="order-completion-v{packet.get("version")}.pdf"'},
+    )
+
+
+@router.post("/order-completions/{order_id}/acknowledgement", status_code=201)
+async def public_acknowledge_order_completion(order_id: str, payload: PublicOrderCompletionAckIn, request: Request, t: str = Query(...)) -> dict:
+    try:
+        return await order_completion_service.public_completion_acknowledge(
+            t,
+            order_id,
+            payload.model_dump(exclude_none=True),
+            ip=(request.client.host if request.client else None),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except HTTPException:
+        raise
+    except ValueError as ex:
+        detail_map = {
+            "completion_already_recorded": (409, "Completion acknowledgement already recorded"),
+            "packet_not_found": (404, "Completion packet not found"),
+            "signature_request_not_found": (404, "Signature request not found"),
+            "signer_not_required_or_already_signed": (400, "Signer is not required or already signed"),
+        }
+        status, detail = detail_map.get(str(ex), (400, str(ex)))
+        raise HTTPException(status_code=status, detail=detail)
+
+
+@router.post("/order-completions/{order_id}/issues", status_code=201)
+async def public_report_order_completion_issue(order_id: str, payload: PublicOrderCompletionIssueIn, request: Request, t: str = Query(...)) -> dict:
+    try:
+        return await order_completion_service.public_completion_issue(
+            t,
+            order_id,
+            payload.model_dump(exclude_none=True),
+            ip=(request.client.host if request.client else None),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except HTTPException:
+        raise
+    except ValueError as ex:
+        detail = "Issue description is required" if str(ex) == "issue_description_required" else str(ex)
+        raise HTTPException(status_code=400, detail=detail)
 
 
 class PublicWrapInspectionSignatureIn(BaseModel):

@@ -21,6 +21,7 @@ PublicAction = Literal[
     "customer_intake",
     "decision_room_view",
     "wrap_inspection_review",
+    "order_completion_review",
 ]
 
 

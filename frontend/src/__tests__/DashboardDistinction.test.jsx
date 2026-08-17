@@ -52,6 +52,15 @@ beforeEach(() => {
   mockPermissions = ["finance:read", "invoice:read", "employee:read", "timesheet:read", "timesheet:manage"];
   api.get.mockImplementation((url) => {
     if (url === "/dashboard/summary") return Promise.resolve({ data: summary });
+    if (url === "/dashboard/shop-operations/analytics") {
+      return Promise.resolve({
+        data: {
+          counts: { blocked_stages: 1, waiting_stages: 2, open_completion_issues: 1, completed_orders: 3 },
+          bottlenecks: [{ label: "Print", active_count: 4, signal: "stage_capacity" }],
+          restricted_financial_data: false,
+        },
+      });
+    }
     if (url === "/team/dashboard") return Promise.resolve({ data: { employee_status_counts: { active: 4 } } });
     if (url === "/timesheets/pending-review") return Promise.resolve({ data: { items: [{ id: "time-1" }] } });
     return Promise.resolve({ data: {} });
@@ -80,6 +89,8 @@ test("Home and Shop Operations Overview have materially different compositions",
   renderDashboards("/shop-operations");
   expect(await screen.findByTestId("shop-operations-overview-page")).toBeInTheDocument();
   expect(await screen.findByTestId("shop-operations-snapshot")).toBeInTheDocument();
+  expect(await screen.findByTestId("shop-operations-analytics")).toHaveTextContent("Operational Analytics");
+  expect(screen.getByTestId("shop-operations-analytics")).toHaveTextContent("Production analytics exclude restricted financial data.");
   expect(await screen.findByTestId("shop-list-production-attention")).toBeInTheDocument();
   expect(screen.queryByTestId("home-section-business-finance")).not.toBeInTheDocument();
   expect(screen.queryByTestId("home-section-team-productivity")).not.toBeInTheDocument();

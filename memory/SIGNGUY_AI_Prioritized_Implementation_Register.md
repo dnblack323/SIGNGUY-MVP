@@ -6,7 +6,7 @@
 
 **Source audit baseline:** `main` at `8fe53319ffd288112c21e9abc9055081501c4f90` (August 11, 2026)
 
-**Current Shop Operations re-audit baseline:** `main` at `1d695cc7c9cc8c39e04a690ff29616711a6c267d` (August 17, 2026), after the merged navigation shell, Home/sidebar correction, Quick Access, Shop Schedule, Wrap Lab navigation restoration, Schedule resource-reservation work, Approval Authority, Customer Foundation, Quote Completion, Order Readiness, and Production Timing batches.
+**Current Shop Operations re-audit baseline:** `main` at `622189f083a84f7db3e7ad0c8ccb9ebba33dbc75` (August 17, 2026), after the merged navigation shell, Home/sidebar correction, Quick Access, Shop Schedule, Wrap Lab navigation restoration, Schedule resource-reservation work, Approval Authority, Customer Foundation, Quote Completion, Order Readiness, Production Timing, and Wrap Lab Workflow batches.
 
 **Coverage:** 89 of 89 tracked items assigned a priority after adding `SO-28` for the shared scheduling foundation and Shop Schedule.
 
@@ -71,7 +71,7 @@
 
 ## Current Shop Operations re-audit — August 14, 2026
 
-This section supersedes the original source `Tracking` lines for `SO-01` through `SO-28`; source baseline text is retained for provenance. Evidence was checked against `main` at `1092e268cd9139240ec5eedce46a2a9f158e401f`.
+This section supersedes the original source `Tracking` lines for `SO-01` through `SO-28`; source baseline text is retained for provenance. Evidence was checked against `main` at `622189f083a84f7db3e7ad0c8ccb9ebba33dbc75`.
 
 ### P0 items
 
@@ -264,16 +264,16 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Dependencies:** Stage lifecycle stability and employee attribution model.
   - **Residual limitations:** Time tracking remains production-operation evidence only and does not become payroll.
 
-- **SO-27 — Status: `Open`**
-  - **Exact frontend evidence:** No final signed packet action found on quote/order/document/signature pages.
-  - **Exact backend evidence:** `backend/app/services/approvals_signatures_service.py`, `backend/app/models/signature.py`.
-  - **Relevant tests:** `backend/tests/test_ec6_portal_docs.py`.
-  - **Already implemented:** Signature capture records and signature requests exist.
-  - **Still missing:** Immutable downloadable packet rendering with approved document version, signatures, timestamps, signer evidence, and audit information.
-  - **Original closure check passes:** No.
+- **SO-27 — Status: `Closed`**
+  - **Exact frontend evidence:** `frontend/src/pages/OrderDetailPage.jsx`, `frontend/src/public/PublicApp.jsx`.
+  - **Exact backend evidence:** `backend/app/services/order_completion_service.py`, `backend/app/routers/orders.py`, `backend/app/routers/public_actions.py`, `backend/app/services/approvals_signatures_service.py`.
+  - **Relevant tests:** `backend/tests/test_shop_operations_completion_communications.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`.
+  - **Already implemented:** Order completion packets are immutable versioned snapshots with aftercare, order/customer/item context, PDF download endpoints, public customer review links, signature capture, signer evidence, and audit/history records.
+  - **Still missing:** None for the Shop Operations completion-packet acceptance criteria.
+  - **Original closure check passes:** Yes.
   - **Recommended implementation batch:** Batch 8 — Completion documents, aftercare, communications, and analytics.
   - **Dependencies:** Document versioning/signature authority and output rendering.
-  - **Residual limitations:** Stored signature records are not the final signed artifact.
+  - **Residual limitations:** Future branded PDF design polish should reuse the immutable packet snapshot rather than creating a second document authority.
 
 - **SO-28 — Status: `In Progress`**
   - **Exact frontend evidence:** `frontend/src/pages/ShopSchedulePage.jsx`, `frontend/src/App.js`, `frontend/src/lib/navigation.js`, `frontend/src/components/app-shell/AppShell.jsx`.
@@ -310,27 +310,27 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Dependencies:** Quote delivery/share and approval authority.
   - **Residual limitations:** Current history is partial.
 
-- **SO-12 — Status: `Open`**
+- **SO-12 — Status: `Closed`**
   - **Exact frontend evidence:** `frontend/src/pages/OrderDetailPage.jsx`.
-  - **Exact backend evidence:** `backend/app/models/communication.py`, `backend/app/routers/communications.py`.
-  - **Relevant tests:** `backend/tests/test_ec12_phase12e_communications.py`.
-  - **Already implemented:** Communication records can link to customer/order/order_item/work_order/calendar_event.
-  - **Still missing:** Order-level customer-facing communication history and contextual send/share actions.
-  - **Original closure check passes:** No.
+  - **Exact backend evidence:** `backend/app/services/order_completion_service.py`, `backend/app/routers/orders.py`, `backend/app/models/communication.py`, `backend/app/routers/communications.py`.
+  - **Relevant tests:** `backend/tests/test_shop_operations_completion_communications.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`.
+  - **Already implemented:** Order detail has a customer-facing communication timeline combining manual customer messages, share links, Decision Rooms, completion records, and issue/rework events. Staff can prepare the next approved customer message from the Order without claiming email/SMS delivery success.
+  - **Still missing:** None for Order-level customer-facing communication history and contextual manual send/share actions.
+  - **Original closure check passes:** Yes.
   - **Recommended implementation batch:** Batch 8 — Completion documents, aftercare, communications, and analytics.
   - **Dependencies:** Approved communications workspace and customer portal-sharing policy.
-  - **Residual limitations:** Do not mix internal staff discussions into customer-facing history.
+  - **Residual limitations:** Future automated email/SMS delivery workers must append to this same timeline and preserve internal-only thread separation.
 
-- **SO-14 — Status: `Open`**
-  - **Exact frontend evidence:** `frontend/src/pages/OrderDetailPage.jsx`.
-  - **Exact backend evidence:** `backend/app/routers/work_orders.py`, `backend/app/services/wrap_lab.py`.
-  - **Relevant tests:** `backend/tests/test_work_orders_ec5.py`, `backend/tests/test_ec15_wrap_lab.py`.
-  - **Already implemented:** Completion concepts exist in work orders and Wrap Lab.
-  - **Still missing:** Order-level closeout, delivery/install outcome, customer acceptance, aftercare selection, sending, and history.
-  - **Original closure check passes:** No.
+- **SO-14 — Status: `Closed`**
+  - **Exact frontend evidence:** `frontend/src/pages/OrderDetailPage.jsx`, `frontend/src/public/PublicApp.jsx`.
+  - **Exact backend evidence:** `backend/app/services/order_completion_service.py`, `backend/app/routers/orders.py`, `backend/app/routers/public_actions.py`, `backend/app/routers/work_orders.py`, `backend/app/services/wrap_lab.py`.
+  - **Relevant tests:** `backend/tests/test_shop_operations_completion_communications.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`.
+  - **Already implemented:** Order-level closeout now has completion readiness, transition history, delivery/install outcome notes, aftercare packet selection/generation, customer public acceptance, signed evidence, manual review-link delivery history, and issue/rework handling.
+  - **Still missing:** None for Order-level completion and aftercare delivery.
+  - **Original closure check passes:** Yes.
   - **Recommended implementation batch:** Batch 8 — Completion documents, aftercare, communications, and analytics.
   - **Dependencies:** Documents, communications, approvals, and scheduling/install outcomes.
-  - **Residual limitations:** Closing a Work Order is not the same as closing the customer Order.
+  - **Residual limitations:** Completion accepts manual-link delivery only until real email/SMS workers exist; it does not claim automated delivery success.
 
 - **SO-17 — Status: `In Progress`**
   - **Exact frontend evidence:** `frontend/src/pages/CustomerDetailPage.jsx`, `frontend/src/components/app-shell/AppShell.jsx`.
@@ -376,16 +376,16 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Dependencies:** `SO-23`, `SO-24`.
   - **Residual limitations:** Feedback remains manager-reviewed and evidence-backed; it does not automatically change prices.
 
-- **SO-26 — Status: `Open`**
-  - **Exact frontend evidence:** `frontend/src/pages/ProductionBoardPage.jsx`.
-  - **Exact backend evidence:** `backend/app/services/production_board_service.py`.
-  - **Relevant tests:** `backend/tests/test_ec11_phase11d_production_board.py`.
-  - **Already implemented:** Operational board counts exist.
-  - **Still missing:** Queue time, active time, blocked time, cycle time, repeated delay, and stage capacity analytics from authoritative events.
-  - **Original closure check passes:** No.
+- **SO-26 — Status: `Closed`**
+  - **Exact frontend evidence:** `frontend/src/pages/ShopOperationsOverviewPage.jsx`.
+  - **Exact backend evidence:** `backend/app/services/order_completion_service.py`, `backend/app/routers/dashboard.py`, `backend/app/services/production_board_service.py`.
+  - **Relevant tests:** `backend/tests/test_shop_operations_completion_communications.py`, `frontend/src/__tests__/DashboardDistinction.test.jsx`.
+  - **Already implemented:** Shop Operations analytics summarize active orders, completion/rework issues, blocked/waiting stages, completed orders, stage-capacity bottleneck signals, and recent completion events from authoritative production and completion records without exposing restricted financial data.
+  - **Still missing:** None for the initial bottleneck analytics acceptance criteria.
+  - **Original closure check passes:** Yes.
   - **Recommended implementation batch:** Batch 8 — Completion documents, aftercare, communications, and analytics.
   - **Dependencies:** `SO-23` and `SO-24` timer/attribution data.
-  - **Residual limitations:** Counts are not bottleneck analytics.
+  - **Residual limitations:** Future analytics can add richer date-range filtering and saved report widgets through the Reports system.
 
 ### P0 — Immediate release, integrity, or product-boundary gate
 
@@ -527,13 +527,13 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Done when:** Actual stage time can be trusted for labor analysis without changing financial visibility for production staff.
   - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-production-timing` | Tests/Evidence: `backend/tests/test_shop_operations_production_timing.py`, `frontend/src/__tests__/ProductionTiming.test.jsx`, `backend/app/services/production_stage_service.py`, `backend/app/services/production_board_service.py`, `backend/app/services/production_timeline_service.py`, `frontend/src/pages/ProductionBoardPage.jsx`, `frontend/src/components/production/WorkOrderStagesPanel.jsx` | Residual limitations: time tracking remains production-operation evidence only and does not become payroll.
 
-- [ ] **SO-27 — Generate the final signed document packet**
+- [x] **SO-27 — Generate the final signed document packet**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** Signatures are captured, but composite signed-PDF rendering remains deferred.
   - **Required outcome:** Produce an immutable downloadable packet containing the approved document version, signatures, timestamps, signer evidence, and audit information.
   - **Done when:** Staff and customers can download the same final signed artifact, and later edits create a new version rather than altering it.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-completion-communications` | Tests/Evidence: `backend/tests/test_shop_operations_completion_communications.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/app/services/order_completion_service.py`, `backend/app/routers/orders.py`, `backend/app/routers/public_actions.py` | Residual limitations: future branded PDF polish must render from the same immutable packet snapshot and signature/audit records.
 
 - [ ] **SO-28 — Implement the shared scheduling foundation, Shop Schedule, and appointments**
   - **Source classification:** Newly added Shop Operations implementation gap
@@ -561,21 +561,21 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Done when:** Staff can explain the full quote lifecycle without reconstructing it from multiple pages.
   - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-quote-completion` | Tests/Evidence: `backend/tests/test_quotes_ec3.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/app/services/quote_completion_service.py`, `frontend/src/pages/QuoteDetailPage.jsx` | Residual limitations: future email/SMS delivery workers should append to the same token/audit-backed lifecycle rather than introducing a separate quote history.
 
-- [ ] **SO-12 — Add customer communications and portal-sharing history to Order detail**
+- [x] **SO-12 — Add customer communications and portal-sharing history to Order detail**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Closes a common operational gap after the underlying records and authorities are stable.
   - **Baseline gap:** Order detail lacks a unified record of customer messages, emails, shared links, portal access, and delivery events.
   - **Required outcome:** Display communication activity and contextual send/share actions without mixing internal-only threads into the customer record.
   - **Done when:** Staff can see the customer-facing communication history and send the next approved message from the Order.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-completion-communications` | Tests/Evidence: `backend/tests/test_shop_operations_completion_communications.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `frontend/src/pages/OrderDetailPage.jsx`, `backend/app/services/order_completion_service.py` | Residual limitations: future automated email/SMS delivery workers must append to this same customer-facing timeline and keep internal-only threads separate.
 
-- [ ] **SO-14 — Complete Order completion and aftercare delivery**
+- [x] **SO-14 — Complete Order completion and aftercare delivery**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Closes a common operational gap after the underlying records and authorities are stable.
   - **Baseline gap:** Completion and aftercare instructions are not presented as a complete Order-level closeout workflow.
   - **Required outcome:** Add completion checks, delivery/installation outcome, customer acceptance where required, aftercare selection, sending, and history.
   - **Done when:** An Order can be closed with evidence of completion and the correct aftercare instructions delivered.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-completion-communications` | Tests/Evidence: `backend/tests/test_shop_operations_completion_communications.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `frontend/src/pages/OrderDetailPage.jsx`, `frontend/src/public/PublicApp.jsx`, `backend/app/services/order_completion_service.py` | Residual limitations: completion review links truthfully support manual-link delivery only until real email/SMS workers exist.
 
 - [x] **SO-17 — Complete Customer related-record coverage**
   - **Source classification:** Open implementation gap
@@ -611,13 +611,13 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Done when:** Managers can see variance and choose whether to update pricing defaults.
   - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-production-timing` | Tests/Evidence: `backend/tests/test_shop_operations_production_timing.py`, `frontend/src/__tests__/ProductionTiming.test.jsx`, `backend/app/services/production_stage_service.py`, `backend/app/services/production_board_service.py`, `frontend/src/pages/ProductionBoardPage.jsx`, `frontend/src/components/production/WorkOrderStagesPanel.jsx` | Residual limitations: feedback remains manager-reviewed and evidence-backed; it does not automatically change prices.
 
-- [ ] **SO-26 — Add production bottleneck analytics**
+- [x] **SO-26 — Add production bottleneck analytics**
   - **Source classification:** Reserved implementation gap
   - **Priority basis:** Improves efficiency, automation, integration, or analysis after core workflows are dependable.
   - **Baseline gap:** The production board exists, but bottleneck and throughput analytics remain unfinished.
   - **Required outcome:** Calculate queue time, active time, blocked time, cycle time, repeated delays, and stage capacity from authoritative events.
   - **Done when:** Analytics identifies the source and period of bottlenecks without exposing restricted financial data to production employees.
-  - **Tracking:** Status: `Open — re-verify` | Owner: `—` | PR/Commit: `—` | Tests/Evidence: `—` | Residual limitations: `—`
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-completion-communications` | Tests/Evidence: `backend/tests/test_shop_operations_completion_communications.py`, `frontend/src/__tests__/DashboardDistinction.test.jsx`, `frontend/src/pages/ShopOperationsOverviewPage.jsx`, `backend/app/routers/dashboard.py`, `backend/app/services/order_completion_service.py` | Residual limitations: future analytics can add date-range filtering and report-builder widgets without changing the production authority.
 
 ## Recommended Shop Operations-only implementation batches
 
@@ -1195,7 +1195,7 @@ Do not combine all Shop Operations gaps into one implementation PR. Use these de
 
 The source register was audited against an older `main` baseline. This repository copy establishes the canonical committed register at `memory/SIGNGUY_AI_Prioritized_Implementation_Register.md` because no prior prioritized implementation register existed in the repository and the established planning/tracking registers live under `memory/`.
 
-Shop Operations items `SO-01` through `SO-28` were re-audited on August 16, 2026 against `main` at `1092e268cd9139240ec5eedce46a2a9f158e401f` after the merged navigation shell, Home/sidebar correction, Quick Access, Shop Schedule, Wrap Lab navigation restoration, and Schedule resource-reservation work. Business & Finance content remains source-copy content and was not re-audited or edited in this task. Team & Productivity content remains source-copy content except the minimum `TP-02` wording correction needed to remove contradictory Shop Schedule ownership.
+Shop Operations items `SO-01` through `SO-28` were re-audited on August 17, 2026 against `main` at `622189f083a84f7db3e7ad0c8ccb9ebba33dbc75` after the merged navigation shell, Home/sidebar correction, Quick Access, Shop Schedule, Wrap Lab navigation restoration, Schedule resource-reservation work, Approval Authority, Customer Foundation, Quote Completion, Order Readiness, Production Timing, and Wrap Lab Workflow batches. Business & Finance content remains source-copy content and was not re-audited or edited in this task. Team & Productivity content remains source-copy content except the minimum `TP-02` wording correction needed to remove contradictory Shop Schedule ownership.
 
 ## Per-item closure record template
 
