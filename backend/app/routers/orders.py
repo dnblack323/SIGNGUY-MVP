@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from ..core.db import db
@@ -19,7 +19,7 @@ from ..models.order import Order, OrderItem
 from ..services.audit import record_audit
 from ..services.commerce_totals import compute_line_totals, compute_pricing_summary
 from ..services.order_item_rules import default_production_required
-from ..services import order_readiness_service
+from ..services import order_completion_service, order_readiness_service
 from ..services.order_pricing import (
     PricingTransferError,
     build_item_pricing_fields,
@@ -136,6 +136,45 @@ class ProductionHandoffIn(BaseModel):
     internal_notes: Optional[str] = None
     assigned_user_ids: list[str] = Field(default_factory=list)
     override_reason: Optional[str] = None
+
+
+class CompletionTransitionIn(BaseModel):
+    target_status: str
+    completion_type: Optional[str] = None
+    reason: Optional[str] = None
+    outcome_notes: Optional[str] = None
+    evidence_file_ids: list[str] = Field(default_factory=list)
+    aftercare_packet_id: Optional[str] = None
+
+
+class CompletionPacketIn(BaseModel):
+    packet_type: str = "completion_aftercare"
+    delivery_method: str = "manual"
+    installation_outcome: Optional[str] = None
+    customer_acceptance_required: bool = True
+    notes: Optional[str] = None
+    aftercare_instructions: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CompletionReviewLinkIn(CompletionPacketIn):
+    packet_id: Optional[str] = None
+    recipient_email: Optional[str] = None
+    delivery_channel: str = "manual_copy_link"
+    ttl_hours: int = Field(168, ge=1, le=2160)
+
+
+class OrderCustomerMessageIn(BaseModel):
+    subject: Optional[str] = None
+    body: str = Field(min_length=1)
+    delivery_channel: str = "manual"
+
+
+class CompletionIssueIn(BaseModel):
+    title: Optional[str] = None
+    description: str = Field(min_length=1)
+    status: str = "open"
+    reported_by: str = "staff"
+    evidence_file_ids: list[str] = Field(default_factory=list)
 
 
 # ---- Helpers ----
@@ -373,6 +412,138 @@ async def production_handoff(
             "order_not_found": (404, "Order not found"),
             "no_production_required_items": (400, "No production-required items on this order"),
             "readiness_override_reason_required": (400, "Order is not production-ready; provide an override reason to hand off anyway."),
+        }
+        status, detail = detail_map.get(str(ex), (400, str(ex)))
+        raise HTTPException(status_code=status, detail=detail)
+
+
+@router.get("/{order_id}/completion")
+async def get_completion(order_id: str, user: dict = Depends(require_permission(Perm.ORDER_READ))) -> dict:
+    try:
+        return await order_completion_service.completion_payload(user["tenant_id"], order_id, user=user)
+    except ValueError as ex:
+        if str(ex) == "order_not_found":
+            raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(status_code=400, detail=str(ex))
+
+
+@router.post("/{order_id}/completion/transitions", status_code=201)
+async def transition_completion(order_id: str, payload: CompletionTransitionIn, user: dict = Depends(require_permission(Perm.ORDER_WRITE))) -> dict:
+    try:
+        return await order_completion_service.transition_completion(user["tenant_id"], order_id, payload.model_dump(), user)
+    except PermissionError as ex:
+        if str(ex) == "completion_override_forbidden":
+            raise HTTPException(status_code=403, detail="Manager authority is required for this completion override")
+        raise HTTPException(status_code=403, detail=str(ex))
+    except ValueError as ex:
+        detail_map = {
+            "order_not_found": (404, "Order not found"),
+            "invalid_completion_status": (400, "Unsupported completion status"),
+            "reason_required": (400, "A reason is required for this completion transition"),
+            "completion_not_ready": (409, "Order is not ready for completion"),
+        }
+        status, detail = detail_map.get(str(ex), (400, str(ex)))
+        raise HTTPException(status_code=status, detail=detail)
+
+
+@router.post("/{order_id}/completion/packets", status_code=201)
+async def generate_completion_packet(order_id: str, payload: CompletionPacketIn, user: dict = Depends(require_permission(Perm.ORDER_WRITE))) -> dict:
+    try:
+        return await order_completion_service.generate_aftercare_packet(user["tenant_id"], order_id, payload.model_dump(), user)
+    except ValueError as ex:
+        if str(ex) == "order_not_found":
+            raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(status_code=400, detail=str(ex))
+
+
+@router.get("/{order_id}/completion/packets/{packet_id}/download")
+async def download_completion_packet(order_id: str, packet_id: str, user: dict = Depends(require_permission(Perm.ORDER_READ))) -> Response:
+    try:
+        packet = await order_completion_service.get_packet(user["tenant_id"], order_id, packet_id)
+    except ValueError as ex:
+        status = 404 if str(ex) in {"order_not_found", "packet_not_found"} else 400
+        raise HTTPException(status_code=status, detail=str(ex))
+    filename = packet.get("artifact_filename") or "order-completion-packet.pdf"
+    return Response(
+        content=order_completion_service.render_completion_packet_pdf(packet),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/{order_id}/completion/review-links", status_code=201)
+async def create_completion_review_link(
+    order_id: str,
+    payload: CompletionReviewLinkIn,
+    request: Request,
+    user: dict = Depends(require_permission(Perm.ORDER_WRITE)),
+) -> dict:
+    try:
+        return await order_completion_service.create_review_link(user["tenant_id"], order_id, payload.model_dump(), user, request=request)
+    except ValueError as ex:
+        if str(ex) == "order_not_found":
+            raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(status_code=400, detail=str(ex))
+
+
+@router.post("/{order_id}/completion/review-links/{token_id}/expire", status_code=204)
+async def expire_completion_review_link(order_id: str, token_id: str, user: dict = Depends(require_permission(Perm.ORDER_WRITE))) -> Response:
+    try:
+        ok = await order_completion_service.update_review_link(user["tenant_id"], token_id, "expire", user)
+    except ValueError as ex:
+        if str(ex) == "token_not_found":
+            raise HTTPException(status_code=404, detail="Review link not found")
+        raise HTTPException(status_code=400, detail=str(ex))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Review link not found")
+    return Response(status_code=204)
+
+
+@router.delete("/{order_id}/completion/review-links/{token_id}", status_code=204)
+async def revoke_completion_review_link(order_id: str, token_id: str, user: dict = Depends(require_permission(Perm.ORDER_WRITE))) -> Response:
+    try:
+        ok = await order_completion_service.update_review_link(user["tenant_id"], token_id, "revoke", user)
+    except ValueError as ex:
+        if str(ex) == "token_not_found":
+            raise HTTPException(status_code=404, detail="Review link not found")
+        raise HTTPException(status_code=400, detail=str(ex))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Review link not found")
+    return Response(status_code=204)
+
+
+@router.get("/{order_id}/communications/timeline")
+async def order_communication_timeline(order_id: str, user: dict = Depends(require_permission(Perm.MESSAGE_READ))) -> dict:
+    try:
+        return await order_completion_service.communication_timeline(user["tenant_id"], order_id)
+    except ValueError as ex:
+        if str(ex) == "order_not_found":
+            raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(status_code=400, detail=str(ex))
+
+
+@router.post("/{order_id}/communications/manual", status_code=201)
+async def create_manual_order_message(order_id: str, payload: OrderCustomerMessageIn, user: dict = Depends(require_permission(Perm.MESSAGE_CREATE))) -> dict:
+    try:
+        return await order_completion_service.create_manual_customer_message(user["tenant_id"], order_id, payload.model_dump(), user)
+    except ValueError as ex:
+        detail_map = {
+            "order_not_found": (404, "Order not found"),
+            "message_body_required": (400, "Message body is required"),
+        }
+        status, detail = detail_map.get(str(ex), (400, str(ex)))
+        raise HTTPException(status_code=status, detail=detail)
+
+
+@router.post("/{order_id}/completion/issues", status_code=201)
+async def create_completion_issue(order_id: str, payload: CompletionIssueIn, user: dict = Depends(require_permission(Perm.ORDER_WRITE))) -> dict:
+    try:
+        return await order_completion_service.create_completion_issue(user["tenant_id"], order_id, payload.model_dump(), user)
+    except ValueError as ex:
+        detail_map = {
+            "order_not_found": (404, "Order not found"),
+            "issue_description_required": (400, "Issue description is required"),
+            "invalid_issue_status": (400, "Unsupported issue status"),
         }
         status, detail = detail_map.get(str(ex), (400, str(ex)))
         raise HTTPException(status_code=status, detail=detail)

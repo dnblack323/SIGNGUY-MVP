@@ -6,6 +6,7 @@ from ..core.db import db
 from ..core.permissions import Perm
 from ..core.time_utils import serialize_doc
 from ..deps import require_permission
+from ..services import order_completion_service
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -51,3 +52,8 @@ async def dashboard_summary(user: dict = Depends(require_permission(Perm.DASHBOA
         "recent_emails": recent_emails,
         "recent_activity": recent_activity,
     }
+
+
+@router.get("/shop-operations/analytics")
+async def shop_operations_analytics(user: dict = Depends(require_permission(Perm.DASHBOARD_READ))) -> dict:
+    return await order_completion_service.shop_operations_analytics(user["tenant_id"])

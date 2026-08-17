@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test-utils";
@@ -73,6 +73,7 @@ const digitalPrintLine = {
 beforeEach(() => {
   jest.clearAllMocks();
   useAuth.mockReturnValue({ hasPerm: () => true });
+  api.post.mockResolvedValue({ data: {} });
   api.get.mockImplementation((url) => {
     if (url === "/quotes/quote-1") {
       return Promise.resolve({
@@ -124,6 +125,32 @@ beforeEach(() => {
     }
     if (url === "/customers/customer-1") {
       return Promise.resolve({ data: { id: "customer-1", name: "Donnell Black", email: "owner@example.com" } });
+    }
+    if (url === "/orders/order-1/completion") {
+      return Promise.resolve({
+        data: {
+          readiness: {
+            ready: false,
+            blockers: [],
+            warnings: [{ code: "aftercare_packet_missing", label: "Aftercare packet has not been generated.", required_action: "Generate an aftercare packet." }],
+            summary: { packet_count: 1, open_issue_count: 1 },
+          },
+          records: [{ id: "completion-1", target_status: "customer_handoff_pending", created_at: "2026-08-16T11:00:00+00:00" }],
+          packets: [{ id: "packet-1", version: 1, artifact_filename: "order-202-completion-v1.pdf" }],
+          issues: [{ id: "issue-1", title: "Scratch", description: "Customer reported a scratch.", status: "open", created_at: "2026-08-16T11:05:00+00:00" }],
+          review_links: [{ id: "token-1", status: "active", delivery_history: [{ status: "manual_link_ready" }] }],
+        },
+      });
+    }
+    if (url === "/orders/order-1/communications/timeline") {
+      return Promise.resolve({
+        data: {
+          items: [
+            { kind: "manual_customer_message", title: "Pickup ready", status: "manual_delivery_ready", at: "2026-08-16T11:10:00+00:00", summary: "Your order is ready." },
+            { kind: "share_link", title: "Order Completion Review link", status: "active", at: "2026-08-16T11:12:00+00:00", summary: "Manual link ready." },
+          ],
+        },
+      });
     }
     if (url === "/audit") return Promise.resolve({ data: { items: [] } });
     if (url === "/quotes/quote-1/revisions") return Promise.resolve({ data: { items: [], current_revision: 1 } });
@@ -203,6 +230,32 @@ test("Order detail shows readiness, finance, approval, and linked asset coverage
   expect(await screen.findByTestId("order-approval-decision-summary")).toHaveTextContent("Poster decision room");
   await user.click(screen.getByTestId("detail-tab-activity"));
   expect((await screen.findAllByTestId("order-lifecycle-event")).length).toBeGreaterThan(0);
+});
+
+test("Order detail exposes completion packets, customer communications, and rework controls", async () => {
+  const user = userEvent.setup();
+  renderWithProviders(<OrderDetailPage />, { route: "/orders/order-1", path: "/orders/:id" });
+
+  expect(await screen.findByTestId("order-detail-page")).toBeInTheDocument();
+  await user.click(screen.getByTestId("detail-tab-completion-communications"));
+  expect(await screen.findByTestId("order-completion-communications")).toHaveTextContent("Completion readiness");
+  expect(screen.getByTestId("completion-warning-aftercare_packet_missing")).toHaveTextContent("Aftercare packet");
+  expect(screen.getByTestId("completion-latest-packet")).toHaveTextContent("order-202-completion-v1.pdf");
+  expect(screen.getByTestId("completion-latest-packet").querySelector("a")).toHaveAttribute("href", "/api/orders/order-1/completion/packets/packet-1/download");
+  expect(screen.getByTestId("completion-latest-review-link")).toHaveTextContent("Email/SMS success is not claimed");
+  expect(screen.getByTestId("order-communication-history")).toHaveTextContent("Pickup ready");
+
+  await user.type(screen.getByTestId("order-customer-message-body"), "Your order is ready for pickup.");
+  await user.click(screen.getByTestId("order-customer-message-send"));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith("/orders/order-1/communications/manual", expect.objectContaining({ body: "Your order is ready for pickup." })));
+
+  await user.type(screen.getByTestId("completion-issue-body"), "Please rework the decal edge.");
+  await user.click(screen.getByTestId("completion-create-issue"));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith("/orders/order-1/completion/issues", expect.objectContaining({ description: "Please rework the decal edge." })));
+
+  await user.type(screen.getByTestId("completion-transition-reason"), "Customer accepted final handoff.");
+  await user.click(screen.getByTestId("completion-mark-complete"));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith("/orders/order-1/completion/transitions", expect.objectContaining({ target_status: "completed", reason: "Customer accepted final handoff." })));
 });
 
 test("Order detail launches production handoff with readiness blockers preserved", async () => {
@@ -300,4 +353,30 @@ test("Public quote preview renders the published customer-safe quote and respons
   expect(screen.getByTestId("public-quote-total")).toHaveTextContent("$38.00");
   expect(screen.getByTestId("public-quote-approve")).toBeEnabled();
   expect(screen.getByTestId("public-quote-decline")).toBeDisabled();
+});
+
+test("Public completion review renders customer-safe packet and acknowledgement controls", async () => {
+  axios.get.mockResolvedValue({
+    data: {
+      packet: {
+        id: "packet-1",
+        version: 1,
+        download_url: "/public/order-completions/order-1/packet?t=public-token",
+        snapshot: {
+          order: { id: "order-1", number: 202, job_name: "Poster order" },
+          customer: { id: "customer-1", name: "Donnell Black" },
+          aftercare_instructions: [{ item_id: "line-1", label: "Poster", instruction: "Clean gently." }],
+        },
+      },
+    },
+  });
+  axios.post.mockResolvedValue({ data: { record: { id: "completion-1" } } });
+
+  renderWithProviders(<PublicApp />, { route: "/order-completions/order-1?t=public-token" });
+
+  expect(await screen.findByTestId("public-completion-page")).toBeInTheDocument();
+  expect(screen.getByText("O-202 · Poster order · Version 1")).toBeInTheDocument();
+  expect(screen.getByTestId("public-completion-aftercare")).toHaveTextContent("Clean gently");
+  expect(screen.getByTestId("public-completion-download")).toHaveAttribute("href", "/api/public/order-completions/order-1/packet?t=public-token");
+  expect(screen.getByTestId("public-completion-acknowledge")).toBeDisabled();
 });

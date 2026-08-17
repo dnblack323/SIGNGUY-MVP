@@ -5,6 +5,7 @@ import PageHeader from "@/components/layout/PageHeader";
 import { CardsSkeleton } from "@/components/common/LoadingSkeleton";
 import { EmptyState } from "@/components/common/EmptyState";
 import StatusPill from "@/components/common/StatusPill";
+import { Badge } from "@/components/ui/badge";
 import { DashboardListCard, DashboardStatCard } from "@/pages/DashboardPage";
 import { centsToDollarsString, relativeTime } from "@/lib/format";
 import {
@@ -61,10 +62,48 @@ function OperationsSnapshot({ data }) {
   );
 }
 
+function OperationsAnalyticsCard({ analytics }) {
+  if (!analytics) return null;
+  const counts = analytics.counts || {};
+  const timeSummary = analytics.time_summary || {};
+  return (
+    <DashboardListCard title="Operational Analytics" testId="shop-operations-analytics" empty="No analytics yet.">
+      <div className="space-y-3 p-4 text-sm">
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded border p-2"><div className="text-muted-foreground">Blocked stages</div><div className="font-semibold">{counts.blocked_stages || 0}</div></div>
+          <div className="rounded border p-2"><div className="text-muted-foreground">Waiting stages</div><div className="font-semibold">{counts.waiting_stages || 0}</div></div>
+          <div className="rounded border p-2"><div className="text-muted-foreground">Open rework</div><div className="font-semibold">{counts.open_completion_issues || 0}</div></div>
+          <div className="rounded border p-2"><div className="text-muted-foreground">Closed orders</div><div className="font-semibold">{counts.completed_orders || 0}</div></div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-xs" data-testid="shop-analytics-time-summary">
+          <div className="rounded border p-2"><div className="text-muted-foreground">Queue avg</div><div className="font-semibold">{timeSummary.average_queue_minutes || 0}m</div></div>
+          <div className="rounded border p-2"><div className="text-muted-foreground">Active avg</div><div className="font-semibold">{timeSummary.average_active_minutes || 0}m</div></div>
+          <div className="rounded border p-2"><div className="text-muted-foreground">Cycle avg</div><div className="font-semibold">{timeSummary.average_cycle_minutes || 0}m</div></div>
+        </div>
+        {(analytics.bottlenecks || []).length > 0 && (
+          <div className="space-y-2" data-testid="shop-analytics-bottlenecks">
+            {analytics.bottlenecks.slice(0, 5).map((item) => (
+              <div key={`${item.signal}-${item.label}`} className="flex items-center justify-between gap-2">
+                <span className="truncate">{item.label}</span>
+                <Badge variant="outline">{item.active_count}</Badge>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="text-xs text-muted-foreground">Production analytics exclude restricted financial data.</div>
+      </div>
+    </DashboardListCard>
+  );
+}
+
 export default function ShopOperationsOverviewPage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["shop-operations-overview"],
     queryFn: async () => (await api.get("/dashboard/summary")).data,
+  });
+  const { data: analytics } = useQuery({
+    queryKey: ["shop-operations-analytics"],
+    queryFn: async () => (await api.get("/dashboard/shop-operations/analytics")).data,
   });
 
   return (
@@ -125,6 +164,7 @@ export default function ShopOperationsOverviewPage() {
 
             <div className="space-y-5 lg:col-span-4">
               <OperationsSnapshot data={data} />
+              <OperationsAnalyticsCard analytics={analytics} />
               <DashboardListCard title="Approval & Customer Signals" testId="shop-list-approval-signals" empty="No approval signals from current records." viewAllTo="/approval-center">
                 {(data.quotes_follow_up.length > 0 || data.active_orders.length > 0) && (
                   <ul className="divide-y">

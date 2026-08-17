@@ -218,6 +218,100 @@ function PublicQuote() {
   );
 }
 
+function PublicOrderCompletion() {
+  const { orderId } = useParams();
+  const [sp] = useSearchParams();
+  const t = sp.get("t");
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
+  const [form, setForm] = useState({ signer_name: "", signer_email: "", signature_data: "" });
+  const [issue, setIssue] = useState("");
+  const [done, setDone] = useState(null);
+
+  function load() {
+    if (!t) { setErr("Missing access link token."); return; }
+    axios.get(`${API}/public/order-completions/${orderId}`, { params: { t } })
+      .then((r) => setData(r.data))
+      .catch((e) => setErr(e?.response?.data?.detail || "This completion packet is not available."));
+  }
+
+  useEffect(() => { load(); }, [orderId, t]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function acknowledge() {
+    try {
+      const r = await axios.post(`${API}/public/order-completions/${orderId}/acknowledgement`, form, { params: { t } });
+      setDone(r.data);
+      toast.success("Completion acknowledged");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Something went wrong");
+    }
+  }
+
+  async function reportIssue() {
+    try {
+      await axios.post(`${API}/public/order-completions/${orderId}/issues`, { description: issue }, { params: { t } });
+      setIssue("");
+      toast.success("Issue reported");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Something went wrong");
+    }
+  }
+
+  if (err) return <div className="min-h-screen bg-slate-50 grid place-items-center p-6"><div className="text-rose-700 text-sm max-w-md text-center" data-testid="public-completion-error">{err}</div></div>;
+  if (!data) return <div className="min-h-screen bg-slate-50 grid place-items-center p-6 text-sm text-slate-500" data-testid="public-completion-loading">Loading...</div>;
+  if (done) return (
+    <div className="min-h-screen bg-slate-50 grid place-items-center p-6" data-testid="public-completion-done">
+      <Card className="max-w-lg w-full"><CardHeader><CardTitle>Thank you</CardTitle></CardHeader><CardContent>Your completion acceptance has been recorded.</CardContent></Card>
+    </div>
+  );
+
+  const packet = data.packet || {};
+  const snapshot = packet.snapshot || {};
+  const order = snapshot.order || {};
+
+  return (
+    <div className="min-h-screen bg-slate-50 py-8 px-4" data-testid="public-completion-page">
+      <div className="max-w-3xl mx-auto space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Order completion packet</CardTitle>
+            <div className="text-sm text-slate-600">O-{order.number} · {order.job_name} · Version {packet.version}</div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button asChild variant="outline" size="sm" data-testid="public-completion-download">
+              <a href={`${API}${packet.download_url}`}>Download packet</a>
+            </Button>
+            <div className="rounded-md border divide-y" data-testid="public-completion-aftercare">
+              {(snapshot.aftercare_instructions || []).map((item) => (
+                <div key={item.item_id || item.label} className="p-3 text-sm">
+                  <div className="font-medium">{item.label}</div>
+                  <div className="text-slate-600">{item.instruction}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Accept completion</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-1.5"><Label>Your name</Label><Input value={form.signer_name} onChange={(e) => setForm({ ...form, signer_name: e.target.value })} data-testid="public-completion-name" /></div>
+            <div className="grid gap-1.5"><Label>Email</Label><Input value={form.signer_email} onChange={(e) => setForm({ ...form, signer_email: e.target.value })} data-testid="public-completion-email" /></div>
+            <div className="grid gap-1.5"><Label>Signature</Label><Input value={form.signature_data} onChange={(e) => setForm({ ...form, signature_data: e.target.value })} data-testid="public-completion-signature" /></div>
+            <Button onClick={acknowledge} disabled={!form.signer_name.trim()} data-testid="public-completion-acknowledge">Acknowledge completion</Button>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Report a problem</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <Textarea rows={3} value={issue} onChange={(e) => setIssue(e.target.value)} data-testid="public-completion-issue" />
+            <Button variant="outline" onClick={reportIssue} disabled={!issue.trim()} data-testid="public-completion-report-issue">Report issue</Button>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 function PublicWrapInspection() {
   const { inspectionId } = useParams();
   const [sp] = useSearchParams();
@@ -440,6 +534,7 @@ export default function PublicApp() {
     <Routes>
       <Route path="proofs/:pid" element={<ProofAction />} />
       <Route path="quotes/:qid" element={<PublicQuote />} />
+      <Route path="order-completions/:orderId" element={<PublicOrderCompletion />} />
       <Route path="wrap-inspections/:inspectionId" element={<PublicWrapInspection />} />
       <Route path="quote-request" element={<QuoteRequest />} />
       <Route path="decision-rooms/:rid" element={<PublicDecisionRoom />} />

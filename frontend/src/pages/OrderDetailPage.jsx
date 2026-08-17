@@ -16,7 +16,7 @@ import ProductionTimeline from "@/components/production/ProductionTimeline";
 import { centsToDollarsString } from "@/lib/format";
 import { buildApprovalCenterUrl } from "@/lib/approvalCenter";
 import { buildShopScheduleUrl } from "@/lib/shopScheduleLinks";
-import { ArrowLeft, CalendarDays, Plus, Pencil, Trash2, Wrench, Receipt, Zap, RefreshCw, ClipboardCheck, AlertTriangle, CheckCircle2, FileText, Link as LinkIcon, Lock, CreditCard, History, Truck } from "lucide-react";
+import { ArrowLeft, CalendarDays, Plus, Pencil, Trash2, Wrench, Receipt, Zap, RefreshCw, ClipboardCheck, AlertTriangle, CheckCircle2, FileText, Link as LinkIcon, Lock, CreditCard, History, Truck, MessageSquare, PackageCheck, Send, Download, Undo2 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import LineItemDialog from "@/components/commerce/LineItemDialog";
 import DigitalPrintMinimumAdjustmentRow, { digitalPrintMinimumAdjustmentCents } from "@/components/commerce/DigitalPrintMinimumAdjustmentRow";
@@ -321,7 +321,7 @@ function ApprovalDecisionSummary({ approvals, rooms, proofs }) {
   );
 }
 
-function OrderLifecycleTimeline({ order, readiness, financial, approvals, rooms, proofs, workOrders }) {
+function OrderLifecycleTimeline({ order, readiness, financial, approvals, rooms, proofs, workOrders, completion, communications }) {
   const events = [];
   const add = (at, label, source) => { if (at) events.push({ at, label, source }); };
   add(order.created_at, `Order O-${order.number} created`, "Order");
@@ -333,6 +333,9 @@ function OrderLifecycleTimeline({ order, readiness, financial, approvals, rooms,
   (rooms || []).forEach((room) => add(room.updated_at || room.created_at, `Decision Room ${room.status}`, "Decision Room"));
   (proofs || []).forEach((proof) => add(proof.updated_at || proof.created_at, `Proof ${proof.status}`, "Proof"));
   (workOrders || []).forEach((wo) => add(wo.created_at, `Work Order W-${wo.number} created`, "Work Order"));
+  (completion?.records || []).forEach((record) => add(record.created_at, `Completion ${String(record.target_status || "").replace(/_/g, " ")}`, "Completion"));
+  (completion?.issues || []).forEach((issue) => add(issue.created_at, `Issue ${issue.status}: ${issue.title}`, "Issue"));
+  (communications?.items || []).forEach((item) => add(item.at, item.title, item.kind));
   add(readiness?.evaluated_at, `Readiness ${readiness?.ready ? "passed" : "blocked"}`, "Readiness");
   events.sort((a, b) => String(a.at).localeCompare(String(b.at)));
   return (
@@ -351,6 +354,166 @@ function OrderLifecycleTimeline({ order, readiness, financial, approvals, rooms,
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function CompletionCommunicationsPanel({ orderId, completion, communications, canWrite, onRefresh }) {
+  const [packetNotes, setPacketNotes] = useState("");
+  const [messageBody, setMessageBody] = useState("");
+  const [issueText, setIssueText] = useState("");
+  const [transitionReason, setTransitionReason] = useState("");
+  const readiness = completion?.readiness || {};
+  const latestPacket = completion?.packets?.[0];
+  const latestLink = completion?.review_links?.[0];
+
+  const mutationOptions = (success) => ({
+    onSuccess: () => { toast.success(success); onRefresh?.(); },
+    onError: (e) => toast.error(extractError(e)),
+  });
+  const createPacket = useMutation({
+    mutationFn: async () => (await api.post(`/orders/${orderId}/completion/packets`, { notes: packetNotes || undefined })).data,
+    ...mutationOptions("Completion packet generated"),
+  });
+  const createLink = useMutation({
+    mutationFn: async () => (await api.post(`/orders/${orderId}/completion/review-links`, { packet_id: latestPacket?.id, notes: packetNotes || undefined })).data,
+    ...mutationOptions("Manual completion review link created"),
+  });
+  const sendMessage = useMutation({
+    mutationFn: async () => (await api.post(`/orders/${orderId}/communications/manual`, { subject: "Order update", body: messageBody })).data,
+    onSuccess: () => { setMessageBody(""); toast.success("Customer message prepared"); onRefresh?.(); },
+    onError: (e) => toast.error(extractError(e)),
+  });
+  const createIssue = useMutation({
+    mutationFn: async () => (await api.post(`/orders/${orderId}/completion/issues`, { title: "Customer issue", description: issueText, status: "open" })).data,
+    onSuccess: () => { setIssueText(""); toast.success("Issue opened"); onRefresh?.(); },
+    onError: (e) => toast.error(extractError(e)),
+  });
+  const transition = useMutation({
+    mutationFn: async (target_status) => (await api.post(`/orders/${orderId}/completion/transitions`, { target_status, reason: transitionReason || undefined, outcome_notes: packetNotes || undefined, aftercare_packet_id: latestPacket?.id })).data,
+    ...mutationOptions("Completion status updated"),
+  });
+
+  return (
+    <div className="space-y-4" data-testid="order-completion-communications">
+      <Card data-testid="order-completion-readiness">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base flex items-center gap-2"><PackageCheck className="size-4" />Completion readiness</CardTitle>
+          <Badge variant={readiness.ready ? "default" : "outline"}>{readiness.ready ? "Ready" : "Action needed"}</Badge>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div className="grid gap-2 md:grid-cols-4">
+            <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Packets</div><div className="font-medium">{completion?.packets?.length || 0}</div></div>
+            <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Issues</div><div className="font-medium">{completion?.issues?.length || 0}</div></div>
+            <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Review links</div><div className="font-medium">{completion?.review_links?.length || 0}</div></div>
+            <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Records</div><div className="font-medium">{completion?.records?.length || 0}</div></div>
+          </div>
+          {(readiness.blockers || []).map((blocker) => (
+            <div key={blocker.code} className="rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900" data-testid={`completion-blocker-${blocker.code}`}>
+              <div className="font-medium">{blocker.label}</div>
+              <div className="text-xs">{blocker.required_action}</div>
+            </div>
+          ))}
+          {(readiness.warnings || []).map((warning) => (
+            <div key={warning.code} className="rounded-md border p-2 text-muted-foreground" data-testid={`completion-warning-${warning.code}`}>
+              {warning.label}
+            </div>
+          ))}
+          <div className="grid gap-2">
+            <Label>Closeout notes / aftercare additions</Label>
+            <Textarea rows={3} value={packetNotes} onChange={(e) => setPacketNotes(e.target.value)} data-testid="completion-packet-notes" />
+          </div>
+          {canWrite && (
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => createPacket.mutate()} disabled={createPacket.isPending} data-testid="completion-generate-packet">
+                <FileText className="size-4 mr-1" />Generate packet
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => createLink.mutate()} disabled={createLink.isPending} data-testid="completion-create-review-link">
+                <LinkIcon className="size-4 mr-1" />Create review link
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => transition.mutate("customer_handoff_pending")} disabled={transition.isPending} data-testid="completion-mark-handoff">
+                <Truck className="size-4 mr-1" />Handoff pending
+              </Button>
+              <Button size="sm" onClick={() => transition.mutate("completed")} disabled={transition.isPending || !transitionReason.trim()} data-testid="completion-mark-complete">
+                <PackageCheck className="size-4 mr-1" />Complete
+              </Button>
+            </div>
+          )}
+          {canWrite && (
+            <div className="grid gap-2">
+              <Label>Completion/reopen reason</Label>
+              <Input value={transitionReason} onChange={(e) => setTransitionReason(e.target.value)} data-testid="completion-transition-reason" />
+            </div>
+          )}
+          {latestPacket && (
+            <div className="rounded border p-3 text-sm" data-testid="completion-latest-packet">
+              <div className="font-medium">Latest packet v{latestPacket.version}</div>
+              <div className="text-xs text-muted-foreground">{latestPacket.artifact_filename}</div>
+              <Button asChild size="sm" variant="outline" className="mt-2">
+                <a href={`/api/orders/${orderId}/completion/packets/${latestPacket.id}/download`}><Download className="size-4 mr-1" />Download packet</a>
+              </Button>
+            </div>
+          )}
+          {latestLink && (
+            <div className="rounded border p-3 text-sm" data-testid="completion-latest-review-link">
+              <div className="font-medium">Review link {latestLink.status}</div>
+              <div className="text-xs text-muted-foreground">Manual link delivery only. Email/SMS success is not claimed.</div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card data-testid="order-communication-history">
+        <CardHeader><CardTitle className="text-base flex items-center gap-2"><MessageSquare className="size-4" />Customer communication history</CardTitle></CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          {canWrite && (
+            <div className="space-y-2">
+              <Textarea rows={3} placeholder="Prepare the next approved customer update" value={messageBody} onChange={(e) => setMessageBody(e.target.value)} data-testid="order-customer-message-body" />
+              <Button size="sm" onClick={() => sendMessage.mutate()} disabled={sendMessage.isPending || !messageBody.trim()} data-testid="order-customer-message-send">
+                <Send className="size-4 mr-1" />Prepare manual send
+              </Button>
+            </div>
+          )}
+          {(communications?.items || []).length === 0 ? (
+            <div className="text-muted-foreground">No customer-facing communication history yet.</div>
+          ) : (
+            <ul className="divide-y">
+              {(communications?.items || []).slice(0, 8).map((item, index) => (
+                <li key={`${item.source_type}-${item.source_id}-${index}`} className="py-2" data-testid="order-communication-row">
+                  <div className="font-medium">{item.title}</div>
+                  <div className="text-xs text-muted-foreground">{item.kind} · {item.status || "recorded"} · {String(item.at || "").slice(0, 16)}</div>
+                  {item.summary && <div className="text-xs mt-1">{item.summary}</div>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card data-testid="order-issue-rework-panel">
+        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Undo2 className="size-4" />Issues and rework</CardTitle></CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          {canWrite && (
+            <div className="space-y-2">
+              <Textarea rows={2} placeholder="Record customer issue or rework request" value={issueText} onChange={(e) => setIssueText(e.target.value)} data-testid="completion-issue-body" />
+              <Button size="sm" variant="outline" onClick={() => createIssue.mutate()} disabled={createIssue.isPending || !issueText.trim()} data-testid="completion-create-issue">Open issue</Button>
+            </div>
+          )}
+          {(completion?.issues || []).length === 0 ? (
+            <div className="text-muted-foreground">No open completion issues.</div>
+          ) : (
+            <ul className="divide-y">
+              {completion.issues.map((issue) => (
+                <li key={issue.id} className="py-2" data-testid="completion-issue-row">
+                  <div className="font-medium">{issue.title}</div>
+                  <div className="text-xs text-muted-foreground">{issue.status} · {String(issue.created_at || "").slice(0, 16)}</div>
+                  <div className="text-xs mt-1">{issue.description}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -376,6 +539,16 @@ export default function OrderDetailPage() {
     queryFn: async () => (await api.get("/decision-rooms", { params: { order_id: id } })).data,
     enabled: !!id && hasPerm("decision_room:read"),
   });
+  const { data: completion } = useQuery({
+    queryKey: ["order-completion", id],
+    queryFn: async () => (await api.get(`/orders/${id}/completion`)).data,
+    enabled: !!id,
+  });
+  const { data: communications } = useQuery({
+    queryKey: ["order-communications", id],
+    queryFn: async () => (await api.get(`/orders/${id}/communications/timeline`)).data,
+    enabled: !!id && hasPerm("message:read"),
+  });
 
   const [form, setForm] = useState({});
   useWorkspaceDirty(Object.keys(form).length > 0);
@@ -395,6 +568,11 @@ export default function OrderDetailPage() {
   const decisionRooms = data?.decision_rooms || orderRooms?.items || [];
   const proofs = data?.proofs || [];
   const canSeeFinancials = data?.permissions?.financials_visible ?? (hasPerm("invoice:read") || hasPerm("payment:read"));
+  const refreshCompletion = () => {
+    qc.invalidateQueries({ queryKey: ["order-completion", id] });
+    qc.invalidateQueries({ queryKey: ["order-communications", id] });
+    qc.invalidateQueries({ queryKey: ["order", id] });
+  };
 
   const { data: workOrders } = useQuery({
     queryKey: ["order-work-orders", id],
@@ -526,6 +704,7 @@ export default function OrderDetailPage() {
             <TabsTrigger value="production" data-testid="detail-tab-production">Production</TabsTrigger>
             <TabsTrigger value="documents-approvals" data-testid="detail-tab-documents-approvals">Documents & Approvals</TabsTrigger>
             <TabsTrigger value="files-artwork" data-testid="detail-tab-files-artwork">Files & Artwork</TabsTrigger>
+            <TabsTrigger value="completion-communications" data-testid="detail-tab-completion-communications">Completion & Comms</TabsTrigger>
             <TabsTrigger value="financial" data-testid="detail-tab-financial">Financial</TabsTrigger>
             <TabsTrigger value="activity" data-testid="detail-tab-activity">Activity</TabsTrigger>
           </TabsList>
@@ -584,6 +763,15 @@ export default function OrderDetailPage() {
           <TabsContent value="files-artwork" className="space-y-4">
             <LinkedAssetsPanel linkedAssets={linkedAssets} />
           </TabsContent>
+          <TabsContent value="completion-communications" className="space-y-4">
+            <CompletionCommunicationsPanel
+              orderId={id}
+              completion={completion}
+              communications={communications}
+              canWrite={canWrite}
+              onRefresh={refreshCompletion}
+            />
+          </TabsContent>
           <TabsContent value="financial" className="space-y-4">
             <FinancialPanel
               financial={financialSummary}
@@ -607,7 +795,7 @@ export default function OrderDetailPage() {
             </Card>
           </TabsContent>
           <TabsContent value="activity" className="space-y-4">
-            <OrderLifecycleTimeline order={order} readiness={readiness} financial={financialSummary} approvals={approvals} rooms={decisionRooms} proofs={proofs} workOrders={workOrders?.items || data?.work_orders || []} />
+            <OrderLifecycleTimeline order={order} readiness={readiness} financial={financialSummary} approvals={approvals} rooms={decisionRooms} proofs={proofs} workOrders={workOrders?.items || data?.work_orders || []} completion={completion} communications={communications} />
             <ProductionTimeline scope="order" orderId={id} />
           </TabsContent>
         </Tabs>
