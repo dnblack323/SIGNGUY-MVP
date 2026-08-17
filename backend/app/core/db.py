@@ -783,7 +783,12 @@ async def ensure_indexes() -> None:
     await db.calendar_events.create_index([("tenant_id", 1), ("reserved_vehicle_ids", 1), ("start_at", 1)])
     await db.calendar_events.create_index([("tenant_id", 1), ("reserved_resource_ids", 1), ("start_at", 1)])
     await db.calendar_events.create_index([("tenant_id", 1), ("customer_id", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("quote_id", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("order_id", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("order_item_id", 1), ("start_at", 1)])
     await db.calendar_events.create_index([("tenant_id", 1), ("work_order_id", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("production_stage_id", 1), ("start_at", 1)])
+    await db.calendar_events.create_index([("tenant_id", 1), ("wrap_project_id", 1), ("start_at", 1)])
     await db.calendar_events.create_index([("tenant_id", 1), ("source_type", 1), ("source_id", 1)])
 
     await db.schedulable_resources.create_index("id", unique=True)

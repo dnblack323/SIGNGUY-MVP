@@ -6,7 +6,9 @@ Employee records and equipment/vehicles remain owned by Equipment records.
 """
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
+
+from pydantic import Field
 
 from .base import BaseDoc
 
@@ -29,5 +31,7 @@ class SchedulableResource(BaseDoc):
     capacity: Optional[int] = None
     location: Optional[str] = None
     description: Optional[str] = None
+    availability_windows: list[dict[str, Any]] = Field(default_factory=list)
+    unavailable_periods: list[dict[str, Any]] = Field(default_factory=list)
     created_by: str
     updated_by: str

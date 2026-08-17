@@ -122,6 +122,8 @@ export default function WorkOrderDetailPage() {
                     workOrderId: id,
                     eventType: "production_milestone",
                     title: `W-${w.number} appointment`,
+                    sourceType: "work_order",
+                    sourceId: id,
                   })}>
                     <CalendarDays className="size-4 mr-1" />Schedule
                   </Link>

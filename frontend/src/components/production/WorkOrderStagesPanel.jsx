@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Clock3, Pause, Play, RotateCcw, UserPlus, Wrench } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, Clock3, Pause, Play, RotateCcw, UserPlus, Wrench } from "lucide-react";
 import api, { extractError } from "@/lib/api";
 import { useAuth } from "@/auth/AuthContext";
+import { buildShopScheduleUrl } from "@/lib/shopScheduleLinks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -67,7 +69,7 @@ function useStageAction(workOrderId) {
   });
 }
 
-function StageRow({ stage, employees, canWrite, canManage, canReadPricing, action }) {
+function StageRow({ stage, employees, canWrite, canManage, canReadPricing, action, workOrderId, orderId }) {
   const [employeeId, setEmployeeId] = useState(stage.assigned_employee_id || "");
   const [dueAt, setDueAt] = useState(stage.due_at || "");
   const [note, setNote] = useState("");
@@ -124,6 +126,23 @@ function StageRow({ stage, employees, canWrite, canManage, canReadPricing, actio
                 </div>
               ))}
             </div>
+          )}
+          {canManage && (
+            <Button asChild size="sm" variant="outline" className="mt-2" data-testid={`stage-schedule-${stage.id}`}>
+              <Link to={buildShopScheduleUrl({
+                create: true,
+                orderId,
+                orderItemId: stage.order_item_id,
+                workOrderId,
+                productionStageId: stage.id,
+                eventType: "production_milestone",
+                title: `${stage.stage_name} appointment`,
+                sourceType: "production_stage",
+                sourceId: stage.id,
+              })}>
+                <CalendarDays className="mr-1 size-4" />Schedule
+              </Link>
+            </Button>
           )}
         </div>
         <div className="grid gap-1.5">
@@ -436,6 +455,8 @@ export default function WorkOrderStagesPanel({ workOrderId }) {
                   canManage={canManage}
                   canReadPricing={canReadPricing}
                   action={action}
+                  workOrderId={workOrderId}
+                  orderId={stagesQuery.data?.order_id}
                 />
               ))}
             </div>

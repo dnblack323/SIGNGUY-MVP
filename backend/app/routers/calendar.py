@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..core.permissions import Perm
@@ -28,10 +28,16 @@ class CalendarEventIn(BaseModel):
     timezone: Optional[str] = None
     location: Optional[str] = None
     customer_id: Optional[str] = None
+    contact_id: Optional[str] = None
+    quote_id: Optional[str] = None
     order_id: Optional[str] = None
     order_item_id: Optional[str] = None
     work_order_id: Optional[str] = None
     production_stage_id: Optional[str] = None
+    wrap_project_id: Optional[str] = None
+    vehicle_inspection_id: Optional[str] = None
+    installation_id: Optional[str] = None
+    task_id: Optional[str] = None
     employee_id: Optional[str] = None
     assigned_employee_ids: list[str] = Field(default_factory=list)
     reserved_equipment_ids: list[str] = Field(default_factory=list)
@@ -41,6 +47,8 @@ class CalendarEventIn(BaseModel):
     visibility: str = "staff"
     reminder_policy: dict = {}
     recurrence_rule: Optional[dict] = None
+    source_type: Optional[str] = None
+    source_id: Optional[str] = None
     conflict_override_reason: Optional[str] = None
 
 
@@ -54,10 +62,16 @@ class CalendarEventUpdateIn(BaseModel):
     timezone: Optional[str] = None
     location: Optional[str] = None
     customer_id: Optional[str] = None
+    contact_id: Optional[str] = None
+    quote_id: Optional[str] = None
     order_id: Optional[str] = None
     order_item_id: Optional[str] = None
     work_order_id: Optional[str] = None
     production_stage_id: Optional[str] = None
+    wrap_project_id: Optional[str] = None
+    vehicle_inspection_id: Optional[str] = None
+    installation_id: Optional[str] = None
+    task_id: Optional[str] = None
     employee_id: Optional[str] = None
     assigned_employee_ids: Optional[list[str]] = None
     reserved_equipment_ids: Optional[list[str]] = None
@@ -67,11 +81,21 @@ class CalendarEventUpdateIn(BaseModel):
     visibility: Optional[str] = None
     reminder_policy: Optional[dict] = None
     recurrence_rule: Optional[dict] = None
+    source_type: Optional[str] = None
+    source_id: Optional[str] = None
     conflict_override_reason: Optional[str] = None
 
 
 class CancelIn(BaseModel):
     reason: Optional[str] = None
+
+
+class CompleteIn(BaseModel):
+    outcome_note: Optional[str] = None
+
+
+class ReopenIn(BaseModel):
+    reason: str
 
 
 class AvailabilityIn(BaseModel):
@@ -94,6 +118,8 @@ class SchedulableResourceIn(BaseModel):
     capacity: Optional[int] = None
     location: Optional[str] = None
     description: Optional[str] = None
+    availability_windows: list[dict] = Field(default_factory=list)
+    unavailable_periods: list[dict] = Field(default_factory=list)
 
 
 class SchedulableResourceUpdateIn(BaseModel):
@@ -103,6 +129,8 @@ class SchedulableResourceUpdateIn(BaseModel):
     capacity: Optional[int] = None
     location: Optional[str] = None
     description: Optional[str] = None
+    availability_windows: Optional[list[dict]] = None
+    unavailable_periods: Optional[list[dict]] = None
 
 
 @router.get("/feed")
@@ -116,8 +144,12 @@ async def feed(
     resource_id: Optional[str] = None,
     attention: Optional[str] = None,
     customer_id: Optional[str] = None,
+    quote_id: Optional[str] = None,
     order_id: Optional[str] = None,
+    order_item_id: Optional[str] = None,
     work_order_id: Optional[str] = None,
+    production_stage_id: Optional[str] = None,
+    wrap_project_id: Optional[str] = None,
     status: Optional[str] = None,
     source_type: Optional[str] = None,
     visibility: Optional[str] = None,
@@ -130,7 +162,9 @@ async def feed(
             tenant_id=user["tenant_id"], start_at=start_at, end_at=end_at,
             event_type=event_type, employee_id=employee_id, equipment_id=equipment_id,
             vehicle_id=vehicle_id, resource_id=resource_id, attention=attention, customer_id=customer_id,
-            order_id=order_id, work_order_id=work_order_id, status=status, source_type=source_type,
+            quote_id=quote_id, order_id=order_id, order_item_id=order_item_id,
+            work_order_id=work_order_id, production_stage_id=production_stage_id,
+            wrap_project_id=wrap_project_id, status=status, source_type=source_type,
             visibility=visibility, limit=limit, skip=skip,
         )
     except CalendarError as e:
@@ -220,6 +254,7 @@ async def create_event(payload: CalendarEventIn,
     try:
         return await calendar_service.create_event(
             tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
+            actor_role=user.get("role"),
             payload=payload.model_dump(exclude_none=True),
         )
     except CalendarError as e:
@@ -240,6 +275,7 @@ async def update_event(event_id: str, payload: CalendarEventUpdateIn,
     try:
         return await calendar_service.update_event(
             tenant_id=user["tenant_id"], event_id=event_id, actor_user_id=user["id"], actor_email=user["email"],
+            actor_role=user.get("role"),
             payload=payload.model_dump(exclude_none=True),
         )
     except CalendarError as e:
@@ -252,6 +288,7 @@ async def reschedule_event(event_id: str, payload: CalendarEventUpdateIn,
     try:
         return await calendar_service.reschedule_event(
             tenant_id=user["tenant_id"], event_id=event_id, actor_user_id=user["id"], actor_email=user["email"],
+            actor_role=user.get("role"),
             payload=payload.model_dump(exclude_none=True),
         )
     except CalendarError as e:
@@ -263,6 +300,30 @@ async def cancel_event(event_id: str, payload: CancelIn,
                        user: dict = Depends(require_permission(Perm.SCHEDULE_MANAGE))) -> dict:
     try:
         return await calendar_service.cancel_event(
+            tenant_id=user["tenant_id"], event_id=event_id, actor_user_id=user["id"],
+            actor_email=user["email"], reason=payload.reason,
+        )
+    except CalendarError as e:
+        _raise(e)
+
+
+@router.post("/events/{event_id}/complete")
+async def complete_event(event_id: str, payload: CompleteIn = Body(default_factory=CompleteIn),
+                         user: dict = Depends(require_permission(Perm.SCHEDULE_MANAGE))) -> dict:
+    try:
+        return await calendar_service.complete_event(
+            tenant_id=user["tenant_id"], event_id=event_id, actor_user_id=user["id"],
+            actor_email=user["email"], outcome_note=payload.outcome_note,
+        )
+    except CalendarError as e:
+        _raise(e)
+
+
+@router.post("/events/{event_id}/reopen")
+async def reopen_event(event_id: str, payload: ReopenIn,
+                       user: dict = Depends(require_permission(Perm.SCHEDULE_MANAGE))) -> dict:
+    try:
+        return await calendar_service.reopen_event(
             tenant_id=user["tenant_id"], event_id=event_id, actor_user_id=user["id"],
             actor_email=user["email"], reason=payload.reason,
         )

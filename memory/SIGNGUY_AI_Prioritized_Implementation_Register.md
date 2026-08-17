@@ -6,7 +6,7 @@
 
 **Source audit baseline:** `main` at `8fe53319ffd288112c21e9abc9055081501c4f90` (August 11, 2026)
 
-**Current Shop Operations re-audit baseline:** `main` at `622189f083a84f7db3e7ad0c8ccb9ebba33dbc75` (August 17, 2026), after the merged navigation shell, Home/sidebar correction, Quick Access, Shop Schedule, Wrap Lab navigation restoration, Schedule resource-reservation work, Approval Authority, Customer Foundation, Quote Completion, Order Readiness, Production Timing, and Wrap Lab Workflow batches.
+**Current Shop Operations completion baseline:** `main` at `3787e33908289607e929c84cf256656683515702` (August 17, 2026), after the merged navigation shell, Home/sidebar correction, Quick Access, Shop Schedule, Wrap Lab navigation restoration, Schedule resource-reservation work, Approval Authority, Customer Foundation, Quote Completion, Order Readiness, Production Timing, Wrap Lab Workflow, and Completion/Communications/Analytics batches. The final Schedule Completion batch closes the remaining `SO-28` work.
 
 **Coverage:** 89 of 89 tracked items assigned a priority after adding `SO-28` for the shared scheduling foundation and Shop Schedule.
 
@@ -71,7 +71,7 @@
 
 ## Current Shop Operations re-audit — August 14, 2026
 
-This section supersedes the original source `Tracking` lines for `SO-01` through `SO-28`; source baseline text is retained for provenance. Evidence was checked against `main` at `622189f083a84f7db3e7ad0c8ccb9ebba33dbc75`.
+This section supersedes the original source `Tracking` lines for `SO-01` through `SO-28`; source baseline text is retained for provenance. Evidence was checked against `main` at `622189f083a84f7db3e7ad0c8ccb9ebba33dbc75` and completed through the final Schedule Completion batch on `codex/shop-operations-schedule-completion`. All Shop Operations items `SO-01` through `SO-28` are now closed.
 
 ### P0 items
 
@@ -275,16 +275,16 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Dependencies:** Document versioning/signature authority and output rendering.
   - **Residual limitations:** Future branded PDF design polish should reuse the immutable packet snapshot rather than creating a second document authority.
 
-- **SO-28 — Status: `In Progress`**
-  - **Exact frontend evidence:** `frontend/src/pages/ShopSchedulePage.jsx`, `frontend/src/App.js`, `frontend/src/lib/navigation.js`, `frontend/src/components/app-shell/AppShell.jsx`.
-  - **Exact backend evidence:** `backend/app/models/calendar.py`, `backend/app/models/schedulable_resource.py`, `backend/app/services/calendar_service.py`, `backend/app/routers/calendar.py`, `backend/app/models/schedule.py`, `backend/app/routers/schedule.py`.
+- **SO-28 — Status: `Closed`**
+  - **Exact frontend evidence:** `frontend/src/pages/ShopSchedulePage.jsx`, `frontend/src/lib/shopScheduleLinks.js`, `frontend/src/pages/QuoteDetailPage.jsx`, `frontend/src/pages/OrderDetailPage.jsx`, `frontend/src/pages/WorkOrderDetailPage.jsx`, `frontend/src/components/production/WorkOrderStagesPanel.jsx`, `frontend/src/pages/WrapLabDetailPage.jsx`, `frontend/src/App.js`, `frontend/src/lib/navigation.js`, `frontend/src/components/app-shell/AppShell.jsx`.
+  - **Exact backend evidence:** `backend/app/models/calendar.py`, `backend/app/models/schedulable_resource.py`, `backend/app/services/calendar_service.py`, `backend/app/routers/calendar.py`, `backend/app/services/wrap_lab.py`, `backend/app/models/schedule.py`, `backend/app/routers/schedule.py`.
   - **Relevant tests:** `backend/tests/test_ec12_phase12d_calendar_appointments.py`, `backend/tests/test_shop_schedule_resources.py`, `frontend/src/__tests__/ShopSchedulePage.test.jsx`, `frontend/src/__tests__/AppShellNavigation.test.jsx`.
-  - **Already implemented:** Shared `calendar_events` foundation supports tenant scope, status, timezone, customer/order/order_item/work_order/production_stage links, history, conflict overrides, feed projections, reschedule/cancel/archive/restore, assigned employee lists, equipment and vehicle reservations, and tenant-scoped schedulable shop resources for bays/work areas. Team schedule/shift records are separate. Shop Operations owns a permanent Schedule tab at `/shop-schedule`, with Calendar/Agenda/Appointments local views, operational filtering over the shared feed, create/update/cancel appointment flows, resource availability checks, conflict prevention for active overlapping exclusive resource reservations, schedule-specific ribbon links, and contextual Schedule actions from Customer, Quote, Order, and Work Order detail pages where supported IDs exist.
-  - **Still missing:** Direct contact and quote event links, appointment completion workflow, stronger duplicate-prevention UX across linked views, and any external/shared calendar synchronization.
-  - **Original closure check passes:** No.
+  - **Already implemented:** Shared `calendar_events` is the canonical Shop Operations schedule authority. Events support tenant-scoped links to Customer, Contact, Quote, Order, Order Item, Work Order, production stage/item, Wrap Project, vehicle inspection, installation, task, employee assignments, equipment, vehicles, and tenant-defined schedulable shop resources. Shop Operations owns the permanent Schedule tab at `/shop-schedule`, with Calendar, Agenda, and Appointments views, event/status/employee/resource/customer/order/source filters, contextual creation from Customer, Quote, Order, Work Order, production stages, and Wrap Lab, and direct source-record links. Create, edit, reschedule, assign, cancel, complete, reopen, archive, and resource archive flows preserve history and audit material actions. Conflict checks reject invalid time ranges, inactive or cross-tenant resources, employee/equipment/vehicle/resource/location/customer overlaps, unavailable or maintenance periods, and capacity overages; manager conflict overrides require a reason and are audited. Active source-linked events are deduplicated and cancelled/completed/archived events no longer block resource reuse. Wrap Lab install scheduling now creates a linked canonical calendar event instead of remaining disconnected.
+  - **Still missing:** None for the registered Shop Operations scheduling closure criteria. External Google/Outlook synchronization remains intentionally excluded from this Shop Operations batch and should be tracked separately if approved.
+  - **Original closure check passes:** Yes.
   - **Recommended implementation batch:** Batch 1 — Navigation, ownership, and scheduling foundation.
   - **Dependencies:** Precedes Order readiness, production planning, Wrap Lab scheduling, communications, and Team overlay work.
-  - **Residual limitations:** Backend remains the canonical source, and this checkpoint intentionally does not add direct contact/quote event links, advanced crew role planning beyond assigned employees, recurrence automation, optimization, analytics, or external calendar sync.
+  - **Residual limitations:** External calendar synchronization, recurrence automation, and scheduling optimization remain intentionally outside this final Shop Operations batch.
 
 ### P2 and P3 items
 
@@ -415,7 +415,7 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
 
 ### P1 — Core workflow and dependency
 
-- [ ] **SO-02 — Create the grouped Sales workspace**
+- [x] **SO-02 — Create the grouped Sales workspace**
   - **Source classification:** Open implementation gap
   - **Priority basis:** Required for a safe end-to-end core workflow or to preserve canonical ownership and permissions.
   - **Baseline gap:** Intake Requests, Quotes, and Orders exist as separate primary navigation entries.
@@ -535,13 +535,13 @@ This section supersedes the original source `Tracking` lines for `SO-01` through
   - **Done when:** Staff and customers can download the same final signed artifact, and later edits create a new version rather than altering it.
   - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-completion-communications` | Tests/Evidence: `backend/tests/test_shop_operations_completion_communications.py`, `frontend/src/__tests__/QuoteOrderDigitalPrintAdjustment.test.jsx`, `backend/app/services/order_completion_service.py`, `backend/app/routers/orders.py`, `backend/app/routers/public_actions.py` | Residual limitations: future branded PDF polish must render from the same immutable packet snapshot and signature/audit records.
 
-- [ ] **SO-28 — Implement the shared scheduling foundation, Shop Schedule, and appointments**
+- [x] **SO-28 — Implement the shared scheduling foundation, Shop Schedule, and appointments**
   - **Source classification:** Newly added Shop Operations implementation gap
   - **Priority basis:** Required for a safe, coherent operational scheduling workflow and to prevent duplicate calendar records across Shop Operations and Team & Productivity.
   - **Baseline gap:** A shared `calendar_events` foundation and `/shop-schedule` page exist, but Shop Operations does not yet own a permanent Schedule top tab, Schedule local views are incomplete, and Team Schedule versus Shop Schedule ownership is not fully enforced in navigation, routes, tests, and resource modeling.
   - **Required outcome:** Provide the canonical schedule/event model and service. Add Shop Operations > Schedule. Provide Calendar, Agenda, and Appointments views. Support operational event types and resource reservations. Link appointments and schedule events to their relevant customer and commercial/production records. Provide permissions, timezone handling, status, ownership, audit history, and conflict detection. Prevent duplicate schedule records when the same event appears in Customer, Order, Production, or Team views.
   - **Done when:** Staff can create, find, update, reschedule, cancel, and complete operational appointments and events; events appear consistently from Shop Schedule and every linked record; Team Schedule remains separate from Shop Schedule while both use the shared calendar foundation; no second calendar database or conflicting event record is created; existing schedule deep links continue to work or receive tested redirects.
-  - **Tracking:** Status: `In Progress — resource reservation checkpoint implemented` | Owner: `Codex` | PR/Commit: `codex/shop-schedule-resources` | Resource authorities reused: canonical `employees` for people/crew assignments; canonical `equipment` for equipment and vehicles; minimal `schedulable_resources` only for bays/work areas because no prior bay authority existed; employee availability context from employee availability blocks, shifts, and approved time off. | Tests/Evidence: `backend/tests/test_ec12_phase12d_calendar_appointments.py`, `backend/tests/test_shop_schedule_resources.py`, `frontend/src/__tests__/ShopSchedulePage.test.jsx`, `frontend/src/__tests__/AppShellNavigation.test.jsx`, `frontend/src/pages/ShopSchedulePage.jsx` | Residual limitations: contact and quote-specific links beyond current supported fields, completion workflow, stronger duplicate-prevention UX, and external calendar sync remain open.
+  - **Tracking:** Status: `Closed` | Owner: `Codex` | PR/Commit: `codex/shop-operations-schedule-completion` | Resource authorities reused: canonical `employees` for people/crew assignments; canonical `equipment` for equipment and vehicles; tenant-defined `schedulable_resources` for bays, work areas, rooms/locations, and other shop resources because no prior bay authority existed; employee availability context from employee availability blocks, shifts, and approved time off. | Tests/Evidence: `backend/tests/test_ec12_phase12d_calendar_appointments.py`, `backend/tests/test_shop_schedule_resources.py`, `frontend/src/__tests__/ShopSchedulePage.test.jsx`, `frontend/src/pages/ShopSchedulePage.jsx`, `frontend/src/lib/shopScheduleLinks.js`, `backend/app/services/calendar_service.py`, `backend/app/services/wrap_lab.py` | Residual limitations: external Google/Outlook synchronization, recurrence automation, and schedule optimization remain intentionally outside this Shop Operations closure.
 
 ### P2 — High-value operational completeness
 

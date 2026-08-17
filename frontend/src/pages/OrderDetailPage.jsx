@@ -646,6 +646,8 @@ export default function OrderDetailPage() {
                     workOrderId: activeWO?.id,
                     eventType: "installation",
                     title: `${order.job_name} appointment`,
+                    sourceType: "order",
+                    sourceId: id,
                   })}>
                     <CalendarDays className="size-4 mr-1" />Schedule
                   </Link>
