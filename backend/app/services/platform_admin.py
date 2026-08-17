@@ -7,6 +7,7 @@ onboarding task state, and EC2 email observability.
 from __future__ import annotations
 
 import html
+import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -866,6 +867,9 @@ async def set_maintenance(user: dict, *, enabled: bool, message: Optional[str] =
     require_platform_admin(user, extra_permissions={PlatformPerm.PLATFORM_SETTINGS_WRITE.value})
     now = _now_iso()
     maintenance = {"enabled": bool(enabled), "message": (message or "Scheduled maintenance in progress").strip() if enabled else None, "started_at": now if enabled else None, "started_by_email": user.get("email") if enabled else None}
+    test_scope = request.headers.get("x-test-maintenance-scope") if request and os.environ.get("PYTEST_CURRENT_TEST") else None
+    if enabled and test_scope:
+        maintenance["test_scope"] = test_scope
     await db.platform_settings.update_one({"id": SETTINGS_ID}, {"$set": {"maintenance": maintenance, "updated_at": now}}, upsert=True)
     await _audit(user, tenant_id=user["tenant_id"], action="maintenance.enable" if enabled else "maintenance.disable", entity_type="platform_settings", entity_id=SETTINGS_ID, summary="Enabled maintenance mode" if enabled else "Disabled maintenance mode", request=request, metadata={"message": maintenance.get("message")})
     return {"maintenance": maintenance}

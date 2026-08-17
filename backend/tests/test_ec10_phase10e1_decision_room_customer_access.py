@@ -297,7 +297,7 @@ async def test_expired_and_closed_room_states_remain_viewable(ctx):
             tenant_id=ctx["ta"], action="decision_room_view", parent_type="decision_room", parent_id=rid, single_use=False,
         )
         expired = await c.post(f"/api/decision-rooms/{rid}/transition", json={"target": "expired"})
-        assert expired.status_code == 200
+        _assert_response(expired, 200, f"expire decision room {rid}")
     _clear()
     async with await _anon_client() as c2:
         resp = await c2.get(f"/api/public/decision-rooms/{rid}", params={"t": raw})
@@ -309,7 +309,7 @@ async def test_expired_and_closed_room_states_remain_viewable(ctx):
             tenant_id=ctx["ta"], action="decision_room_view", parent_type="decision_room", parent_id=rid2, single_use=False,
         )
         closed = await c.post(f"/api/decision-rooms/{rid2}/transition", json={"target": "closed"})
-        assert closed.status_code == 200
+        _assert_response(closed, 200, f"close decision room {rid2}")
     _clear()
     async with await _anon_client() as c3:
         resp2 = await c3.get(f"/api/public/decision-rooms/{rid2}", params={"t": raw2})

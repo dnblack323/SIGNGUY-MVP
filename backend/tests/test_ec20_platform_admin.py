@@ -75,7 +75,14 @@ async def ec20_ctx(clean_db):
         {"$set": {"announcement": None, "maintenance": {"enabled": False}}},
         upsert=True,
     )
-    return {"tenant": tenant, "platform_tenant": platform_tenant, "owner": owner, "platform_admin": platform_admin}
+    try:
+        yield {"tenant": tenant, "platform_tenant": platform_tenant, "owner": owner, "platform_admin": platform_admin, "suffix": suffix}
+    finally:
+        await db.platform_settings.update_one(
+            {"id": "global"},
+            {"$set": {"maintenance": {"enabled": False}}},
+            upsert=True,
+        )
 
 
 @pytest.mark.asyncio
@@ -342,17 +349,22 @@ async def test_exit_impersonation_without_query_uses_current_impersonation_token
 
 @pytest.mark.asyncio
 async def test_maintenance_mode_blocks_user_writes_but_allows_platform_admin(ec20_ctx):
+    scope_header = {"x-test-maintenance-scope": f"maintenance-{ec20_ctx['suffix']}"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         enabled = await client.put(
             "/api/platform-admin/maintenance",
             json={"enabled": True, "message": "Maintenance window"},
-            headers=_headers(ec20_ctx["platform_admin"]),
+            headers={**_headers(ec20_ctx["platform_admin"]), **scope_header},
         )
-        user_write = await client.post("/api/customers", json={"name": "Blocked Customer"}, headers=_headers(ec20_ctx["owner"]))
+        user_write = await client.post(
+            "/api/customers",
+            json={"name": "Blocked Customer"},
+            headers={**_headers(ec20_ctx["owner"]), **scope_header},
+        )
         admin_write = await client.put(
             "/api/platform-admin/maintenance",
             json={"enabled": False, "message": ""},
-            headers=_headers(ec20_ctx["platform_admin"]),
+            headers={**_headers(ec20_ctx["platform_admin"]), **scope_header},
         )
 
     assert enabled.status_code == 200, enabled.text
