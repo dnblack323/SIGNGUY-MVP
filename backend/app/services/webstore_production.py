@@ -7,7 +7,8 @@ from ..core.db import db
 from ..core.permissions import Perm
 from ..core.time_utils import serialize_doc
 from . import work_order_service
-from .webstores import WebstoreError, _audit, _get_store, _require_staff_perm, _require_webstore_assignment_scope
+from .webstore_context import WebstoreError
+from .webstore_shared import _audit, _get_store, _require_staff_perm, _require_webstore_assignment_scope
 
 
 async def handoff_webstore_order_to_production(

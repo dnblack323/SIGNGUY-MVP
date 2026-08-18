@@ -20,7 +20,8 @@ from ..models.order import Order, OrderItem
 from ..models.payment import Payment
 from ..models.webstore import WebstoreLedgerEntry, WebstorePaymentEvent
 from .sequence import next_number, next_record_number
-from .webstores import WebstoreError, _audit
+from .webstore_context import WebstoreError
+from .webstore_shared import _audit
 from .webstore_payment_provider import (
     PAYMENT_PROVIDER_NOT_CONFIGURED,
     ProviderAuthority,
