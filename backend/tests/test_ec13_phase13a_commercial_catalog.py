@@ -1,18 +1,25 @@
 """EC13 Phase 13A - commercial billing catalog and core contract tests."""
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 import uuid
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from pymongo.errors import DuplicateKeyError
 
 from app.core.db import db
 from app.core.portal_security import create_portal_token
 from app.deps import get_current_user
+from app.services import commercial_catalog as commercial_catalog_service
 from server import app
+
+_PERSISTENT_DB = db
 
 
 def _now() -> str:
@@ -34,6 +41,102 @@ async def _client_as(user: dict) -> AsyncClient:
 async def _token_client(token: str) -> AsyncClient:
     app.dependency_overrides.pop(get_current_user, None)
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"Authorization": f"Bearer {token}"})
+
+
+def _matches_filter(doc: dict[str, Any], filt: dict[str, Any]) -> bool:
+    for key, expected in filt.items():
+        actual = doc.get(key)
+        if isinstance(expected, dict):
+            if "$ne" in expected and actual == expected["$ne"]:
+                return False
+            if "$in" in expected and actual not in expected["$in"]:
+                return False
+            if "$exists" in expected and (key in doc) is not bool(expected["$exists"]):
+                return False
+        elif actual != expected:
+            return False
+    return True
+
+
+def _project_doc(doc: dict[str, Any], projection: dict[str, int] | None) -> dict[str, Any]:
+    if not projection:
+        return deepcopy(doc)
+    included = {key for key, enabled in projection.items() if enabled}
+    if included:
+        return {key: deepcopy(doc[key]) for key in included if key in doc}
+    return {key: deepcopy(value) for key, value in doc.items() if projection.get(key, 1)}
+
+
+class _InMemoryFounderCursor:
+    def __init__(self, docs: list[dict[str, Any]]):
+        self._docs = docs
+        self._index = 0
+
+    def sort(self, spec: list[tuple[str, int]]):
+        for key, direction in reversed(spec):
+            self._docs.sort(key=lambda doc: doc.get(key), reverse=direction < 0)
+        return self
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self) -> dict[str, Any]:
+        if self._index >= len(self._docs):
+            raise StopAsyncIteration
+        doc = self._docs[self._index]
+        self._index += 1
+        return doc
+
+
+class _InMemoryFounderContracts:
+    def __init__(self):
+        self._docs: list[dict[str, Any]] = []
+
+    async def insert_one(self, doc: dict[str, Any]):
+        if any(existing.get("id") == doc.get("id") for existing in self._docs):
+            raise DuplicateKeyError("duplicate founder contract id")
+        active_statuses = commercial_catalog_service.FOUNDER_ACTIVE_STATUSES
+        if doc.get("founder_status") in active_statuses and any(
+            existing.get("tenant_id") == doc.get("tenant_id") and existing.get("founder_status") in active_statuses
+            for existing in self._docs
+        ):
+            raise DuplicateKeyError("duplicate active founder tenant")
+        slot = doc.get("founder_slot_number")
+        if isinstance(slot, int) and any(existing.get("founder_slot_number") == slot for existing in self._docs):
+            raise DuplicateKeyError("duplicate founder slot")
+        self._docs.append(deepcopy(doc))
+        return SimpleNamespace(inserted_id=doc.get("id"))
+
+    def find(self, filt: dict[str, Any] | None = None, projection: dict[str, int] | None = None):
+        filt = filt or {}
+        return _InMemoryFounderCursor([_project_doc(doc, projection) for doc in self._docs if _matches_filter(doc, filt)])
+
+    async def find_one(self, filt: dict[str, Any], projection: dict[str, int] | None = None):
+        async for doc in self.find(filt, projection):
+            return doc
+        return None
+
+    async def count_documents(self, filt: dict[str, Any] | None = None) -> int:
+        filt = filt or {}
+        return sum(1 for doc in self._docs if _matches_filter(doc, filt))
+
+
+class _FounderContractDbProxy:
+    def __init__(self, persistent_db, founder_contracts: _InMemoryFounderContracts):
+        self._persistent_db = persistent_db
+        self.founder_tenant_contracts = founder_contracts
+
+    def __getattr__(self, name: str):
+        return getattr(self._persistent_db, name)
+
+
+@pytest.fixture
+def isolated_founder_contracts(monkeypatch):
+    founder_contracts = _InMemoryFounderContracts()
+    isolated_db = _FounderContractDbProxy(_PERSISTENT_DB, founder_contracts)
+    monkeypatch.setattr(commercial_catalog_service, "db", isolated_db)
+    monkeypatch.setitem(globals(), "db", isolated_db)
+    return founder_contracts
 
 
 @pytest_asyncio.fixture
@@ -301,7 +404,7 @@ async def test_catalog_publish_price_immutability_and_purchase_rules(ctx):
 
 
 @pytest.mark.asyncio
-async def test_entitlement_contracts_founder_preservation_and_tenant_isolation(ctx):
+async def test_entitlement_contracts_founder_preservation_and_tenant_isolation(ctx, isolated_founder_contracts):
     await db.users.update_one({"id": ctx["staff"]["id"], "tenant_id": ctx["tenant_id"]}, {"$set": {"founder_access": True}})
     await db.founder_access.insert_one({
         "id": f"fa-{uuid.uuid4().hex[:8]}",
@@ -395,6 +498,22 @@ async def test_entitlement_contracts_founder_preservation_and_tenant_isolation(c
     async with await _token_client(ctx["portal_token"]) as portal:
         denied = await portal.get("/api/commercial/catalog/versions")
         assert denied.status_code in {401, 403}
+
+
+@pytest.mark.asyncio
+async def test_founder_contract_test_isolation_does_not_consume_persistent_slots(ctx, isolated_founder_contracts):
+    before = await _PERSISTENT_DB.founder_tenant_contracts.count_documents({})
+
+    async with await _client_as(ctx["platform_admin"]) as platform:
+        founder_slot = await _available_founder_slot()
+        founder = await platform.post(
+            "/api/commercial/founder-contracts",
+            json={"tenant_id": ctx["tenant_id"], "founder_slot_number": founder_slot, "founder_status": "active"},
+        )
+        assert founder.status_code == 201, founder.text
+
+    assert await db.founder_tenant_contracts.count_documents({"tenant_id": ctx["tenant_id"]}) == 1
+    assert await _PERSISTENT_DB.founder_tenant_contracts.count_documents({}) == before
 
 
 @pytest.mark.asyncio
