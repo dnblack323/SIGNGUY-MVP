@@ -66,6 +66,7 @@ const FULL_PERMISSIONS = [
   "ai_prompt:read",
   "ai_history:read",
   "settings:read",
+  "settings:write",
   "integration:read",
   "production_workflow:read",
   "subscription:read",
@@ -129,6 +130,8 @@ function renderShell(initialPath = "/", authOverrides = {}) {
           <Route path="/team/tasks" element={<><LocationProbe /><Page name="tasks" /></>} />
           <Route path="/team/time-clock" element={<><LocationProbe /><Page name="time-clock" /></>} />
           <Route path="/team/messages" element={<><LocationProbe /><Page name="messages" /></>} />
+          <Route path="/settings" element={<><LocationProbe /><Page name="settings" /></>} />
+          <Route path="/settings/slim-import" element={<><LocationProbe /><Page name="slim-import" /></>} />
           <Route path="/platform-admin" element={<><LocationProbe /><Page name="platform-admin" /></>} />
         </Route>
       </Routes>
@@ -753,6 +756,22 @@ test("authorized platform users switch through the account menu, not the custome
   await user.click(screen.getByTestId("account-platform-admin-link"));
 
   await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent("/platform-admin"));
+});
+
+test("Control Center exposes the Slim import route only to settings writers", async () => {
+  const user = userEvent.setup();
+  const first = renderShell("/settings/slim-import");
+
+  expectActiveArea("Control Center");
+  expect(screen.getByTestId("module-nav-slim-import")).toHaveAttribute("aria-current", "page");
+  expect(screen.getByTestId("slim-import-route")).toBeInTheDocument();
+  first.unmount();
+
+  renderShell("/settings", { permissions: FULL_PERMISSIONS.filter((perm) => perm !== "settings:write") });
+  expect(screen.queryByTestId("module-nav-slim-import")).not.toBeInTheDocument();
+
+  await user.click(screen.getByTestId("primary-nav-control-center"));
+  expect(screen.queryByTestId("module-nav-slim-import")).not.toBeInTheDocument();
 });
 
 test("current active navigation does not expose banned terminology", async () => {

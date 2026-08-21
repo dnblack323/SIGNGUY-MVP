@@ -12,4 +12,5 @@ Contents:
 - `architecture/money_policy.md`
 - `architecture/permission_catalog.md`
 - `architecture/navigation_contract.md`
+- `architecture/slim_v1_import.md`
 - `security/production_startup_guards.md`
