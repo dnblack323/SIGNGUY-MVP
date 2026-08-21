@@ -1237,6 +1237,8 @@ async def ensure_indexes() -> None:
         unique=True,
         partialFilterExpression={"status": "completed"},
     )
+    await db.slim_import_locks.create_index("tenant_id", unique=True)
+    await db.slim_import_locks.create_index("created_at")
     await db.slim_import_mappings.create_index("id", unique=True)
     await db.slim_import_mappings.create_index([("tenant_id", 1), ("import_run_id", 1)])
     await db.slim_import_mappings.create_index(

@@ -12,6 +12,7 @@ from typing import Any, Iterable, Optional
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from pymongo.errors import DuplicateKeyError
 
 from ..core.db import db
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
@@ -19,7 +20,12 @@ from ..models.file import Attachment, FileRecord
 from ..models.work_order import WorkOrder
 from ..services import storage
 from ..services.audit import record_audit
-from ..services.sequence import advance_record_number_counter_at_least, next_record_number
+from ..services.sequence import (
+    advance_record_number_counter_at_least,
+    next_record_number,
+    restore_record_number_counters,
+    snapshot_record_number_counters,
+)
 
 
 BACKUP_SIGNATURE = "SIGNGUY-SLIM-BACKUP"
@@ -283,11 +289,14 @@ def validate_payload(payload: dict[str, Any]) -> ValidatedBackup:
         raise SlimImportError("backup_manifest_malformed")
     data = payload["data"]
     attachments = payload["attachments"]
-    if set(data.keys()) != set(EXPECTED_DATA_SECTIONS) or not isinstance(attachments, list):
+    if not isinstance(data, dict) or not isinstance(attachments, list) or set(data.keys()) != set(EXPECTED_DATA_SECTIONS):
         raise SlimImportError("backup_manifest_malformed")
     for section in EXPECTED_DATA_SECTIONS:
         if not isinstance(data.get(section), list):
             raise SlimImportError("backup_manifest_malformed")
+        for row in data[section]:
+            if not isinstance(row, dict):
+                raise SlimImportError("backup_manifest_malformed")
     if len(data["tenants"]) != 1:
         raise SlimImportError("backup_manifest_malformed")
 
@@ -311,6 +320,8 @@ def validate_payload(payload: dict[str, Any]) -> ValidatedBackup:
     inventory = manifest.get("data_file_inventory")
     if not isinstance(inventory, list) or len(inventory) != len(expected_files):
         raise SlimImportError("backup_manifest_malformed")
+    if any(not isinstance(entry, dict) for entry in inventory):
+        raise SlimImportError("backup_manifest_malformed")
     _assert_unique((entry.get("path") for entry in inventory), "backup_manifest_malformed")
     for entry in inventory:
         _assert_safe_package_path(entry.get("path"))
@@ -320,6 +331,8 @@ def validate_payload(payload: dict[str, Any]) -> ValidatedBackup:
 
     attachment_inventory = manifest.get("attachment_inventory")
     if not isinstance(attachment_inventory, list):
+        raise SlimImportError("backup_manifest_malformed")
+    if any(not isinstance(entry, dict) for entry in attachment_inventory):
         raise SlimImportError("backup_manifest_malformed")
     _assert_unique((entry.get("path") for entry in attachment_inventory), "backup_manifest_malformed")
     _assert_unique((entry.get("source_portable_id") for entry in attachment_inventory), "backup_manifest_malformed")
@@ -331,6 +344,11 @@ def validate_payload(payload: dict[str, Any]) -> ValidatedBackup:
         raise SlimImportError("backup_attachment_missing")
 
     source_tenant_id = data["tenants"][0].get("id")
+    source_tenant_portable = data["tenants"][0].get("portable_id")
+    if not source_tenant_id or not source_tenant_portable:
+        raise SlimImportError("backup_relationship_invalid")
+    if manifest.get("source_tenant_identifier") not in {source_tenant_id, source_tenant_portable}:
+        raise SlimImportError("backup_relationship_invalid")
     for section in ["users", "customers", "estimates", "estimate_items", "orders", "order_items", "invoices", "calendar_events", "tenant_sequences", "audit_events"]:
         for row in data[section]:
             if row.get("tenant_id") != source_tenant_id:
@@ -345,6 +363,8 @@ def validate_payload(payload: dict[str, Any]) -> ValidatedBackup:
     orders = {row.get("id") for row in data["orders"]}
     order_items = {row.get("id") for row in data["order_items"]}
     for section in ["users", "customers", "estimates", "estimate_items", "orders", "order_items", "invoices", "calendar_events"]:
+        if any(not row.get("id") for row in data[section]):
+            raise SlimImportError("backup_relationship_invalid")
         _assert_unique((row.get("id") for row in data[section]), "backup_relationship_invalid")
     for row in data["estimates"]:
         if row.get("customer_id") not in customers or (row.get("converted_order_id") and row["converted_order_id"] not in orders):
@@ -367,7 +387,11 @@ def validate_payload(payload: dict[str, Any]) -> ValidatedBackup:
 
     total_attachment_bytes = 0
     for attachment in attachments:
+        if not isinstance(attachment, dict):
+            raise SlimImportError("backup_manifest_malformed")
         metadata = attachment.get("metadata") or {}
+        if not isinstance(metadata, dict) or not metadata.get("id") or not metadata.get("portable_id"):
+            raise SlimImportError("backup_manifest_malformed")
         entry = attachment_by_portable.get(metadata.get("portable_id"))
         if not entry:
             raise SlimImportError("backup_attachment_missing")
@@ -406,7 +430,7 @@ def _source_user_portable(source_users: dict[str, dict[str, Any]], user_id: Opti
 async def _assignment_mapping(tenant_id: str, backup: ValidatedBackup) -> list[dict[str, Any]]:
     mapping = []
     for source in backup.data["users"]:
-        email = str(source.get("email_label") or source.get("email") or "").lower()
+        email = str(source.get("email_label") or source.get("email") or "").strip().lower()
         matches = await db.users.find({"tenant_id": tenant_id, "email": email, "is_active": True}, {"_id": 0}).to_list(length=3)
         mapping.append({
             "source_user_id": source.get("id"),
@@ -504,26 +528,7 @@ def _production_stage_preview(backup: ValidatedBackup) -> list[dict[str, Any]]:
 def _settings_preview(backup: ValidatedBackup) -> dict[str, Any]:
     tenant = backup.data["tenants"][0]
     return {
-        "imported": {
-            key: tenant.get(key)
-            for key in [
-                "company_name",
-                "logo_reference",
-                "address_line1",
-                "address_line2",
-                "city",
-                "state",
-                "postal_code",
-                "country",
-                "contact_email",
-                "contact_phone",
-                "sales_tax_rate_basis_points",
-                "locale",
-                "currency",
-                "shop_timezone",
-            ]
-            if tenant.get(key) is not None
-        },
+        "imported": _tenant_settings_update(backup),
         "skipped": ["platform settings", "subscription state", "API keys", "integrations", "pricing-engine defaults", "security policy"],
     }
 
@@ -578,6 +583,98 @@ async def _advance_sequences(tenant_id: str, maxima: dict[str, int]) -> None:
             await advance_record_number_counter_at_least(tenant_id=tenant_id, record_type=record_type, value=value)
 
 
+async def _acquire_import_lock(*, tenant_id: str, import_run_id: str, backup_id: str, actor: dict[str, Any]) -> bool:
+    try:
+        await db.slim_import_locks.insert_one(prepare_for_mongo({
+            "tenant_id": tenant_id,
+            "import_run_id": import_run_id,
+            "backup_id": backup_id,
+            "actor_user_id": actor["id"],
+            "created_at": _now_iso(),
+        }))
+        return True
+    except DuplicateKeyError:
+        return False
+
+
+async def _release_import_lock(*, tenant_id: str, import_run_id: str) -> None:
+    await db.slim_import_locks.delete_one({"tenant_id": tenant_id, "import_run_id": import_run_id})
+
+
+async def _insert_translated_collections(
+    *,
+    tenant_id: str,
+    translated: dict[str, Any],
+    inserted: dict[str, list[str]],
+) -> None:
+    for collection, rows in translated["collections"].items():
+        for row in rows:
+            await db[collection].insert_one(prepare_for_mongo(row))
+            inserted.setdefault(collection, []).append(row["id"])
+
+
+TENANT_SETTINGS_KEYS = [
+    "name",
+    "updated_at",
+    "slim_company_name",
+    "logo_reference",
+    "address_line1",
+    "address_line2",
+    "city",
+    "state",
+    "postal_code",
+    "country",
+    "contact_email",
+    "contact_phone",
+    "sales_tax_rate_basis_points",
+    "locale",
+    "currency",
+    "shop_timezone",
+    "slim_source_tenant_identifier",
+]
+
+
+def _tenant_settings_update(backup: ValidatedBackup) -> dict[str, Any]:
+    source = backup.data["tenants"][0]
+    update: dict[str, Any] = {
+        "slim_source_tenant_identifier": backup.manifest.get("source_tenant_identifier"),
+    }
+    company_name = source.get("company_name")
+    if company_name:
+        update["name"] = company_name
+        update["slim_company_name"] = company_name
+    for key in [
+        "logo_reference",
+        "address_line1",
+        "address_line2",
+        "city",
+        "state",
+        "postal_code",
+        "country",
+        "contact_email",
+        "contact_phone",
+        "sales_tax_rate_basis_points",
+        "locale",
+        "currency",
+        "shop_timezone",
+    ]:
+        if source.get(key) is not None:
+            update[key] = source.get(key)
+    return update
+
+
+async def _restore_tenant_settings(tenant_id: str, original: dict[str, Any]) -> None:
+    restore_set = {key: original[key] for key in TENANT_SETTINGS_KEYS if key in original}
+    restore_unset = {key: "" for key in TENANT_SETTINGS_KEYS if key not in original}
+    update: dict[str, Any] = {}
+    if restore_set:
+        update["$set"] = restore_set
+    if restore_unset:
+        update["$unset"] = restore_unset
+    if update:
+        await db.tenants.update_one({"id": tenant_id}, update)
+
+
 def _map_status(value: Any, allowed: set[str], default: str) -> str:
     status = str(value or "").lower()
     return status if status in allowed else default
@@ -597,9 +694,16 @@ async def confirm_import(
     target = await db.tenants.find_one({"id": target_tenant_id}, {"_id": 0})
     if not target:
         raise SlimImportError("target_tenant_not_found", 404)
+    backup = decrypt_and_validate(content, passphrase)
+    duplicate = await db.slim_import_runs.find_one({
+        "tenant_id": target_tenant_id,
+        "backup_id": backup.manifest["backup_id"],
+        "status": "completed",
+    })
+    if duplicate:
+        raise SlimImportError("slim_import_blocked", 409)
     if confirmation_phrase != target.get("name"):
         raise SlimImportError("backup_confirmation_required")
-    backup = decrypt_and_validate(content, passphrase)
     preview = await preview_import(target_tenant_id=target_tenant_id, actor=actor, content=content, passphrase=passphrase)
     if preview["requires_unassigned_acknowledgement"] and not import_unassigned:
         raise SlimImportError("backup_assignment_policy_required")
@@ -608,38 +712,52 @@ async def confirm_import(
 
     import_run_id = _uuid()
     started_at = _now_iso()
-    run_doc = {
-        "id": import_run_id,
-        "tenant_id": target_tenant_id,
-        "backup_id": backup.manifest["backup_id"],
-        "source_product": backup.manifest["source_product"],
-        "source_format_version": backup.manifest["backup_format_version"],
-        "source_schema_version": backup.manifest["source_schema_version"],
-        "source_tenant_identifier": backup.manifest["source_tenant_identifier"],
-        "actor_user_id": actor["id"],
-        "status": "pending",
-        "started_at": started_at,
-        "completed_at": None,
-        "record_counts": backup.manifest["record_counts"],
-        "warnings": preview["warnings"],
-        "errors": [],
-        "report": {},
-    }
-    await db.slim_import_runs.insert_one(prepare_for_mongo(run_doc))
-    await record_audit(
+    if not await _acquire_import_lock(
         tenant_id=target_tenant_id,
-        actor_user_id=actor["id"],
-        actor_email=actor["email"],
-        action="slim_import.confirmed",
-        entity_type="slim_import_run",
-        entity_id=import_run_id,
-        summary="SignGuy Slim import confirmed",
-        diff={"backup_id": backup.manifest["backup_id"]},
-    )
+        import_run_id=import_run_id,
+        backup_id=backup.manifest["backup_id"],
+        actor=actor,
+    ):
+        raise SlimImportError("slim_import_in_progress", 409)
 
     staged_storage_keys: list[str] = []
     inserted: dict[str, list[str]] = {}
+    translated: dict[str, Any] | None = None
+    tenant_settings_applied = False
+    counter_snapshots: dict[str, dict[str, Any]] = {}
     try:
+        run_doc = {
+            "id": import_run_id,
+            "tenant_id": target_tenant_id,
+            "backup_id": backup.manifest["backup_id"],
+            "source_product": backup.manifest["source_product"],
+            "source_format_version": backup.manifest["backup_format_version"],
+            "source_schema_version": backup.manifest["source_schema_version"],
+            "source_tenant_identifier": backup.manifest["source_tenant_identifier"],
+            "actor_user_id": actor["id"],
+            "status": "pending",
+            "started_at": started_at,
+            "completed_at": None,
+            "record_counts": backup.manifest["record_counts"],
+            "warnings": preview["warnings"],
+            "errors": [],
+            "report": {},
+        }
+        await db.slim_import_runs.insert_one(prepare_for_mongo(run_doc))
+        await record_audit(
+            tenant_id=target_tenant_id,
+            actor_user_id=actor["id"],
+            actor_email=actor["email"],
+            action="slim_import.confirmed",
+            entity_type="slim_import_run",
+            entity_id=import_run_id,
+            summary="SignGuy Slim import confirmed",
+            diff={"backup_id": backup.manifest["backup_id"]},
+        )
+        counter_snapshots = await snapshot_record_number_counters(
+            tenant_id=target_tenant_id,
+            record_types=["customer", "quote", "order", "invoice", "work_order"],
+        )
         latest_counts = await _target_empty_counts(target_tenant_id)
         if any(count > 0 for count in latest_counts.values()):
             raise SlimImportError("slim_import_blocked", 409)
@@ -648,11 +766,15 @@ async def confirm_import(
         for file_doc in translated["files"]:
             storage.put_bytes(file_doc["storage_key"], file_doc.pop("_content"), file_doc["mime_type"])
             staged_storage_keys.append(file_doc["storage_key"])
-        for collection, rows in translated["collections"].items():
-            if rows:
-                await db[collection].insert_many([prepare_for_mongo(row) for row in rows])
-                inserted[collection] = [row["id"] for row in rows]
+        await _insert_translated_collections(tenant_id=target_tenant_id, translated=translated, inserted=inserted)
         await _advance_sequences(target_tenant_id, translated["sequence_maxima"])
+        tenant_settings = _tenant_settings_update(backup)
+        if tenant_settings:
+            await db.tenants.update_one(
+                {"id": target_tenant_id},
+                {"$set": {**tenant_settings, "updated_at": _now_iso()}},
+            )
+            tenant_settings_applied = True
         completed_at = _now_iso()
         report = {
             "import_id": import_run_id,
@@ -675,6 +797,7 @@ async def confirm_import(
             "errors": [],
             "rollback_cleanup": "not_required",
             "sequence_result": translated["sequence_maxima"],
+            "settings_imported": tenant_settings,
         }
         await db.slim_import_runs.update_one(
             {"id": import_run_id, "tenant_id": target_tenant_id},
@@ -694,8 +817,19 @@ async def confirm_import(
     except Exception as exc:
         for collection, ids in inserted.items():
             await db[collection].delete_many({"tenant_id": target_tenant_id, "id": {"$in": ids}})
+        await db.record_number_allocations.delete_many({
+            "tenant_id": target_tenant_id,
+            "idempotency_key": {"$regex": f"^slim-import:{re.escape(import_run_id)}:"},
+        })
+        await restore_record_number_counters(
+            tenant_id=target_tenant_id,
+            snapshots=counter_snapshots,
+            imported_maxima=(translated or {}).get("sequence_maxima") or {},
+        )
         for storage_key in staged_storage_keys:
             storage.delete_bytes(storage_key)
+        if tenant_settings_applied:
+            await _restore_tenant_settings(target_tenant_id, target)
         code = exc.code if isinstance(exc, SlimImportError) else "slim_import_failed"
         await db.slim_import_runs.update_one(
             {"id": import_run_id, "tenant_id": target_tenant_id},
@@ -714,6 +848,8 @@ async def confirm_import(
         if isinstance(exc, SlimImportError):
             raise
         raise SlimImportError("slim_import_failed", 500) from exc
+    finally:
+        await _release_import_lock(tenant_id=target_tenant_id, import_run_id=import_run_id)
 
 
 async def _translate_records(

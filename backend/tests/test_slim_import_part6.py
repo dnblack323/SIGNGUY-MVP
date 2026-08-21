@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from httpx import ASGITransport, AsyncClient
 
 from app.deps import get_current_user
+from app.services import slim_import, storage
 from server import app
 
 
@@ -374,8 +375,14 @@ async def test_confirm_import_preserves_relationships_attachment_sequences_and_b
         calendar = await clean_db.calendar_events.find_one({"tenant_id": user["tenant_id"]}, {"_id": 0})
         file_doc = await clean_db.files.find_one({"tenant_id": user["tenant_id"]}, {"_id": 0})
         attachment = await clean_db.attachments.find_one({"tenant_id": user["tenant_id"]}, {"_id": 0})
+        tenant = await clean_db.tenants.find_one({"id": user["tenant_id"]}, {"_id": 0})
 
         assert customer["number"] == 7
+        assert tenant["name"] == "Slim Source Shop"
+        assert tenant["slim_company_name"] == "Slim Source Shop"
+        assert tenant["sales_tax_rate_basis_points"] == 725
+        assert tenant["shop_timezone"] == "America/New_York"
+        assert report["settings_imported"]["name"] == "Slim Source Shop"
         assert quote["number"] == 8
         assert order["number"] == 9
         assert quote["converted_order_id"] == order["id"]
@@ -406,6 +413,88 @@ async def test_confirm_import_preserves_relationships_attachment_sequences_and_b
         assert duplicate.status_code == 409
         assert duplicate.json()["detail"] == "slim_import_blocked"
         assert await clean_db.orders.count_documents({"tenant_id": user["tenant_id"]}) == 1
+    _clear()
+
+
+@pytest.mark.asyncio
+async def test_confirm_import_blocks_concurrent_tenant_import_lock(seeded_users, clean_db):
+    user = seeded_users["user_a"]
+    target = seeded_users["tenant_a"]
+    content = _backup_bytes(user["email"])
+    await clean_db.slim_import_locks.insert_one({
+        "tenant_id": user["tenant_id"],
+        "import_run_id": "already-running",
+        "backup_id": "other-backup",
+        "actor_user_id": user["id"],
+        "created_at": "2026-08-21T12:00:00Z",
+    })
+    async with await _client_as(user) as client:
+        result = await client.post(
+            "/api/slim-import/confirm",
+            data={
+                "passphrase": PASSPHRASE,
+                "target_tenant_id": user["tenant_id"],
+                "confirmation_phrase": target["name"],
+                "import_unassigned": "false",
+            },
+            files=_files(content),
+        )
+        assert result.status_code == 409
+        assert result.json()["detail"] == "slim_import_in_progress"
+        assert await clean_db.customers.count_documents({"tenant_id": user["tenant_id"]}) == 0
+        assert await clean_db.slim_import_runs.count_documents({"tenant_id": user["tenant_id"]}) == 0
+    _clear()
+
+
+@pytest.mark.asyncio
+async def test_confirm_import_rolls_back_partial_writes_sequence_and_storage_on_failure(seeded_users, clean_db, monkeypatch):
+    user = seeded_users["user_a"]
+    target = seeded_users["tenant_a"]
+    content = _backup_bytes(user["email"])
+    deleted_storage_keys = []
+
+    original_delete = storage.delete_bytes
+
+    def tracking_delete(storage_key: str) -> None:
+        deleted_storage_keys.append(storage_key)
+        original_delete(storage_key)
+
+    async def fail_after_first_customer(*, tenant_id, translated, inserted):
+        row = translated["collections"]["customers"][0]
+        await slim_import.db.customers.insert_one(row)
+        inserted.setdefault("customers", []).append(row["id"])
+        raise RuntimeError("forced import failure")
+
+    monkeypatch.setattr(storage, "delete_bytes", tracking_delete)
+    monkeypatch.setattr(slim_import, "_insert_translated_collections", fail_after_first_customer)
+
+    async with await _client_as(user) as client:
+        result = await client.post(
+            "/api/slim-import/confirm",
+            data={
+                "passphrase": PASSPHRASE,
+                "target_tenant_id": user["tenant_id"],
+                "confirmation_phrase": target["name"],
+                "import_unassigned": "false",
+            },
+            files=_files(content),
+        )
+        assert result.status_code == 500
+        assert result.json()["detail"] == "slim_import_failed"
+
+    assert await clean_db.customers.count_documents({"tenant_id": user["tenant_id"]}) == 0
+    assert await clean_db.files.count_documents({"tenant_id": user["tenant_id"]}) == 0
+    assert await clean_db.attachments.count_documents({"tenant_id": user["tenant_id"]}) == 0
+    assert await clean_db.record_number_allocations.count_documents({"tenant_id": user["tenant_id"]}) == 0
+    assert await clean_db.counters.count_documents({"tenant_id": user["tenant_id"], "name": "work_order"}) == 0
+    assert await clean_db.slim_import_locks.count_documents({"tenant_id": user["tenant_id"]}) == 0
+    restored_tenant = await clean_db.tenants.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    assert restored_tenant["name"] == target["name"]
+    assert "slim_company_name" not in restored_tenant
+    failed_run = await clean_db.slim_import_runs.find_one({"tenant_id": user["tenant_id"], "status": "failed"}, {"_id": 0})
+    assert failed_run
+    assert failed_run["errors"] == ["slim_import_failed"]
+    assert deleted_storage_keys
     _clear()
 
 

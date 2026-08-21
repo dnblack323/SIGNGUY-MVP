@@ -24,10 +24,14 @@ confirmation, and writes only into the selected empty target tenant.
   authoritative.
 - Imports are limited to the actor's tenant in the current MVP tenant model.
 - Existing operational tenant data blocks import.
+- A tenant-scoped import lock prevents concurrent confirmations for the same
+  target tenant.
 - Completed import receipts prevent reimporting the same backup into the same
   tenant.
 - Attachments are checksum-verified and staged into private storage.
-- Failed imports compensate inserted records and staged storage keys.
+- Failed imports compensate inserted records, import-specific sequence
+  allocations, eligible counters, compatible tenant-setting updates, and staged
+  storage keys.
 
 ## Imported Scope
 
@@ -45,6 +49,12 @@ confirmation, and writes only into the selected empty target tenant.
 Historical prices, totals, statuses, and manual paid amounts are preserved as
 history. The importer does not recalculate historical records through the MVP
 Pricing Engine.
+
+Compatible tenant metadata is applied through an allowlist only: shop display
+name, Slim source tenant identifier, contact fields, address fields, sales-tax
+rate, locale, currency, timezone, and logo reference. Platform, subscription,
+integration, API key, security, authentication, and pricing-engine settings are
+not imported.
 
 ## Explicit Exclusions
 
