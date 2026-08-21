@@ -11,12 +11,14 @@ Phase 9I-V is documentation and readiness evidence only. It does not implement l
 
 ## Current Extraction Boundary
 
-Already implemented:
+Phase 9I-V originally extracted the pure calculator package inside the MVP repository. As of the v0.1.0 consumer cutover, the current runtime source is the private package `signguy-pricing-engine==0.1.0`; see `docs/architecture/pricing_engine_consumer.md` for the active installation and update workflow.
 
-- Pure calculator package: `backend/pricing_engine/`.
+Historical Phase 9I-V boundary:
+
+- Pure calculator package: external `pricing_engine` import from `signguy-pricing-engine==0.1.0`.
 - SaaS compatibility boundary: `backend/app/services/pricing_engine_adapter.py`.
 - SaaS configuration boundary: `backend/app/services/pricing_engine_config_adapter.py`.
-- Portable configuration contract: `backend/pricing_engine/config_export.py`.
+- Portable configuration contract: `pricing_engine.config_export`.
 - Test-only standalone adapter harness: `backend/tests/standalone_pricing_adapter_harness.py`.
 - Versioned parity fixture pack: `backend/tests/fixtures/pricing_engine/`.
 

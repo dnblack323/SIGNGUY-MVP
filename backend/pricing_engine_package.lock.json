@@ -1,0 +1,10 @@
+{
+  "package": "signguy-pricing-engine",
+  "import_name": "pricing_engine",
+  "version": "0.1.0",
+  "repository": "dnblack323/SIGNGUY-PRICING-ENGINE",
+  "release_tag": "v0.1.0",
+  "asset": "signguy_pricing_engine-0.1.0-py3-none-any.whl",
+  "sha256": "E374C967CF45164F1C37910E03A29CF1D76C47D0414ACEB6240FB071BAF11106",
+  "source_commit": "0cd5908a34c92da59c141bb80f18628760900ed3"
+}

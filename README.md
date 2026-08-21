@@ -24,6 +24,7 @@ employee portals, and a Pricing Foundation with per-category pricing calculators
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+python scripts/install_pricing_engine.py
 # create backend/.env with the variables below, then:
 uvicorn server:app --host 0.0.0.0 --port 8001 --reload
 ```
@@ -43,6 +44,7 @@ Required backend environment variables (`backend/.env`, never committed):
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Backend-only Google OAuth credentials |
 | `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, `SENDGRID_FROM_NAME` | Transactional email |
 | `STRIPE_API_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WRITES_ENABLED` | Payments |
+| `PRICING_ENGINE_READ_TOKEN` | Optional local fallback for installing the private pinned `signguy-pricing-engine` wheel; authorized developers can alternatively use an authenticated `gh` session |
 
 All backend routes are served under the `/api` prefix.
 

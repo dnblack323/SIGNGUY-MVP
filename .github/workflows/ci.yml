@@ -33,6 +33,10 @@ jobs:
       - name: Install backend dependencies
         working-directory: backend
         run: pip install -r requirements.txt
+      - name: Install private pricing engine
+        env:
+          PRICING_ENGINE_READ_TOKEN: ${{ secrets.PRICING_ENGINE_READ_TOKEN }}
+        run: python backend/scripts/install_pricing_engine.py
       - name: Run backend test suite
         run: python -m pytest backend/tests/ -q
 
