@@ -30,6 +30,7 @@ from app.routers import (
     entitlements as entitlements_router,
     integration_status as integration_status_router,
     activity as activity_router,
+    slim_import as slim_import_router,
 )
 
 logging.basicConfig(
@@ -78,6 +79,7 @@ api_router.include_router(webhooks_router.router)
 api_router.include_router(entitlements_router.router)
 api_router.include_router(integration_status_router.router)
 api_router.include_router(activity_router.router)
+api_router.include_router(slim_import_router.router)
 
     # EC6 — Portal auth
 from app.routers import portal_auth as portal_auth_router

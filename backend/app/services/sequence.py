@@ -185,6 +185,16 @@ async def _advance_counter_at_least(*, tenant_id: str, sequence_name: str, value
     )
 
 
+async def advance_record_number_counter_at_least(*, tenant_id: str, record_type: str, value: int) -> None:
+    normalized = normalize_record_type(record_type)
+    config = await _effective_config(tenant_id=tenant_id, record_type=normalized)
+    await _advance_counter_at_least(
+        tenant_id=tenant_id,
+        sequence_name=_sequence_name(normalized, config),
+        value=int(value),
+    )
+
+
 async def next_record_number(
     *,
     tenant_id: str,

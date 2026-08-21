@@ -1229,6 +1229,21 @@ async def ensure_indexes() -> None:
     await db.onboarding_import_records.create_index("id", unique=True)
     await db.onboarding_import_records.create_index([("tenant_id", 1), ("import_type", 1), ("status", 1), ("created_at", -1)])
 
+    # SignGuy Slim V1 Part 6 upgrade imports into a new empty MVP tenant.
+    await db.slim_import_runs.create_index("id", unique=True)
+    await db.slim_import_runs.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
+    await db.slim_import_runs.create_index(
+        [("tenant_id", 1), ("backup_id", 1), ("status", 1)],
+        unique=True,
+        partialFilterExpression={"status": "completed"},
+    )
+    await db.slim_import_mappings.create_index("id", unique=True)
+    await db.slim_import_mappings.create_index([("tenant_id", 1), ("import_run_id", 1)])
+    await db.slim_import_mappings.create_index(
+        [("tenant_id", 1), ("backup_id", 1), ("source_resource_type", 1), ("source_resource_id", 1)],
+        unique=True,
+    )
+
     await db.onboarding_template_exercises.create_index("id", unique=True)
     await db.onboarding_template_exercises.create_index([("tenant_id", 1), ("template_id", 1), ("status", 1), ("updated_at", -1)])
 
