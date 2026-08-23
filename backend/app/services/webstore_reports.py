@@ -8,7 +8,7 @@ from typing import Any, Optional
 from ..core.db import db
 from ..core.permissions import Perm
 from ..core.time_utils import serialize_doc
-from .webstores import _get_store, _require_staff_perm, _require_webstore_assignment_scope
+from .webstore_shared import _get_store, _require_staff_perm, _require_webstore_assignment_scope
 
 
 async def _canonical_records(
