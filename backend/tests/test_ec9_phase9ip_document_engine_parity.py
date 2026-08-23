@@ -36,6 +36,9 @@ PROHIBITED_IMPORT_ROOTS = {
     "openai",
 }
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+EMBEDDED_ENGINE_DIR = REPO_ROOT / "backend" / "pricing_engine"
+
 
 def _override_as(user: dict):
     async def _dep():
@@ -163,7 +166,11 @@ def test_pure_document_engine_imports_without_saas_startup():
 
 
 def test_pure_document_engine_has_no_saas_database_auth_or_network_imports():
-    roots = sorted(Path("backend/pricing_engine").glob("*.py"))
+    package_root = Path(document_engine.__file__).resolve().parent
+    assert not EMBEDDED_ENGINE_DIR.exists()
+    assert not package_root.is_relative_to(EMBEDDED_ENGINE_DIR)
+    assert "site-packages" in package_root.parts or "dist-packages" in package_root.parts
+    roots = sorted(package_root.glob("*.py"))
     findings: list[tuple[str, int, str]] = []
     for path in roots:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

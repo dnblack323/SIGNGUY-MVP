@@ -7,6 +7,7 @@ import ast
 import sys
 from typing import Any
 
+import pricing_engine
 from app.services.pricing import calculate_pricing
 from app.services.pricing_engine_config_adapter import (
     SAAS_CONFIGURATION_ADAPTER_ID,
@@ -247,8 +248,14 @@ def test_final_gate_results_expose_no_saas_identity_credentials_or_licensing_fie
 
 
 def test_pure_engine_and_standalone_harness_remain_free_of_saas_runtime_imports():
+    repo_root = Path(__file__).resolve().parents[2]
+    embedded_engine_dir = repo_root / "backend" / "pricing_engine"
+    package_root = Path(pricing_engine.__file__).resolve().parent
+    assert not embedded_engine_dir.exists()
+    assert not package_root.is_relative_to(embedded_engine_dir)
+    assert "site-packages" in package_root.parts or "dist-packages" in package_root.parts
     roots = [
-        *Path("backend/pricing_engine").rglob("*.py"),
+        *package_root.rglob("*.py"),
         Path("backend/tests/standalone_pricing_adapter_harness.py"),
     ]
     findings: list[tuple[str, int, str]] = []
