@@ -592,8 +592,11 @@ async def _record_stage_audit(
     )
 
 
-async def _append_history(stage_id: str, entry: dict[str, Any]) -> None:
-    await db.production_stage_instances.update_one({"id": stage_id}, {"$push": {"history": entry}})
+async def _append_history(*, tenant_id: str, stage_id: str, entry: dict[str, Any]) -> None:
+    await db.production_stage_instances.update_one(
+        {"tenant_id": tenant_id, "id": stage_id},
+        {"$push": {"history": entry}},
+    )
 
 
 async def _prior_stage_gate(stage: dict) -> None:
@@ -756,7 +759,7 @@ async def assign_stage(*, tenant_id: str, stage_id: str, employee_id: str, overr
         }},
     )
     updated = await get_stage(tenant_id=tenant_id, stage_id=stage_id)
-    await _append_history(stage_id, {"action": "assigned", "employee_id": employee_id, "actor_user_id": user["id"], "at": now, "override_reason": override_reason})
+    await _append_history(tenant_id=tenant_id, stage_id=stage_id, entry={"action": "assigned", "employee_id": employee_id, "actor_user_id": user["id"], "at": now, "override_reason": override_reason})
     await _record_stage_audit(
         tenant_id=tenant_id, actor_user_id=user["id"], actor_email=user["email"],
         action="production_stage.assigned", stage=updated,
@@ -786,7 +789,7 @@ async def unassign_stage(*, tenant_id: str, stage_id: str, user: dict) -> dict:
         {"$set": {"assigned_employee_id": None, "assigned_user_id": None, "updated_at": now}},
     )
     updated = await get_stage(tenant_id=tenant_id, stage_id=stage_id)
-    await _append_history(stage_id, {"action": "unassigned", "actor_user_id": user["id"], "at": now})
+    await _append_history(tenant_id=tenant_id, stage_id=stage_id, entry={"action": "unassigned", "actor_user_id": user["id"], "at": now})
     await _record_stage_audit(
         tenant_id=tenant_id, actor_user_id=user["id"], actor_email=user["email"],
         action="production_stage.unassigned", stage=updated, summary=f"Stage unassigned: {updated['stage_name']}",
@@ -850,7 +853,7 @@ async def transition_stage(
         updates["blocker_reason"] = None
     await db.production_stage_instances.update_one({"tenant_id": tenant_id, "id": stage_id}, {"$set": prepare_for_mongo(updates)})
     updated = await get_stage(tenant_id=tenant_id, stage_id=stage_id)
-    await _append_history(stage_id, {"action": action_suffix, "from": current, "to": target, "actor_user_id": user["id"], "at": now, "reason": reason, "completion_note": completion_note})
+    await _append_history(tenant_id=tenant_id, stage_id=stage_id, entry={"action": action_suffix, "from": current, "to": target, "actor_user_id": user["id"], "at": now, "reason": reason, "completion_note": completion_note})
     await _record_stage_audit(
         tenant_id=tenant_id, actor_user_id=user["id"], actor_email=user["email"],
         action=f"production_stage.{action_suffix}", stage=updated,
@@ -891,7 +894,7 @@ async def reopen_stage(*, tenant_id: str, stage_id: str, reason: str, user: dict
         }},
     )
     updated = await get_stage(tenant_id=tenant_id, stage_id=stage_id)
-    await _append_history(stage_id, {"action": "reopened", "from": previous, "to": "in_progress", "actor_user_id": user["id"], "at": now, "reason": reason})
+    await _append_history(tenant_id=tenant_id, stage_id=stage_id, entry={"action": "reopened", "from": previous, "to": "in_progress", "actor_user_id": user["id"], "at": now, "reason": reason})
     await _record_stage_audit(
         tenant_id=tenant_id, actor_user_id=user["id"], actor_email=user["email"],
         action="production_stage.reopened", stage=updated,
@@ -910,7 +913,7 @@ async def update_stage_due_date(*, tenant_id: str, stage_id: str, due_at: Option
     now = _now()
     await db.production_stage_instances.update_one({"tenant_id": tenant_id, "id": stage_id}, {"$set": {"due_at": due_at, "updated_at": now}})
     updated = await get_stage(tenant_id=tenant_id, stage_id=stage_id)
-    await _append_history(stage_id, {"action": "due_date_changed", "from": stage.get("due_at"), "to": due_at, "actor_user_id": user["id"], "at": now})
+    await _append_history(tenant_id=tenant_id, stage_id=stage_id, entry={"action": "due_date_changed", "from": stage.get("due_at"), "to": due_at, "actor_user_id": user["id"], "at": now})
     await _record_stage_audit(
         tenant_id=tenant_id, actor_user_id=user["id"], actor_email=user["email"],
         action="production_stage.due_date_changed", stage=updated,
@@ -939,7 +942,7 @@ async def add_stage_note(*, tenant_id: str, stage_id: str, note: str, user: dict
         {"$push": {"production_notes": entry}, "$set": {"updated_at": now}},
     )
     updated = await get_stage(tenant_id=tenant_id, stage_id=stage_id)
-    await _append_history(stage_id, {"action": "production_note_added", "actor_user_id": user["id"], "at": now})
+    await _append_history(tenant_id=tenant_id, stage_id=stage_id, entry={"action": "production_note_added", "actor_user_id": user["id"], "at": now})
     await _record_stage_audit(
         tenant_id=tenant_id, actor_user_id=user["id"], actor_email=user["email"],
         action="production_stage.production_note_added", stage=updated,
@@ -1015,7 +1018,7 @@ async def start_stage_timer(
         }},
     )
     await _record_timer_event(tenant_id=tenant_id, session=session, event_type="started", actor_user_id=user["id"], notes=notes)
-    await _append_history(stage_id, {"action": "timer_started", "employee_id": employee["id"], "session_id": session["id"], "actor_user_id": user["id"], "at": now, "notes": notes})
+    await _append_history(tenant_id=tenant_id, stage_id=stage_id, entry={"action": "timer_started", "employee_id": employee["id"], "session_id": session["id"], "actor_user_id": user["id"], "at": now, "notes": notes})
     await _record_stage_audit(
         tenant_id=tenant_id, actor_user_id=user["id"], actor_email=user["email"],
         action="production_stage.timer_started", stage=stage,
@@ -1061,7 +1064,7 @@ async def pause_stage_timer(
         {"$set": {"active_timer_session_id": None, "active_timer_employee_id": None, "active_timer_started_at": None, "updated_at": now}},
     )
     await _record_timer_event(tenant_id=tenant_id, session=paused, event_type="paused", actor_user_id=user["id"], reason=clean_reason)
-    await _append_history(stage_id, {"action": "timer_paused", "employee_id": session["employee_id"], "session_id": session["id"], "actor_user_id": user["id"], "at": now, "reason": clean_reason})
+    await _append_history(tenant_id=tenant_id, stage_id=stage_id, entry={"action": "timer_paused", "employee_id": session["employee_id"], "session_id": session["id"], "actor_user_id": user["id"], "at": now, "reason": clean_reason})
     await _record_stage_audit(
         tenant_id=tenant_id, actor_user_id=user["id"], actor_email=user["email"],
         action="production_stage.timer_paused", stage=stage,
@@ -1105,7 +1108,7 @@ async def resume_stage_timer(
     )
     resumed = serialize_doc(await db.production_timer_sessions.find_one({"tenant_id": tenant_id, "id": session["id"]}, {"_id": 0}))
     await _record_timer_event(tenant_id=tenant_id, session=resumed, event_type="resumed", actor_user_id=user["id"], notes=notes)
-    await _append_history(stage_id, {"action": "timer_resumed", "employee_id": session["employee_id"], "session_id": session["id"], "actor_user_id": user["id"], "at": now, "notes": notes})
+    await _append_history(tenant_id=tenant_id, stage_id=stage_id, entry={"action": "timer_resumed", "employee_id": session["employee_id"], "session_id": session["id"], "actor_user_id": user["id"], "at": now, "notes": notes})
     await _record_stage_audit(
         tenant_id=tenant_id, actor_user_id=user["id"], actor_email=user["email"],
         action="production_stage.timer_resumed", stage=stage,
@@ -1170,7 +1173,7 @@ async def stop_stage_timer(
         {"$set": {"active_timer_session_id": None, "active_timer_employee_id": None, "active_timer_started_at": None, "updated_at": now},
          "$inc": {"actual_duration_seconds": effective_elapsed, "timing_entry_count": 1}},
     )
-    await _append_history(stage_id, {
+    await _append_history(tenant_id=tenant_id, stage_id=stage_id, entry={
         "action": "timer_stopped",
         "employee_id": session["employee_id"],
         "session_id": session["id"],
@@ -1231,7 +1234,7 @@ async def correct_stage_timer(
     await db.production_stage_instances.update_one({"tenant_id": tenant_id, "id": stage_id}, {"$inc": {"actual_duration_seconds": delta}, "$set": {"updated_at": now}})
     updated = serialize_doc(await db.production_timer_sessions.find_one({"tenant_id": tenant_id, "id": session_id}, {"_id": 0}))
     await _record_timer_event(tenant_id=tenant_id, session=updated, event_type="corrected", actor_user_id=user["id"], reason=clean_reason, elapsed_seconds=corrected)
-    await _append_history(stage_id, {"action": "timer_corrected", "session_id": session_id, "actor_user_id": user["id"], "at": now, "reason": clean_reason, "original_elapsed_seconds": original_effective, "corrected_elapsed_seconds": corrected})
+    await _append_history(tenant_id=tenant_id, stage_id=stage_id, entry={"action": "timer_corrected", "session_id": session_id, "actor_user_id": user["id"], "at": now, "reason": clean_reason, "original_elapsed_seconds": original_effective, "corrected_elapsed_seconds": corrected})
     await _record_stage_audit(
         tenant_id=tenant_id, actor_user_id=user["id"], actor_email=user["email"],
         action="production_stage.timer_corrected", stage=stage,
@@ -1282,7 +1285,7 @@ async def void_stage_timer(
     await db.production_stage_instances.update_one({"tenant_id": tenant_id, "id": stage_id}, {"$inc": {"actual_duration_seconds": -original_effective, "timing_entry_count": -1}, "$set": {"updated_at": now}})
     updated = serialize_doc(await db.production_timer_sessions.find_one({"tenant_id": tenant_id, "id": session_id}, {"_id": 0}))
     await _record_timer_event(tenant_id=tenant_id, session=updated, event_type="voided", actor_user_id=user["id"], reason=clean_reason, elapsed_seconds=0)
-    await _append_history(stage_id, {"action": "timer_voided", "session_id": session_id, "actor_user_id": user["id"], "at": now, "reason": clean_reason, "original_elapsed_seconds": original_effective})
+    await _append_history(tenant_id=tenant_id, stage_id=stage_id, entry={"action": "timer_voided", "session_id": session_id, "actor_user_id": user["id"], "at": now, "reason": clean_reason, "original_elapsed_seconds": original_effective})
     await _record_stage_audit(
         tenant_id=tenant_id, actor_user_id=user["id"], actor_email=user["email"],
         action="production_stage.timer_voided", stage=stage,
