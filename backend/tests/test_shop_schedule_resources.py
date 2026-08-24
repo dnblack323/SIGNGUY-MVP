@@ -54,7 +54,17 @@ async def resource_ctx():
     wrap_project_id = f"wrap-{suffix}"
     await db.customers.insert_one({"id": customer_id, "tenant_id": tenant_id, "name": "Rusty Lemon"})
     await db.quotes.insert_one({"id": quote_id, "tenant_id": tenant_id, "number": 1042, "job_name": "Window decals", "customer_id": customer_id, "status": "draft"})
-    await db.orders.insert_one({"id": order_id, "tenant_id": tenant_id, "number": 91015, "customer_id": customer_id, "status": "confirmed"})
+    await db.orders.insert_one({
+        "id": order_id,
+        "tenant_id": tenant_id,
+        "number": 91015,
+        "customer_id": customer_id,
+        "quote_id": quote_id,
+        "source_quote_id": quote_id,
+        "source_type": "quote",
+        "source_id": quote_id,
+        "status": "confirmed",
+    })
     await db.order_items.insert_one({"id": order_item_id, "tenant_id": tenant_id, "order_id": order_id, "description": "Window decals", "quantity": 1})
     await db.wrap_projects.insert_one({
         "id": wrap_project_id,

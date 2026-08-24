@@ -75,22 +75,185 @@ async def _get_event(tenant_id: str, event_id: str) -> dict:
     return serialize_doc(doc)
 
 
+LINK_COLLECTIONS = {
+    "customer_id": "customers",
+    "quote_id": "quotes",
+    "order_id": "orders",
+    "order_item_id": "order_items",
+    "work_order_id": "work_orders",
+    "production_stage_id": "production_stage_instances",
+    "wrap_project_id": "wrap_projects",
+    "vehicle_inspection_id": "wrap_inspections",
+    "installation_id": "wrap_installation_records",
+    "task_id": "tasks",
+    "employee_id": "employees",
+    "assigned_user_id": "users",
+}
+
+RELATION_FIELDS = {
+    "customer_id",
+    "quote_id",
+    "order_id",
+    "order_item_id",
+    "work_order_id",
+    "production_stage_id",
+    "wrap_project_id",
+}
+
+
+def _add_relation(relations: dict[str, dict[str, set[str]]], field: str, value: Optional[str], source: str) -> None:
+    if value:
+        relations.setdefault(field, {}).setdefault(str(value), set()).add(source)
+
+
+def _work_order_has_item(work_order: dict, order_item_id: str) -> bool:
+    return any(str(item.get("order_item_id") or "") == str(order_item_id) for item in work_order.get("items_snapshot") or [])
+
+
+def _order_quote_matches(order: dict, quote: dict) -> bool:
+    quote_id = str(quote.get("id") or "")
+    order_id = str(order.get("id") or "")
+    return quote_id in {
+        str(order.get("quote_id") or ""),
+        str(order.get("source_quote_id") or ""),
+        str(order.get("source_id") or "") if order.get("source_type") == "quote" else "",
+    } or str(quote.get("converted_order_id") or "") == order_id
+
+
+def _raise_link_mismatch(message: str) -> None:
+    raise CalendarError("link_mismatch", message, 400)
+
+
+async def _validate_link_relationships(tenant_id: str, payload: dict, refs: dict[str, dict]) -> None:
+    cache: dict[tuple[str, str], Optional[dict]] = {}
+    for field, doc in refs.items():
+        collection = LINK_COLLECTIONS[field]
+        cache[(collection, str(doc["id"]))] = doc
+
+    async def load(collection: str, record_id: Optional[str]) -> Optional[dict]:
+        if not record_id:
+            return None
+        key = (collection, str(record_id))
+        if key not in cache:
+            cache[key] = await db[collection].find_one({"tenant_id": tenant_id, "id": record_id}, {"_id": 0})
+        return cache[key]
+
+    relations: dict[str, dict[str, set[str]]] = {}
+
+    async def add_order(order_id: Optional[str], source: str) -> Optional[dict]:
+        order = await load("orders", order_id)
+        if order:
+            _add_relation(relations, "order_id", order.get("id"), source)
+            _add_relation(relations, "customer_id", order.get("customer_id"), f"{source}.customer_id")
+            _add_relation(relations, "quote_id", order.get("quote_id") or order.get("source_quote_id"), f"{source}.quote_id")
+            if order.get("source_type") == "quote":
+                _add_relation(relations, "quote_id", order.get("source_id"), f"{source}.source_id")
+        return order
+
+    async def add_order_item(order_item_id: Optional[str], source: str) -> Optional[dict]:
+        item = await load("order_items", order_item_id)
+        if item:
+            _add_relation(relations, "order_item_id", item.get("id"), source)
+            await add_order(item.get("order_id"), f"{source}.order")
+        return item
+
+    async def add_work_order(work_order_id: Optional[str], source: str) -> Optional[dict]:
+        work_order = await load("work_orders", work_order_id)
+        if work_order:
+            _add_relation(relations, "work_order_id", work_order.get("id"), source)
+            _add_relation(relations, "order_id", work_order.get("order_id"), f"{source}.order_id")
+            _add_relation(relations, "customer_id", work_order.get("customer_id"), f"{source}.customer_id")
+            await add_order(work_order.get("order_id"), f"{source}.order")
+        return work_order
+
+    async def add_stage(stage_id: Optional[str], source: str) -> Optional[dict]:
+        stage = await load("production_stage_instances", stage_id)
+        if stage:
+            _add_relation(relations, "production_stage_id", stage.get("id"), source)
+            _add_relation(relations, "order_id", stage.get("order_id"), f"{source}.order_id")
+            _add_relation(relations, "order_item_id", stage.get("order_item_id"), f"{source}.order_item_id")
+            _add_relation(relations, "work_order_id", stage.get("work_order_id"), f"{source}.work_order_id")
+            await add_order(stage.get("order_id"), f"{source}.order")
+            await add_order_item(stage.get("order_item_id"), f"{source}.order_item")
+            await add_work_order(stage.get("work_order_id"), f"{source}.work_order")
+        return stage
+
+    async def add_wrap_project(project_id: Optional[str], source: str) -> Optional[dict]:
+        project = await load("wrap_projects", project_id)
+        if project:
+            _add_relation(relations, "wrap_project_id", project.get("id"), source)
+            _add_relation(relations, "customer_id", project.get("customer_id"), f"{source}.customer_id")
+            _add_relation(relations, "quote_id", project.get("quote_id"), f"{source}.quote_id")
+            _add_relation(relations, "order_id", project.get("order_id"), f"{source}.order_id")
+            _add_relation(relations, "order_item_id", project.get("order_item_id"), f"{source}.order_item_id")
+            _add_relation(
+                relations,
+                "work_order_id",
+                project.get("work_order_id") or project.get("work_order_summary_id"),
+                f"{source}.work_order_id",
+            )
+            await add_order(project.get("order_id"), f"{source}.order")
+            await add_order_item(project.get("order_item_id"), f"{source}.order_item")
+            await add_work_order(project.get("work_order_id") or project.get("work_order_summary_id"), f"{source}.work_order")
+        return project
+
+    for field in RELATION_FIELDS:
+        _add_relation(relations, field, payload.get(field), f"event.{field}")
+
+    quote = refs.get("quote_id")
+    if quote:
+        _add_relation(relations, "customer_id", quote.get("customer_id"), "quote_id.customer_id")
+        _add_relation(relations, "order_id", quote.get("converted_order_id"), "quote_id.converted_order_id")
+
+    await add_order(payload.get("order_id"), "event.order_id")
+    order_item = await add_order_item(payload.get("order_item_id"), "event.order_item_id")
+    work_order = await add_work_order(payload.get("work_order_id"), "event.work_order_id")
+    await add_stage(payload.get("production_stage_id"), "event.production_stage_id")
+    await add_wrap_project(payload.get("wrap_project_id"), "event.wrap_project_id")
+
+    inspection = refs.get("vehicle_inspection_id")
+    if inspection:
+        _add_relation(relations, "wrap_project_id", inspection.get("project_id"), "vehicle_inspection_id.project_id")
+        await add_wrap_project(inspection.get("project_id"), "vehicle_inspection_id.project")
+
+    installation = refs.get("installation_id")
+    if installation:
+        _add_relation(relations, "wrap_project_id", installation.get("project_id"), "installation_id.project_id")
+        await add_wrap_project(installation.get("project_id"), "installation_id.project")
+
+    task = refs.get("task_id")
+    if task:
+        for field in ("customer_id", "quote_id", "order_id", "order_item_id", "work_order_id", "production_stage_id"):
+            _add_relation(relations, field, task.get(field), f"task_id.{field}")
+        await add_order(task.get("order_id"), "task_id.order")
+        await add_order_item(task.get("order_item_id"), "task_id.order_item")
+        await add_work_order(task.get("work_order_id"), "task_id.work_order")
+        await add_stage(task.get("production_stage_id"), "task_id.production_stage")
+
+    for field, values in relations.items():
+        if len(values) > 1:
+            _raise_link_mismatch(f"{field} links do not belong to the same schedule context")
+
+    order_ids = list(relations.get("order_id", {}))
+    quote_ids = list(relations.get("quote_id", {}))
+    if order_ids and quote_ids:
+        order = await load("orders", order_ids[0])
+        quote = await load("quotes", quote_ids[0])
+        if order and quote and not _order_quote_matches(order, quote):
+            _raise_link_mismatch("quote_id does not belong to order_id")
+
+    item_ids = list(relations.get("order_item_id", {}))
+    work_order_ids = list(relations.get("work_order_id", {}))
+    if item_ids and work_order_ids:
+        work_order = work_order or await load("work_orders", work_order_ids[0])
+        order_item = order_item or await load("order_items", item_ids[0])
+        if work_order and order_item and not _work_order_has_item(work_order, item_ids[0]):
+            _raise_link_mismatch("order_item_id is not present in work_order_id item snapshot")
+
+
 async def _validate_links(tenant_id: str, payload: dict) -> None:
-    collections = {
-        "customer_id": "customers",
-        "quote_id": "quotes",
-        "order_id": "orders",
-        "order_item_id": "order_items",
-        "work_order_id": "work_orders",
-        "production_stage_id": "production_stage_instances",
-        "wrap_project_id": "wrap_projects",
-        "vehicle_inspection_id": "wrap_inspections",
-        "installation_id": "wrap_installation_records",
-        "task_id": "tasks",
-        "employee_id": "employees",
-        "assigned_user_id": "users",
-    }
-    for field, coll in collections.items():
+    refs: dict[str, dict] = {}
+    for field, coll in LINK_COLLECTIONS.items():
         value = payload.get(field)
         if not value:
             continue
@@ -99,6 +262,8 @@ async def _validate_links(tenant_id: str, payload: dict) -> None:
             raise CalendarError("linked_record_not_found", f"{field} not found", 404)
         if field == "employee_id" and doc.get("status") != "active":
             raise CalendarError("inactive_employee", "Inactive employee cannot be assigned to appointment", 400)
+        refs[field] = doc
+    await _validate_link_relationships(tenant_id, payload, refs)
     if payload.get("contact_id"):
         customer_id = payload.get("customer_id")
         if not customer_id:
@@ -679,7 +844,8 @@ async def update_event(*, tenant_id: str, event_id: str, actor_user_id: str, act
                        payload: dict, action: str = "updated", actor_role: Optional[str] = None) -> dict:
     existing = await _get_event(tenant_id, event_id)
     clean = {k: v for k, v in payload.items() if v is not None}
-    await _validate_links(tenant_id, clean)
+    prospective = {**existing, **clean}
+    await _validate_links(tenant_id, prospective)
     if clean.get("source_id"):
         source_type = clean.get("source_type") or existing.get("source_type") or "appointment"
         duplicate = await db.calendar_events.find_one(
