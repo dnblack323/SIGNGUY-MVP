@@ -20,7 +20,7 @@ from ..services.portal_tokens import mint_public_action_token, revoke_public_act
 
 ACTIVE_WORK_ORDER_STATUSES = {"draft", "released", "queued", "in_progress", "blocked", "ready"}
 OPEN_ISSUE_STATUSES = {"open", "rework_required", "in_review"}
-TERMINAL_ORDER_COMPLETION_STATES = {"completed", "cancelled"}
+TERMINAL_ORDER_FINANCIAL_STATUSES = {"completed", "cancelled", "archived"}
 ACTIVE_PRODUCTION_STAGE_STATUSES = {"ready", "in_progress", "blocked", "waiting"}
 COMPLETION_OVERRIDE_ROLES = {"owner", "admin", "manager"}
 
@@ -72,6 +72,13 @@ def _average(values: list[int]) -> int:
 
 def _has_completion_override_authority(user: dict[str, Any]) -> bool:
     return str(user.get("role") or "").lower() in COMPLETION_OVERRIDE_ROLES
+
+
+def _rework_order_status(order: dict[str, Any]) -> str:
+    current = order.get("status") or "draft"
+    if current in TERMINAL_ORDER_FINANCIAL_STATUSES:
+        return current
+    return "in_production"
 
 
 async def _order_or_raise(tenant_id: str, order_id: str) -> dict[str, Any]:
@@ -242,8 +249,8 @@ async def transition_completion(tenant_id: str, order_id: str, payload: dict[str
         raise ValueError("reason_required")
     manager_override_required = (
         (target == "completed" and not readiness["ready"])
-        or (target == "reopened" and order.get("status") in TERMINAL_ORDER_COMPLETION_STATES)
-        or (target in {"cancelled", "rework_required"} and order.get("status") in TERMINAL_ORDER_COMPLETION_STATES)
+        or (target == "reopened" and order.get("status") in TERMINAL_ORDER_FINANCIAL_STATUSES)
+        or (target in {"cancelled", "rework_required"} and order.get("status") in TERMINAL_ORDER_FINANCIAL_STATUSES)
     )
     if manager_override_required and not _has_completion_override_authority(user):
         raise PermissionError("completion_override_forbidden")
@@ -275,8 +282,8 @@ async def transition_completion(tenant_id: str, order_id: str, payload: dict[str
         "ready_for_delivery": "ready",
         "installed": "ready",
         "completed": "completed",
-        "rework_required": "in_production",
-        "reopened": "in_production",
+        "rework_required": _rework_order_status(order),
+        "reopened": _rework_order_status(order),
         "cancelled": "cancelled",
     }[target]
     updates = {
@@ -622,7 +629,10 @@ async def create_completion_issue(tenant_id: str, order_id: str, payload: dict[s
     }
     await db.order_completion_issues.insert_one(doc)
     if status in OPEN_ISSUE_STATUSES:
-        await db.orders.update_one({"tenant_id": tenant_id, "id": order_id}, {"$set": {"completion_status": "rework_required", "status": "in_production", "updated_at": _now_iso()}})
+        await db.orders.update_one(
+            {"tenant_id": tenant_id, "id": order_id},
+            {"$set": {"completion_status": "rework_required", "status": _rework_order_status(order), "updated_at": _now_iso()}},
+        )
     await record_audit(
         tenant_id=tenant_id,
         actor_user_id=user["id"],
@@ -735,6 +745,7 @@ async def public_completion_issue(raw_token: str, order_id: str, payload: dict[s
         headers = {"user-agent": user_agent or ""}
         client = type("Client", (), {"host": ip})() if ip else None
     token = await resolve_public_token(_Req(), raw_token=raw_token, expected_action="order_completion_review", expected_parent_type="order", expected_parent_id=order_id)
+    order = await _order_or_raise(token["tenant_id"], order_id)
     doc = {
         "id": _new_id("issue"),
         "tenant_id": token["tenant_id"],
@@ -752,7 +763,10 @@ async def public_completion_issue(raw_token: str, order_id: str, payload: dict[s
     if not doc["description"]:
         raise ValueError("issue_description_required")
     await db.order_completion_issues.insert_one(doc)
-    await db.orders.update_one({"tenant_id": token["tenant_id"], "id": order_id}, {"$set": {"completion_status": "rework_required", "status": "in_production", "updated_at": _now_iso()}})
+    await db.orders.update_one(
+        {"tenant_id": token["tenant_id"], "id": order_id},
+        {"$set": {"completion_status": "rework_required", "status": _rework_order_status(order), "updated_at": _now_iso()}},
+    )
     return {"issue": serialize_doc(doc)}
 
 

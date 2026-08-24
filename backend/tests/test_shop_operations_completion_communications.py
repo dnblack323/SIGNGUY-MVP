@@ -26,6 +26,55 @@ def _clear_override() -> None:
     app.dependency_overrides.pop(get_current_user, None)
 
 
+async def _set_order_status(ctx: dict, status: str) -> None:
+    updates = {
+        "status": status,
+        "completion_status": "completed" if status == "completed" else None,
+        "updated_at": "2026-08-17T12:00:00+00:00",
+    }
+    if status == "completed":
+        updates["completed_at"] = "2026-08-17T12:00:00+00:00"
+    if status == "archived":
+        updates["archived_at"] = "2026-08-17T12:00:00+00:00"
+    await db.orders.update_one(
+        {"tenant_id": ctx["tenant_id"], "id": ctx["order"]["id"]},
+        {"$set": updates},
+    )
+
+
+async def _assert_order_item_mutations_blocked(client: AsyncClient, ctx: dict) -> None:
+    order_id = ctx["order"]["id"]
+    item_id = ctx["item"]["id"]
+    blocked = await client.post(
+        f"/api/orders/{order_id}/items",
+        json={"description": "Late add", "quantity": 1, "unit_price_cents": 1000, "category": "banners"},
+    )
+    assert blocked.status_code == 400, blocked.text
+    assert "Cannot edit items" in blocked.json()["detail"]
+
+    blocked = await client.patch(
+        f"/api/orders/{order_id}/items/{item_id}",
+        json={"unit_price_cents": 43000, "manual_override_reason": "late rework price change"},
+    )
+    assert blocked.status_code == 400, blocked.text
+    assert "Cannot edit items" in blocked.json()["detail"]
+
+    blocked = await client.patch(
+        f"/api/orders/{order_id}/items/{item_id}",
+        json={"recalculate": True},
+    )
+    assert blocked.status_code == 400, blocked.text
+    assert "Cannot edit items" in blocked.json()["detail"]
+
+    blocked = await client.post(f"/api/orders/{order_id}/recalculate")
+    assert blocked.status_code == 400, blocked.text
+    assert "Cannot edit items" in blocked.json()["detail"]
+
+    blocked = await client.delete(f"/api/orders/{order_id}/items/{item_id}")
+    assert blocked.status_code == 400, blocked.text
+    assert "Cannot edit items" in blocked.json()["detail"]
+
+
 @pytest_asyncio.fixture
 async def completion_ctx():
     suffix = uuid.uuid4().hex[:8]
@@ -100,6 +149,111 @@ async def completion_ctx():
         "item": item,
     }
     _clear_override()
+
+
+@pytest.mark.asyncio
+async def test_staff_completion_issue_keeps_completed_order_financially_locked(completion_ctx):
+    ctx = completion_ctx
+    await _set_order_status(ctx, "completed")
+
+    async with await _client(ctx["owner"]) as client:
+        issue = await client.post(
+            f"/api/orders/{ctx['order']['id']}/completion/issues",
+            json={"title": "Install touch-up", "description": "Customer found an edge lifting.", "status": "open"},
+        )
+        assert issue.status_code == 201, issue.text
+        assert issue.json()["status"] == "open"
+
+        completion = await client.get(f"/api/orders/{ctx['order']['id']}/completion")
+        assert completion.status_code == 200, completion.text
+        blockers = {b["code"] for b in completion.json()["readiness"]["blockers"]}
+        assert "open_completion_issue" in blockers
+
+        await _assert_order_item_mutations_blocked(client, ctx)
+
+    order = await db.orders.find_one({"tenant_id": ctx["tenant_id"], "id": ctx["order"]["id"]}, {"_id": 0})
+    assert order["status"] == "completed"
+    assert order["completion_status"] == "rework_required"
+    assert order["completed_at"] == "2026-08-17T12:00:00+00:00"
+    assert await db.order_completion_issues.count_documents({"tenant_id": ctx["tenant_id"], "order_id": ctx["order"]["id"], "status": "open"}) == 1
+    assert await db.audit_events.count_documents({"tenant_id": ctx["tenant_id"], "action": "order.completion_issue.created"}) == 1
+
+
+@pytest.mark.asyncio
+async def test_public_completion_issue_keeps_completed_order_financially_locked(completion_ctx):
+    ctx = completion_ctx
+    async with await _client(ctx["owner"]) as client:
+        packet_response = await client.post(
+            f"/api/orders/{ctx['order']['id']}/completion/packets",
+            json={"notes": "Ready for acceptance."},
+        )
+        assert packet_response.status_code == 201, packet_response.text
+        packet = packet_response.json()
+
+        link_response = await client.post(
+            f"/api/orders/{ctx['order']['id']}/completion/review-links",
+            json={"packet_id": packet["id"], "recipient_email": ctx["customer"]["email"]},
+        )
+        assert link_response.status_code == 201, link_response.text
+        raw_token = link_response.json()["raw_token"]
+
+    await _set_order_status(ctx, "completed")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as public_client:
+        issue = await public_client.post(
+            f"/api/public/order-completions/{ctx['order']['id']}/issues",
+            params={"t": raw_token},
+            json={"title": "Pickup issue", "description": "Customer reported a missing decal."},
+        )
+    assert issue.status_code == 201, issue.text
+    assert issue.json()["issue"]["source"] == "public_completion_review"
+
+    order = await db.orders.find_one({"tenant_id": ctx["tenant_id"], "id": ctx["order"]["id"]}, {"_id": 0})
+    assert order["status"] == "completed"
+    assert order["completion_status"] == "rework_required"
+    assert order["completed_at"] == "2026-08-17T12:00:00+00:00"
+    assert await db.order_completion_issues.count_documents({"tenant_id": ctx["tenant_id"], "order_id": ctx["order"]["id"], "source": "public_completion_review"}) == 1
+
+
+@pytest.mark.parametrize("terminal_status", ["cancelled", "archived"])
+@pytest.mark.asyncio
+async def test_cancelled_and_archived_orders_stay_protected_when_completion_issue_is_opened(completion_ctx, terminal_status):
+    ctx = completion_ctx
+    await _set_order_status(ctx, terminal_status)
+
+    async with await _client(ctx["owner"]) as client:
+        issue = await client.post(
+            f"/api/orders/{ctx['order']['id']}/completion/issues",
+            json={"title": "Historical note", "description": "Customer called after closure.", "status": "open"},
+        )
+        assert issue.status_code == 201, issue.text
+        await _assert_order_item_mutations_blocked(client, ctx)
+
+    order = await db.orders.find_one({"tenant_id": ctx["tenant_id"], "id": ctx["order"]["id"]}, {"_id": 0})
+    assert order["status"] == terminal_status
+    assert order["completion_status"] == "rework_required"
+
+
+@pytest.mark.asyncio
+async def test_nonterminal_completion_issue_still_moves_order_into_production_rework(completion_ctx):
+    ctx = completion_ctx
+    async with await _client(ctx["owner"]) as client:
+        issue = await client.post(
+            f"/api/orders/{ctx['order']['id']}/completion/issues",
+            json={"title": "Scratch", "description": "Customer reported a scratch.", "status": "open"},
+        )
+        assert issue.status_code == 201, issue.text
+
+        added = await client.post(
+            f"/api/orders/{ctx['order']['id']}/items",
+            json={"description": "Rework material", "quantity": 1, "unit_price_cents": 500, "category": "banners"},
+        )
+        assert added.status_code == 201, added.text
+
+    order = await db.orders.find_one({"tenant_id": ctx["tenant_id"], "id": ctx["order"]["id"]}, {"_id": 0})
+    assert order["status"] == "in_production"
+    assert order["completion_status"] == "rework_required"
+    assert await db.order_completion_issues.count_documents({"tenant_id": ctx["tenant_id"], "order_id": ctx["order"]["id"], "status": "open"}) == 1
 
 
 @pytest.mark.asyncio
@@ -241,7 +395,8 @@ async def test_completion_transitions_require_manager_authority_for_overrides(co
     assert reopen.status_code == 201, reopen.text
     assert reopen.json()["override_applied"] is True
     reopened = await db.orders.find_one({"tenant_id": ctx["tenant_id"], "id": ctx["order"]["id"]}, {"_id": 0})
-    assert reopened["status"] == "in_production"
+    assert reopened["status"] == "completed"
+    assert reopened["completion_status"] == "reopened"
     assert await db.audit_events.count_documents({"tenant_id": ctx["tenant_id"], "action": "order.completion.reopened"}) == 1
 
     async with await _client(ctx["other_owner"]) as client:
@@ -281,6 +436,9 @@ async def test_customer_communication_timeline_issue_rework_and_analytics(comple
             json={"title": "Scratch", "description": "Customer reported a scratch.", "status": "open"},
         )
         assert issue.status_code == 201, issue.text
+        order = await db.orders.find_one({"tenant_id": ctx["tenant_id"], "id": ctx["order"]["id"]}, {"_id": 0})
+        assert order["status"] == "in_production"
+        assert order["completion_status"] == "rework_required"
 
         completion = await client.get(f"/api/orders/{ctx['order']['id']}/completion")
         assert completion.status_code == 200, completion.text

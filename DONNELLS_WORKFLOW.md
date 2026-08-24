@@ -4,12 +4,12 @@
 
 # Finished
 
-- CIR-023: tenant-scoped writes and rereads in newer Shop Operations production-stage history and Wrap Lab public inspection-review token paths.
+- CIR-006: completed, cancelled, and archived Order financial status remains locked when completion rework is opened.
 
 # Next
 
-- CIR-006: Financial edits to completed/cancelled Orders.
+- CIR-029: next code issue to audit and correct.
 
 # Important
 
-- Do not begin CIR-006, CIR-029, or any other CIR from this branch.
+- Do not begin CIR-029, CIR-005, CIR-032, payment work, or unrelated feature work from this branch.
