@@ -1221,6 +1221,16 @@ def _safe_inspection_payload(project: dict[str, Any], vehicle: Optional[dict[str
     return base
 
 
+def _inspection_review_token_filter(token: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "tenant_id": token["tenant_id"],
+        "id": token["id"],
+        "action": "wrap_inspection_review",
+        "parent_type": "wrap_inspection",
+        "parent_id": token["parent_id"],
+    }
+
+
 async def create_inspection_review_link(
     user: dict,
     inspection_id: str,
@@ -1271,7 +1281,7 @@ async def create_inspection_review_link(
         if key in {"project", "vehicle", "inspection"}
     }
     await db.public_action_tokens.update_one(
-        {"tenant_id": user["tenant_id"], "id": token_doc["id"]},
+        _inspection_review_token_filter(token_doc),
         {"$set": {
             "status": "active",
             "project_id": project["id"],
@@ -1292,7 +1302,7 @@ async def create_inspection_review_link(
         summary="Wrap inspection review link created",
         metadata={"inspection_id": inspection_id, "inspection_version": int(inspection.get("version") or 1), "delivery_status": "manual_link_ready"},
     )
-    record = await db.public_action_tokens.find_one({"tenant_id": user["tenant_id"], "id": token_doc["id"]}, {"_id": 0, "token_hash": 0})
+    record = await db.public_action_tokens.find_one(_inspection_review_token_filter(token_doc), {"_id": 0, "token_hash": 0})
     return {
         "token": raw,
         "record": serialize_doc(record),
@@ -1340,7 +1350,7 @@ async def update_inspection_review_link(user: dict, token_id: str, *, mode: str)
         summary = "Wrap inspection review link revoked"
     else:
         raise WrapLabError("invalid_link_action", "Unsupported inspection link action", 400)
-    await db.public_action_tokens.update_one({"tenant_id": user["tenant_id"], "id": token_id}, {"$set": updates})
+    await db.public_action_tokens.update_one(_inspection_review_token_filter(token), {"$set": updates})
     if project_id:
         await _audit(tenant_id=user["tenant_id"], project_id=project_id, user=user, action=action, entity_type="public_action_token", entity_id=token_id, summary=summary, metadata={"inspection_id": token.get("parent_id")})
     return True
@@ -1373,20 +1383,20 @@ async def _supersede_inspection_review_links(user: dict, inspection: dict[str, A
 
 
 async def _resolve_public_inspection_review_token(raw_token: str, inspection_id: str, *, for_signature: bool = False) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    token = await db.public_action_tokens.find_one({"token_hash": hash_token(raw_token), "action": "wrap_inspection_review", "parent_type": "wrap_inspection"}, {"_id": 0})
-    if not token or token.get("parent_id") != inspection_id:
+    token = await db.public_action_tokens.find_one({"token_hash": hash_token(raw_token), "action": "wrap_inspection_review", "parent_type": "wrap_inspection", "parent_id": inspection_id}, {"_id": 0})
+    if not token:
         raise WrapLabError("inspection_link_not_found", "Wrap inspection link is invalid.", 404)
     status = _public_token_status(token)
     if status in {"revoked", "expired", "superseded"}:
         if status == "expired" and token.get("status") != "expired":
-            await db.public_action_tokens.update_one({"id": token["id"]}, {"$set": {"status": "expired", "expired_at": _now_iso(), "updated_at": _now_iso()}})
+            await db.public_action_tokens.update_one(_inspection_review_token_filter(token), {"$set": {"status": "expired", "expired_at": _now_iso(), "updated_at": _now_iso()}})
         code = "inspection_link_" + status
         raise WrapLabError(code, f"Wrap inspection link is {status}.", 410)
     inspection = await inspections_repo.get(tenant_id=token["tenant_id"], entity_id=inspection_id)
     if not inspection:
         raise WrapLabError("inspection_not_found", "Wrap inspection not found", 404)
     if status != "completed" and (int(token.get("parent_version") or 0) != int(inspection.get("version") or 1) or inspection.get("status") == "superseded"):
-        await db.public_action_tokens.update_one({"id": token["id"]}, {"$set": {"status": "superseded", "superseded_at": _now_iso(), "updated_at": _now_iso()}})
+        await db.public_action_tokens.update_one(_inspection_review_token_filter(token), {"$set": {"status": "superseded", "superseded_at": _now_iso(), "updated_at": _now_iso()}})
         raise WrapLabError("inspection_link_superseded", "This inspection link was superseded by a newer inspection version.", 410)
     if for_signature and status == "completed":
         raise WrapLabError("inspection_link_completed", "This inspection link has already been completed.", 409)
@@ -1402,7 +1412,7 @@ async def public_view_inspection_review(raw_token: str, inspection_id: str, *, i
         updates["first_viewed_at"] = now
     if token.get("status") == "active" or not token.get("status"):
         updates["status"] = "viewed"
-    await db.public_action_tokens.update_one({"id": token["id"]}, {"$set": updates})
+    await db.public_action_tokens.update_one(_inspection_review_token_filter(token), {"$set": updates})
     token = {**token, **updates}
     await _audit_public(
         tenant_id=token["tenant_id"],
@@ -1480,7 +1490,7 @@ async def public_sign_inspection_review(raw_token: str, inspection_id: str, fiel
             "acknowledgements": [*(review_snapshot["inspection"].get("acknowledgements") or []), acknowledgement],
         }
     await db.public_action_tokens.update_one(
-        {"id": token["id"]},
+        _inspection_review_token_filter(token),
         {"$set": {"status": "completed", "completed_at": now, "customer_acknowledgement": acknowledgement, "signature_id": signature["id"], "signature_request_id": request["id"], "review_snapshot": review_snapshot, "updated_at": now}},
     )
     await _audit_public(
@@ -1494,7 +1504,7 @@ async def public_sign_inspection_review(raw_token: str, inspection_id: str, fiel
         actor_email=signer_email,
     )
     vehicle = await vehicles_repo.get(tenant_id=token["tenant_id"], entity_id=project["vehicle_id"]) if project.get("vehicle_id") else None
-    latest_token = await db.public_action_tokens.find_one({"id": token["id"]}, {"_id": 0, "token_hash": 0})
+    latest_token = await db.public_action_tokens.find_one(_inspection_review_token_filter(token), {"_id": 0, "token_hash": 0})
     return {**_safe_inspection_payload(project, vehicle, updated or inspection, latest_token or token), "signature": signature, "signature_request": request}
 
 
