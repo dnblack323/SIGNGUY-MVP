@@ -405,6 +405,13 @@ export const PRIMARY_NAV_AREAS = [
         perm: "audit:read",
         testId: "module-nav-data-security",
       },
+      {
+        key: "slim-import",
+        label: "Import from SignGuy Slim",
+        to: "/settings/slim-import",
+        perm: "settings:write",
+        testId: "module-nav-slim-import",
+      },
     ],
   },
   {
