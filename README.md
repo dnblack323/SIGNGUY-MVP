@@ -63,13 +63,37 @@ Optional frontend environment variable (`frontend/.env`, never committed):
 | `REACT_APP_API_BASE_URL` | API base path. Defaults to same-origin `/api`. |
 | `SIGNGUY_DEV_API_TARGET` | Optional CRA dev-server proxy target for same-origin `/api`; defaults to `http://localhost:8001`. |
 
-### Docker Compose
+### Emergent preview
 
-The repository includes an independent local stack:
+1. Import `dnblack323/SIGNGUY-MVP` and select the `main` branch.
+2. Add `PRICING_ENGINE_READ_TOKEN` in Emergent's environment-variable settings. Use a
+   fine-grained token with read-only Contents access limited to
+   `dnblack323/SIGNGUY-PRICING-ENGINE`; never paste the token into a prompt or commit it.
+3. Install the complete backend and frontend dependency set with one command:
 
 ```bash
+bash scripts/setup_emergent.sh
+```
+
+The setup script installs the public backend requirements, downloads and verifies the
+pinned private pricing-engine wheel, and installs the frozen frontend dependencies. It
+does not create or modify application data. Start MongoDB, the backend, and the frontend
+using the normal commands after setup.
+
+### Docker Compose
+
+The repository includes an independent local stack. Export the same read-only token so
+Docker BuildKit can provide it to the backend image as a build secret:
+
+```bash
+export PRICING_ENGINE_READ_TOKEN="your-token-from-a-secure-secret-store"
 docker compose up --build
 ```
+
+PowerShell users can set the build secret for the current terminal with
+`$env:PRICING_ENGINE_READ_TOKEN="your-token-from-a-secure-secret-store"` before running
+Docker Compose. The token is mounted only while the pricing-engine wheel is installed;
+it is not stored in an image layer or passed to the running container.
 
 The web app is served at `http://localhost:3000`. nginx serves the React build
 and proxies `/api/*` to the backend service. MongoDB data and object storage are
