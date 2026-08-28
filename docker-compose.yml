@@ -16,6 +16,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      secrets:
+        - pricing_engine_read_token
     restart: unless-stopped
     depends_on:
       mongo:
@@ -53,3 +55,7 @@ services:
 volumes:
   mongo_data:
   object_storage:
+
+secrets:
+  pricing_engine_read_token:
+    environment: PRICING_ENGINE_READ_TOKEN
