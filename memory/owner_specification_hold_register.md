@@ -218,4 +218,26 @@ Required locked build order:
 
 UX1 is a required separately authorized checkpoint named: Dashboard Personalization, Microsoft-Style Ribbons, Sidebar Refinement, and Visual Theme System. UX1 contains UX1A Visual System and Color, UX1B Microsoft-Style Ribbon and Sidebar, and UX1C Dashboard Customizer.
 
-**Register last updated:** 2026-07-20 - EC19 foundation is complete and CI-verified; Advanced Onboarding is authorized but pending UX1; UX1, EC20, EC21, and EC22 are not started. H7 remains active.
+## Commercial V1 launch sequence - owner direction 2026-10-14
+
+The owner re-sequenced remaining work to reach a paid commercial launch first. This supersedes the H1 locked build order above for pre-launch work only; nothing is removed from the roadmap. Effective when PR #41 is approved. Detail: `docs/MVP_COMMERCIAL_V1_LAUNCH_PLAN.md`.
+
+1. F1 Subscription Access Control.
+2. F2 Shared Pricing Engine Upgrade and Compatibility (Stage A).
+3. F3 Pricing Foundation Modernization (Stage B).
+4. F4 Category Calculator Modernization, one category per stage (Stage C), ending with pricing-to-Quote/Order verification (Stage D).
+5. F5 Customer → Quote → Order → Invoice → Payment.
+6. F6 Production Workflow Completion.
+7. F7 Signup, Subscription Purchase, and Email (minimal EC21 scope).
+8. F8 Secure Production Deployment.
+9. F9 Complete Customer Workflow Verification and Commercial Launch (minimal EC22 scope).
+
+Binding conditions:
+
+- Price Lab's approved Pricing Foundation and all nine category calculators (layouts and behavior) are **required before launch**, recreated inside MVP's SaaS shell, navigation, authentication and tenant architecture. Price Lab `origin/main` is the reference; unfinished Price Lab categories are gaps, not approvals.
+- One shared Engine (`SIGNGUY-PRICING-ENGINE`) owns formulas; each application pins its own tested release. Historical Quotes, Orders, Invoices and pricing snapshots are never automatically recalculated.
+- Material selling rates per square foot / linear foot are editable suggested Starter values, separate from purchase cost, never presented as verified market averages; Cost Plus and Target Margin stay independent; no double-charging of labor already included in a selling rate.
+- Each feature and each stage requires separate owner implementation authorization.
+- UX1, Advanced Onboarding, the remainder of EC21 and EC22, Webstores, Wrap Lab and AI move to post-launch updates. H7 remains active.
+
+**Register last updated:** 2026-10-14 - Commercial V1 launch sequence recorded (owner direction; effective on PR #41 approval). Previous update 2026-07-20: EC19 foundation complete; Advanced Onboarding pending UX1.

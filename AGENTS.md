@@ -80,8 +80,8 @@ Tenant filters on every tenant-owned query; backend-enforced permissions in thre
 ## Sources: reuse, do not copy blindly
 
 - **SIGNGUY-MVP** is authoritative for data, auth, roles, routing, records and SaaS behavior. Reuse existing MVP services and components first.
-- **Price Lab** (`dnblack323/Signguy-AI-Pricing-Lab`) is a read-only design/UX/calculator/workflow reference. Read its merged `origin/main` with `git show origin/main:<path>`; never check out, reset or edit the local Price Lab working tree (it holds unfinished branch work). Do not import Electron, SQLite, sidecar IPC, licensing, installer code or `Job` persistence.
-- **SIGNGUY-PRICING-ENGINE** is the pricing formula authority. MVP is pinned to **0.1.0** (`backend/pricing_engine_package.lock.json`); Price Lab uses **0.14.0**. Do not upgrade the Engine except as the approved feature that owns it, with parity evidence.
+- **Price Lab** (`dnblack323/Signguy-AI-Pricing-Lab`) is the **reference implementation for MVP's Pricing Foundation and all nine category calculators** (pre-launch features F2–F4, launch plan §E): recreate its approved functionality and layouts inside MVP's shell and tenant architecture, keeping MVP's Quote/Order records. Treat an unfinished Price Lab category as a gap, not as approved. Read its merged `origin/main` with `git show origin/main:<path>`; never check out, reset or edit the local Price Lab working tree (it holds unfinished branch work). Do not import Electron, SQLite, sidecar IPC, licensing, installer code or `Job` persistence.
+- **SIGNGUY-PRICING-ENGINE** is the single pricing formula authority; MVP supplies tenant data through its own adapters and never adds a second calculation engine. MVP is pinned to **0.1.0** (`backend/pricing_engine_package.lock.json`); Price Lab and Engine `main` are at **0.15.0** (2026-10-14). Upgrade only in F2 with parity evidence; never recalculate historical quotes, orders, invoices or snapshots.
 - Legacy donors (`SIGNGUY-AI-OS`, `signguyai_rebuild_version`, `signguy-ai-feb22`, `signguyai`) are read-only behavior references.
 
 ## Repository safety

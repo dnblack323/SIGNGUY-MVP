@@ -25,7 +25,7 @@ The application should unify shop setup and pricing, customer relationships, sal
 
 **Pricing-engine version gap to investigate:** Price Lab merged Engine 0.14.0 during Services work, while SIGNGUY-MVP's current README mentions an earlier pinned wheel/version in its setup/history. Read MVP's *actual* package lock, installed wheel, integrations, current engine API and pinned hashes before proposing an update. Never equate 'latest' with 'compatible' or change formulas without parity evidence.
 
-**Confirmed 2026-10-14:** MVP pins `signguy-pricing-engine` **0.1.0** (`backend/pricing_engine_package.lock.json`, tag `v0.1.0`, SHA-256 verified by `backend/scripts/install_pricing_engine.py`). Price Lab `origin/main` and the Engine repository `main` are at **0.14.0**. The upgrade is a tracked integration dependency in the launch plan (§E), not a V1 launch task.
+**Confirmed 2026-10-14:** MVP pins `signguy-pricing-engine` **0.1.0** (`backend/pricing_engine_package.lock.json`, tag `v0.1.0`, SHA-256 verified by `backend/scripts/install_pricing_engine.py`). Price Lab `origin/main` and the Engine repository `main` are at **0.15.0**; the Engine's only published GitHub Release is `v0.1.0`, so a release for the target version must be published before MVP can pin it. The upgrade is the **pre-launch** feature F2 (Stage A) in the launch plan §E, followed by Pricing Foundation (F3) and per-category calculator modernization (F4) using Price Lab as the reference implementation.
 
 ## 3. Repository facts established before this handoff
 
@@ -116,6 +116,8 @@ Do not silently discard unreleased functionality from the permanent roadmap. Sep
 Do not initiate AI/voice/tool actions, production Stripe writes, customer migrations or live launch in discovery. Monetization policies, entitlement names and amounts must come from current approved commerce specs, not guesses.
 
 ## 8. UX and domain reuse targets (not preapproved code moves)
+
+> **Owner direction 2026-10-14:** the Price Lab Pricing Foundation and all nine category calculators (layouts and behavior) are approved **pre-launch** targets, implemented one stage at a time per launch plan §E (Stage A Engine → B Foundation → C one category per stage → D pricing-to-Quote/Order verification). Each stage still needs separate owner authorization. Other patterns below remain assess-first.
 
 **Price Lab patterns worth assessing:** compact petrol-teal app header, icon-collapsed charcoal sidebar, single Home dashboard with customizable nonduplicate widgets, inline Foundation cards + Draft/Review/Activate, real Active-versus-Draft benchmark, Guided Setup feeding one Draft, canonical Resources, matching full-page/overlay calculator, live multi-method estimate, Quick Prices, Show the Math and saved pricing evidence, production task timing, financial document/record-payment integration, scheduling, and readable help/onboarding. Actual MVP navigation/terminology authorities must be preserved unless explicitly changed.
 
