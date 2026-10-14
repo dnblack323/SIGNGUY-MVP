@@ -220,24 +220,34 @@ UX1 is a required separately authorized checkpoint named: Dashboard Personalizat
 
 ## Commercial V1 launch sequence - owner direction 2026-10-14
 
-The owner re-sequenced remaining work to reach a paid commercial launch first. This supersedes the H1 locked build order above for pre-launch work only; nothing is removed from the roadmap. Effective when PR #41 is approved. Detail: `docs/MVP_COMMERCIAL_V1_LAUNCH_PLAN.md`.
+The owner approved launching a smaller, fully functional, sellable SaaS first, and re-sequenced remaining work into three tracks, all required before the first paid launch. This supersedes the H1 locked build order above for pre-launch work only; nothing is removed from the roadmap. Effective when PR #41 is approved. Detail: `docs/MVP_COMMERCIAL_V1_LAUNCH_PLAN.md`.
+
+**Track 1 - independent MVP features (now, while Price Lab completes its categories):**
 
 1. F1 Subscription Access Control.
-2. F2 Shared Pricing Engine Upgrade and Compatibility (Stage A).
-3. F3 Pricing Foundation Modernization (Stage B).
-4. F4 Category Calculator Modernization, one category per stage (Stage C), ending with pricing-to-Quote/Order verification (Stage D).
-5. F5 Customer → Quote → Order → Invoice → Payment.
-6. F6 Production Workflow Completion.
-7. F7 Signup, Subscription Purchase, and Email (minimal EC21 scope).
-8. F8 Secure Production Deployment.
-9. F9 Complete Customer Workflow Verification and Commercial Launch (minimal EC22 scope).
+2. F2 Customizable Home Dashboard Widgets (UX1C Dashboard Customizer pulled forward).
+3. F3 Shop Schedule UI modernization.
+4. F4 Production Board improvements.
+5. F5 Customer interface improvements.
+
+**Track 2 - Price Lab pricing integration (required before launch; starts only when Price Lab's V1 pricing contracts are stable and the owner opens the gate):**
+
+1. P1 Shared Engine upgrade and compatibility.
+2. P2 Pricing Foundation modernization.
+3. P3 Category Defaults and Guided Setup.
+4. P4 Nine calculator implementations, one category per stage.
+5. P5 Pricing-to-Quote/Order integration.
+6. P6 Complete pricing workflow verification.
+
+**Track 3 - launch completion:** L1 Customer → Quote → Order → Invoice → Payment; L2 Production workflow completion; L3 Signup, subscription purchase and email (minimal EC21); L4 Secure production deployment; L5 Complete workflow verification and commercial launch (minimal EC22).
 
 Binding conditions:
 
-- Price Lab's approved Pricing Foundation and all nine category calculators (layouts and behavior) are **required before launch**, recreated inside MVP's SaaS shell, navigation, authentication and tenant architecture. Price Lab `origin/main` is the reference; unfinished Price Lab categories are gaps, not approvals.
-- One shared Engine (`SIGNGUY-PRICING-ENGINE`) owns formulas; each application pins its own tested release. Historical Quotes, Orders, Invoices and pricing snapshots are never automatically recalculated.
+- Price Lab's approved Pricing Foundation, all nine category calculators (layouts and behavior) and the newer shared Engine are **required before launch**, recreated inside MVP's SaaS shell, navigation, authentication and tenant architecture. Price Lab `origin/main` is the reference; unfinished Price Lab categories are gaps, not approvals. The gate waits for stable V1 pricing contracts, not cosmetic perfection or final demo data.
+- One shared Engine (`SIGNGUY-PRICING-ENGINE`) owns formulas; each application pins its own verified release. Historical Quotes, Orders, Invoices and pricing snapshots are never automatically recalculated.
 - Material selling rates per square foot / linear foot are editable suggested Starter values, separate from purchase cost, never presented as verified market averages; Cost Plus and Target Margin stay independent; no double-charging of labor already included in a selling rate.
-- Each feature and each stage requires separate owner implementation authorization.
-- UX1, Advanced Onboarding, the remainder of EC21 and EC22, Webstores, Wrap Lab and AI move to post-launch updates. H7 remains active.
+- Track 1 features preserve MVP backend business logic, tenant isolation, permissions and Order/Work Order terminology, may use approved Price Lab layouts and interaction patterns as references, and must not copy SQLite, Electron or desktop architecture or overwrite working MVP features.
+- Each feature and each stage requires separate owner implementation authorization and its own PR.
+- The rest of UX1, Advanced Onboarding, the remainder of EC21 and EC22, Webstores, Wrap Lab and AI move to post-launch updates. H7 remains active.
 
-**Register last updated:** 2026-10-14 - Commercial V1 launch sequence recorded (owner direction; effective on PR #41 approval). Previous update 2026-07-20: EC19 foundation complete; Advanced Onboarding pending UX1.
+**Register last updated:** 2026-10-14 - Commercial V1 three-track sequence recorded (owner direction; effective on PR #41 approval). Previous update 2026-07-20: EC19 foundation complete; Advanced Onboarding pending UX1.
