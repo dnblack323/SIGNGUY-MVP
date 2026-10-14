@@ -2,7 +2,7 @@
 
 **Prepared:** 2026-10-14 from the completed audits (no new general audit was performed).
 **Revised:** 2026-10-14 (owner priority update) — two tracks. **Track 1** builds independent MVP features now. **Track 2** integrates Price Lab pricing (Engine, Pricing Foundation, all nine calculators) **before launch**, but only after Price Lab's V1 pricing contracts are stable (gate in §E).
-**Status:** PROPOSED — becomes the working order once the owner approves PR #41. Each feature and each stage still needs separate owner authorization and its own PR.
+**Status:** APPROVED by the owner 2026-10-14 (three-track strategy and order). Each feature and each stage still needs separate owner authorization and its own PR. Business decisions in §B remain open.
 **Current feature:** none yet. On authorization, **F1 — Subscription access control** becomes CURRENT.
 
 **Sources used:** `docs/audits/MVP_BASELINE_AUDIT_2026-10-10.md`, `docs/audits/MVP_FEATURE_INVENTORY_2026-10-10.csv` (124 rows, cited below as `#n`), `docs/MVP_CODE_HEALTH_AND_CLEANUP_AUDIT.md` (`CH-n`), `memory/code_issue_register.md` (`CIR-n`), `memory/owner_specification_hold_register.md`, targeted source checks recorded in §B, and Price Lab `origin/main` merge history (read-only).
@@ -45,14 +45,14 @@ B1, B2, B4 and B5 were confirmed by direct source checks on 2026-10-14; B9 is ow
 
 1. **Development strategy — DECIDED 2026-10-14.** Two tracks as in §D, recorded in `memory/owner_specification_hold_register.md`. UX1 Dashboard Customizer (Track 1 F2) and Shop Schedule UI modernization (F3) are pulled ahead of the rest of UX1; nothing is removed from the roadmap.
 2. **Pricing gate opening** — the owner declares when Price Lab's V1 pricing contracts are stable (§E criteria).
-3. **V1 offer** — which approved EC13 price launches first (recommended: Founder offer on Core for the first 25 shops) and which feature keys Core grants. Needed by F1 and L3.
-4. **Trial start** — recommended: start the approved 48-hour trial automatically at registration. Needed by F1.
-5. **Hosting provider and domain.** Needed by L4.
+3. **Subscription prices and Founder offer — OPEN, owner decision.** Final V1 prices, Founder offer details and which feature keys Core grants are not approved by this plan. Only owner-approved prices may reach Stripe (EC13 decision 4). Needed by F1 and L3.
+4. **Trial duration and automatic activation — OPEN, owner decision.** Not approved by this plan. F1 implements whichever trial policy the owner decides. Needed by F1.
+5. **Hosting provider and domain — OPEN, owner decision.** Needed by L4.
 6. **Material and Resource ownership** — Price Lab's Materials/Equipment/Hardware Resources must map onto MVP's existing material and equipment records rather than become a second catalog (locked "no parallel stores" rule). Decided at the start of P2.
 
 ## C. First release scope — "Core V1"
 
-**Included:** signup → free trial → Core subscription purchase → company settings → **Price Lab Pricing Foundation** → staff users and roles → customizable Home dashboard → customers → quotes priced with the **Price Lab category calculators** (all nine, full-page and order overlay) → staff-recorded quote approval → quote-to-order → work orders, production board and Shop Schedule → invoices → manual payment recording → billing portal, dunning and suspension → onboarding checklist, Help Center and support email.
+**Included:** signup → trial (per owner trial decision) → Core subscription purchase → company settings → **Price Lab Pricing Foundation** → staff users and roles → customizable Home dashboard → customers → quotes priced with the **Price Lab category calculators** (all nine, full-page and order overlay) → staff-recorded quote approval → quote-to-order → work orders, production board and Shop Schedule → invoices → manual payment recording → billing portal, dunning and suspension → onboarding checklist, Help Center and support email.
 
 **Switched off for V1 shops (entitlements), not deleted:** online card payment of invoices, customer portal and public approval links, Webstores, Wrap Lab, AI tools and Assistant, pricing advisory, inventory/purchasing, team time clock/payroll/employee portal, decision rooms and proofs, intake forms.
 
@@ -114,9 +114,13 @@ Preserve MVP backend business logic, tenant isolation, permissions and Order/Wor
 **Gate — when Track 2 may start.** Stable V1 pricing contracts, not cosmetic perfection or final demo data:
 
 1. All nine categories are merged in Price Lab `origin/main` as functional V1 (category settings, methods, calculator inputs and saved evidence no longer changing).
-2. The target Engine version is merged and published as a GitHub Release with a wheel asset (MVP's installer verifies a release asset by SHA-256).
-3. No open Engine change is expected to alter V1 method inputs or outputs.
-4. The owner declares the gate open and authorizes P1.
+2. A selected, stable Engine release, published as a GitHub Release with a wheel asset (MVP's installer verifies a release asset by SHA-256). This is a P1 requirement only; Track 1 features do not need it.
+3. Verified compatibility of that release with Price Lab.
+4. No known blocking defects affecting the required V1 pricing contracts.
+5. An approved migration and compatibility plan for P1.
+6. Explicit owner authorization to begin P1.
+
+Future Engine changes do not automatically block the MVP migration. MVP and Price Lab may run different verified Engine versions during controlled upgrades.
 
 **Price Lab status at 2026-10-14** (from merge history, read-only):
 
@@ -127,7 +131,7 @@ Preserve MVP backend business logic, tenant isolation, permissions and Order/Wor
 | Cut Vinyl | V1 completion merged (#108) |
 | Services | V1 completion + stage 3 merged (#109, #110) |
 | Vehicle Graphics | V1 merged (#85, 2026-10-04); confirm against current approved package |
-| Digital Print | Stages 1–2 merged; completion not confirmed |
+| Digital Print | V1 functional implementation complete and merged (#105, 2026-10-11); owner visual review pending |
 | Apparel | In active development, not merged |
 | Promotional Products | Early baseline only (Phase 4E) |
 | Custom / Miscellaneous | Early baseline only (Phase 4F) |
@@ -153,7 +157,7 @@ Preserve MVP backend business logic, tenant isolation, permissions and Order/Wor
 **Definition of done:**
 
 1. Every staff API router for an entitlement-gated module rejects unentitled shops with `402` (backend-enforced; frontend hiding alone does not count).
-2. A new registration starts the approved trial and projects entitlements (owner decision 4).
+2. A new registration applies the owner-decided trial policy (§B decision 4) and projects entitlements.
 3. Expired trials and billing-suspended or past-grace subscriptions lose gated access automatically, without a manual admin call.
 4. The frontend sends a blocked user to the Billing page with a clear message; platform admins are not locked out.
 5. Focused tests: entitlement allowed/denied per gated router family, trial expiry, dunning suspension, two-tenant isolation of entitlements; required CI green.
