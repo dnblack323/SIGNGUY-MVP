@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import PageHeader from "@/components/layout/PageHeader";
@@ -15,7 +15,16 @@ import { useState } from "react";
 const STATUSES = ["all", "draft", "released", "queued", "in_progress", "blocked", "ready", "completed", "cancelled"];
 
 export default function WorkOrdersPage() {
-  const [status, setStatus] = useState("all");
+  // The status filter follows ?production_status= so links (e.g. Home breakdowns) open filtered.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusParam = searchParams.get("production_status");
+  const status = STATUSES.includes(statusParam) ? statusParam : "all";
+  const setStatus = (next) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "all") params.delete("production_status");
+    else params.set("production_status", next);
+    setSearchParams(params, { replace: true });
+  };
   const [currentOnly, setCurrentOnly] = useState(true);
 
   const { data, isLoading } = useQuery({

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api, { extractError } from "@/lib/api";
 import PageHeader from "@/components/layout/PageHeader";
@@ -71,9 +71,20 @@ function NewQuoteDialog({ onCreated }) {
   );
 }
 
+const QUOTE_FILTERS = ["all", "draft", "sent", "viewed", "approved", "declined", "converted"];
+
 export default function QuotesPage() {
   const qc = useQueryClient();
-  const [status, setStatus] = useState("all");
+  // The status filter follows ?status= so links (e.g. Home breakdowns) open filtered.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusParam = searchParams.get("status");
+  const status = QUOTE_FILTERS.includes(statusParam) ? statusParam : "all";
+  const setStatus = (next) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "all") params.delete("status");
+    else params.set("status", next);
+    setSearchParams(params, { replace: true });
+  };
   const { hasPerm } = useAuth();
   const canWrite = hasPerm("quote:write");
   const { data, isLoading } = useQuery({
@@ -89,7 +100,7 @@ export default function QuotesPage() {
         actions={canWrite && <NewQuoteDialog onCreated={() => qc.invalidateQueries({ queryKey: ["quotes"] })} />}
       />
       <div className="flex flex-wrap gap-2">
-        {["all","draft","sent","approved","declined","converted"].map((s) => (
+        {QUOTE_FILTERS.map((s) => (
           <Button key={s} variant={status === s ? "default" : "outline"} size="sm" onClick={() => setStatus(s)} data-testid={`quotes-filter-${s}`}>
             <span className="capitalize">{s}</span>
           </Button>

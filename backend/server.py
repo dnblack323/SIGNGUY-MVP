@@ -386,6 +386,7 @@ _COMMERCIAL_WRITE_ALLOW_PREFIXES = (
     "/api/notifications",
     "/api/community/support",
     "/api/community/bug-reports",
+    "/api/dashboard/home/layout",  # F2 personal Home layout, not a business record
 )
 _REPORT_READ_SEGMENTS = frozenset({"export", "export.csv", "run", "preview"})
 
