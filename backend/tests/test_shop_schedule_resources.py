@@ -10,7 +10,6 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.db import db
 from app.deps import get_current_user
-from app.services.entitlements import _upsert_entitlement_for_tests
 from server import app
 
 
@@ -78,9 +77,6 @@ async def resource_ctx():
         "project_type": "partial_wrap",
         "status": "production_ready",
     })
-    # Wrap Lab schedule writes need the paid add-on entitlement (F1).
-    for entitled_tenant in (tenant_id, other_tenant_id):
-        await _upsert_entitlement_for_tests(tenant_id=entitled_tenant, feature_key="wrap_lab")
     yield {
         "tenant_id": tenant_id,
         "other_tenant_id": other_tenant_id,

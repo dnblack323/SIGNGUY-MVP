@@ -49,14 +49,14 @@ B1, B2, B4 and B5 were confirmed by direct source checks on 2026-10-14; B9 is ow
 4. **Trial duration and automatic activation — OPEN, owner decision.** Not approved by this plan. F1 implements whichever trial policy the owner decides. Needed by F1.
 5. **Hosting provider and domain — OPEN, owner decision.** Needed by L4.
 6. **Material and Resource ownership** — Price Lab's Materials/Equipment/Hardware Resources must map onto MVP's existing material and equipment records rather than become a second catalog (locked "no parallel stores" rule). Decided at the start of P2.
-7. **Wrap Lab add-on status — OPEN, owner confirmation.** The 2026-10-14 AI direction names Webstores as the separately purchased add-on; Wrap Lab remains an EC13 add-on (`wrap_lab`) until the owner confirms otherwise.
+7. **Wrap Lab included in Core — DECIDED 2026-10-14.** Wrap Lab is not a paid add-on; Webstores is the only separately purchased feature add-on. Older separate Wrap Lab add-on/standalone pricing is superseded (see owner register).
 8. **AI included in the standard subscription — DECIDED 2026-10-14.** Existing EC17/EC18 code still checks the `ai_studio` / `business_assistant` entitlement keys; the standard plan's catalog rules must grant both keys when commercial values are finalized (catalog configuration, not new code). Credit allowances and pack prices are unchanged and finalized separately.
 
 ## C. First release scope — "Core V1"
 
 **Included:** signup → trial (per owner trial decision) → Core subscription purchase → company settings → **Price Lab Pricing Foundation** → staff users and roles → customizable Home dashboard → customers → quotes priced with the **Price Lab category calculators** (all nine, full-page and order overlay) → staff-recorded quote approval → quote-to-order → work orders, production board and Shop Schedule → invoices → manual payment recording → billing portal, dunning and suspension → onboarding checklist, Help Center and support email.
 
-**Not sold in V1, not deleted:** paid add-ons are enforced by entitlement in the backend: Webstores publishing (`webstores`, with the module also marked not yet released) and Wrap Lab (`wrap_lab`, existing EC13 add-on; see §B owner decision 7). Released AI Studio tools and the Business Assistant are **included with the standard subscription** and limited by EC16 credits (owner direction 2026-10-14; see §E-AI). Online card payment of invoices stays off until Stripe Connect (U2). Other unfinished modules (inventory/purchasing, team time clock/payroll/employee portal, decision rooms and proofs, intake forms, customer portal and public approval links) have no add-on key; they are Core functions under the billing-status read-only policy, not add-on entitlements. **Open owner decision:** whether any of them should be hidden at V1 launch (a release-availability choice, not a new tier).
+**Commercial rules (owner, 2026-10-14):** Core includes all standard business-management modules, including Wrap Lab, AI Studio and the AI Business Assistant when released; AI usage draws on monthly included credits and optional purchased packs (§E-AI). **Webstores is the only separately purchased feature add-on**: publishing is enforced by the `webstores` entitlement in the backend, and the module is also marked not yet released for V1. Technical entitlement keys may remain for backend authorization, but Core-included features never require a separate purchase. Release availability is separate from commercial entitlement: unreleased features stay unavailable until approved. Online card payment of invoices stays off until Stripe Connect (U2). **Open owner decision:** whether unfinished Core modules (inventory/purchasing, team time clock/payroll/employee portal, decision rooms and proofs, intake forms, customer portal and public approval links) are hidden at V1 launch (release availability, not a tier).
 
 ## D. Development order
 
@@ -104,7 +104,7 @@ Preserve MVP backend business logic, tenant isolation, permissions and Order/Wor
 | U3 Intake and lead capture | Staff intake, public inquiry → intake conversion, forms and templates | `#14–#17 #39–#41 #120` |
 | U4 Team and production floor | Time clock, timesheets, team schedule, tasks, training, employee portal, kiosk | `#47 #65 #67–#73 #75 #76 #78 #113–#117` |
 | U5 Webstores add-on | Fix CIR-026, CIR-027; canonical order and production handoff | `#79–#86 #119 #124` |
-| U6 Wrap Lab add-on | Runtime-verify and enable | `#87–#90` |
+| U6 Wrap Lab (Core module) | Runtime-verify and enable | `#87–#90` |
 | U7 Inventory and purchasing | Materials, stock, reorder, purchase orders, receiving | `#54–#59` |
 | U8 Finance reports | Expenses, finance dashboard, tax reports | `#61–#63` |
 | U9 Experience polish | Rest of UX1 (visual system, ribbons/sidebar), Advanced Onboarding, help topic pages, Google sign-in, integrations and security views, community | `#3 #99 #103 #105–#107` |

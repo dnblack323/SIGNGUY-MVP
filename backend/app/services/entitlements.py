@@ -28,15 +28,6 @@ async def get_entitlement(*, tenant_id: str, feature_key: str) -> Optional[dict]
 
 async def has_entitlement(*, tenant_id: str, feature_key: str) -> bool:
     doc = await get_entitlement(tenant_id=tenant_id, feature_key=feature_key)
-    return _is_active(doc)
-
-
-async def active_feature_keys(*, tenant_id: str) -> list[str]:
-    """Feature keys the tenant can use right now (same rules as `has_entitlement`)."""
-    return sorted(doc["feature_key"] for doc in await list_entitlements(tenant_id=tenant_id) if _is_active(doc))
-
-
-def _is_active(doc: Optional[dict]) -> bool:
     if not doc:
         return False
     if not doc.get("enabled"):

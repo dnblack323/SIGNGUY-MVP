@@ -33,7 +33,6 @@ from ..deps import get_current_user
 from ..models.user import PasswordResetToken, Tenant, User
 from ..services.audit import record_audit
 from ..services.commercial_entitlements import resolve_commercial_access
-from ..services.entitlements import active_feature_keys
 from ..services.email import send_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -418,7 +417,6 @@ async def me(user: dict = Depends(get_current_user)) -> dict:
     tenant = await db.tenants.find_one({"id": user["tenant_id"]})
     u = serialize_external_user(user)
     access = await resolve_commercial_access(tenant_id=user["tenant_id"])
-    access["entitlements"] = await active_feature_keys(tenant_id=user["tenant_id"])
     return {
         "user": u,
         "tenant": serialize_doc(tenant),

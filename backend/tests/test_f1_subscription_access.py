@@ -16,7 +16,7 @@ from app.core.db import db
 from app.core.security import create_access_token
 from app.deps import get_current_user
 from app.services import commercial_entitlements, tenant_billing
-from app.services.entitlements import _upsert_entitlement_for_tests, has_entitlement
+from app.services.entitlements import has_entitlement
 from server import app
 
 
@@ -177,7 +177,6 @@ async def test_read_only_state_is_tenant_isolated():
 async def test_staff_permissions_still_apply_for_paying_shop():
     shop = await _make_shop("perms")
     await _add_subscription(shop)
-    await _upsert_entitlement_for_tests(tenant_id=shop["tenant_id"], feature_key="wrap_lab")
     async with _client(shop["staff"]) as client:
         denied = await client.post("/api/wrap-lab/vehicles", json={"customer_id": shop["customer"]["id"], "make": "Ford", "model": "Transit"})
     assert denied.status_code == 403
@@ -187,17 +186,21 @@ async def test_staff_permissions_still_apply_for_paying_shop():
 
 
 @pytest.mark.asyncio
-async def test_wrap_lab_writes_require_entitlement_reads_do_not():
-    shop = await _make_shop("wrap")
-    async with _client(shop["owner"]) as client:
-        blocked = await client.post("/api/wrap-lab/vehicles", json={"customer_id": shop["customer"]["id"], "make": "Ford", "model": "Transit"})
-        assert blocked.status_code == 402
-        assert blocked.json()["detail"]["code"] == "feature_not_entitled"
+async def test_wrap_lab_is_core_not_a_paid_add_on():
+    """Owner decision 2026-10-14: Wrap Lab is included in Core; Webstores is the only add-on."""
+    vehicle = {"make": "Ford", "model": "Transit"}
+    active = await _make_shop("wrap-core")
+    await _add_subscription(active)  # no wrap_lab entitlement row
+    async with _client(active["owner"]) as client:
+        created = await client.post("/api/wrap-lab/vehicles", json={"customer_id": active["customer"]["id"], **vehicle})
+    assert created.status_code in {200, 201}
+
+    suspended = await _make_shop("wrap-suspended")
+    await _add_subscription(suspended, status="unpaid", dunning_state="suspended")
+    async with _client(suspended["owner"]) as client:
+        blocked = await client.post("/api/wrap-lab/vehicles", json={"customer_id": suspended["customer"]["id"], **vehicle})
+        assert blocked.status_code == 402 and blocked.json()["detail"]["code"] == "subscription_inactive"
         assert (await client.get("/api/wrap-lab/projects")).status_code == 200
-    await _upsert_entitlement_for_tests(tenant_id=shop["tenant_id"], feature_key="wrap_lab")
-    async with _client(shop["owner"]) as client:
-        allowed = await client.post("/api/wrap-lab/vehicles", json={"customer_id": shop["customer"]["id"], "make": "Ford", "model": "Transit"})
-    assert allowed.status_code in {200, 201}
 
 
 @pytest.mark.asyncio

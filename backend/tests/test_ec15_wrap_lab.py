@@ -10,7 +10,6 @@ from httpx import ASGITransport, AsyncClient
 from app.core.db import db
 from app.core.portal_security import create_portal_token
 from app.deps import get_current_user
-from app.services.entitlements import _upsert_entitlement_for_tests
 from server import app
 
 
@@ -52,10 +51,6 @@ async def ctx():
     ])
     await db.users.insert_many([owner, staff, other_owner])
     await db.customers.insert_many([customer, other_customer])
-    # Wrap Lab is a paid add-on (F1): both shops hold the entitlement so these
-    # tests keep exercising permissions and tenant isolation, not billing.
-    for entitled_tenant in (tenant_id, other_tenant_id):
-        await _upsert_entitlement_for_tests(tenant_id=entitled_tenant, feature_key="wrap_lab")
     yield {
         "tenant_id": tenant_id,
         "other_tenant_id": other_tenant_id,
