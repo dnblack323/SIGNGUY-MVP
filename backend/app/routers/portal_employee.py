@@ -19,6 +19,7 @@ from ..core.time_utils import utc_now
 from ..deps_portal import require_employee_portal_permission
 from ..services import announcement_service, calendar_service, certification_service, communication_service, payroll_service, production_board_service, production_stage_service, schedule_service, task_service, time_clock_service, time_off_service, timesheet_service, training_service
 from ..services.activity import record_activity_with_audit
+from ..services.commercial_entitlements import tenant_is_read_only
 from ..services.calendar_service import CalendarError
 from ..services.communication_service import CommunicationError
 from ..services.production_stage_service import ProductionStageError
@@ -120,6 +121,7 @@ async def dashboard(identity: dict = Depends(VIEW)) -> dict:
     next_shift = next((s for s in next_shifts if s["status"] == "scheduled"), None)
     week_summary = await timesheet_service.get_or_create_weekly_timesheet(
         tenant_id=tenant_id, employee_id=employee_id, week_start=today,
+        persist=not await tenant_is_read_only(tenant_id),
     )
     announcements = await announcement_service.active_announcements(tenant_id=tenant_id, limit=3)
     visible_announcements = [
@@ -343,6 +345,7 @@ async def timesheet_summary(period: str, date: str, identity: dict = Depends(TIM
 async def timesheet_weekly(week_start: str, identity: dict = Depends(TIMESHEET)) -> dict:
     result = await timesheet_service.get_or_create_weekly_timesheet(
         tenant_id=identity["tenant_id"], employee_id=identity["employee_id"], week_start=week_start,
+        persist=not await tenant_is_read_only(identity["tenant_id"]),
     )
     return _public_timesheet_view(result)
 

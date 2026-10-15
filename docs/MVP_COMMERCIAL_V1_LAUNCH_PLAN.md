@@ -3,7 +3,7 @@
 **Prepared:** 2026-10-14 from the completed audits (no new general audit was performed).
 **Revised:** 2026-10-14 (owner priority update) — two tracks. **Track 1** builds independent MVP features now. **Track 2** integrates Price Lab pricing (Engine, Pricing Foundation, all nine calculators) **before launch**, but only after Price Lab's V1 pricing contracts are stable (gate in §E).
 **Status:** APPROVED by the owner 2026-10-14 (three-track strategy and order). Each feature and each stage still needs separate owner authorization and its own PR. Business decisions in §B remain open.
-**Current feature:** none yet. On authorization, **F1 — Subscription access control** becomes CURRENT.
+**Current feature:** **F1 — Subscription access control** (CURRENT, authorized 2026-10-14; implementation PR awaiting owner review).
 
 **Sources used:** `docs/audits/MVP_BASELINE_AUDIT_2026-10-10.md`, `docs/audits/MVP_FEATURE_INVENTORY_2026-10-10.csv` (124 rows, cited below as `#n`), `docs/MVP_CODE_HEALTH_AND_CLEANUP_AUDIT.md` (`CH-n`), `memory/code_issue_register.md` (`CIR-n`), `memory/owner_specification_hold_register.md`, targeted source checks recorded in §B, and Price Lab `origin/main` merge history (read-only).
 
@@ -32,7 +32,7 @@ B1, B2, B4 and B5 were confirmed by direct source checks on 2026-10-14; B9 is ow
 | # | Blocker | Evidence |
 |---|---|---|
 | **B1** | **Not paying does not lock anything.** `require_entitlement` (`backend/app/deps.py:83`) has zero callers. Trials expire only when a platform admin calls `POST /api/billing/platform/trials/expire`. Billing suspension writes `tenant_billing_accounts.status`, while the request gate checks only `tenants.is_active` (`deps.py:41`, `tenant_billing.py:562`). | Source check; refines `#100`, `#101` |
-| **B2** | **Signup is not connected to a plan.** Registration (`backend/app/routers/auth.py`) creates no billing account and starts no trial. No public plan page, Terms of Service or Privacy page exists (EC21 not started). | Source check; `#2`, `#101` |
+| **B2** | **Signup is not connected to a plan.** Registration (`backend/app/routers/auth.py`) creates no billing account and starts no trial. Since F1, shops with no trial or subscription history remain **temporarily unrestricted during development**; L3 must close this before launch (trial duration and automatic enrollment are open owner decisions). No public plan page, Terms of Service or Privacy page exists (EC21 not started). | Source check; `#2`, `#101` |
 | **B3** | **No production deployment.** `docker-compose.yml` is development-only: `ENV=development`, `AUTH_DEV_BYPASS=true`, placeholder JWT secret, published MongoDB port, HTTP only, filesystem storage, no backups, no error monitoring. | Source check; audit §10–11 |
 | **B4** | **Online invoice payments would send shop money to SignGuy's Stripe account.** `stripe_core.create_payment_intent` charges the platform account using the same `STRIPE_API_KEY` that subscriptions need. Must stay off until moved to Stripe Connect (U2). | Source check; `#29` |
 | **B5** | **Email is unproven** (password reset, registration). | `#2`, `#4`, `#31` |
@@ -49,12 +49,14 @@ B1, B2, B4 and B5 were confirmed by direct source checks on 2026-10-14; B9 is ow
 4. **Trial duration and automatic activation — OPEN, owner decision.** Not approved by this plan. F1 implements whichever trial policy the owner decides. Needed by F1.
 5. **Hosting provider and domain — OPEN, owner decision.** Needed by L4.
 6. **Material and Resource ownership** — Price Lab's Materials/Equipment/Hardware Resources must map onto MVP's existing material and equipment records rather than become a second catalog (locked "no parallel stores" rule). Decided at the start of P2.
+7. **Wrap Lab included in Core — DECIDED 2026-10-14.** Wrap Lab is not a paid add-on; Webstores is the only separately purchased feature add-on. Older separate Wrap Lab add-on/standalone pricing is superseded (see owner register).
+8. **AI included in the standard subscription — DECIDED 2026-10-14.** Existing EC17/EC18 code still checks the `ai_studio` / `business_assistant` entitlement keys; the standard plan's catalog rules must grant both keys when commercial values are finalized (catalog configuration, not new code). Credit allowances and pack prices are unchanged and finalized separately.
 
 ## C. First release scope — "Core V1"
 
 **Included:** signup → trial (per owner trial decision) → Core subscription purchase → company settings → **Price Lab Pricing Foundation** → staff users and roles → customizable Home dashboard → customers → quotes priced with the **Price Lab category calculators** (all nine, full-page and order overlay) → staff-recorded quote approval → quote-to-order → work orders, production board and Shop Schedule → invoices → manual payment recording → billing portal, dunning and suspension → onboarding checklist, Help Center and support email.
 
-**Switched off for V1 shops (entitlements), not deleted:** online card payment of invoices, customer portal and public approval links, Webstores, Wrap Lab, AI tools and Assistant, pricing advisory, inventory/purchasing, team time clock/payroll/employee portal, decision rooms and proofs, intake forms.
+**Commercial rules (owner, 2026-10-14):** Core includes all standard business-management modules, including Wrap Lab, AI Studio and the AI Business Assistant when released; AI usage draws on monthly included credits and optional purchased packs (§E-AI). **Webstores is the only separately purchased feature add-on**: publishing is enforced by the `webstores` entitlement in the backend, and the module is also marked not yet released for V1. Technical entitlement keys may remain for backend authorization, but Core-included features never require a separate purchase. Release availability is separate from commercial entitlement: unreleased features stay unavailable until approved. Online card payment of invoices stays off until Stripe Connect (U2). **Open owner decision:** whether unfinished Core modules (inventory/purchasing, team time clock/payroll/employee portal, decision rooms and proofs, intake forms, customer portal and public approval links) are hidden at V1 launch (release availability, not a tier).
 
 ## D. Development order
 
@@ -102,7 +104,7 @@ Preserve MVP backend business logic, tenant isolation, permissions and Order/Wor
 | U3 Intake and lead capture | Staff intake, public inquiry → intake conversion, forms and templates | `#14–#17 #39–#41 #120` |
 | U4 Team and production floor | Time clock, timesheets, team schedule, tasks, training, employee portal, kiosk | `#47 #65 #67–#73 #75 #76 #78 #113–#117` |
 | U5 Webstores add-on | Fix CIR-026, CIR-027; canonical order and production handoff | `#79–#86 #119 #124` |
-| U6 Wrap Lab add-on | Runtime-verify and enable | `#87–#90` |
+| U6 Wrap Lab (Core module) | Runtime-verify and enable | `#87–#90` |
 | U7 Inventory and purchasing | Materials, stock, reorder, purchase orders, receiving | `#54–#59` |
 | U8 Finance reports | Expenses, finance dashboard, tax reports | `#61–#63` |
 | U9 Experience polish | Rest of UX1 (visual system, ribbons/sidebar), Advanced Onboarding, help topic pages, Google sign-in, integrations and security views, community | `#3 #99 #103 #105–#107` |
@@ -149,6 +151,25 @@ Future Engine changes do not automatically block the MVP migration. MVP and Pric
 **MVP components reused (per the audits):** Engine adapter and financial-unit boundary (`pricing_engine_adapter.py`, `core/money.py`, `services/commerce_totals.py`); immutable pricing snapshots and legacy readers (`#52`); quote/order line-item pricing and conversion (`#21`, `#22`, after CH-02/03); saved calculations (`#51`); engine contract fixtures and EC9 quote/order financial integration tests; app shell, navigation, permission gates, design system and `MoneyInput`. Calculator draft/payload logic in `LineItemDialog`, `PricingCalculatorPage` and `CategorySpecificFields` is kept where it matches (CH-04, CH-05, CH-20); old layouts are replaced. `wizardConfigs.js` is replaced by Price Lab Guided Setup where Price Lab covers the category.
 
 **Original SignGuy AI** remains a donor for proofs/markup, portals and AI growth tools in post-launch updates only.
+
+## E-AI. AI credit model reference (owner direction 2026-10-14)
+
+Reference for the later AI credit integration; **not implemented in F1**. Behavior comes from the original `dnblack323/signguyai` (`backend/services/founders_config.py`, `credit_service.py`, `models/credits.py`, `routes/credits.py`, `frontend/src/components/founders/CreditMeter.js`, `frontend/src/components/credits/`). Reuse MVP's EC16 AI Gateway (credit accounts, reserve/commit/release, credit ledger, provider-cost ledger); do not copy the legacy wallet.
+
+| Original behavior to preserve | Original implementation | EC16 starting point |
+|---|---|---|
+| AI tools included with the main subscription | Founders plan with `ai_credits_monthly` | Plan catalog rules grant `ai_studio` / `business_assistant`; credits limit use |
+| Credit cost per AI action | `AI_CREDIT_COSTS`: 1-credit (short text), 2-credit (blog/SEO/proposals), 3-credit (image/mockup) tool tiers | Capability credit cost on `AICapability` |
+| Monthly included allowance; expires at period end | `monthly_credits`, refill with `monthly_expire` + `monthly_grant` transactions | `AICreditAccount.included_balance_credits` (grant/expiry cycle to confirm at integration) |
+| Purchased credits separate, never expire | `purchased_credits` | `purchased_balance_credits` |
+| Monthly consumed before purchased | `build_credit_preview` uses monthly first | Ledger `included_credits_delta` / `purchased_credits_delta` |
+| Charge only after success; failures logged free | preflight → `deduct_credits_after_success`; `log_failed_ai_usage` | Reserve → commit on success / release on failure |
+| Visible balance, days until refill, low-credit warning, Buy Credits | `CreditMeter.js`, `CreditBalance.js`, threshold `low_credits_threshold` | Frontend to build on existing AI credits page |
+| Cost shown and confirmed before an AI action; insufficient-credit state | `AICreditConfirmationDialog.js`, `POST /credits/preflight` | Gateway reservation preflight |
+| Purchase additional credits | `POST /credits/purchase` + Stripe webhook | EC13 credit-pack checkout type (`credit_pack`) |
+| Transaction and usage history | `credit_transactions`, `GET /credits/history` | `AICreditLedgerEntry`, usage ledger |
+
+**Do not carry over** the original pack prices ($10/$25/$60), monthly amount (150) or trial credits (50): current approved values (EC13/C3 packs 100/$19, 300/$45, 800/$99, subject to H7) stay until finalized separately.
 
 ## F. First implementation task
 

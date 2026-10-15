@@ -96,8 +96,17 @@ def require_entitlement(feature_key: str) -> Callable:
         if not ok:
             raise HTTPException(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                detail=f"Feature not entitled: {feature_key}",
+                detail=_not_entitled_detail(feature_key),
             )
         return user
 
     return _dep
+
+
+def _not_entitled_detail(feature_key: str) -> dict:
+    return {
+        "code": "feature_not_entitled",
+        "feature_key": feature_key,
+        "message": "This feature is not included in your current subscription. Visit Billing to add it.",
+    }
+

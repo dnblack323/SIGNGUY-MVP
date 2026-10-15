@@ -62,19 +62,23 @@ async def period_summary(*, tenant_id: str, employee_id: str, period: str, date_
     return {"period": period, "date_from": date_from, "date_to": date_to, **totals}
 
 
-async def get_or_create_weekly_timesheet(*, tenant_id: str, employee_id: str, week_start: str) -> dict:
+async def get_or_create_weekly_timesheet(*, tenant_id: str, employee_id: str, week_start: str, persist: bool = True) -> dict:
+    """`persist=False` (F1 read-only shops) shows current totals without saving anything."""
     week_start_norm, week_end = week_bounds_for_date_str(week_start)
     existing = await db.timesheets.find_one({"tenant_id": tenant_id, "employee_id": employee_id, "week_start": week_start_norm}, {"_id": 0})
     totals = await _aggregate_range(tenant_id, employee_id, week_start_norm, week_end)
     if existing:
         if existing["status"] == "pending":
-            await db.timesheets.update_one(
-                {"id": existing["id"], "tenant_id": tenant_id},
-                {"$set": {**totals, "updated_at": utc_now().isoformat()}},
-            )
+            if persist:
+                await db.timesheets.update_one(
+                    {"id": existing["id"], "tenant_id": tenant_id},
+                    {"$set": {**totals, "updated_at": utc_now().isoformat()}},
+                )
             existing.update(totals)
         return serialize_doc(existing)
     doc = Timesheet(tenant_id=tenant_id, employee_id=employee_id, week_start=week_start_norm, week_end=week_end, **totals).model_dump()
+    if not persist:
+        return {**serialize_doc(doc), "is_preview": True}
     await db.timesheets.insert_one(prepare_for_mongo(dict(doc)))
     doc.pop("_id", None)
     return serialize_doc(doc)

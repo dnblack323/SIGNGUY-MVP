@@ -50,6 +50,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import SupportModeBanner from "@/components/platform/SupportModeBanner";
+import SubscriptionAccessBanner from "@/components/billing/SubscriptionAccessBanner";
 import WorkspaceDock from "@/components/workspaces/WorkspaceDock";
 import { WorkspaceProvider, useWorkspace } from "@/context/WorkspaceContext";
 import SignGuyLogo from "@/components/brand/SignGuyLogo";
@@ -1329,6 +1330,7 @@ function AppShellFrame() {
           </header>
 
           <SupportModeBanner />
+          <SubscriptionAccessBanner />
           <ShellInternalTabs module={activeModule} />
           <main className="w-full bg-slate-50 px-4 py-5 pb-24 md:px-6" data-testid="app-shell-content" data-active-path={location.pathname}>
             <Outlet />

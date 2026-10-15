@@ -1,6 +1,9 @@
 import axios from "axios";
 import { API_BASE } from "@/lib/apiBase";
 
+export const BILLING_PATH = "/settings/subscriptions";
+export const ACCESS_CHANGED_EVENT = "signguy:commercial-access-changed";
+
 export const API = API_BASE;
 
 const api = axios.create({ baseURL: API, timeout: 30000 });
@@ -23,6 +26,14 @@ api.interceptors.response.use(
         localStorage.removeItem("signguy.token");
         window.location.href = "/login";
       }
+    }
+    // F1 — subscription read-only mode or a paid add-on the shop does not hold.
+    // Pages already show the backend message; this lets AuthContext re-read the
+    // shop's access so the Billing banner and navigation update mid-session
+    // (for example, when a trial ends while staff are signed in).
+    const accessCode = err?.response?.status === 402 ? err?.response?.data?.detail?.code : null;
+    if (accessCode === "subscription_inactive" || accessCode === "feature_not_entitled") {
+      window.dispatchEvent(new CustomEvent(ACCESS_CHANGED_EVENT, { detail: { code: accessCode } }));
     }
     if (err?.response?.status === 403 && err?.response?.data?.detail?.code === "tenant_suspended") {
       const detail = err.response.data.detail;

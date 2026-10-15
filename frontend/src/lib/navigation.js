@@ -95,6 +95,10 @@ export const PRIMARY_NAV_AREAS = [
         label: "Webstores",
         to: "/webstores",
         perm: "webstore:read",
+        // Not yet commercially released (post-launch update U5). When released,
+        // shops configure stores before buying publishing; publish and other paid
+        // actions stay gated by the backend `webstores` entitlement.
+        released: false,
         testId: "module-nav-webstores",
         match: ["/webstores"],
       },
@@ -494,6 +498,7 @@ export function filterNavItemsByPermissions(items, permissions, user = null) {
   const platformUser = isPlatformUser(user, permissions);
   return items.filter((entry) => {
     if (entry.platformOnly && !platformUser) return false;
+    if (entry.released === false && !platformUser) return false;
     const requiredPermission = entry.perm || entry.permission;
     return !requiredPermission || set.has(requiredPermission);
   });

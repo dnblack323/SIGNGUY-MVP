@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from ..core.permissions import Perm
 from ..deps import require_permission
 from ..services import payroll_service
+from ..services.commercial_entitlements import tenant_is_read_only
 from ..services.payroll_service import PayrollError
 
 router = APIRouter(prefix="/payroll", tags=["payroll"])
@@ -59,7 +60,12 @@ async def list_periods(status: Optional[str] = None, user: dict = Depends(requir
 async def get_current_period(period_start: Optional[str] = None, user: dict = Depends(require_permission(Perm.PAYROLL_MANAGE))) -> dict:
     from datetime import date
     anchor = period_start or date.today().isoformat()
-    period = await payroll_service.get_or_create_pay_period(tenant_id=user["tenant_id"], period_start=anchor, actor_user_id=user["id"])
+    period = await payroll_service.get_or_create_pay_period(
+        tenant_id=user["tenant_id"], period_start=anchor, actor_user_id=user["id"],
+        persist=not await tenant_is_read_only(user["tenant_id"]),
+    )
+    if period.get("is_preview"):
+        return {"period": period, "snapshots": [], "summary": await payroll_service._period_summary(user["tenant_id"], period["id"])}
     return await payroll_service.get_pay_period_detail(tenant_id=user["tenant_id"], period_id=period["id"])
 
 

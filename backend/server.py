@@ -9,6 +9,7 @@ from app.core.permissions import has_platform_admin_access
 from app.core.security import decode_access_token
 from app.core.security_guards import enforce_startup_guards
 from app.core.db import db
+from app.services.commercial_entitlements import resolve_commercial_access
 from app.services.storage import initialize as init_storage
 from app.routers import (
     auth as auth_router,
@@ -366,6 +367,79 @@ async def maintenance_mode_middleware(request: Request, call_next):
                     },
                 )
     return await call_next(request)
+
+
+# F1 — Commercial read-only mode. A shop whose trial ended without a purchase,
+# or whose subscription is suspended, unpaid or canceled, keeps reading and
+# exporting its records but cannot create or change them until it pays. Login,
+# account recovery, billing/renewal, support, webhooks and platform
+# administration stay writable. Customer-portal and public token requests are
+# not staff requests and are not affected.
+_COMMERCIAL_WRITE_ALLOW_PREFIXES = (
+    "/api/auth",
+    "/api/billing",
+    "/api/webhook",
+    "/api/webhooks",
+    "/api/health",
+    "/api/platform-admin",
+    "/api/platform/",
+    "/api/notifications",
+    "/api/community/support",
+    "/api/community/bug-reports",
+)
+_REPORT_READ_SEGMENTS = frozenset({"export", "export.csv", "run", "preview"})
+
+
+def _is_report_read(path: str) -> bool:
+    return path.startswith("/api/reports/") and bool(_REPORT_READ_SEGMENTS.intersection(path.split("/")))
+
+
+async def _staff_tenant_for_commercial_check(request: Request) -> str | None:
+    """Tenant id of a staff request subject to commercial access, else None."""
+    auth = request.headers.get("authorization") or ""
+    if not auth.lower().startswith("bearer "):
+        return None
+    try:
+        payload = decode_access_token(auth.split(" ", 1)[1])
+    except Exception:
+        return None  # invalid tokens are rejected by the auth dependency
+    if payload.get("typ") != "access" or payload.get("sub_scope") == "portal" or payload.get("impersonating"):
+        return None
+    user_id = payload.get("sub")
+    tenant_id = payload.get("tenant_id")
+    if not user_id or not tenant_id:
+        return None
+    user = await db.users.find_one({"id": user_id, "tenant_id": tenant_id, "is_active": True}, {"_id": 0})
+    if not user or has_platform_admin_access(user):
+        return None
+    return tenant_id
+
+
+@app.middleware("http")
+async def commercial_access_middleware(request: Request, call_next):
+    path = request.url.path
+    if (
+        path.startswith("/api/")
+        and request.method in _MAINTENANCE_BLOCK_METHODS
+        and not path.startswith(_COMMERCIAL_WRITE_ALLOW_PREFIXES)
+        and not _is_report_read(path)
+    ):
+        tenant_id = await _staff_tenant_for_commercial_check(request)
+        if tenant_id:
+            access = await resolve_commercial_access(tenant_id=tenant_id)
+            if access["read_only"]:
+                return JSONResponse(
+                    status_code=402,
+                    content={
+                        "detail": {
+                            "code": "subscription_inactive",
+                            "message": "Your SignGuy AI subscription is not active. Your records are read-only until you renew in Billing.",
+                            "billing_path": "/settings/subscriptions",
+                        }
+                    },
+                )
+    return await call_next(request)
+
 
 app.add_middleware(
     CORSMiddleware,

@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from ..core.permissions import Perm
 from ..deps import require_permission
 from ..services import schedule_service
+from ..services.commercial_entitlements import tenant_is_read_only
 from ..services.schedule_service import ScheduleError
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
@@ -86,7 +87,10 @@ async def get_week_schedule(period_start: str = Query(...),
                              user: dict = Depends(require_permission(Perm.SCHEDULE_READ))) -> dict:
     schedule = await schedule_service.get_or_create_schedule(
         tenant_id=user["tenant_id"], period_start=period_start, actor_user_id=user["id"],
+        persist=not await tenant_is_read_only(user["tenant_id"]),
     )
+    if schedule.get("is_preview"):
+        return {"schedule": schedule, "shifts": []}
     return await schedule_service.get_schedule_with_shifts(tenant_id=user["tenant_id"], schedule_id=schedule["id"])
 
 

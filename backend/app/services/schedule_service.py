@@ -49,7 +49,8 @@ async def _get_schedule(tenant_id: str, schedule_id: str) -> dict:
     return doc
 
 
-async def get_or_create_schedule(*, tenant_id: str, period_start: str, actor_user_id: str) -> dict:
+async def get_or_create_schedule(*, tenant_id: str, period_start: str, actor_user_id: str, persist: bool = True) -> dict:
+    """`persist=False` (F1 read-only shops) returns an unsaved preview instead of creating one."""
     week_start, week_end = week_bounds_for_date_str(period_start)
     existing = await db.schedules.find_one({"tenant_id": tenant_id, "period_start": week_start}, {"_id": 0})
     if existing:
@@ -58,6 +59,8 @@ async def get_or_create_schedule(*, tenant_id: str, period_start: str, actor_use
         tenant_id=tenant_id, period_start=week_start, period_end=week_end,
         created_by=actor_user_id, updated_by=actor_user_id,
     ).model_dump()
+    if not persist:
+        return {**serialize_doc(doc), "is_preview": True}
     await db.schedules.insert_one(prepare_for_mongo(dict(doc)))
     doc.pop("_id", None)
     return serialize_doc(doc)
