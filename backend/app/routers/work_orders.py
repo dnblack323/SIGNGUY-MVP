@@ -160,7 +160,10 @@ async def list_wos(
 ) -> dict:
     q: dict = {"tenant_id": user["tenant_id"]}
     if production_status:
-        q["production_status"] = production_status
+        # Legacy values are read as their effective status (models.work_order.effective_status),
+        # so filtering by the effective status includes them.
+        legacy = {"released": ["released", "not_started"], "blocked": ["blocked", "on_hold"]}
+        q["production_status"] = {"$in": legacy[production_status]} if production_status in legacy else production_status
     if order_id:
         q["order_id"] = order_id
     if customer_id:

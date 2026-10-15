@@ -33,7 +33,11 @@ LIST_LIMIT = 25
 # Shared definitions so Home agrees with the module screens.
 ACTIVE_ORDER_STATUSES = ("confirmed", "in_production", "ready")  # same as Shop Operations analytics
 AWAITING_QUOTE_STATUSES = ("sent", "viewed")
-UNPAID_INVOICE_STATUSES = ("sent", "viewed", "partially_paid", "overdue")
+# Canonical EC4 dual status: issued documents whose financial status is open
+# and whose actual balance due is positive. Rows written before EC4 carry no
+# financial_status and fall back to the legacy single status.
+OPEN_FINANCIAL_STATUSES = ("unpaid", "partial")
+LEGACY_UNPAID_INVOICE_STATUSES = ("sent", "viewed", "partially_paid", "overdue")
 ACTIVE_PRODUCTION_STATUSES = ("released", "queued", "in_progress", "blocked", "ready")
 RAW_ACTIVE_PRODUCTION_STATUSES = (*ACTIVE_PRODUCTION_STATUSES, "not_started", "on_hold")  # legacy values mapped on read
 CLOSED_EVENT_STATUSES = {"complete", "completed", "cancelled", "canceled"}
@@ -175,8 +179,15 @@ async def _quotes_awaiting(tenant_id: str, kind: str, _ctx: dict) -> dict:
          "amount_cents": q.get("total_cents"), "when": q.get("created_at"), "to": f"/quotes/{q['id']}"} for q in items]}
 
 
+def _unpaid_invoice_filter(tenant_id: str) -> dict:
+    return {"tenant_id": tenant_id, "balance_due_cents": {"$gt": 0}, "$or": [
+        {"document_status": "issued", "financial_status": {"$in": list(OPEN_FINANCIAL_STATUSES)}},
+        {"financial_status": {"$exists": False}, "status": {"$in": list(LEGACY_UNPAID_INVOICE_STATUSES)}},
+    ]}
+
+
 async def _unpaid_invoices(tenant_id: str, kind: str, ctx: dict) -> dict:
-    filt = {"tenant_id": tenant_id, "status": {"$in": list(UNPAID_INVOICE_STATUSES)}}
+    filt = _unpaid_invoice_filter(tenant_id)
     if kind == "kpi":
         docs = [d async for d in db.invoices.find(filt, {"_id": 0, "balance_due_cents": 1})]
         return {"value": len(docs), "amount_cents": sum(int(d.get("balance_due_cents") or 0) for d in docs)}
@@ -224,15 +235,14 @@ async def _active_team(tenant_id: str, _kind: str, _ctx: dict) -> dict:
 
 
 async def _todays_schedule(tenant_id: str, _kind: str, ctx: dict) -> dict:
-    feed = await calendar_service.list_events(tenant_id=tenant_id, start_at=ctx["day_start"], end_at=ctx["day_end"], limit=LIST_LIMIT)
+    feed = await calendar_service.list_events(tenant_id=tenant_id, start_at=ctx["day_start"], end_at=ctx["day_end"], limit=LIST_LIMIT,
+                                              window_first=True, exclude_statuses=CLOSED_EVENT_STATUSES)
     items = []
     for ev in feed.get("items") or []:
-        if str(ev.get("status") or "scheduled").lower() in CLOSED_EVENT_STATUSES:
-            continue
         to = f"/work-orders/{ev['work_order_id']}" if ev.get("work_order_id") else f"/orders/{ev['order_id']}" if ev.get("order_id") else "/shop-schedule"
         items.append({"id": ev.get("id"), "title": ev.get("display_title") or ev.get("title") or "Scheduled item", "start_at": ev.get("start_at"),
                       "end_at": ev.get("end_at"), "event_type": ev.get("event_type"), "status": ev.get("status"), "to": to})
-    return {"total": len(items), "items": items}
+    return {"total": feed.get("total", len(items)), "items": items}
 
 
 async def _recent_customers(tenant_id: str, _kind: str, _ctx: dict) -> dict:

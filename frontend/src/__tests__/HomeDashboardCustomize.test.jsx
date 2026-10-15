@@ -46,9 +46,13 @@ test("enabling a widget replaces the other presentation of the same metric", () 
   expect(replaced.key).toBe("active_orders_kpi");
 });
 
-test("reordering moves a widget one place", () => {
-  expect(moveWidget(layout, "recent_customers", -1).order.slice(-2)).toEqual(["recent_customers", "production_status"]);
-  expect(moveWidget(layout, "active_orders_kpi", -1)).toBe(layout);
+test("reordering stays within a widget's own zone", () => {
+  // The only other list before recent_customers is active_orders_list; the summary in between is untouched.
+  const moved = moveWidget(layout, widgets, "recent_customers", -1);
+  expect(moved.order).toEqual(["active_orders_kpi", "recent_customers", "production_status", "active_orders_list"]);
+  // A KPI with no other KPI cannot move: no cross-zone movement.
+  expect(moveWidget(layout, widgets, "active_orders_kpi", 1)).toBe(layout);
+  expect(moveWidget(layout, widgets, "production_status", -1)).toBe(layout);
 });
 
 test("Home renders KPI, summary and list zones with record links and real values", async () => {
@@ -79,13 +83,16 @@ test("customizer saves visibility and order, shows restricted widgets, and resto
   expect(within(dialog).getByTestId("home-customizer-restricted")).toHaveTextContent("Needs schedule:read");
   fireEvent.click(within(dialog).getByRole("checkbox", { name: /Active orders \(List\)/ }));
   expect(within(dialog).getByTestId("home-customizer-notice")).toHaveTextContent("replaces Active orders (Number)");
-  fireEvent.click(within(dialog).getByRole("button", { name: "Move Recent customers up" }));
+  expect(within(dialog).getByTestId("home-customizer-zone-kpi")).not.toHaveTextContent("Recent customers");
+  expect(within(dialog).getByRole("button", { name: "Move Active orders (Number) down" })).toBeDisabled();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Move Recent customers (List) up" }));
   fireEvent.click(within(dialog).getByRole("button", { name: "Save Home" }));
   await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
   const saved = api.put.mock.calls[0][1];
   expect(saved.hidden).toEqual(expect.arrayContaining(["active_orders_kpi"]));
   expect(saved.hidden).not.toContain("active_orders_list");
-  expect(saved.order.indexOf("recent_customers")).toBeLessThan(saved.order.indexOf("production_status"));
+  expect(saved.order.indexOf("recent_customers")).toBeLessThan(saved.order.indexOf("active_orders_list"));
+  expect(saved.order.indexOf("production_status")).toBeLessThan(saved.order.indexOf("active_orders_list"));
 
   fireEvent.click(screen.getByTestId("home-customize-button"));
   fireEvent.click(within(await screen.findByTestId("home-customizer")).getByRole("button", { name: "Restore default layout" }));

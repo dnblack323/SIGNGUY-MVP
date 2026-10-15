@@ -639,7 +639,15 @@ async def list_events(*, tenant_id: str, start_at: str, end_at: str,
                       work_order_id: Optional[str] = None, production_stage_id: Optional[str] = None,
                       wrap_project_id: Optional[str] = None, status: Optional[str] = None,
                       source_type: Optional[str] = None, visibility: Optional[str] = None,
-                      limit: int = 200, skip: int = 0) -> dict:
+                      limit: int = 200, skip: int = 0,
+                      window_first: bool = False, exclude_statuses: Optional[set[str]] = None) -> dict:
+    """List stored and projected calendar items overlapping [start_at, end_at).
+
+    `window_first` and `exclude_statuses` are opt-in (F2 Home "Today's
+    schedule"): stored events are pre-filtered to the requested window and
+    excluded statuses are dropped *before* the limit is applied, so older
+    history cannot fill the page. Default behavior is unchanged.
+    """
     filt: dict[str, Any] = {"tenant_id": tenant_id, "archived_at": None}
     if event_type:
         filt["event_type"] = event_type
@@ -670,7 +678,15 @@ async def list_events(*, tenant_id: str, start_at: str, end_at: str,
     if visibility:
         filt["visibility"] = visibility
     stored = []
-    async for ev in db.calendar_events.find(filt, {"_id": 0}).sort("start_at", 1).skip(skip).limit(min(limit, 500)):
+    if window_first:
+        # Coarse string-range prefilter (one-day margin tolerates offset formats);
+        # the exact overlap check below stays authoritative.
+        filt["end_at"] = {"$gte": (_parse_dt(start_at) - timedelta(days=1)).isoformat()}
+        filt["start_at"] = {"$lte": (_parse_dt(end_at) + timedelta(days=1)).isoformat()}
+        cursor = db.calendar_events.find(filt, {"_id": 0}).sort("start_at", 1)
+    else:
+        cursor = db.calendar_events.find(filt, {"_id": 0}).sort("start_at", 1).skip(skip).limit(min(limit, 500))
+    async for ev in cursor:
         if _overlaps(start_at, end_at, ev["start_at"], ev["end_at"]):
             stored.append(_normalize_stored_event(ev))
     projections = await _projected_items(tenant_id=tenant_id, start_at=start_at, end_at=end_at, employee_id=employee_id)
@@ -682,6 +698,8 @@ async def list_events(*, tenant_id: str, start_at: str, end_at: str,
         production_stage_id=production_stage_id, wrap_project_id=wrap_project_id,
         status=status, source_type=source_type, visibility=visibility,
     )]
+    if exclude_statuses:
+        items = [i for i in items if str(i.get("status") or "scheduled").lower() not in exclude_statuses]
     items.sort(key=lambda i: (i.get("start_at") or "", i.get("title") or ""))
     return {"items": items[:limit], "total": len(items), "limit": limit, "skip": skip}
 

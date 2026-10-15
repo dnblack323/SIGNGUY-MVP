@@ -186,3 +186,73 @@ async def test_read_only_shop_can_still_save_its_layout():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"Authorization": f"Bearer {token}"}) as c:
         assert (await c.put("/api/dashboard/home/layout", json={"hidden": ["recent_activity"]})).status_code == 200
         assert (await c.post("/api/customers", json={"name": "Blocked"})).status_code == 402
+
+
+# --- PR #43 review findings ------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_todays_schedule_is_not_starved_by_older_history():
+    shop = await _shop("history")
+    tid, s = shop["tenant_id"], shop["s"]
+    day = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    older = [{"id": f"old{i}-{s}", "tenant_id": tid, "title": f"Old job {i}", "status": "scheduled", "archived_at": None,
+              "start_at": (day - timedelta(days=40 - i, hours=-9)).isoformat(), "end_at": (day - timedelta(days=40 - i, hours=-10)).isoformat()}
+             for i in range(30)]
+    today = [{"id": f"today{h}-{s}", "tenant_id": tid, "title": f"Today {h}", "status": status, "archived_at": None,
+              "start_at": (day + timedelta(hours=h)).isoformat(), "end_at": (day + timedelta(hours=h + 1)).isoformat()}
+             for h, status in ((9, "scheduled"), (11, "in_progress"), (13, "scheduled"), (15, "completed"))]
+    await db.calendar_events.insert_many(older + today)
+    params = {"day_start": day.isoformat(), "day_end": (day + timedelta(days=1)).isoformat()}
+    async with _as(shop["owner"]) as c:
+        widget = (await c.get("/api/dashboard/home", params=params)).json()["data"]["todays_schedule"]
+    assert [i["title"] for i in widget["items"]] == ["Today 9", "Today 11", "Today 13"]
+    assert widget["total"] == 3
+
+
+@pytest.mark.asyncio
+async def test_unpaid_invoices_use_canonical_status_and_positive_balance():
+    shop = await _shop("canon")
+    tid, s = shop["tenant_id"], shop["s"]
+
+    def inv(n, **fields):
+        return {"id": f"inv{n}-{s}", "tenant_id": tid, "order_id": f"ord{n}-{s}", "number": n, "title": f"Invoice {n}", **fields}
+
+    await db.invoices.insert_many([
+        inv(1, status="sent", document_status="issued", financial_status="paid", balance_due_cents=0, due_date=_iso(-timedelta(days=9))),  # fully paid
+        inv(2, status="sent", document_status="issued", financial_status="partial", balance_due_cents=2000, due_date=_iso(timedelta(days=3))),
+        inv(3, status="sent", document_status="issued", financial_status="unpaid", balance_due_cents=5000, due_date=_iso(-timedelta(days=2))),  # overdue
+        inv(4, status="sent", document_status="issued", financial_status="unpaid", balance_due_cents=0),  # nothing actually due
+        inv(5, status="draft", document_status="draft", financial_status="unpaid", balance_due_cents=900),  # not issued
+        inv(6, status="void", document_status="void", financial_status="voided", balance_due_cents=700),
+        inv(7, status="sent", balance_due_cents=1000, due_date=_iso(timedelta(days=30))),  # legacy row, still open
+        inv(8, status="paid", balance_due_cents=0),  # legacy paid
+    ])
+    async with _as(shop["owner"]) as c:
+        await c.put("/api/dashboard/home/layout", json={"order": ["unpaid_invoices_list", "invoice_aging"],
+                                                         "hidden": ["unpaid_invoices_kpi", "invoice_aging"]})
+        listed = (await c.get("/api/dashboard/home")).json()["data"]["unpaid_invoices_list"]
+        await c.put("/api/dashboard/home/layout", json={"order": ["unpaid_invoices_kpi"], "hidden": []})
+        kpi = (await c.get("/api/dashboard/home")).json()["data"]["unpaid_invoices_kpi"]
+        await c.put("/api/dashboard/home/layout", json={"order": ["invoice_aging"], "hidden": ["unpaid_invoices_kpi"]})
+        aging = (await c.get("/api/dashboard/home")).json()["data"]["invoice_aging"]
+    assert {i["ref"] for i in listed["items"]} == {"I-2", "I-3", "I-7"}
+    assert kpi["value"] == 3 and kpi["amount_cents"] == 8000
+    buckets = {r["label"]: (r["value"], r["amount_cents"]) for r in aging["rows"]}
+    assert buckets == {"Overdue": (1, 5000), "Due in 7 days": (1, 2000), "Due later or no due date": (1, 1000)}
+
+
+@pytest.mark.asyncio
+async def test_work_order_status_filter_includes_legacy_values():
+    shop = await _shop("wofilter")
+    tid, s = shop["tenant_id"], shop["s"]
+    await db.work_orders.insert_many([
+        {"id": f"wb-{s}", "tenant_id": tid, "number": 1, "production_status": "blocked", "is_current": True},
+        {"id": f"wh-{s}", "tenant_id": tid, "number": 2, "production_status": "on_hold", "is_current": True},
+        {"id": f"wq-{s}", "tenant_id": tid, "number": 3, "production_status": "queued", "is_current": True},
+    ])
+    async with _as(shop["owner"]) as c:
+        blocked = (await c.get("/api/work-orders", params={"production_status": "blocked"})).json()["items"]
+        queued = (await c.get("/api/work-orders", params={"production_status": "queued"})).json()["items"]
+    assert {w["id"] for w in blocked} == {f"wb-{s}", f"wh-{s}"}
+    assert [w["id"] for w in queued] == [f"wq-{s}"]
