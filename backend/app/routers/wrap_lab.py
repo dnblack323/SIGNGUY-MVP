@@ -6,11 +6,13 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, StrictInt
 
-from ..deps import get_current_user
+from ..deps import get_current_user, require_entitlement_for_writes
 from ..services import wrap_lab as svc
 from ..services.wrap_lab import WrapLabError
 
-router = APIRouter(prefix="/wrap-lab", tags=["wrap-lab"])
+# F1: Wrap Lab is a paid add-on. Existing records stay readable; creating or
+# changing them requires the `wrap_lab` entitlement (EC15 commercial_feature_key).
+router = APIRouter(prefix="/wrap-lab", tags=["wrap-lab"], dependencies=[Depends(require_entitlement_for_writes("wrap_lab"))])
 
 
 def _raise(e: WrapLabError) -> None:

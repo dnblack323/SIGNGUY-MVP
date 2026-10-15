@@ -250,4 +250,8 @@ Binding conditions:
 - Each feature and each stage requires separate owner implementation authorization and its own PR.
 - The rest of UX1, Advanced Onboarding, the remainder of EC21 and EC22, Webstores, Wrap Lab and AI move to post-launch updates. H7 remains active.
 
-**Register last updated:** 2026-10-14 - Commercial V1 three-track sequence recorded (owner direction; effective on PR #41 approval). Previous update 2026-07-20: EC19 foundation complete; Advanced Onboarding pending UX1.
+## F1 lapsed-access policy - owner decision 2026-10-14
+
+When a shop has commercial history but nothing currently grants access (trial ended without purchase, or subscription suspended, unpaid or canceled), its **core records become read-only**: staff can view and export customers, quotes, orders, work orders, invoices and payments, and can always use login, account recovery, billing/renewal and support, but cannot create or change records until the shop pays. Paid add-ons (Wrap Lab writes, Webstores publish, AI runs) require their entitlement. Records and financial history are never altered by a lapse. Past-due subscriptions keep core access until suspended (C2: day 15+ is eligibility, not automatic suspension); paid add-on features end at day 15 unless an approved manual grace extends them. Shops with no trial or subscription history are not restricted until signup is connected to trials (L3, pending trial-enrollment decision).
+
+**Register last updated:** 2026-10-14 - F1 lapsed-access policy recorded; Commercial V1 three-track sequence recorded (owner direction; effective on PR #41 approval). Previous update 2026-07-20: EC19 foundation complete; Advanced Onboarding pending UX1.

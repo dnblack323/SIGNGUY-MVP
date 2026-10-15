@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react";
-import api from "@/lib/api";
+import api, { ACCESS_CHANGED_EVENT } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
@@ -10,6 +10,18 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [devBypass, setDevBypass] = useState(false);
+  // F1 — shop subscription state and held add-on keys, from `/auth/me`.
+  // null means not loaded yet; the backend remains the enforcement point.
+  const [commercialAccess, setCommercialAccess] = useState(null);
+
+  const refreshAccess = useCallback(async () => {
+    try {
+      const { data } = await api.get("/auth/me");
+      setCommercialAccess(data.commercial_access || null);
+    } catch {
+      setCommercialAccess(null);
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -35,6 +47,7 @@ export function AuthProvider({ children }) {
           const { data } = await api.post("/auth/dev-login");
           localStorage.setItem("signguy.token", data.access_token);
           setUser(data.user); setTenant(data.tenant); setPermissions(data.permissions || []);
+          refreshAccess();
           setLoading(false);
           return;
         } catch { /* fall through to unauth state */ }
@@ -50,6 +63,7 @@ export function AuthProvider({ children }) {
         setUser(data.user);
         setTenant(data.tenant);
         setPermissions(data.permissions || []);
+        setCommercialAccess(data.commercial_access || null);
       } catch (meError) {
         if (!bypass) throw meError;
         localStorage.removeItem("signguy.token");
@@ -58,51 +72,61 @@ export function AuthProvider({ children }) {
         setUser(data.user);
         setTenant(data.tenant);
         setPermissions(data.permissions || []);
+        refreshAccess();
       }
     } catch (e) {
-      setUser(null); setTenant(null); setPermissions([]);
+      setUser(null); setTenant(null); setPermissions([]); setCommercialAccess(null);
       setError(e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshAccess]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  useEffect(() => {
+    const onAccessChanged = () => { refreshAccess(); };
+    window.addEventListener(ACCESS_CHANGED_EVENT, onAccessChanged);
+    return () => window.removeEventListener(ACCESS_CHANGED_EVENT, onAccessChanged);
+  }, [refreshAccess]);
 
   const login = useCallback(async (tenantSlug, email, password) => {
     const { data } = await api.post("/auth/login", { tenant_slug: tenantSlug, email, password });
     localStorage.setItem("signguy.token", data.access_token);
     setUser(data.user); setTenant(data.tenant); setPermissions(data.permissions || []);
+    refreshAccess();
     return data;
-  }, []);
+  }, [refreshAccess]);
 
   const devLogin = useCallback(async () => {
     const { data } = await api.post("/auth/dev-login");
     localStorage.setItem("signguy.token", data.access_token);
     setUser(data.user); setTenant(data.tenant); setPermissions(data.permissions || []);
+    refreshAccess();
     return data;
-  }, []);
+  }, [refreshAccess]);
 
   const registerTenant = useCallback(async (payload) => {
     const { data } = await api.post("/auth/register-tenant", payload);
     localStorage.setItem("signguy.token", data.access_token);
     setUser(data.user); setTenant(data.tenant); setPermissions(data.permissions || []);
+    refreshAccess();
     return data;
-  }, []);
+  }, [refreshAccess]);
 
   const logout = useCallback(async () => {
     try { await api.post("/auth/logout"); } catch { /* ignore */ }
     localStorage.removeItem("signguy.token");
-    setUser(null); setTenant(null); setPermissions([]);
+    setUser(null); setTenant(null); setPermissions([]); setCommercialAccess(null);
     window.location.href = "/login";
   }, []);
 
   const value = useMemo(() => ({
-    user, tenant, permissions, loading, error, devBypass,
+    user, tenant, permissions, loading, error, devBypass, commercialAccess,
     hasPerm: (perm) => permissions.includes(perm),
     hasAny: (list) => list.some((p) => permissions.includes(p)),
-    refresh, login, devLogin, registerTenant, logout,
-  }), [user, tenant, permissions, loading, error, devBypass, refresh, login, devLogin, registerTenant, logout]);
+    refresh, refreshAccess, login, devLogin, registerTenant, logout,
+  }), [user, tenant, permissions, loading, error, devBypass, commercialAccess, refresh, refreshAccess, login, devLogin, registerTenant, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

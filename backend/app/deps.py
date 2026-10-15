@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .core.config import get_settings
@@ -96,8 +96,39 @@ def require_entitlement(feature_key: str) -> Callable:
         if not ok:
             raise HTTPException(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                detail=f"Feature not entitled: {feature_key}",
+                detail=_not_entitled_detail(feature_key),
             )
+        return user
+
+    return _dep
+
+
+_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def _not_entitled_detail(feature_key: str) -> dict:
+    return {
+        "code": "feature_not_entitled",
+        "feature_key": feature_key,
+        "message": "This feature is not included in your current subscription. Visit Billing to add it.",
+    }
+
+
+def require_entitlement_for_writes(feature_key: str) -> Callable:
+    """F1 — Entitlement guard for paid add-on modules that applies to changes only.
+
+    Reads stay available so an unentitled or lapsed shop keeps access to the
+    records it already created; creating or changing records requires the
+    entitlement. Staff permission checks on the route still apply.
+    """
+
+    async def _dep(request: Request, user: dict = Depends(get_current_user)) -> dict:
+        if request.method in _READ_METHODS:
+            return user
+        from .services.entitlements import has_entitlement
+
+        if not await has_entitlement(tenant_id=user["tenant_id"], feature_key=feature_key):
+            raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=_not_entitled_detail(feature_key))
         return user
 
     return _dep

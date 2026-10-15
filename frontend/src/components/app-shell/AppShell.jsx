@@ -50,6 +50,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import SupportModeBanner from "@/components/platform/SupportModeBanner";
+import SubscriptionAccessBanner from "@/components/billing/SubscriptionAccessBanner";
 import WorkspaceDock from "@/components/workspaces/WorkspaceDock";
 import { WorkspaceProvider, useWorkspace } from "@/context/WorkspaceContext";
 import SignGuyLogo from "@/components/brand/SignGuyLogo";
@@ -450,9 +451,9 @@ function SidebarInner({ selectedAreaKey, onSelectArea, onNavigate, mobile = fals
   );
 }
 
-function ModuleTabs({ area, permissions, user }) {
+function ModuleTabs({ area, permissions, user, entitlements = null }) {
   const location = useLocation();
-  const visibleItems = filterNavItemsByPermissions(area?.moduleNav || [], permissions, user).filter((item) => !item.hidden);
+  const visibleItems = filterNavItemsByPermissions(area?.moduleNav || [], permissions, user, entitlements).filter((item) => !item.hidden);
   const tabRefs = useRef({});
   const activeKey = visibleItems.find((item) => itemMatchesPath(item, location.pathname))?.key;
 
@@ -1205,10 +1206,11 @@ function AppShellFrame() {
   const mobileMenuButtonRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { devBypass, permissions, user, tenant } = useAuth();
+  const { devBypass, permissions, user, tenant, commercialAccess } = useAuth();
+  const entitlements = commercialAccess?.entitlements ?? null;
   const pathArea = useMemo(() => findAreaForPath(location.pathname), [location.pathname]);
   const selectedArea = PRIMARY_NAV_AREAS.find((area) => area.key === (selectedAreaKey || pathArea.key)) || pathArea;
-  const activeModule = activeModuleForPath(selectedArea, location.pathname, permissions, user);
+  const activeModule = activeModuleForPath(selectedArea, location.pathname, permissions, user, entitlements);
 
   useEffect(() => {
     setSelectedAreaKey(pathArea.key);
@@ -1216,7 +1218,7 @@ function AppShellFrame() {
 
   const selectArea = (area) => {
     setSelectedAreaKey(area.key);
-    const target = firstAvailableModule(area, permissions, user);
+    const target = firstAvailableModule(area, permissions, user, entitlements);
     if (target) navigate(target.to);
   };
 
@@ -1323,12 +1325,13 @@ function AppShellFrame() {
               onToggleNavigation={toggleNavigation}
             />
             <div className="flex h-11 min-w-0 items-center gap-3 border-b border-slate-200 bg-white px-4 md:px-6" data-testid="secondary-navigation-row">
-              <ModuleTabs area={selectedArea} permissions={permissions} user={user} />
+              <ModuleTabs area={selectedArea} permissions={permissions} user={user} entitlements={entitlements} />
             </div>
             <ContextualRibbon area={selectedArea} module={activeModule} permissions={permissions} />
           </header>
 
           <SupportModeBanner />
+          <SubscriptionAccessBanner />
           <ShellInternalTabs module={activeModule} />
           <main className="w-full bg-slate-50 px-4 py-5 pb-24 md:px-6" data-testid="app-shell-content" data-active-path={location.pathname}>
             <Outlet />

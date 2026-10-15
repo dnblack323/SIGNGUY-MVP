@@ -514,6 +514,8 @@ async def handle_invoice_payment_failed(*, stripe_subscription_id: str, occurred
         {"$set": {"status": "past_due", "first_payment_failed_at": first_failed_at, "dunning_state": dunning_state, "updated_at": processed_at.isoformat()}},
     )
     await db.tenant_billing_accounts.update_one({"id": sub["billing_account_id"]}, {"$set": {"status": "past_due", "updated_at": processed_at.isoformat()}})
+    # F1: stamp the day-15 paid-feature cut-off onto projected entitlements.
+    await commercial_entitlements.project_entitlements_for_tenant(tenant_id=sub["tenant_id"])
     return serialize_doc(await db.tenant_subscriptions.find_one({"id": sub["id"]}, {"_id": 0}))
 
 
@@ -543,6 +545,8 @@ async def apply_manual_grace(user: dict, *, subscription_id: str, grace_until: s
         raise TenantBillingError("grace_reason_required", "Manual grace requires a reason", 400)
     patch = {"manual_grace_until": grace_until, "manual_grace_reason": reason.strip(), "dunning_state": "manually_extended", "updated_at": _now_iso()}
     await db.tenant_subscriptions.update_one({"id": subscription_id}, {"$set": patch})
+    # F1: extend projected paid-feature access to the approved grace date.
+    await commercial_entitlements.project_entitlements_for_tenant(tenant_id=sub["tenant_id"], actor_user_id=user["id"], actor_email=user.get("email", "platform"))
     await _audit(user, sub["tenant_id"], "commercial.manual_grace_applied", "tenant_subscription", subscription_id, "Manual billing grace applied", {"reason": reason.strip()})
     return serialize_doc(await db.tenant_subscriptions.find_one({"id": subscription_id}, {"_id": 0}))
 

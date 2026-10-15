@@ -95,6 +95,7 @@ export const PRIMARY_NAV_AREAS = [
         label: "Webstores",
         to: "/webstores",
         perm: "webstore:read",
+        entitlement: "webstores",
         testId: "module-nav-webstores",
         match: ["/webstores"],
       },
@@ -103,6 +104,7 @@ export const PRIMARY_NAV_AREAS = [
         label: "Wrap Lab",
         to: "/wrap-lab",
         perm: "wrap_lab:read",
+        entitlement: "wrap_lab",
         testId: "module-nav-wrap-lab",
         match: ["/wrap-lab"],
       },
@@ -488,12 +490,21 @@ export function isPlatformUser(user = null, permissions = []) {
   );
 }
 
-export function filterNavItemsByPermissions(items, permissions, user = null) {
+/**
+ * `entitlements` is the list of paid add-on feature keys the shop holds
+ * (from `/auth/me` `commercial_access.entitlements`). When it is not known
+ * (null), entitlement-gated items are not filtered; the backend still
+ * enforces access.
+ */
+export function filterNavItemsByPermissions(items, permissions, user = null, entitlements = null) {
   if (!Array.isArray(items)) return [];
   const set = new Set(permissions || []);
   const platformUser = isPlatformUser(user, permissions);
   return items.filter((entry) => {
     if (entry.platformOnly && !platformUser) return false;
+    if (entry.entitlement && Array.isArray(entitlements) && !platformUser && !entitlements.includes(entry.entitlement)) {
+      return false;
+    }
     const requiredPermission = entry.perm || entry.permission;
     return !requiredPermission || set.has(requiredPermission);
   });
@@ -526,20 +537,21 @@ export function findAreaForPath(pathname) {
   );
 }
 
-export function firstAvailableModule(area, permissions, user = null) {
+export function firstAvailableModule(area, permissions, user = null, entitlements = null) {
   return (
-    filterNavItemsByPermissions(area?.moduleNav || [], permissions, user).find(
+    filterNavItemsByPermissions(area?.moduleNav || [], permissions, user, entitlements).find(
       (item) => !item.hidden,
     ) ||
     null
   );
 }
 
-export function activeModuleForPath(area, pathname, permissions, user = null) {
+export function activeModuleForPath(area, pathname, permissions, user = null, entitlements = null) {
   const visible = filterNavItemsByPermissions(
     area?.moduleNav || [],
     permissions,
     user,
+    entitlements,
   );
   const matches = visible
     .map((item) => ({ item, strength: itemMatchStrength(item, pathname) }))

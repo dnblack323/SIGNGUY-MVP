@@ -3,7 +3,7 @@
 **Prepared:** 2026-10-14 from the completed audits (no new general audit was performed).
 **Revised:** 2026-10-14 (owner priority update) — two tracks. **Track 1** builds independent MVP features now. **Track 2** integrates Price Lab pricing (Engine, Pricing Foundation, all nine calculators) **before launch**, but only after Price Lab's V1 pricing contracts are stable (gate in §E).
 **Status:** APPROVED by the owner 2026-10-14 (three-track strategy and order). Each feature and each stage still needs separate owner authorization and its own PR. Business decisions in §B remain open.
-**Current feature:** none yet. On authorization, **F1 — Subscription access control** becomes CURRENT.
+**Current feature:** **F1 — Subscription access control** (CURRENT, authorized 2026-10-14; implementation PR awaiting owner review).
 
 **Sources used:** `docs/audits/MVP_BASELINE_AUDIT_2026-10-10.md`, `docs/audits/MVP_FEATURE_INVENTORY_2026-10-10.csv` (124 rows, cited below as `#n`), `docs/MVP_CODE_HEALTH_AND_CLEANUP_AUDIT.md` (`CH-n`), `memory/code_issue_register.md` (`CIR-n`), `memory/owner_specification_hold_register.md`, targeted source checks recorded in §B, and Price Lab `origin/main` merge history (read-only).
 
