@@ -165,3 +165,104 @@ async def test_locks_and_source_keys_are_tenant_isolated():
                           _create(b, source_type="installation", source_id="shared-src", assigned_employee_ids=[f"emp-{b['s']}"]))
     assert all(isinstance(r, dict) and not r.get("duplicate_prevented") for r in results)
     assert await db.schedule_locks.count_documents({"tenant_id": {"$in": [a["tenant_id"], b["tenant_id"]]}}) == 0  # released
+
+
+async def _reopen(shop: dict, event_id: str, *, role: str = "staff", override: str | None = None):
+    return await calendar_service.reopen_event(tenant_id=shop["tenant_id"], event_id=event_id, actor_user_id="u1", actor_email="u1@example.com",
+                                               reason="Customer rebooked", conflict_override_reason=override, actor_role=role)
+
+
+async def _restore(shop: dict, event_id: str, *, role: str = "staff", override: str | None = None):
+    return await calendar_service.restore_event(tenant_id=shop["tenant_id"], event_id=event_id, actor_user_id="u1", actor_email="u1@example.com",
+                                                conflict_override_reason=override, actor_role=role)
+
+
+@pytest.mark.parametrize("field,resource", [("assigned_employee_ids", "emp"), ("reserved_resource_ids", "bay")])
+@pytest.mark.asyncio
+async def test_reopen_into_a_booked_slot_needs_a_manager_override(field, resource):
+    shop = await _shop()
+    rid = f"{resource}-{shop['s']}"
+    first = await _create(shop, **{field: [rid]})
+    await calendar_service.cancel_event(tenant_id=shop["tenant_id"], event_id=first["id"], actor_user_id="u1", actor_email="u1@example.com")
+    await _create(shop, title="Took the slot", **{field: [rid]})  # canceled event released the resource
+    with pytest.raises(CalendarError) as blocked:
+        await _reopen(shop, first["id"])
+    assert blocked.value.code == "conflict"
+    with pytest.raises(CalendarError) as denied:
+        await _reopen(shop, first["id"], override="Both crews on site")
+    assert denied.value.code == "conflict_override_forbidden"
+    assert (await db.calendar_events.find_one({"id": first["id"]}))["status"] == "canceled"
+    reopened = await _reopen(shop, first["id"], role="manager", override="Both crews on site")
+    assert reopened["status"] == "scheduled"
+    stored = await db.calendar_events.find_one({"id": first["id"]})
+    assert stored["conflict_overrides"][-1]["reason"] == "Both crews on site"
+
+
+@pytest.mark.asyncio
+async def test_restore_into_a_booked_slot_needs_a_manager_override():
+    shop = await _shop()
+    bay = f"bay-{shop['s']}"
+    first = await _create(shop, reserved_resource_ids=[bay])
+    await calendar_service.archive_event(tenant_id=shop["tenant_id"], event_id=first["id"], actor_user_id="u1", actor_email="u1@example.com")
+    await _create(shop, title="Took the bay", reserved_resource_ids=[bay])
+    with pytest.raises(CalendarError) as blocked:
+        await _restore(shop, first["id"])
+    assert blocked.value.code == "conflict"
+    assert (await db.calendar_events.find_one({"id": first["id"]}))["archived_at"]
+    restored = await _restore(shop, first["id"], role="owner", override="Second bay borrowed")
+    assert not restored.get("archived_at")
+
+
+@pytest.mark.asyncio
+async def test_reopen_racing_a_new_booking_admits_one():
+    shop = await _shop()
+    bay = f"bay-{shop['s']}"
+    first = await _create(shop, reserved_resource_ids=[bay])
+    await calendar_service.cancel_event(tenant_id=shop["tenant_id"], event_id=first["id"], actor_user_id="u1", actor_email="u1@example.com")
+    results = await _race(_reopen(shop, first["id"]), _create(shop, title="New booking", reserved_resource_ids=[bay]))
+    assert len([r for r in results if isinstance(r, dict)]) == 1, results
+    active = await db.calendar_events.count_documents({"tenant_id": shop["tenant_id"], "reserved_resource_ids": bay,
+                                                       "status": {"$in": ["scheduled", "rescheduled"]}})
+    assert active == 1
+
+
+@pytest.mark.asyncio
+async def test_slow_holder_keeps_its_lock_past_the_ttl(monkeypatch):
+    monkeypatch.setattr(calendar_service, "RESERVATION_LOCK_TTL_SECONDS", 0.3)
+    monkeypatch.setattr(calendar_service, "RESERVATION_LOCK_WAIT_SECONDS", 0.6)
+    shop = await _shop()
+    key = [f"resource:bay-{shop['s']}"]
+
+    async def slow_holder():
+        async with calendar_service._reservation_locks(shop["tenant_id"], key) as lease:
+            await asyncio.sleep(1.2)  # four TTLs: only renewal keeps the lock
+            await lease.assert_held()
+            return "held"
+
+    async def competitor():
+        await asyncio.sleep(0.1)
+        async with calendar_service._reservation_locks(shop["tenant_id"], key):
+            return "stole"
+
+    holder, other = await _race(slow_holder(), competitor())
+    assert holder == "held"
+    assert isinstance(other, CalendarError) and other.code == "schedule_busy"
+
+
+@pytest.mark.asyncio
+async def test_holder_that_lost_its_lock_does_not_write(monkeypatch):
+    shop = await _shop()
+    bay = f"bay-{shop['s']}"
+    real_check = calendar_service.check_conflicts
+
+    async def check_then_lose_lock(**kwargs):
+        result = await real_check(**kwargs)
+        # Simulates the lock expiring and being reclaimed by another request mid-operation.
+        await db.schedule_locks.update_many({"tenant_id": shop["tenant_id"]}, {"$set": {"token": "another-request"}})
+        return result
+
+    monkeypatch.setattr(calendar_service, "check_conflicts", check_then_lose_lock)
+    with pytest.raises(CalendarError) as lost:
+        await _create(shop, title="Stalled request", reserved_resource_ids=[bay])
+    assert lost.value.code == "schedule_lock_lost"
+    assert await db.calendar_events.count_documents({"tenant_id": shop["tenant_id"]}) == 0

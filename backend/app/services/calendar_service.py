@@ -62,16 +62,49 @@ def _reservation_keys(*, assignments: dict[str, list[str]], employee_id: Optiona
     return sorted(keys)
 
 
+class _ReservationLease:
+    """Locks held by one request. Renewed in the background while held."""
+
+    def __init__(self, token: str):
+        self.token = token
+        self.ids: list[str] = []
+
+    async def renew(self) -> None:
+        if self.ids:
+            expires = datetime.now(timezone.utc) + timedelta(seconds=RESERVATION_LOCK_TTL_SECONDS)
+            await db.schedule_locks.update_many({"_id": {"$in": list(self.ids)}, "token": self.token}, {"$set": {"expires_at": expires}})
+
+    async def assert_held(self) -> None:
+        """Call immediately before writing: never write after a lock was reclaimed."""
+        if not self.ids:
+            return
+        held = await db.schedule_locks.count_documents({"_id": {"$in": list(self.ids)}, "token": self.token})
+        if held != len(self.ids):
+            raise CalendarError("schedule_lock_lost", "The schedule changed while this request was running. Please try again.", 409)
+
+
+async def _renew_lease(lease: _ReservationLease) -> None:
+    while True:
+        await asyncio.sleep(RESERVATION_LOCK_TTL_SECONDS / 3)
+        try:
+            await lease.renew()
+        except Exception:  # a failed renewal is caught by assert_held before any write
+            pass
+
+
 @asynccontextmanager
-async def _reservation_locks(tenant_id: str, keys: Iterable[str]) -> AsyncIterator[None]:
+async def _reservation_locks(tenant_id: str, keys: Iterable[str]) -> AsyncIterator[_ReservationLease]:
     """CIR-028: hold short-lived per-resource locks while checking and writing.
 
     Locks are documents in `schedule_locks` with a unique `_id`, acquired in
-    sorted order (no deadlock), released on exit and reclaimable after
-    RESERVATION_LOCK_TTL_SECONDS if a process dies. Works across workers.
+    sorted order (no deadlock) and released on exit. While held they are
+    renewed every third of RESERVATION_LOCK_TTL_SECONDS, so a slow request
+    keeps them; only a holder that stopped running (crashed or stalled longer
+    than the TTL) can lose them, and `lease.assert_held()` before each write
+    stops such a holder from writing after another request reclaimed them.
     """
-    token = uuid4().hex
-    acquired: list[str] = []
+    lease = _ReservationLease(uuid4().hex)
+    renewer = asyncio.create_task(_renew_lease(lease))
     try:
         for key in sorted(set(keys)):
             lock_id = f"{tenant_id}:{key}"
@@ -80,22 +113,44 @@ async def _reservation_locks(tenant_id: str, keys: Iterable[str]) -> AsyncIterat
                 now = datetime.now(timezone.utc)
                 expires = now + timedelta(seconds=RESERVATION_LOCK_TTL_SECONDS)
                 try:
-                    await db.schedule_locks.insert_one({"_id": lock_id, "tenant_id": tenant_id, "token": token, "expires_at": expires})
+                    await db.schedule_locks.insert_one({"_id": lock_id, "tenant_id": tenant_id, "token": lease.token, "expires_at": expires})
                     break
                 except DuplicateKeyError:
                     stolen = await db.schedule_locks.find_one_and_update(
-                        {"_id": lock_id, "expires_at": {"$lt": now}}, {"$set": {"token": token, "expires_at": expires}},
+                        {"_id": lock_id, "expires_at": {"$lt": now}}, {"$set": {"token": lease.token, "expires_at": expires}},
                     )
                     if stolen:
                         break
                     if time.monotonic() > deadline:
                         raise CalendarError("schedule_busy", "The schedule is being updated for this resource. Please try again.", 409)
                     await asyncio.sleep(0.05)
-            acquired.append(lock_id)
-        yield
+            lease.ids.append(lock_id)
+        yield lease
     finally:
-        if acquired:
-            await db.schedule_locks.delete_many({"_id": {"$in": acquired}, "token": token})
+        renewer.cancel()
+        if lease.ids:
+            await db.schedule_locks.delete_many({"_id": {"$in": lease.ids}, "token": lease.token})
+
+
+def _event_reservation_keys(event: dict) -> list[str]:
+    source_id = event.get("source_id")
+    return _reservation_keys(assignments=_assignment_ids(event), employee_id=event.get("employee_id"),
+                             location=event.get("location"), customer_id=event.get("customer_id"),
+                             source=f"{event.get('source_type') or 'appointment'}:{source_id}" if source_id else None)
+
+
+async def _check_reactivation(tenant_id: str, event: dict, *, override_reason: Optional[str], actor_role: Optional[str]) -> list[dict[str, Any]]:
+    """Reopen/restore make an event active again: apply the same conflict rules as create/update."""
+    assignments = _assignment_ids(event)
+    conflicts = await check_conflicts(
+        tenant_id=tenant_id, start_at=event["start_at"], end_at=event["end_at"], employee_id=event.get("employee_id"),
+        **assignments, location=event.get("location"), customer_id=event.get("customer_id"), event_id=event["id"],
+    )
+    if conflicts and not override_reason:
+        raise CalendarError("conflict", "Calendar conflict requires manager override reason", 409, metadata={"conflicts": conflicts})
+    if conflicts and not _has_schedule_override_authority(actor_role):
+        raise CalendarError("conflict_override_forbidden", "Manager authority is required for this calendar conflict override", 403, metadata={"conflicts": conflicts})
+    return conflicts
 
 
 async def backfill_active_source_keys() -> dict[str, int]:
@@ -644,15 +699,15 @@ async def create_event(*, tenant_id: str, actor_user_id: str, actor_email: str, 
         customer_id=payload.get("customer_id"),
         source=f"{payload_source_type}:{payload_source_id}" if payload_source_id else None,
     )
-    async with _reservation_locks(tenant_id, lock_keys):
+    async with _reservation_locks(tenant_id, lock_keys) as lease:
         return await _create_event_locked(
-            tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email, payload=payload,
+            lease=lease, tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email, payload=payload,
             actor_role=actor_role, assignments=assignments, assignment_summary=assignment_summary,
             payload_source_type=payload_source_type, payload_source_id=payload_source_id,
         )
 
 
-async def _create_event_locked(*, tenant_id: str, actor_user_id: str, actor_email: str, payload: dict,
+async def _create_event_locked(*, lease: _ReservationLease, tenant_id: str, actor_user_id: str, actor_email: str, payload: dict,
                                actor_role: Optional[str], assignments: dict, assignment_summary: dict,
                                payload_source_type: str, payload_source_id: Optional[str]) -> dict:
     if payload_source_id:
@@ -727,6 +782,7 @@ async def _create_event_locked(*, tenant_id: str, actor_user_id: str, actor_emai
     if not doc.get("source_id"):
         doc["source_id"] = doc["id"]  # appointments are their own source (previously set by a second write)
     doc["active_source_key"] = _active_source_key(doc)
+    await lease.assert_held()
     try:
         await db.calendar_events.insert_one(prepare_for_mongo(dict(doc)))
     except DuplicateKeyError:
@@ -992,12 +1048,12 @@ async def update_event(*, tenant_id: str, event_id: str, actor_user_id: str, act
         location=requested.get("location"), customer_id=requested.get("customer_id"),
         source=f"{source_type}:{requested['source_id']}" if requested.get("source_id") else None,
     ))
-    async with _reservation_locks(tenant_id, keys):
-        return await _update_event_locked(tenant_id=tenant_id, event_id=event_id, actor_user_id=actor_user_id,
+    async with _reservation_locks(tenant_id, keys) as lease:
+        return await _update_event_locked(lease=lease, tenant_id=tenant_id, event_id=event_id, actor_user_id=actor_user_id,
                                           actor_email=actor_email, payload=payload, action=action, actor_role=actor_role)
 
 
-async def _update_event_locked(*, tenant_id: str, event_id: str, actor_user_id: str, actor_email: str,
+async def _update_event_locked(*, lease: _ReservationLease, tenant_id: str, event_id: str, actor_user_id: str, actor_email: str,
                                payload: dict, action: str, actor_role: Optional[str]) -> dict:
     existing = await _get_event(tenant_id, event_id)  # re-read inside the lock
     clean = {k: v for k, v in payload.items() if v is not None}
@@ -1052,6 +1108,7 @@ async def _update_event_locked(*, tenant_id: str, event_id: str, actor_user_id: 
     update: dict[str, Any] = {"$set": prepare_for_mongo({**clean, **({"active_source_key": source_key} if source_key else {})})}
     if not source_key:
         update["$unset"] = {"active_source_key": ""}
+    await lease.assert_held()
     try:
         await db.calendar_events.update_one({"tenant_id": tenant_id, "id": event_id}, update)
     except DuplicateKeyError:
@@ -1132,25 +1189,37 @@ async def complete_event(*, tenant_id: str, event_id: str, actor_user_id: str, a
 
 
 async def reopen_event(*, tenant_id: str, event_id: str, actor_user_id: str, actor_email: str,
-                       reason: str) -> dict:
+                       reason: str, conflict_override_reason: Optional[str] = None,
+                       actor_role: Optional[str] = None) -> dict:
     if not reason or not reason.strip():
         raise CalendarError("reason_required", "A reason is required to reopen a schedule event", 400)
-    existing = await _get_event(tenant_id, event_id)
+    before = await _get_event(tenant_id, event_id)
+    async with _reservation_locks(tenant_id, _event_reservation_keys(before)) as lease:
+        return await _reopen_event_locked(lease=lease, tenant_id=tenant_id, event_id=event_id, actor_user_id=actor_user_id,
+                                          actor_email=actor_email, reason=reason,
+                                          override_reason=conflict_override_reason, actor_role=actor_role)
+
+
+async def _reopen_event_locked(*, lease: _ReservationLease, tenant_id: str, event_id: str, actor_user_id: str,
+                               actor_email: str, reason: str, override_reason: Optional[str], actor_role: Optional[str]) -> dict:
+    existing = await _get_event(tenant_id, event_id)  # re-read inside the lock
     if existing.get("status") in ACTIVE_EVENT_STATUSES:
         return _safe_event(existing)
     if existing.get("status") not in {"canceled", "completed"}:
         raise CalendarError("event_not_reopenable", "Only canceled or completed schedule events can be reopened", 400)
+    conflicts = [] if existing.get("archived_at") else await _check_reactivation(
+        tenant_id, existing, override_reason=override_reason, actor_role=actor_role)
     now = utc_now().isoformat()
     reopen_set: dict[str, Any] = {"status": "scheduled", "updated_at": now, "reopened_at": now, "version": int(existing.get("version", 1)) + 1}
     source_key = _active_source_key({**existing, "status": "scheduled"})
     if source_key:
         reopen_set["active_source_key"] = source_key
+    pushes: dict[str, Any] = {"history": {"action": "reopened", "actor_user_id": actor_user_id, "at": now, "reason": reason, "conflict_count": len(conflicts)}}
+    if conflicts:
+        pushes["conflict_overrides"] = {"reason": override_reason, "actor_user_id": actor_user_id, "at": now, "conflicts": conflicts}
+    await lease.assert_held()
     try:
-        await db.calendar_events.update_one(
-            {"tenant_id": tenant_id, "id": event_id},
-            {"$set": reopen_set,
-             "$push": {"history": {"action": "reopened", "actor_user_id": actor_user_id, "at": now, "reason": reason}}},
-        )
+        await db.calendar_events.update_one({"tenant_id": tenant_id, "id": event_id}, {"$set": reopen_set, "$push": pushes})
     except DuplicateKeyError:
         raise CalendarError("duplicate_source_event", "Another active schedule event already exists for this source record", 409)
     updated = await _get_event(tenant_id, event_id)
@@ -1158,8 +1227,16 @@ async def reopen_event(*, tenant_id: str, event_id: str, actor_user_id: str, act
         tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
         module="calendar", action="calendar_event.reopened", entity_type="calendar_event", entity_id=event_id,
         summary=f"Calendar event reopened: {updated['title']}",
-        metadata={"reason": reason, "previous_status": existing.get("status"), "source_type": updated.get("source_type"), "source_id": updated.get("source_id")},
+        metadata={"reason": reason, "previous_status": existing.get("status"), "source_type": updated.get("source_type"),
+                  "source_id": updated.get("source_id"), "conflict_count": len(conflicts)},
     )
+    if conflicts:
+        await record_activity_with_audit(
+            tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+            module="calendar", action="calendar_event.conflict_override", entity_type="calendar_event", entity_id=event_id,
+            summary=f"Calendar conflict overridden on reopen: {updated['title']}", severity="warning",
+            metadata={"conflict_count": len(conflicts), "conflicts": conflicts, "override_reason": override_reason},
+        )
     await _notify_event_assignment(tenant_id, updated, kind="calendar.reopened", title=f"Appointment reopened: {updated['title']}")
     return _safe_event(updated)
 
@@ -1168,12 +1245,21 @@ async def archive_event(*, tenant_id: str, event_id: str, actor_user_id: str, ac
     return await _archive_restore(tenant_id=tenant_id, event_id=event_id, actor_user_id=actor_user_id, actor_email=actor_email, archive=True)
 
 
-async def restore_event(*, tenant_id: str, event_id: str, actor_user_id: str, actor_email: str) -> dict:
-    return await _archive_restore(tenant_id=tenant_id, event_id=event_id, actor_user_id=actor_user_id, actor_email=actor_email, archive=False)
+async def restore_event(*, tenant_id: str, event_id: str, actor_user_id: str, actor_email: str,
+                        conflict_override_reason: Optional[str] = None, actor_role: Optional[str] = None) -> dict:
+    before = await _get_event(tenant_id, event_id)
+    async with _reservation_locks(tenant_id, _event_reservation_keys(before)) as lease:
+        return await _archive_restore(tenant_id=tenant_id, event_id=event_id, actor_user_id=actor_user_id, actor_email=actor_email,
+                                      archive=False, lease=lease, override_reason=conflict_override_reason, actor_role=actor_role)
 
 
-async def _archive_restore(*, tenant_id: str, event_id: str, actor_user_id: str, actor_email: str, archive: bool) -> dict:
+async def _archive_restore(*, tenant_id: str, event_id: str, actor_user_id: str, actor_email: str, archive: bool,
+                           lease: Optional[_ReservationLease] = None, override_reason: Optional[str] = None,
+                           actor_role: Optional[str] = None) -> dict:
     existing = await _get_event(tenant_id, event_id)
+    conflicts: list[dict[str, Any]] = []
+    if not archive and existing.get("archived_at") and existing.get("status") in ACTIVE_EVENT_STATUSES:
+        conflicts = await _check_reactivation(tenant_id, {**existing, "archived_at": None}, override_reason=override_reason, actor_role=actor_role)
     now = utc_now().isoformat()
     update: dict[str, Any] = {
         "$set": {"archived_at": now if archive else None, "updated_at": now, "version": int(existing.get("version", 1)) + 1},
@@ -1184,6 +1270,10 @@ async def _archive_restore(*, tenant_id: str, event_id: str, actor_user_id: str,
         update["$set"]["active_source_key"] = source_key
     else:
         update["$unset"] = {"active_source_key": ""}
+    if conflicts:
+        update["$push"]["conflict_overrides"] = {"reason": override_reason, "actor_user_id": actor_user_id, "at": now, "conflicts": conflicts}
+    if lease:
+        await lease.assert_held()
     try:
         await db.calendar_events.update_one({"tenant_id": tenant_id, "id": event_id}, update)
     except DuplicateKeyError:
@@ -1194,6 +1284,13 @@ async def _archive_restore(*, tenant_id: str, event_id: str, actor_user_id: str,
         module="calendar", action=f"calendar_event.{'archived' if archive else 'restored'}",
         entity_type="calendar_event", entity_id=event_id, summary=f"Calendar event {'archived' if archive else 'restored'}: {updated['title']}",
     )
+    if conflicts:
+        await record_activity_with_audit(
+            tenant_id=tenant_id, actor_user_id=actor_user_id, actor_email=actor_email,
+            module="calendar", action="calendar_event.conflict_override", entity_type="calendar_event", entity_id=event_id,
+            summary=f"Calendar conflict overridden on restore: {updated['title']}", severity="warning",
+            metadata={"conflict_count": len(conflicts), "conflicts": conflicts, "override_reason": override_reason},
+        )
     return _safe_event(updated)
 
 

@@ -262,7 +262,10 @@ async def test_resource_assignment_validation_conflicts_and_override_history(res
         assert completed.json()["status"] == "completed"
         after_complete = await client.post("/api/calendar/events", json={**payload, "title": "Reuse completed resources", "start_at": _ts(19), "end_at": _ts(20)})
         assert after_complete.status_code == 201
-        reopened = await client.post(f"/api/calendar/events/{complete_seed.json()['source_id']}/reopen", json={"reason": "Customer asked to revisit pickup time"})
+        reopen_conflict = await client.post(f"/api/calendar/events/{complete_seed.json()['source_id']}/reopen", json={"reason": "Customer asked to revisit pickup time"})
+        assert reopen_conflict.status_code == 409  # its resources were rebooked after completion
+        reopened = await client.post(f"/api/calendar/events/{complete_seed.json()['source_id']}/reopen", json={
+            "reason": "Customer asked to revisit pickup time", "conflict_override_reason": "Owner approved sharing the crew"})
         assert reopened.status_code == 200
         assert reopened.json()["status"] == "scheduled"
         stored_reopened = await db.calendar_events.find_one({"tenant_id": resource_ctx["tenant_id"], "id": complete_seed.json()["source_id"]}, {"_id": 0})
