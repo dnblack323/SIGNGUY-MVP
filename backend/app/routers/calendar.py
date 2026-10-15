@@ -155,6 +155,7 @@ async def feed(
     visibility: Optional[str] = None,
     limit: int = Query(200, ge=1, le=500),
     skip: int = Query(0, ge=0),
+    window_first: bool = Query(False, description="Filter stored events to the window before applying the limit (Shop Schedule)."),
     user: dict = Depends(require_permission(Perm.SCHEDULE_READ)),
 ) -> dict:
     try:
@@ -165,7 +166,7 @@ async def feed(
             quote_id=quote_id, order_id=order_id, order_item_id=order_item_id,
             work_order_id=work_order_id, production_stage_id=production_stage_id,
             wrap_project_id=wrap_project_id, status=status, source_type=source_type,
-            visibility=visibility, limit=limit, skip=skip,
+            visibility=visibility, limit=limit, skip=skip, window_first=window_first,
         )
     except CalendarError as e:
         _raise(e)
