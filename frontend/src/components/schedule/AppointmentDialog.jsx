@@ -64,7 +64,7 @@ export function eventId(item) {
 export function itemTitle(item) {
   return item?.display_title || item?.title || "Scheduled item";
 }
-function summarizeConflict(detail) {
+export function summarizeConflict(detail) {
   if (!detail) return "Calendar conflict requires manager override reason.";
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) return detail.map((entry) => entry?.msg || String(entry)).join("; ");
@@ -152,7 +152,30 @@ function AvailabilityPanel({ availability, isLoading }) {
   );
 }
 
-export default function AppointmentDialog({ open, onOpenChange, employees, equipment, vehicles, resources, initialDate, initialContext, editingEvent, onSaved }) {
+/**
+ * The one schedule conflict-override control (create, edit and reopen).
+ * Only roles with override authority get the reason field; others see the
+ * conflict and must change the booking or ask a manager.
+ */
+export function ConflictOverrideWarning({ conflict, canOverride, reason, onReasonChange, onOverride, busy, actionLabel }) {
+  if (!conflict) return null;
+  return (
+    <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm" data-testid="calendar-conflict-warning">
+      <div className="flex items-start gap-2 text-amber-900"><AlertCircle className="mt-0.5 size-4" />{conflict}</div>
+      {canOverride ? (
+        <>
+          <Label htmlFor="calendar-conflict-override-reason" className="text-xs">Override reason</Label>
+          <Input id="calendar-conflict-override-reason" value={reason} onChange={(e) => onReasonChange(e.target.value)} data-testid="calendar-conflict-override-reason" />
+          <Button size="sm" onClick={onOverride} disabled={!reason.trim() || busy} data-testid="calendar-conflict-override-submit">{actionLabel}</Button>
+        </>
+      ) : (
+        <div className="text-xs text-amber-900" data-testid="calendar-conflict-manager-required">A manager, admin or owner must approve this conflict.</div>
+      )}
+    </div>
+  );
+}
+
+export default function AppointmentDialog({ open, onOpenChange, employees, equipment, vehicles, resources, initialDate, initialContext, editingEvent, onSaved, canOverride = false }) {
   const [form, setForm] = useState({});
   const [conflict, setConflict] = useState(null);
   const [overrideReason, setOverrideReason] = useState("");
@@ -433,14 +456,8 @@ export default function AppointmentDialog({ open, onOpenChange, employees, equip
             <Label htmlFor="calendar-event-description">Notes</Label>
             <Textarea id="calendar-event-description" rows={2} value={form.description || ""} onChange={(e) => setField("description", e.target.value)} />
           </div>
-          {conflict && (
-            <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm" data-testid="calendar-conflict-warning">
-              <div className="flex items-start gap-2 text-amber-900"><AlertCircle className="mt-0.5 size-4" />{conflict}</div>
-              <Label htmlFor="calendar-conflict-override-reason" className="text-xs">Override reason</Label>
-              <Input id="calendar-conflict-override-reason" value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} data-testid="calendar-conflict-override-reason" />
-              <Button size="sm" onClick={() => submit(true)} disabled={!overrideReason || busy}>Save with override</Button>
-            </div>
-          )}
+          <ConflictOverrideWarning conflict={conflict} canOverride={canOverride} reason={overrideReason} onReasonChange={setOverrideReason}
+            onOverride={() => submit(true)} busy={busy} actionLabel="Save with override" />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

@@ -243,7 +243,7 @@ export function ScheduleRail({ dateKey, byDate, enabledTypes, onToggleType, onSe
 
 /* ---------------------------------------------------------------- details --- */
 
-export function EventDetailsDialog({ item, open, onOpenChange, canManage, onEdit, onComplete, onCancel, onReopen }) {
+export function EventDetailsDialog({ item, open, onOpenChange, canManage, onEdit, onComplete, onCancel, onReopen, busy = false, children }) {
   if (!item) return null;
   const type = TYPE_BY_KEY[scheduleType(item)];
   const people = assignedPeople(item);
@@ -276,10 +276,11 @@ export function EventDetailsDialog({ item, open, onOpenChange, canManage, onEdit
           <div className="flex flex-wrap gap-2 border-t pt-3">
             {isAppointment && <Button size="sm" onClick={() => onEdit(item)} data-testid="schedule-details-edit"><Pencil className="mr-1 size-3.5" />Edit</Button>}
             {actions.includes("complete") && <Button size="sm" variant="outline" onClick={() => onComplete(item)} data-testid={`shop-schedule-complete-${item.source_id}`}><CheckCircle2 className="mr-1 size-3.5" />Complete</Button>}
-            {actions.includes("reopen") && <Button size="sm" variant="outline" onClick={() => onReopen(item)} data-testid={`shop-schedule-reopen-${item.source_id}`}><RotateCcw className="mr-1 size-3.5" />Reopen</Button>}
+            {actions.includes("reopen") && <Button size="sm" variant="outline" disabled={busy} onClick={() => onReopen(item)} data-testid={`shop-schedule-reopen-${item.source_id}`}><RotateCcw className="mr-1 size-3.5" />Reopen</Button>}
             {actions.includes("cancel") && <Button size="sm" variant="ghost" className="text-rose-700" onClick={() => onCancel(item)}><X className="mr-1 size-3.5" />Cancel appointment</Button>}
           </div>
         )}
+        {children}
       </DialogContent>
     </Dialog>
   );

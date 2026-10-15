@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ShopSchedulePage from "@/pages/ShopSchedulePage";
-import { groupByDate, itemDateKeys, layoutDayItems, localDateKey, scheduleType } from "@/components/schedule/scheduleModel";
+import { groupByDate, itemDateKeys, layoutDayItems, localDateKey, scheduleType, visibleDateKeys } from "@/components/schedule/scheduleModel";
+import { toast } from "sonner";
 import { renderWithProviders } from "@/test-utils";
 import api from "@/lib/api";
 
@@ -15,8 +16,10 @@ jest.mock("@/lib/api", () => ({
   extractError: (error) => error?.message || "Request failed",
 }));
 
+let mockRole = "manager";
 jest.mock("@/auth/AuthContext", () => ({
   useAuth: () => ({
+    user: { role: mockRole },
     hasPerm: (permission) => ["schedule:read", "schedule:manage"].includes(permission),
   }),
 }));
@@ -142,6 +145,7 @@ function mockScheduleApi(items = feedItems) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockRole = "manager";
   mockScheduleApi();
 });
 
@@ -327,7 +331,97 @@ test("appointment lifecycle actions complete and reopen canonical calendar event
   await waitFor(() => expect(api.post).toHaveBeenCalledWith("/calendar/events/event-3/reopen", { reason: "Reopened from Shop Schedule" }));
 });
 
+function rejectReopenWithConflict() {
+  const conflictError = Object.assign(new Error("Calendar conflict requires manager override reason"), {
+    response: { status: 409, data: { detail: { code: "conflict", message: "Calendar conflict requires manager override reason",
+      conflicts: [{ resource_name: "Install Van", title: "Fleet decals", start_at: "2026-08-18T13:00:00.000Z", end_at: "2026-08-18T14:00:00.000Z" }] } } },
+  });
+  api.post.mockImplementation((url, body) => {
+    if (url === "/calendar/events/event-3/reopen") {
+      return body?.conflict_override_reason ? Promise.resolve({ data: { id: "event-3", status: "scheduled" } }) : Promise.reject(conflictError);
+    }
+    return Promise.resolve({ data: {} });
+  });
+}
+
+async function openCompletedPickup(user) {
+  renderWithProviders(<ShopSchedulePage />, { route: "/shop-schedule?view=day&date=2026-08-18" });
+  await user.click(await screen.findByTestId("schedule-day-item-calendar_event-event-3"));
+  await user.click(await screen.findByTestId("shop-schedule-reopen-event-3"));
+  return screen.findByTestId("calendar-conflict-warning");
+}
+
+test("a manager reopening into a booked slot sees the conflict and can reopen with an override reason", async () => {
+  const user = userEvent.setup();
+  rejectReopenWithConflict();
+  const warning = await openCompletedPickup(user);
+  expect(warning).toHaveTextContent("Install Van: Fleet decals");
+  const submit = screen.getByTestId("calendar-conflict-override-submit");
+  expect(submit).toBeDisabled();
+  await user.type(screen.getByTestId("calendar-conflict-override-reason"), "Second van borrowed");
+  await user.click(submit);
+  await waitFor(() => expect(api.post).toHaveBeenLastCalledWith("/calendar/events/event-3/reopen", {
+    reason: "Reopened from Shop Schedule", conflict_override_reason: "Second van borrowed",
+  }));
+  expect(toast.success).toHaveBeenCalledWith("Appointment reopened with override · now scheduled");
+  await waitFor(() => expect(screen.queryByTestId("schedule-event-details")).not.toBeInTheDocument());
+});
+
+test("staff without override authority see the reopen conflict but are not offered an override", async () => {
+  mockRole = "staff";
+  const user = userEvent.setup();
+  rejectReopenWithConflict();
+  const warning = await openCompletedPickup(user);
+  expect(warning).toHaveTextContent("Install Van: Fleet decals");
+  expect(screen.getByTestId("calendar-conflict-manager-required")).toBeInTheDocument();
+  expect(screen.queryByTestId("calendar-conflict-override-reason")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("calendar-conflict-override-submit")).not.toBeInTheDocument();
+  expect(api.post).toHaveBeenCalledTimes(1);
+});
+
+test("a busy month is read page by page so later days are not dropped", async () => {
+  const at = (day, hour) => new Date(2026, 7, day, hour).toISOString();
+  const page1 = [{ ...feedItems[0], id: "calendar_event:early", source_id: "early", start_at: at(3, 9), end_at: at(3, 10) }];
+  const page2 = [{ ...feedItems[0], id: "calendar_event:late", source_id: "late", start_at: at(28, 9), end_at: at(28, 10) }];
+  const base = api.get.getMockImplementation();
+  api.get.mockImplementation((url, config) => {
+    if (url !== "/calendar/feed") return base(url, config);
+    const skip = config.params.skip;
+    return Promise.resolve({ data: skip === 0 ? { items: page1, total: 2, has_more: true } : { items: page2, total: 2, has_more: false } });
+  });
+  renderWithProviders(<ShopSchedulePage />, { route: "/shop-schedule?date=2026-08-14" });
+  expect(await screen.findByTestId("schedule-month-count-2026-08-28-installation")).toHaveTextContent("1");
+  expect(screen.getByTestId("schedule-month-count-2026-08-03-installation")).toHaveTextContent("1");
+  const feedCalls = api.get.mock.calls.filter(([url]) => url === "/calendar/feed");
+  expect(feedCalls.map(([, config]) => config.params.skip)).toEqual([0, 500]);
+  expect(feedCalls.every(([, config]) => config.params.limit === 500 && config.params.window_first)).toBe(true);
+  expect(screen.queryByTestId("shop-schedule-truncated")).not.toBeInTheDocument();
+});
+
+test("a window larger than the page cap says so instead of silently hiding items", async () => {
+  const base = api.get.getMockImplementation();
+  api.get.mockImplementation((url, config) => {
+    if (url !== "/calendar/feed") return base(url, config);
+    const n = config.params.skip / 500;
+    return Promise.resolve({ data: { items: [{ ...feedItems[0], id: `calendar_event:e${n}`, source_id: `e${n}` }], total: 6000, has_more: true } });
+  });
+  renderWithProviders(<ShopSchedulePage />, { route: "/shop-schedule?date=2026-08-14" });
+  expect(await screen.findByTestId("shop-schedule-truncated")).toHaveTextContent("of 6,000 scheduled items");
+  expect(api.get.mock.calls.filter(([url]) => url === "/calendar/feed")).toHaveLength(10);
+});
+
 describe("schedule model", () => {
+  test("events longer than two months appear on every visible date they overlap", () => {
+    const long = { start_at: new Date(2026, 3, 1, 8).toISOString(), end_at: new Date(2026, 8, 30, 17).toISOString() }; // Apr 1 - Sep 30
+    const august = visibleDateKeys("month", "2026-08-14");
+    const keys = itemDateKeys(long, august);
+    expect(keys[0]).toBe(august.first);
+    expect(keys[keys.length - 1]).toBe(august.last);
+    expect(keys).toHaveLength(42);
+    expect(groupByDate([long], august).get("2026-08-31")).toHaveLength(1);
+    expect(itemDateKeys(long, visibleDateKeys("day", "2026-09-29"))).toEqual(["2026-09-29"]);
+    expect(itemDateKeys(long, visibleDateKeys("day", "2026-10-01"))).toEqual([]);
+  });
   test("events land on their local calendar date and multi-day events cover every date", () => {
     const late = { start_at: new Date(2026, 7, 14, 21, 30).toISOString(), end_at: new Date(2026, 7, 14, 23, 0).toISOString() };
     expect(itemDateKeys(late)).toEqual(["2026-08-14"]);

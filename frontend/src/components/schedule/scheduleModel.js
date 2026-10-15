@@ -54,13 +54,17 @@ export function monthGrid(key) {
   });
 }
 
+/** First and last local date keys shown by a view (the month view shows its six-week grid). */
+export function visibleDateKeys(view, key) {
+  if (view === "day") return { first: key, last: key };
+  const grid = monthGrid(key);
+  return { first: grid[0].key, last: grid[41].key };
+}
+
 /** Local-midnight boundaries as ISO instants for the API. */
 export function rangeForView(view, key) {
-  if (view === "day") {
-    return { start_at: localMidnight(key).toISOString(), end_at: localMidnight(addLocalDays(key, 1)).toISOString() };
-  }
-  const grid = monthGrid(key);
-  return { start_at: localMidnight(grid[0].key).toISOString(), end_at: localMidnight(addLocalDays(grid[41].key, 1)).toISOString() };
+  const { first, last } = visibleDateKeys(view, key);
+  return { start_at: localMidnight(first).toISOString(), end_at: localMidnight(addLocalDays(last, 1)).toISOString() };
 }
 
 function localMidnight(key) {
@@ -121,26 +125,35 @@ export function typesForFilter(filter) {
 
 /* ------------------------------------------------------------ placement --- */
 
-/** Local date keys an item covers (multi-day items appear on every date). */
-export function itemDateKeys(item) {
+// Without a visible range, expansion is capped as a safety net; views always pass their range.
+const UNBOUNDED_EXPANSION_DAYS = 400;
+
+/**
+ * Local date keys an item covers (multi-day items appear on every date).
+ * `range` ({ first, last } date keys) clamps the expansion to the visible
+ * calendar, so an event of any length shows on every visible date it overlaps.
+ */
+export function itemDateKeys(item, range = null) {
   const start = new Date(item?.start_at);
   const end = new Date(item?.end_at || item?.start_at);
   if (Number.isNaN(start.getTime())) return [];
   const lastInstant = Number.isNaN(end.getTime()) || end <= start ? start : new Date(end.getTime() - 1);
-  const keys = [];
   let cursor = localDateKey(start);
-  const last = localDateKey(lastInstant);
-  for (let guard = 0; guard < 62 && cursor <= last; guard += 1) {
+  let last = localDateKey(lastInstant);
+  if (range?.first && cursor < range.first) cursor = range.first;
+  if (range?.last && last > range.last) last = range.last;
+  const keys = [];
+  for (let guard = 0; cursor <= last && (range || guard < UNBOUNDED_EXPANSION_DAYS); guard += 1) {
     keys.push(cursor);
     cursor = addLocalDays(cursor, 1);
   }
   return keys;
 }
 
-export function groupByDate(items) {
+export function groupByDate(items, range = null) {
   const map = new Map();
   for (const item of items) {
-    for (const key of itemDateKeys(item)) {
+    for (const key of itemDateKeys(item, range)) {
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(item);
     }
@@ -154,12 +167,18 @@ export function typeCounts(items) {
   return SCHEDULE_TYPES.filter((type) => counts.has(type.key)).map((type) => ({ ...type, count: counts.get(type.key) }));
 }
 
-/** Minutes since local midnight of `dateKey`, clamped to the day. */
+/**
+ * Wall-clock minutes (local hour * 60 + minute) of `iso` on `dateKey`,
+ * clamped to the day. Uses the displayed clock time, not elapsed time since
+ * midnight, so a 9:00 AM event sits at 9:00 on daylight-saving change days.
+ */
 export function minutesWithinDay(iso, dateKey) {
   const date = new Date(iso);
-  const dayStart = localMidnight(dateKey);
-  const minutes = Math.round((date.getTime() - dayStart.getTime()) / 60000);
-  return Math.max(0, Math.min(1440, minutes));
+  if (Number.isNaN(date.getTime())) return 0;
+  const key = localDateKey(date);
+  if (key < dateKey) return 0;
+  if (key > dateKey) return 1440;
+  return date.getHours() * 60 + date.getMinutes();
 }
 
 /**
@@ -233,4 +252,13 @@ export function assignedPeople(item) {
 export function reservedResources(item) {
   const summary = item?.assignment_summary || {};
   return [...(summary.equipment || []), ...(summary.vehicles || []), ...(summary.resources || [])].map((entry) => entry.name).filter(Boolean);
+}
+
+/* ------------------------------------------------------------ authority --- */
+
+// Mirrors CALENDAR_OVERRIDE_ROLES in the backend, which still enforces it.
+const CONFLICT_OVERRIDE_ROLES = new Set(["owner", "admin", "manager"]);
+
+export function canOverrideConflicts(user) {
+  return CONFLICT_OVERRIDE_ROLES.has(String(user?.role || "").toLowerCase());
 }

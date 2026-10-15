@@ -266,3 +266,87 @@ async def test_holder_that_lost_its_lock_does_not_write(monkeypatch):
         await _create(shop, title="Stalled request", reserved_resource_ids=[bay])
     assert lost.value.code == "schedule_lock_lost"
     assert await db.calendar_events.count_documents({"tenant_id": shop["tenant_id"]}) == 0
+
+
+async def _slow_conflict_check(monkeypatch, delay: float = 0.3):
+    real_check = calendar_service.check_conflicts
+
+    async def slow(**kwargs):
+        await asyncio.sleep(delay)  # widens the read-then-write window of an edit
+        return await real_check(**kwargs)
+
+    monkeypatch.setattr(calendar_service, "check_conflicts", slow)
+
+
+async def _assert_consistent(event_id: str):
+    doc = await db.calendar_events.find_one({"id": event_id}, {"_id": 0})
+    active = doc["status"] in {"scheduled", "rescheduled"} and not doc.get("archived_at")
+    assert bool(doc.get("active_source_key")) == active, doc
+    return doc
+
+
+@pytest.mark.parametrize("lifecycle", ["cancel", "complete"])
+@pytest.mark.asyncio
+async def test_edit_racing_cancel_or_complete_leaves_no_stale_source_key(monkeypatch, lifecycle):
+    shop = await _shop()
+    source = {"source_type": "installation", "source_id": f"inst-{shop['s']}"}
+    first = await _create(shop, **source)
+    await _slow_conflict_check(monkeypatch)
+    edit = calendar_service.update_event(tenant_id=shop["tenant_id"], event_id=first["id"], actor_user_id="u1",
+                                         actor_email="u1@example.com", payload={"title": "Edited"}, actor_role="staff")
+
+    async def finish_while_editing():
+        await asyncio.sleep(0.1)  # the edit has read the event and is checking conflicts
+        fn = calendar_service.cancel_event if lifecycle == "cancel" else calendar_service.complete_event
+        return await fn(tenant_id=shop["tenant_id"], event_id=first["id"], actor_user_id="u2", actor_email="u2@example.com")
+
+    edited, finished = await _race(edit, finish_while_editing())
+    assert isinstance(edited, dict) and edited["title"] == "Edited", edited
+    assert finished["status"] == ("canceled" if lifecycle == "cancel" else "completed")
+    doc = await _assert_consistent(first["id"])
+    assert doc["title"] == "Edited" and doc["version"] == 3  # both changes applied, in order
+    monkeypatch.undo()
+    again = await _create(shop, start_at=_at(13), end_at=_at(14), **source)
+    assert not again.get("duplicate_prevented")  # the finished event released its source key
+
+
+@pytest.mark.asyncio
+async def test_stale_lifecycle_write_is_rejected_not_applied(monkeypatch):
+    shop = await _shop()
+    first = await _create(shop, source_type="installation", source_id=f"inst-{shop['s']}")
+    real_check = calendar_service.check_conflicts
+
+    async def cancel_behind_the_lock(**kwargs):
+        result = await real_check(**kwargs)
+        # A writer that bypassed the event lock (or whose lease lapsed) cancels the event mid-edit.
+        await db.calendar_events.update_one({"id": first["id"]}, {"$set": {"status": "canceled", "version": 2},
+                                                                  "$unset": {"active_source_key": ""}})
+        return result
+
+    monkeypatch.setattr(calendar_service, "check_conflicts", cancel_behind_the_lock)
+    with pytest.raises(CalendarError) as stale:
+        await calendar_service.update_event(tenant_id=shop["tenant_id"], event_id=first["id"], actor_user_id="u1",
+                                            actor_email="u1@example.com", payload={"title": "Stale edit"}, actor_role="staff")
+    assert stale.value.code == "event_changed"
+    doc = await _assert_consistent(first["id"])
+    assert doc["status"] == "canceled" and doc["title"] != "Stale edit"
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_lifecycle_requests_keep_status_key_and_version_consistent():
+    shop = await _shop()
+    bay = f"bay-{shop['s']}"
+    for _ in range(3):
+        event = await _create(shop, title="Lifecycle", reserved_resource_ids=[bay], source_type="installation", source_id=uuid.uuid4().hex)
+        kw = {"tenant_id": shop["tenant_id"], "event_id": event["id"], "actor_user_id": "u1", "actor_email": "u1@example.com"}
+        results = await _race(
+            calendar_service.update_event(**kw, payload={"title": "Edited"}, actor_role="staff"),
+            calendar_service.cancel_event(**kw),
+            calendar_service.complete_event(**kw),
+            calendar_service.update_event(**kw, payload={"start_at": _at(9, 30)}, actor_role="staff"),
+        )
+        allowed = {"event_not_completable", "event_changed"}
+        assert all(isinstance(r, dict) or (isinstance(r, CalendarError) and r.code in allowed) for r in results), results
+        doc = await _assert_consistent(event["id"])
+        assert doc["status"] in {"canceled", "completed"}
+        assert doc["version"] == len(doc["history"])  # history = "created" + one entry per applied change

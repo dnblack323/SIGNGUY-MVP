@@ -18,13 +18,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, Filter, Plus, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import AppointmentDialog, { EVENT_TYPE_LABELS, clean, eventId } from "@/components/schedule/AppointmentDialog";
+import AppointmentDialog, { ConflictOverrideWarning, EVENT_TYPE_LABELS, clean, eventId, summarizeConflict } from "@/components/schedule/AppointmentDialog";
 import { DayView, EventDetailsDialog, MonthView, ScheduleRail, TypeDot } from "@/components/schedule/ScheduleViews";
 import {
   SCHEDULE_FILTERS,
   SCHEDULE_TYPES,
   addLocalDays,
   addLocalMonths,
+  canOverrideConflicts,
   fullDateLabel,
   groupByDate,
   isDateKey,
@@ -33,20 +34,26 @@ import {
   rangeForView,
   scheduleType,
   typesForFilter,
+  visibleDateKeys,
 } from "@/components/schedule/scheduleModel";
 
 // Team shifts and absences belong to Team Schedule, not the operational Shop Schedule.
 const OPERATIONAL_SOURCE_TYPES = new Set(["calendar_event", "task", "production_stage"]);
 // Older links (ribbon, other pages) used calendar / agenda / appointments.
 const LEGACY_VIEWS = { calendar: "month", agenda: "day", appointments: "day" };
+// The feed is read in pages of FEED_PAGE_SIZE for the visible window only. The
+// page cap bounds one view's payload; anything beyond it is reported, never hidden.
+const FEED_PAGE_SIZE = 500;
+const FEED_MAX_PAGES = 10;
 const LANE_EVENT_TYPE = { production: "production_milestone", installation: "installation", appointment: "customer_meeting", pickup_delivery: "vehicle_pickup" };
 
 export default function ShopSchedulePage() {
   const qc = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
-  const { hasPerm } = useAuth();
+  const { hasPerm, user } = useAuth();
   const canManageSchedule = hasPerm("schedule:manage");
+  const canOverride = canManageSchedule && canOverrideConflicts(user);
   const query = useMemo(() => new URLSearchParams(location.search || ""), [location.search]);
 
   const rawView = query.get("view");
@@ -67,6 +74,9 @@ export default function ShopSchedulePage() {
   const [editingEvent, setEditingEvent] = useState(null);
   const [quickAddType, setQuickAddType] = useState(null);
   const [detailsItem, setDetailsItem] = useState(null);
+  const [reopenConflict, setReopenConflict] = useState(null);
+  const [reopenReason, setReopenReason] = useState("");
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
 
   function setQuery(patch, { replace = false } = {}) {
     const next = new URLSearchParams(location.search || "");
@@ -105,6 +115,7 @@ export default function ShopSchedulePage() {
   }), [query, quickAddType, rawDate, selectedDate]);
 
   const range = useMemo(() => rangeForView(view, selectedDate), [view, selectedDate]);
+  const visibleDates = useMemo(() => visibleDateKeys(view, selectedDate), [view, selectedDate]);
 
   const { data: employeesData } = useQuery({
     queryKey: ["employees-calendar"],
@@ -126,7 +137,7 @@ export default function ShopSchedulePage() {
 
   const feedParams = {
     ...range,
-    limit: 500,
+    limit: FEED_PAGE_SIZE,
     window_first: true,
     employee_id: employeeFilter === "all" ? undefined : employeeFilter,
     equipment_id: equipmentFilter === "all" ? undefined : equipmentFilter,
@@ -143,7 +154,17 @@ export default function ShopSchedulePage() {
   };
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["calendar-feed", feedParams],
-    queryFn: async () => (await api.get("/calendar/feed", { params: feedParams })).data,
+    queryFn: async () => {
+      const seen = new Map();
+      let total = 0;
+      for (let page = 0; page < FEED_MAX_PAGES; page += 1) {
+        const { data: chunk } = await api.get("/calendar/feed", { params: { ...feedParams, skip: page * FEED_PAGE_SIZE } });
+        for (const item of chunk?.items || []) seen.set(`${item.source_type}:${item.id}`, item);
+        total = Math.max(chunk?.total ?? 0, seen.size);
+        if (!chunk?.has_more || !(chunk?.items || []).length) break;
+      }
+      return { items: [...seen.values()], total, truncated: seen.size < total };
+    },
   });
 
   const filterTypes = typesForFilter(typeFilter);
@@ -156,7 +177,7 @@ export default function ShopSchedulePage() {
       .filter((item) => shownTypes.includes(scheduleType(item)))
       .filter((item) => !q || `${item.title || ""} ${item.display_title || ""} ${item.location || ""} ${item.status || ""}`.toLowerCase().includes(q));
   }, [data, search, shownTypes]);
-  const byDate = useMemo(() => groupByDate(items), [items]);
+  const byDate = useMemo(() => groupByDate(items, visibleDates), [items, visibleDates]);
   const dayItems = byDate.get(selectedDate) || [];
 
   function movePeriod(amount) {
@@ -179,19 +200,32 @@ export default function ShopSchedulePage() {
   }
 
   function openItem(item) {
+    setReopenConflict(null);
+    setReopenReason("");
     setDetailsItem(item);
   }
 
   async function lifecycle(item, action, body, message) {
+    setLifecycleBusy(true);
     try {
-      await api.post(`/calendar/events/${eventId(item)}/${action}`, body);
-      toast.success(message);
+      const { data: updated } = await api.post(`/calendar/events/${eventId(item)}/${action}`, body);
+      const status = updated?.status ? ` · now ${String(updated.status).replace(/_/g, " ")}` : "";
+      toast.success(`${message}${status}`);
       setDetailsItem(null);
+      setReopenConflict(null);
+      setReopenReason("");
       refetch();
     } catch (err) {
-      toast.error(extractError(err));
+      const detail = err?.response?.data?.detail;
+      // Reopening into a booked slot: show the conflict and, for managers, the existing override control.
+      if (action === "reopen" && err?.response?.status === 409 && detail?.code === "conflict") setReopenConflict(summarizeConflict(detail));
+      else toast.error(extractError(err));
+    } finally {
+      setLifecycleBusy(false);
     }
   }
+
+  const REOPEN_BODY = { reason: "Reopened from Shop Schedule" };
 
   function invalidateSchedule() {
     refetch();
@@ -294,6 +328,11 @@ export default function ShopSchedulePage() {
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_260px]">
         <main className="min-w-0">
+          {data?.truncated && (
+            <div className="mb-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="shop-schedule-truncated">
+              Showing the first {data.items.length.toLocaleString()} of {data.total.toLocaleString()} scheduled items. Use Filters or the Day view to see the rest.
+            </div>
+          )}
           {isLoading ? (
             <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground" data-testid="shop-schedule-loading">Loading schedule…</div>
           ) : isError ? (
@@ -322,8 +361,13 @@ export default function ShopSchedulePage() {
         onEdit={(item) => { setDetailsItem(null); setEditingEvent(item); setDialogOpen(true); }}
         onComplete={(item) => lifecycle(item, "complete", { outcome_note: "Completed from Shop Schedule" }, "Appointment completed")}
         onCancel={(item) => lifecycle(item, "cancel", { reason: "Canceled from Shop Schedule" }, "Appointment canceled")}
-        onReopen={(item) => lifecycle(item, "reopen", { reason: "Reopened from Shop Schedule" }, "Appointment reopened")}
-      />
+        onReopen={(item) => lifecycle(item, "reopen", REOPEN_BODY, "Appointment reopened")}
+        busy={lifecycleBusy}
+      >
+        <ConflictOverrideWarning conflict={reopenConflict} canOverride={canOverride} reason={reopenReason} onReasonChange={setReopenReason}
+          busy={lifecycleBusy} actionLabel="Reopen with override"
+          onOverride={() => lifecycle(detailsItem, "reopen", { ...REOPEN_BODY, conflict_override_reason: reopenReason.trim() }, "Appointment reopened with override")} />
+      </EventDetailsDialog>
       <AppointmentDialog
         open={dialogOpen}
         onOpenChange={setDialogState}
@@ -335,6 +379,7 @@ export default function ShopSchedulePage() {
         vehicles={vehicles}
         resources={resources}
         onSaved={invalidateSchedule}
+        canOverride={canOverride}
       />
     </div>
   );
