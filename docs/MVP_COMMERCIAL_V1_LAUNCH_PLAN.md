@@ -3,7 +3,7 @@
 **Prepared:** 2026-10-14 from the completed audits (no new general audit was performed).
 **Revised:** 2026-10-14 (owner priority update) — two tracks. **Track 1** builds independent MVP features now. **Track 2** integrates Price Lab pricing (Engine, Pricing Foundation, all nine calculators) **before launch**, but only after Price Lab's V1 pricing contracts are stable (gate in §E).
 **Status:** APPROVED by the owner 2026-10-14 (three-track strategy and order). Each feature and each stage still needs separate owner authorization and its own PR. Business decisions in §B remain open.
-**Current feature:** **F1 — Subscription access control** (CURRENT, authorized 2026-10-14; implementation PR awaiting owner review).
+**Current feature:** none. **F1 — Subscription access control is COMPLETE** (owner-approved, merged 2026-10-15 via PR #42, merge commit `31d9df9`). Next: F2 — Customizable Home dashboard widgets, awaiting owner authorization.
 
 **Sources used:** `docs/audits/MVP_BASELINE_AUDIT_2026-10-10.md`, `docs/audits/MVP_FEATURE_INVENTORY_2026-10-10.csv` (124 rows, cited below as `#n`), `docs/MVP_CODE_HEALTH_AND_CLEANUP_AUDIT.md` (`CH-n`), `memory/code_issue_register.md` (`CIR-n`), `memory/owner_specification_hold_register.md`, targeted source checks recorded in §B, and Price Lab `origin/main` merge history (read-only).
 
@@ -68,7 +68,7 @@ Preserve MVP backend business logic, tenant isolation, permissions and Order/Wor
 
 | Feature | Scope | Rows / IDs | Class |
 |---|---|---|---|
-| **F1 Subscription access control** | Enforce entitlements on staff API routes; automatic trial start and expiry; billing suspension blocks access; 402 → Billing page; unentitled modules hidden and blocked | B1, B8; `#5 #7 #100 #101` | C |
+| **F1 Subscription access control** — ✅ COMPLETE (PR #42) | Enforce entitlements on staff API routes; automatic trial start and expiry; billing suspension blocks access; 402 → Billing page; unentitled modules hidden and blocked | B1, B8; `#5 #7 #100 #101` | C |
 | **F2 Customizable Home dashboard widgets** | One Home dashboard with nonduplicate, user-arrangeable widgets over existing dashboard/summary APIs; respects permissions and entitlements (UX1C scope) | `#8 #9 #10` | B |
 | **F3 Shop Schedule UI modernization** | Modernized schedule views over the existing schedule service; fix CIR-028 conflict/duplicate enforcement since the surface is being made V1-ready | `#74`; CIR-028 | B (C for CIR-028) |
 | **F4 Production Board improvements** | Board usability and status visibility over existing Work Order stages; no change to stage rules | `#44` | B |
