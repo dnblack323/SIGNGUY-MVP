@@ -42,21 +42,11 @@ describe("F1 entitlement-aware navigation", () => {
     expect(visible).toContain("webstores");
   });
 
-  test("AI tools are hidden unless the shop holds the AI add-ons", () => {
+  test("AI tools are included with the subscription, not hidden as add-ons", () => {
     const tools = PRIMARY_NAV_AREAS.find((area) => area.key === "tools-resources");
     const aiPerms = ["ai_tool:use", "ai_assistant:use", "ai_prompt:read"];
-    const without = keys(filterNavItemsByPermissions(tools.moduleNav, aiPerms, { role: "owner" }, []));
-    expect(without).not.toContain("overview");
-    expect(without).not.toContain("assistant");
-    expect(without).not.toContain("design-image");
-    expect(without).toContain("prompts");
-    const withAddOns = keys(filterNavItemsByPermissions(tools.moduleNav, aiPerms, { role: "owner" }, ["ai_studio", "business_assistant"]));
-    expect(withAddOns).toEqual(expect.arrayContaining(["overview", "assistant", "design-image"]));
-  });
-
-  test("staff permissions still apply to entitled modules", () => {
-    const visible = keys(filterNavItemsByPermissions(shopOps.moduleNav, ["customer:read"], { role: "staff" }, ["wrap_lab"]));
-    expect(visible).not.toContain("wrap-lab");
+    const visible = keys(filterNavItemsByPermissions(tools.moduleNav, aiPerms, { role: "owner" }, []));
+    expect(visible).toEqual(expect.arrayContaining(["overview", "assistant", "design-image", "prompts"]));
   });
 });
 

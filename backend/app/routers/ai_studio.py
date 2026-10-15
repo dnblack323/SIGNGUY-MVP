@@ -3,27 +3,15 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..core.permissions import Perm
-from ..deps import get_current_user, require_entitlement_for_writes, require_permission
+from ..deps import get_current_user, require_permission
 from ..services import ai_studio as svc
 from ..services.ai_studio import AIStudioError
 
-_studio_writes = require_entitlement_for_writes(svc.AI_STUDIO_ENTITLEMENT_FEATURE_KEY)
-
-
-async def _require_studio_for_writes(request: Request, user: dict = Depends(get_current_user)) -> None:
-    """F1: AI Studio is a paid add-on. Existing records stay readable; creating or
-    changing Studio records requires `ai_studio`. Platform catalog bootstrap is
-    platform setup, not tenant use, and keeps its own platform-admin check."""
-    if request.url.path.endswith("/platform/bootstrap"):
-        return
-    await _studio_writes(request=request, user=user)
-
-
-router = APIRouter(prefix="/ai-studio", tags=["ai-studio"], dependencies=[Depends(_require_studio_for_writes)])
+router = APIRouter(prefix="/ai-studio", tags=["ai-studio"])
 
 
 def _raise(exc: AIStudioError) -> None:

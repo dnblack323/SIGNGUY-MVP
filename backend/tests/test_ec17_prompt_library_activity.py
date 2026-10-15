@@ -9,7 +9,6 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.db import db
 from app.deps import get_current_user
-from app.services.entitlements import _upsert_entitlement_for_tests
 from server import app
 
 
@@ -32,8 +31,6 @@ async def ctx():
     owner = {"id": f"owner-{suffix}", "tenant_id": tenant_id, "email": f"owner-{suffix}@example.com", "role": "owner", "is_active": True}
     await db.tenants.insert_one({"id": tenant_id, "slug": tenant_id, "name": "EC17 Prompt Tenant"})
     await db.users.insert_one(owner)
-    # AI Studio is a paid add-on (F1): this shop holds it so the tests cover prompts, not billing.
-    await _upsert_entitlement_for_tests(tenant_id=tenant_id, feature_key="ai_studio")
     yield {"tenant_id": tenant_id, "owner": owner}
     app.dependency_overrides.pop(get_current_user, None)
 

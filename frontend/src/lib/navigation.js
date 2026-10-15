@@ -280,7 +280,6 @@ export const PRIMARY_NAV_AREAS = [
         label: "Studio",
         to: "/studio",
         perm: "ai_tool:use",
-        entitlement: "ai_studio",
         testId: "module-nav-studio-overview",
       },
       {
@@ -288,7 +287,6 @@ export const PRIMARY_NAV_AREAS = [
         label: "Business Assistant",
         to: "/studio/assistant",
         perm: "ai_assistant:use",
-        entitlement: "business_assistant",
         testId: "module-nav-business-assistant",
       },
       {
@@ -296,7 +294,6 @@ export const PRIMARY_NAV_AREAS = [
         label: "Design & Image",
         to: "/studio/design-image",
         perm: "ai_tool:use",
-        entitlement: "ai_studio",
         testId: "module-nav-design-image",
       },
       {
@@ -304,7 +301,6 @@ export const PRIMARY_NAV_AREAS = [
         label: "Marketing & Brand",
         to: "/studio/marketing-brand",
         perm: "ai_tool:use",
-        entitlement: "ai_studio",
         testId: "module-nav-marketing-brand",
       },
       {
@@ -312,7 +308,6 @@ export const PRIMARY_NAV_AREAS = [
         label: "Writing & Documents",
         to: "/studio/writing-documents",
         perm: "ai_tool:use",
-        entitlement: "ai_studio",
         testId: "module-nav-writing-documents",
       },
       {
@@ -320,7 +315,6 @@ export const PRIMARY_NAV_AREAS = [
         label: "Pricing & Profitability",
         to: "/studio/pricing-profitability",
         perm: "ai_tool:use",
-        entitlement: "ai_studio",
         testId: "module-nav-pricing-profitability",
       },
       {

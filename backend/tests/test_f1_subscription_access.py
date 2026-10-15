@@ -349,14 +349,13 @@ async def test_active_shop_get_keeps_existing_create_behavior():
 
 
 @pytest.mark.asyncio
-async def test_ai_studio_writes_require_add_on_but_records_stay_readable():
+async def test_ai_studio_is_not_gated_as_a_separate_add_on():
+    """Owner direction 2026-10-14: AI Studio and the Business Assistant are included
+    with the standard subscription and limited by EC16 credits, so F1 adds no
+    separate add-on gate to Studio records."""
     shop = await _make_shop("studio")
-    await _add_subscription(shop)  # paying Core shop without the AI Studio add-on
+    await _add_subscription(shop)  # paying shop holding no ai_studio entitlement row
     prompt = {"tool_key": "content_writer", "mode_key": "business_copy", "name": "Shop copy", "template": "Write {{topic}}."}
     async with _client(shop["owner"]) as client:
-        blocked = await client.post("/api/ai-studio/prompts", json=prompt)
-        assert blocked.status_code == 402 and blocked.json()["detail"]["code"] == "feature_not_entitled"
-        assert (await client.get("/api/ai-studio/prompts")).status_code == 200
-    await _upsert_entitlement_for_tests(tenant_id=shop["tenant_id"], feature_key="ai_studio")
-    async with _client(shop["owner"]) as client:
         assert (await client.post("/api/ai-studio/prompts", json=prompt)).status_code == 201
+        assert (await client.get("/api/ai-studio/prompts")).status_code == 200
