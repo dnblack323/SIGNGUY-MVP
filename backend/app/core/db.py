@@ -790,6 +790,19 @@ async def ensure_indexes() -> None:
     await db.calendar_events.create_index([("tenant_id", 1), ("production_stage_id", 1), ("start_at", 1)])
     await db.calendar_events.create_index([("tenant_id", 1), ("wrap_project_id", 1), ("start_at", 1)])
     await db.calendar_events.create_index([("tenant_id", 1), ("source_type", 1), ("source_id", 1)])
+    # CIR-028: one active event per source record, enforced by the database.
+    # Existing active events are keyed first (oldest wins; pre-existing
+    # duplicates are left unchanged) so the unique index can be built safely.
+    from ..services.calendar_service import backfill_active_source_keys
+    source_keys = await backfill_active_source_keys()
+    if source_keys["existing_duplicates_left_unchanged"]:
+        logger.warning("CIR-028: %s pre-existing duplicate active calendar events left unchanged", source_keys["existing_duplicates_left_unchanged"])
+    await db.calendar_events.create_index(
+        [("tenant_id", 1), ("active_source_key", 1)], unique=True,
+        partialFilterExpression={"active_source_key": {"$type": "string"}}, name="calendar_active_source_unique",
+    )
+    # CIR-028: short-lived reservation locks; expired locks are removed automatically.
+    await db.schedule_locks.create_index("expires_at", expireAfterSeconds=0)
 
     await db.schedulable_resources.create_index("id", unique=True)
     await db.schedulable_resources.create_index([("tenant_id", 1), ("status", 1), ("name", 1)])
