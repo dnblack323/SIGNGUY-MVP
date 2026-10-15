@@ -1272,6 +1272,9 @@ async def ensure_indexes() -> None:
     )
     await db.wrap_vehicles.create_index([("tenant_id", 1), ("updated_at", -1)])
 
+    # F2 — one Home layout per user per shop.
+    await db.dashboard_preferences.create_index([("tenant_id", 1), ("user_id", 1)], unique=True)
+
     await db.wrap_projects.create_index("id", unique=True)
     await db.wrap_projects.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
     await db.wrap_projects.create_index([("tenant_id", 1), ("customer_id", 1), ("updated_at", -1)])

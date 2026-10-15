@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 
 from ..core.db import db
 from ..core.permissions import Perm
 from ..core.time_utils import serialize_doc
 from ..deps import require_permission
-from ..services import order_completion_service
+from ..services import home_dashboard, order_completion_service
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -57,3 +60,26 @@ async def dashboard_summary(user: dict = Depends(require_permission(Perm.DASHBOA
 @router.get("/shop-operations/analytics")
 async def shop_operations_analytics(user: dict = Depends(require_permission(Perm.DASHBOARD_READ))) -> dict:
     return await order_completion_service.shop_operations_analytics(user["tenant_id"])
+
+
+class HomeLayoutIn(BaseModel):
+    order: list[str] = Field(default_factory=list, max_length=100)
+    hidden: list[str] = Field(default_factory=list, max_length=100)
+    collapsed: list[str] = Field(default_factory=list, max_length=100)
+
+
+@router.get("/home")
+async def home(day_start: Optional[str] = None, day_end: Optional[str] = None,
+               user: dict = Depends(require_permission(Perm.DASHBOARD_READ))) -> dict:
+    """F2 — Home widgets: layout, the widgets this user may use, and their data."""
+    return await home_dashboard.home_dashboard(user, day_start=day_start, day_end=day_end)
+
+
+@router.put("/home/layout")
+async def save_home_layout(payload: HomeLayoutIn, user: dict = Depends(require_permission(Perm.DASHBOARD_READ))) -> dict:
+    return {"layout": await home_dashboard.save_layout(user, payload.model_dump())}
+
+
+@router.delete("/home/layout")
+async def reset_home_layout(user: dict = Depends(require_permission(Perm.DASHBOARD_READ))) -> dict:
+    return {"layout": await home_dashboard.reset_layout(user)}

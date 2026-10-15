@@ -1,22 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import api from "@/lib/api";
-import { useAuth } from "@/auth/AuthContext";
+import { Settings2 } from "lucide-react";
+import api, { extractError } from "@/lib/api";
 import PageHeader from "@/components/layout/PageHeader";
 import { CardsSkeleton } from "@/components/common/LoadingSkeleton";
-import StatusPill from "@/components/common/StatusPill";
 import { EmptyState } from "@/components/common/EmptyState";
-import { AuditTimeline } from "@/components/audit/AuditTimeline";
-import { centsToDollarsString, formatDate, relativeTime } from "@/lib/format";
-import {
-  BriefcaseBusiness,
-  ChevronRight,
-  FileText,
-  Receipt,
-  ShoppingBag,
-  Users,
-} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import DashboardCustomizer from "@/components/home/DashboardCustomizer";
+import { KpiWidget, ListWidget, SummaryWidget } from "@/components/home/HomeWidgets";
+import { toast } from "sonner";
 
+// Shared by Finance, Shop Operations and Team dashboards.
 export function DashboardStatCard({ label, value, helper, icon: Icon, to, testId }) {
   return (
     <Link
@@ -52,201 +47,138 @@ export function DashboardListCard({ title, testId, empty, children, viewAllTo })
   );
 }
 
-function SummaryRow({ to, primary, secondary, statusKind, statusValue, value }) {
-  const row = (
-    <>
-      <div className="min-w-0">
-        <div className="truncate text-sm">{primary}</div>
-        {secondary && <div className="text-xs text-muted-foreground">{secondary}</div>}
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        {value && <span className="text-sm tabular-nums">{value}</span>}
-        {statusKind && <StatusPill kind={statusKind} value={statusValue} />}
-        <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
-      </div>
-    </>
-  );
-
-  if (!to) return <div className="flex items-center justify-between gap-3 px-4 py-3">{row}</div>;
-  return (
-    <Link className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-muted/40" to={to}>
-      {row}
-    </Link>
-  );
+function localDayBounds() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { day_start: start.toISOString(), day_end: end.toISOString() };
 }
 
-function CrossBusinessSection({ title, icon: Icon, testId, children }) {
-  return (
-    <section className="rounded-lg border bg-card" data-testid={testId}>
-      <div className="flex items-center gap-2 border-b px-4 py-3">
-        <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-        <h2 className="font-medium">{title}</h2>
-      </div>
-      <div>{children}</div>
-    </section>
-  );
-}
-
-function RestrictedState({ children }) {
-  return <div className="px-4 py-6 text-sm text-muted-foreground" data-testid="home-permission-empty">{children}</div>;
-}
-
+/**
+ * F2 — Customizable Home. The backend decides which widgets this user may
+ * use and supplies their data; the layout is saved per user and per shop.
+ */
 export default function DashboardPage() {
-  const { hasPerm } = useAuth();
-  const canViewFinance = hasPerm("invoice:read") || hasPerm("finance:read");
-  const canViewTeam = hasPerm("employee:read") || hasPerm("task:read") || hasPerm("timesheet:self");
-  const canReviewTimesheets = hasPerm("timesheet:read") || hasPerm("timesheet:manage");
+  const queryClient = useQueryClient();
+  const [customizing, setCustomizing] = useState(false);
+  const day = useMemo(localDayBounds, []);
+  const queryKey = ["home-dashboard", day.day_start];
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["home-dashboard"],
-    queryFn: async () => (await api.get("/dashboard/summary")).data,
+    queryKey,
+    queryFn: async () => (await api.get("/dashboard/home", { params: day })).data,
   });
-  const teamDashboard = useQuery({
-    queryKey: ["home-team-dashboard"],
-    queryFn: async () => (await api.get("/team/dashboard")).data,
-    enabled: canViewTeam,
-    retry: false,
+
+  const saveLayout = useMutation({
+    mutationFn: async (layout) => (await api.put("/dashboard/home/layout", layout)).data.layout,
+    onSuccess: (layout) => {
+      queryClient.setQueryData(queryKey, (current) => (current ? { ...current, layout } : current));
+      queryClient.invalidateQueries({ queryKey: ["home-dashboard"] });
+    },
+    onError: (err) => toast.error(extractError(err, "Couldn't save your Home layout.")),
   });
-  const pendingTimesheets = useQuery({
-    queryKey: ["home-timesheets-pending"],
-    queryFn: async () => (await api.get("/timesheets/pending-review")).data,
-    enabled: canReviewTimesheets,
-    retry: false,
+  const resetLayout = useMutation({
+    mutationFn: async () => (await api.delete("/dashboard/home/layout")).data.layout,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["home-dashboard"] });
+      setCustomizing(false);
+      toast.success("Home restored to the default layout.");
+    },
+    onError: (err) => toast.error(extractError(err, "Couldn't restore the default layout.")),
   });
+
+  const customizeButton = (
+    <Button type="button" variant="outline" size="sm" onClick={() => setCustomizing(true)} disabled={!data} data-testid="home-customize-button">
+      <Settings2 className="size-4" aria-hidden="true" />
+      Customize
+    </Button>
+  );
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4" data-testid="home-dashboard-page">
+        <PageHeader title="Home" subtitle="Your shop at a glance." testId="dashboard-header" />
+        <CardsSkeleton />
+      </div>
+    );
+  }
+  if (error || !data) {
+    return (
+      <div className="space-y-4" data-testid="home-dashboard-page">
+        <PageHeader title="Home" subtitle="Your shop at a glance." testId="dashboard-header" />
+        <EmptyState title="Couldn't load Home" description="Try refreshing the page." />
+      </div>
+    );
+  }
+
+  const byKey = new Map(data.widgets.map((w) => [w.key, w]));
+  const hidden = new Set(data.layout.hidden);
+  const collapsed = new Set(data.layout.collapsed);
+  const visible = data.layout.order.filter((key) => byKey.has(key) && !hidden.has(key)).map((key) => byKey.get(key));
+  const kpis = visible.filter((w) => w.kind === "kpi");
+  const summaries = visible.filter((w) => w.kind === "summary");
+  const lists = visible.filter((w) => w.kind === "list");
+
+  const toggleCollapsed = (key) => {
+    const next = new Set(collapsed);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    saveLayout.mutate({ ...data.layout, collapsed: [...next] });
+  };
+  const listWidgets = lists.map((w) => (
+    <ListWidget key={w.key} widget={w} data={data.data[w.key]} collapsed={collapsed.has(w.key)} onToggleCollapsed={() => toggleCollapsed(w.key)} />
+  ));
 
   return (
-    <div className="space-y-5" data-testid="home-dashboard-page">
-      <PageHeader title="Home" subtitle="Cross-business attention for the whole company today." testId="dashboard-header" />
-      {isLoading ? (
-        <CardsSkeleton />
-      ) : error ? (
-        <EmptyState title="Couldn't load dashboard" description="Try refreshing the page." />
+    <div className="mx-auto max-w-[1540px] space-y-3" data-testid="home-dashboard-page">
+      <PageHeader title="Home" subtitle="Your shop at a glance." actions={customizeButton} testId="dashboard-header" />
+
+      {visible.length === 0 ? (
+        <div className="rounded-lg border bg-card px-4 py-10 text-center" data-testid="home-all-hidden">
+          <p className="text-sm text-muted-foreground">All Home widgets are hidden.</p>
+          <Button type="button" size="sm" className="mt-3" onClick={() => setCustomizing(true)}>Customize Home</Button>
+        </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <DashboardStatCard testId="home-stat-shop-operations" label="Shop operations" value={data.counts.active_orders} icon={ShoppingBag} to="/shop-operations" helper="Active orders needing oversight" />
-            <DashboardStatCard testId="home-stat-quotes-follow-up" label="Sales follow-up" value={data.counts.quotes_follow_up} icon={FileText} to="/quotes" helper="Sent quotes awaiting decisions" />
-            <DashboardStatCard testId="home-stat-finance" label="Finance attention" value={canViewFinance ? data.counts.unpaid_invoices : "-"} icon={Receipt} to="/finance" helper={canViewFinance ? "Open invoice balances" : "Restricted by permission"} />
-            <DashboardStatCard testId="home-stat-team" label="Team signals" value={canReviewTimesheets ? (pendingTimesheets.data?.items?.length ?? 0) : "-"} icon={Users} to="/team" helper={canViewTeam ? "Team and timesheet signals" : "Restricted by permission"} />
-          </div>
-
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-            <div className="space-y-5 lg:col-span-7">
-              <CrossBusinessSection title="Shop Operations Attention" icon={BriefcaseBusiness} testId="home-section-shop-operations">
-                {(data.quotes_follow_up.length > 0 || data.work_orders_attention.length > 0) ? (
-                  <ul className="divide-y">
-                    {data.quotes_follow_up.slice(0, 3).map((q) => (
-                      <li key={q.id}>
-                        <SummaryRow
-                          to={`/quotes/${q.id}`}
-                          primary={<><span className="mono mr-2 text-xs text-muted-foreground">Q-{q.number}</span>{q.job_name}</>}
-                          secondary={relativeTime(q.created_at)}
-                          statusKind="quote"
-                          statusValue={q.status}
-                          value={centsToDollarsString(q.total_cents)}
-                        />
-                      </li>
-                    ))}
-                    {data.work_orders_attention.slice(0, 3).map((w) => (
-                      <li key={w.id}>
-                        <SummaryRow
-                          to={`/work-orders/${w.id}`}
-                          primary={<><span className="mono mr-2 text-xs text-muted-foreground">W-{w.number}</span>Production attention</>}
-                          secondary={relativeTime(w.created_at)}
-                          statusKind="production"
-                          statusValue={w.production_status}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="px-4 py-6 text-sm text-muted-foreground">No shop operations attention items from current records.</div>
-                )}
-              </CrossBusinessSection>
-
-              <CrossBusinessSection title="Business & Finance" icon={Receipt} testId="home-section-business-finance">
-                {!canViewFinance ? (
-                  <RestrictedState>Finance information is hidden because this account does not have finance or invoice access.</RestrictedState>
-                ) : data.unpaid_invoices.length > 0 ? (
-                  <ul className="divide-y">
-                    {data.unpaid_invoices.slice(0, 5).map((inv) => (
-                      <li key={inv.id}>
-                        <SummaryRow
-                          to={`/invoices/${inv.id}`}
-                          primary={<><span className="mono mr-2 text-xs text-muted-foreground">I-{inv.number}</span>{inv.title}</>}
-                          secondary={`Due ${formatDate(inv.due_date) || "not set"}`}
-                          statusKind="invoice"
-                          statusValue={inv.status}
-                          value={centsToDollarsString(inv.total_cents)}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="px-4 py-6 text-sm text-muted-foreground">No unpaid invoice attention items from current records.</div>
-                )}
-              </CrossBusinessSection>
+          {kpis.length > 0 && (
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6" data-testid="home-kpi-zone">
+              {kpis.map((w) => <KpiWidget key={w.key} widget={w} data={data.data[w.key]} />)}
             </div>
-
-            <div className="space-y-5 lg:col-span-5">
-              <CrossBusinessSection title="Team & Productivity" icon={Users} testId="home-section-team-productivity">
-                {!canViewTeam ? (
-                  <RestrictedState>Team information is hidden because this account does not have team access.</RestrictedState>
-                ) : teamDashboard.isLoading || pendingTimesheets.isLoading ? (
-                  <div className="px-4 py-6 text-sm text-muted-foreground">Loading team signals...</div>
-                ) : teamDashboard.error && !pendingTimesheets.data ? (
-                  <div className="px-4 py-6 text-sm text-muted-foreground">Team summary is unavailable right now.</div>
-                ) : (
-                  <ul className="divide-y">
-                    <li>
-                      <SummaryRow
-                        to="/team/timesheets"
-                        primary="Timesheets awaiting review"
-                        secondary="Existing timesheet review queue"
-                        value={canReviewTimesheets ? String(pendingTimesheets.data?.items?.length ?? 0) : "Restricted"}
-                      />
-                    </li>
-                    <li>
-                      <SummaryRow
-                        to="/team"
-                        primary="Active team members"
-                        secondary="Current team status summary"
-                        value={String(teamDashboard.data?.employee_status_counts?.active ?? 0)}
-                      />
-                    </li>
-                  </ul>
-                )}
-              </CrossBusinessSection>
-
-              <DashboardListCard title="Upcoming & Recent Activity" testId="home-list-recent-activity" empty="No recent activity yet.">
-                {data.recent_activity.length > 0 ? (
-                  <div className="p-3">
-                    <AuditTimeline events={data.recent_activity.slice(0, 6)} />
-                  </div>
-                ) : (
-                  <div className="px-4 py-6 text-sm text-muted-foreground">No recent cross-business activity yet.</div>
-                )}
-              </DashboardListCard>
-
-              <DashboardListCard title="Recent Emails" testId="home-list-recent-emails" empty="No emails sent yet." viewAllTo="/email-history">
-                {data.recent_emails.length > 0 && (
-                  <ul className="divide-y">
-                    {data.recent_emails.slice(0, 5).map((e) => (
-                      <li key={e.id} className="px-4 py-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="truncate text-sm">{e.subject}</div>
-                          <StatusPill kind="email" value={e.status} />
-                        </div>
-                        <div className="text-xs text-muted-foreground">to {e.to_email} - {relativeTime(e.created_at)}</div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </DashboardListCard>
+          )}
+          {summaries.length > 0 ? (
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+              <div className={`grid content-start gap-3 lg:col-span-8 ${summaries.length > 1 ? "md:grid-cols-2" : ""}`} data-testid="home-summary-zone">
+                {summaries.map((w) => <SummaryWidget key={w.key} widget={w} data={data.data[w.key]} />)}
+              </div>
+              {lists.length > 0 && (
+                <aside className="space-y-3 lg:col-span-4" data-testid="home-list-column" aria-label="Lists">{listWidgets}</aside>
+              )}
             </div>
-          </div>
+          ) : (
+            lists.length > 0 && (
+              <div className="grid content-start gap-3 md:grid-cols-2 xl:grid-cols-3" data-testid="home-list-column">{listWidgets}</div>
+            )
+          )}
         </>
       )}
+
+      {data.widgets.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          Your account has no Home widgets available. <Link className="underline" to="/help">Get help</Link>
+        </p>
+      )}
+
+      <DashboardCustomizer
+        open={customizing}
+        layout={data.layout}
+        widgets={data.widgets}
+        restricted={data.restricted}
+        saving={saveLayout.isPending || resetLayout.isPending}
+        onOpenChange={setCustomizing}
+        onRestore={() => resetLayout.mutate()}
+        onSave={(layout) => saveLayout.mutate(layout, { onSuccess: () => { setCustomizing(false); toast.success("Home layout saved."); } })}
+      />
     </div>
   );
 }
