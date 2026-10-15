@@ -22,6 +22,7 @@ from ..core.security import create_access_token
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.email import EmailLog
 from ..models.tenant_billing import TenantBillingAccount
+from . import commercial_entitlements
 from .audit import record_audit
 from .email import is_configured as email_configured, record_processed_activity, send_email
 
@@ -655,6 +656,8 @@ async def mark_paid(user: dict, tenant_id: str, *, note: Optional[str] = None, r
             {"id": tenant_id},
             {"$set": {"is_active": True, "reactivated_at": now, "reactivated_by": user["id"], "reactivated_by_email": user.get("email"), "updated_at": now}},
         )
+    # F1: authorized reactivation restores the paid access a suspension revoked.
+    await commercial_entitlements.project_entitlements_for_tenant(tenant_id=tenant_id, actor_user_id=user["id"], actor_email=user.get("email", "platform"))
     await _audit(user, tenant_id=tenant_id, action="payment.manual_mark_paid", entity_type="tenant", entity_id=tenant_id, summary=f"Manually marked {tenant.get('name')} paid", request=request, metadata={"note": note, "auto_reactivated": auto_reactivated})
     result = await tenant_detail(user, tenant_id)
     result["auto_reactivated"] = auto_reactivated

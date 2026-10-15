@@ -2,13 +2,14 @@
 
 F1 (Commercial V1): this module is also the single owner of a tenant's
 commercial access state, derived only from the existing `tenant_subscriptions`
-and `trial_records` contracts. Time-based loss of access (trial end, day-15
-dunning) is carried by `expires_at` on projected rows, so it takes effect
-without a scheduler or a manual admin call.
+and `trial_records` contracts. A trial's end is carried by `expires_at` on
+projected rows, so trial access lapses without a scheduler or an admin call.
+Subscriptions follow owner decision C2: past-due (including day 15+, which is
+only *eligible* for suspension) keeps access until an admin formally suspends.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from ..core.db import db
@@ -21,8 +22,6 @@ COMMERCIAL_GRANTED_BY = "commercial_billing"
 # Subscription statuses that can still grant access (EC13 contract).
 USABLE_SUBSCRIPTION_STATUSES = ("trialing", "active", "past_due", "cancellation_scheduled")
 ACTIVE_TRIAL_STATUSES = ("free_active", "extended_active")
-# Owner decision C2: day 15+ after the first failed payment is past the grace period.
-PAID_FEATURE_GRACE_DAYS = 15
 
 ACCESS_FULL = "full"
 ACCESS_READ_ONLY = "read_only"
@@ -39,18 +38,9 @@ def _parse_iso(value: Any) -> Optional[datetime]:
     return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
 
 
-def _subscription_paid_access_until(sub: dict, now: datetime) -> tuple[bool, Optional[datetime]]:
-    """Whether a subscription still grants paid features, and until when (None = open-ended)."""
-    if sub.get("status") not in USABLE_SUBSCRIPTION_STATUSES or sub.get("dunning_state") == "suspended":
-        return False, None
-    failed_at = _parse_iso(sub.get("first_payment_failed_at"))
-    if sub.get("status") != "past_due" or not failed_at:
-        return True, None
-    until = failed_at + timedelta(days=PAID_FEATURE_GRACE_DAYS)
-    grace_until = _parse_iso(sub.get("manual_grace_until"))
-    if grace_until and grace_until > until:
-        until = grace_until
-    return until > now, until
+def _subscription_grants_access(sub: dict) -> bool:
+    """EC13 contract: usable statuses grant access unless formally suspended."""
+    return sub.get("status") in USABLE_SUBSCRIPTION_STATUSES and sub.get("dunning_state") != "suspended"
 
 
 def _trial_until(trial: dict, now: datetime) -> Optional[datetime]:
@@ -84,7 +74,7 @@ async def resolve_commercial_access(*, tenant_id: str, as_of: Optional[datetime]
     usable_subscription = False
     async for sub in db.tenant_subscriptions.find({"tenant_id": tenant_id}, {"_id": 0}):
         has_history = True
-        if sub.get("status") in USABLE_SUBSCRIPTION_STATUSES and sub.get("dunning_state") != "suspended":
+        if _subscription_grants_access(sub):
             usable_subscription = True
     if not has_history:
         return {"state": ACCESS_UNBILLED, "read_only": False, "reason": None, "trial_ends_at": None}
@@ -105,25 +95,20 @@ async def project_entitlements_for_tenant(*, tenant_id: str, actor_user_id: str 
     rows previously granted by EC13 and does not modify manually reviewed or
     test-seeded entitlements with a different `granted_by` source.
 
-    Each projected row carries the latest time its granting sources remain
-    valid (trial end, or day-15 dunning cut-off extended by manual grace);
-    `expires_at=None` means open-ended.
+    Rows granted only by a running trial carry the trial's end as
+    `expires_at`; rows granted by a subscription are open-ended
+    (`expires_at=None`) until the subscription is suspended or ends.
     """
     now = utc_now()
-    # product_id -> latest access time across subscriptions (None = open-ended)
-    product_until: dict[str, Optional[datetime]] = {}
+    active_product_ids: set[str] = set()
     async for sub in db.tenant_subscriptions.find(
         {"tenant_id": tenant_id, "status": {"$in": list(USABLE_SUBSCRIPTION_STATUSES)}},
         {"_id": 0},
     ):
-        usable, until = _subscription_paid_access_until(sub, now)
-        if not usable:
+        if not _subscription_grants_access(sub):
             continue
-        for product_id in [sub["plan_product_id"], *(sub.get("add_on_product_ids") or [])]:
-            if product_id in product_until and product_until[product_id] is None:
-                continue
-            previous = product_until.get(product_id)
-            product_until[product_id] = None if until is None else max(until, previous) if previous else until
+        active_product_ids.add(sub["plan_product_id"])
+        active_product_ids.update(sub.get("add_on_product_ids") or [])
 
     trial_until: Optional[datetime] = None
     async for trial in db.trial_records.find(
@@ -135,8 +120,8 @@ async def project_entitlements_for_tenant(*, tenant_id: str, actor_user_id: str 
             trial_until = until
 
     rule_filter: dict[str, Any] = {"enabled": True, "$or": []}
-    if product_until:
-        rule_filter["$or"].append({"product_id": {"$in": sorted(product_until)}})
+    if active_product_ids:
+        rule_filter["$or"].append({"product_id": {"$in": sorted(active_product_ids)}})
     if trial_until:
         rule_filter["$or"].append({"entitlement_scope": "trial"})
     if not rule_filter["$or"]:
@@ -146,12 +131,8 @@ async def project_entitlements_for_tenant(*, tenant_id: str, actor_user_id: str 
     expiry: dict[str, Optional[datetime]] = {}
     async for rule in db.commercial_entitlement_rules.find(rule_filter, {"_id": 0}):
         feature_key = rule["feature_key"]
-        candidates: list[Optional[datetime]] = []
-        if rule.get("product_id") in product_until:
-            candidates.append(product_until[rule["product_id"]])
-        if trial_until and rule.get("entitlement_scope") == "trial":
-            candidates.append(trial_until)
-        rule_until = None if any(c is None for c in candidates) else max(candidates)
+        # Subscription grants are open-ended; trial-only grants end with the trial.
+        rule_until = None if rule.get("product_id") in active_product_ids else trial_until
         if feature_key in expiry:
             previous = expiry[feature_key]
             expiry[feature_key] = None if previous is None or rule_until is None else max(previous, rule_until)

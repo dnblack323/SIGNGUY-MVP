@@ -5,12 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/auth/AuthContext";
+import { isPlatformUser } from "@/lib/navigation";
 import AssistantPanel from "@/components/assistant/AssistantPanel";
 
 export default function AssistantLauncher() {
-  const { hasPerm } = useAuth();
+  const { hasPerm, commercialAccess, user, permissions } = useAuth();
   const [open, setOpen] = useState(false);
   if (!hasPerm?.("ai_assistant:use")) return null;
+  // F1: the paid Business Assistant is not offered to shops without its add-on.
+  const entitlements = commercialAccess?.entitlements;
+  if (Array.isArray(entitlements) && !entitlements.includes("business_assistant") && !isPlatformUser(user, permissions)) return null;
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <Tooltip>

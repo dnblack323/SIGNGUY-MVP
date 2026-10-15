@@ -20,13 +20,37 @@ describe("F1 entitlement-aware navigation", () => {
   });
 
   test("shows add-on modules the shop holds", () => {
-    const visible = keys(filterNavItemsByPermissions(shopOps.moduleNav, PERMS, { role: "owner" }, ["wrap_lab", "webstores"]));
-    expect(visible).toEqual(expect.arrayContaining(["wrap-lab", "webstores"]));
+    const visible = keys(filterNavItemsByPermissions(shopOps.moduleNav, PERMS, { role: "owner" }, ["wrap_lab"]));
+    expect(visible).toContain("wrap-lab");
   });
 
-  test("does not filter when entitlements are unknown", () => {
+  test("does not filter by entitlement when entitlements are unknown", () => {
     const visible = keys(filterNavItemsByPermissions(shopOps.moduleNav, PERMS, { role: "owner" }));
-    expect(visible).toEqual(expect.arrayContaining(["wrap-lab", "webstores"]));
+    expect(visible).toContain("wrap-lab");
+  });
+
+  test("Webstores stays unavailable to shops until released, purchased or not", () => {
+    for (const entitlements of [[], ["webstores"], null]) {
+      expect(keys(filterNavItemsByPermissions(shopOps.moduleNav, PERMS, { role: "owner" }, entitlements))).not.toContain("webstores");
+    }
+  });
+
+  test("Webstores setup is not gated on the publishing entitlement", () => {
+    const platform = { role: "staff", platform_admin: true, platform_role: "admin" };
+    const visible = keys(filterNavItemsByPermissions(shopOps.moduleNav, [...PERMS, "platform:admin"], platform, []));
+    expect(visible).toContain("webstores");
+  });
+
+  test("AI tools are hidden unless the shop holds the AI add-ons", () => {
+    const tools = PRIMARY_NAV_AREAS.find((area) => area.key === "tools-resources");
+    const aiPerms = ["ai_tool:use", "ai_assistant:use", "ai_prompt:read"];
+    const without = keys(filterNavItemsByPermissions(tools.moduleNav, aiPerms, { role: "owner" }, []));
+    expect(without).not.toContain("overview");
+    expect(without).not.toContain("assistant");
+    expect(without).not.toContain("design-image");
+    expect(without).toContain("prompts");
+    const withAddOns = keys(filterNavItemsByPermissions(tools.moduleNav, aiPerms, { role: "owner" }, ["ai_studio", "business_assistant"]));
+    expect(withAddOns).toEqual(expect.arrayContaining(["overview", "assistant", "design-image"]));
   });
 
   test("staff permissions still apply to entitled modules", () => {

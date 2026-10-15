@@ -217,32 +217,56 @@ async def test_trial_entitlement_expires_automatically(monkeypatch):
     assert await has_entitlement(tenant_id=shop["tenant_id"], feature_key=feature_key) is False
 
 
-@pytest.mark.asyncio
-async def test_paid_features_end_after_grace_and_manual_grace_extends():
-    shop = await _make_shop("grace")
-    product_id = f"prod-core-{shop['suffix']}"
-    feature_key = f"f1_paid_{shop['suffix']}"
+_ADMIN = {"role": "staff", "is_active": True, "platform_admin": True, "platform_role": "admin", "email": "pa@example.com"}
+
+
+async def _paid_shop(label: str) -> tuple[dict, dict, str]:
+    shop = await _make_shop(label)
+    product_id = f"prod-{label}-{shop['suffix']}"
+    feature_key = f"f1_{label}_{shop['suffix']}"
     await _add_rule(product_id=product_id, feature_key=feature_key)
     sub = await _add_subscription(shop, product_id=product_id, stripe_subscription_id=f"stripe-{shop['suffix']}")
     await commercial_entitlements.project_entitlements_for_tenant(tenant_id=shop["tenant_id"])
     assert await has_entitlement(tenant_id=shop["tenant_id"], feature_key=feature_key) is True
+    return shop, sub, feature_key
 
-    # Failed payment 16 days ago: past the day-15 cut-off, paid feature lost.
+
+@pytest.mark.asyncio
+async def test_past_due_day_15_keeps_paid_features_until_formal_suspension():
+    shop, sub, feature_key = await _paid_shop("pastdue-ent")
+    # C2: day 15+ is only *eligible* for suspension; nothing is revoked automatically.
     await tenant_billing.handle_invoice_payment_failed(
-        stripe_subscription_id=sub["stripe_subscription_id"], occurred_at=datetime.now(timezone.utc) - timedelta(days=16)
+        stripe_subscription_id=sub["stripe_subscription_id"], occurred_at=datetime.now(timezone.utc) - timedelta(days=20)
     )
-    assert await has_entitlement(tenant_id=shop["tenant_id"], feature_key=feature_key) is False
-
-    # Approved manual grace restores it until the grace date.
-    admin = {"id": "pa-grace", "tenant_id": shop["tenant_id"], "email": "pa@example.com", "role": "staff",
-             "is_active": True, "platform_admin": True, "platform_role": "admin"}
-    await tenant_billing.apply_manual_grace(admin, subscription_id=sub["id"], grace_until=_iso(timedelta(days=3)), reason="Card replaced")
+    stored = await db.tenant_subscriptions.find_one({"id": sub["id"]}, {"_id": 0})
+    assert stored["dunning_state"] == "eligible_for_suspension"
+    await commercial_entitlements.project_entitlements_for_tenant(tenant_id=shop["tenant_id"])
     assert await has_entitlement(tenant_id=shop["tenant_id"], feature_key=feature_key) is True
+    assert (await _create_customer(shop)).status_code == 201
 
-    # Successful payment clears the cut-off entirely.
+    # Approved administrative suspension revokes paid access and core writes.
+    admin = {**_ADMIN, "id": f"pa-{shop['suffix']}", "tenant_id": shop["tenant_id"]}
+    await tenant_billing.suspend_subscription(admin, subscription_id=sub["id"], reason="Day 15 review")
+    assert await has_entitlement(tenant_id=shop["tenant_id"], feature_key=feature_key) is False
+    assert (await _create_customer(shop)).status_code == 402
+
+    # Successful payment restores both.
     await tenant_billing.handle_invoice_payment_succeeded(stripe_subscription_id=sub["stripe_subscription_id"])
-    row = await db.feature_entitlements.find_one({"tenant_id": shop["tenant_id"], "feature_key": feature_key}, {"_id": 0})
-    assert row["enabled"] is True and row["expires_at"] is None
+    assert await has_entitlement(tenant_id=shop["tenant_id"], feature_key=feature_key) is True
+    assert (await _create_customer(shop)).status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_authorized_reactivation_restores_paid_access():
+    from app.services import platform_admin
+
+    shop, sub, feature_key = await _paid_shop("reactivate")
+    admin = {**_ADMIN, "id": f"pa-{shop['suffix']}", "tenant_id": shop["tenant_id"]}
+    await tenant_billing.suspend_subscription(admin, subscription_id=sub["id"], reason="Unpaid")
+    assert await has_entitlement(tenant_id=shop["tenant_id"], feature_key=feature_key) is False
+    await platform_admin.mark_paid(admin, shop["tenant_id"], note="Paid by check")
+    assert await has_entitlement(tenant_id=shop["tenant_id"], feature_key=feature_key) is True
+    assert (await _create_customer(shop)).status_code == 201
 
 
 @pytest.mark.asyncio
