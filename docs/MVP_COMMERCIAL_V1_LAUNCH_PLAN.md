@@ -54,7 +54,7 @@ B1, B2, B4 and B5 were confirmed by direct source checks on 2026-10-14; B9 is ow
 
 **Included:** signup → trial (per owner trial decision) → Core subscription purchase → company settings → **Price Lab Pricing Foundation** → staff users and roles → customizable Home dashboard → customers → quotes priced with the **Price Lab category calculators** (all nine, full-page and order overlay) → staff-recorded quote approval → quote-to-order → work orders, production board and Shop Schedule → invoices → manual payment recording → billing portal, dunning and suspension → onboarding checklist, Help Center and support email.
 
-**Switched off for V1 shops (entitlements), not deleted:** online card payment of invoices, customer portal and public approval links, Webstores, Wrap Lab, AI tools and Assistant, pricing advisory, inventory/purchasing, team time clock/payroll/employee portal, decision rooms and proofs, intake forms.
+**Not sold in V1, not deleted:** paid add-ons with approved EC13 feature keys are enforced by entitlement in the backend (Wrap Lab `wrap_lab`, AI Studio `ai_studio`, Business Assistant `business_assistant`; Webstores publishing `webstores`, with the Webstores module also marked not yet released). Online card payment of invoices stays off until Stripe Connect (U2). Other unfinished modules (inventory/purchasing, team time clock/payroll/employee portal, decision rooms and proofs, intake forms, customer portal and public approval links) have no add-on key; they are Core functions under the billing-status read-only policy, not add-on entitlements. **Open owner decision:** whether any of them should be hidden at V1 launch (a release-availability choice, not a new tier).
 
 ## D. Development order
 

@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import SubscriptionAccessBanner from "@/components/billing/SubscriptionAccessBanner";
 import { useAuth } from "@/auth/AuthContext";
+import { ACCESS_CHANGED_EVENT } from "@/lib/api";
 import { PRIMARY_NAV_AREAS, filterNavItemsByPermissions } from "@/lib/navigation";
 
 jest.mock("@/auth/AuthContext", () => ({
@@ -73,5 +74,18 @@ describe("F1 subscription read-only banner", () => {
     useAuth.mockReturnValue({ commercialAccess: { state: "full", read_only: false, entitlements: [] } });
     renderBanner();
     expect(screen.queryByTestId("subscription-read-only-banner")).toBeNull();
+    expect(screen.queryByTestId("subscription-add-on-notice")).toBeNull();
+  });
+
+  test("a missing add-on shows a dismissible Billing action without navigating", () => {
+    useAuth.mockReturnValue({ commercialAccess: { state: "full", read_only: false, entitlements: [] } });
+    renderBanner();
+    act(() => {
+      window.dispatchEvent(new CustomEvent(ACCESS_CHANGED_EVENT, { detail: { code: "feature_not_entitled" } }));
+    });
+    expect(screen.getByTestId("subscription-add-on-notice")).toHaveTextContent(/not included in your current subscription/i);
+    expect(screen.getByTestId("subscription-read-only-billing-link")).toHaveAttribute("href", "/settings/subscriptions");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByTestId("subscription-add-on-notice")).toBeNull();
   });
 });

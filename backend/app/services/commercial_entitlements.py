@@ -22,6 +22,10 @@ COMMERCIAL_GRANTED_BY = "commercial_billing"
 # Subscription statuses that can still grant access (EC13 contract).
 USABLE_SUBSCRIPTION_STATUSES = ("trialing", "active", "past_due", "cancellation_scheduled")
 ACTIVE_TRIAL_STATUSES = ("free_active", "extended_active")
+# Started-but-unpaid checkouts: nothing has begun, so they never establish
+# lapsed-access history on their own (an abandoned checkout must not lock a shop).
+PENDING_TRIAL_STATUSES = frozenset({"extended_pending_payment"})
+PENDING_SUBSCRIPTION_STATUSES = frozenset({"pending_checkout", "incomplete"})
 
 ACCESS_FULL = "full"
 ACCESS_READ_ONLY = "read_only"
@@ -67,12 +71,16 @@ async def resolve_commercial_access(*, tenant_id: str, as_of: Optional[datetime]
     has_history = False
     trial_ends_at: Optional[datetime] = None
     async for trial in db.trial_records.find({"tenant_id": tenant_id}, {"_id": 0}):
+        if trial.get("status") in PENDING_TRIAL_STATUSES:
+            continue
         has_history = True
         until = _trial_until(trial, now)
         if until and (trial_ends_at is None or until > trial_ends_at):
             trial_ends_at = until
     usable_subscription = False
     async for sub in db.tenant_subscriptions.find({"tenant_id": tenant_id}, {"_id": 0}):
+        if sub.get("status") in PENDING_SUBSCRIPTION_STATUSES:
+            continue
         has_history = True
         if _subscription_grants_access(sub):
             usable_subscription = True
@@ -86,6 +94,11 @@ async def resolve_commercial_access(*, tenant_id: str, as_of: Optional[datetime]
             "trial_ends_at": trial_ends_at.isoformat() if trial_ends_at and not usable_subscription else None,
         }
     return {"state": ACCESS_READ_ONLY, "read_only": True, "reason": "subscription_inactive", "trial_ends_at": None}
+
+
+async def tenant_is_read_only(tenant_id: str) -> bool:
+    """True when the shop's records must not be created or changed (see above)."""
+    return (await resolve_commercial_access(tenant_id=tenant_id))["read_only"]
 
 
 async def project_entitlements_for_tenant(*, tenant_id: str, actor_user_id: str = "system", actor_email: str = "system") -> dict:

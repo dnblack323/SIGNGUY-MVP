@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from ..core.permissions import Perm, permissions_for_role
 from ..deps import require_permission
 from ..services import employee_service, timesheet_service
+from ..services.commercial_entitlements import tenant_is_read_only
 from ..services.timesheet_service import TimesheetError
 
 router = APIRouter(prefix="/timesheets", tags=["timesheets"])
@@ -67,6 +68,7 @@ async def weekly(week_start: str, employee_id: Optional[str] = None,
         target_employee_id = emp["id"]
     return await timesheet_service.get_or_create_weekly_timesheet(
         tenant_id=user["tenant_id"], employee_id=target_employee_id, week_start=week_start,
+        persist=not await tenant_is_read_only(user["tenant_id"]),
     )
 
 

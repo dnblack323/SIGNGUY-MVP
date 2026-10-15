@@ -284,3 +284,79 @@ async def test_suspension_disables_paid_features_and_isolation():
     assert await has_entitlement(tenant_id=shop["tenant_id"], feature_key=feature_key) is False
     assert await has_entitlement(tenant_id=other["tenant_id"], feature_key=feature_key) is False
     assert await db.feature_entitlements.count_documents({"tenant_id": other["tenant_id"]}) == 0
+
+
+# --- Review findings (PR #42) ------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pending_checkouts_do_not_lock_an_unrestricted_shop():
+    shop = await _make_shop("pending")
+    # Started an extended-trial checkout and a plan checkout, paid for neither.
+    await db.trial_records.insert_one({
+        "id": f"trial-{shop['suffix']}", "tenant_id": shop["tenant_id"], "billing_account_id": f"ba-{shop['suffix']}",
+        "trial_kind": "extended", "status": "extended_pending_payment", "starts_at": None, "ends_at": None,
+    })
+    await _add_subscription(shop, status="incomplete", dunning_state="current")
+    access = await commercial_entitlements.resolve_commercial_access(tenant_id=shop["tenant_id"])
+    assert access["state"] == "unbilled" and access["read_only"] is False
+    assert (await _create_customer(shop)).status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_read_only_gets_do_not_create_or_change_records():
+    shop = await _make_shop("ro-get")
+    await _add_trial(shop, ends_in=-timedelta(hours=1))
+    employee_id = f"emp-{shop['suffix']}"
+    await db.employees.insert_one({"id": employee_id, "tenant_id": shop["tenant_id"], "name": "Crew", "status": "active", "hourly_rate_cents": 2500})
+    week = "2026-10-12"
+    async with _client(shop["owner"]) as client:
+        schedule = await client.get("/api/schedules", params={"period_start": week})
+        timesheet = await client.get("/api/timesheets/weekly", params={"week_start": week, "employee_id": employee_id})
+        payroll = await client.get("/api/payroll/periods/current", params={"period_start": week})
+    assert schedule.status_code == 200 and schedule.json()["schedule"]["is_preview"] is True
+    assert timesheet.status_code == 200 and timesheet.json()["is_preview"] is True
+    assert payroll.status_code == 200 and payroll.json()["period"]["is_preview"] is True
+    for collection in ("schedules", "timesheets", "pay_periods"):
+        assert await db[collection].count_documents({"tenant_id": shop["tenant_id"]}) == 0, collection
+
+
+@pytest.mark.asyncio
+async def test_read_only_get_shows_existing_records_without_updating_them():
+    shop = await _make_shop("ro-existing")
+    await _add_subscription(shop, status="unpaid", dunning_state="suspended")
+    employee_id = f"emp-{shop['suffix']}"
+    await db.employees.insert_one({"id": employee_id, "tenant_id": shop["tenant_id"], "name": "Crew", "status": "active"})
+    await db.timesheets.insert_one({
+        "id": f"ts-{shop['suffix']}", "tenant_id": shop["tenant_id"], "employee_id": employee_id, "week_start": "2026-10-10",
+        "week_end": "2026-10-16", "status": "pending", "worked_minutes": 999, "updated_at": "2026-10-12T00:00:00+00:00",
+    })
+    async with _client(shop["owner"]) as client:
+        shown = await client.get("/api/timesheets/weekly", params={"week_start": "2026-10-12", "employee_id": employee_id})
+    assert shown.status_code == 200 and shown.json()["id"] == f"ts-{shop['suffix']}"
+    stored = await db.timesheets.find_one({"id": f"ts-{shop['suffix']}"}, {"_id": 0})
+    assert stored["worked_minutes"] == 999 and stored["updated_at"] == "2026-10-12T00:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_active_shop_get_keeps_existing_create_behavior():
+    shop = await _make_shop("active-get")
+    await _add_subscription(shop)
+    async with _client(shop["owner"]) as client:
+        schedule = await client.get("/api/schedules", params={"period_start": "2026-10-12"})
+    assert schedule.status_code == 200 and "is_preview" not in schedule.json()["schedule"]
+    assert await db.schedules.count_documents({"tenant_id": shop["tenant_id"]}) == 1
+
+
+@pytest.mark.asyncio
+async def test_ai_studio_writes_require_add_on_but_records_stay_readable():
+    shop = await _make_shop("studio")
+    await _add_subscription(shop)  # paying Core shop without the AI Studio add-on
+    prompt = {"tool_key": "content_writer", "mode_key": "business_copy", "name": "Shop copy", "template": "Write {{topic}}."}
+    async with _client(shop["owner"]) as client:
+        blocked = await client.post("/api/ai-studio/prompts", json=prompt)
+        assert blocked.status_code == 402 and blocked.json()["detail"]["code"] == "feature_not_entitled"
+        assert (await client.get("/api/ai-studio/prompts")).status_code == 200
+    await _upsert_entitlement_for_tests(tenant_id=shop["tenant_id"], feature_key="ai_studio")
+    async with _client(shop["owner"]) as client:
+        assert (await client.post("/api/ai-studio/prompts", json=prompt)).status_code == 201

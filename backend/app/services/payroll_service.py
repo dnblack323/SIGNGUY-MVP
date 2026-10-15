@@ -129,10 +129,13 @@ async def _get_period(tenant_id: str, period_id: str) -> dict:
     return doc
 
 
-async def get_or_create_pay_period(*, tenant_id: str, period_start: str, actor_user_id: str) -> dict:
+async def get_or_create_pay_period(*, tenant_id: str, period_start: str, actor_user_id: str, persist: bool = True) -> dict:
+    """`persist=False` (F1 read-only shops) neither creates a period nor links carryovers."""
     week_start, week_end = week_bounds_for_date_str(period_start)
     existing = await db.pay_periods.find_one({"tenant_id": tenant_id, "start_date": week_start}, {"_id": 0})
     if existing:
+        if not persist:
+            return serialize_doc(existing)
         await _link_pending_carryovers(tenant_id, existing, actor_user_id)
         doc = await db.pay_periods.find_one({"id": existing["id"], "tenant_id": tenant_id}, {"_id": 0})
         return serialize_doc(doc or {})
@@ -140,6 +143,8 @@ async def get_or_create_pay_period(*, tenant_id: str, period_start: str, actor_u
         tenant_id=tenant_id, start_date=week_start, end_date=week_end, payday=week_end,
         created_by=actor_user_id, updated_by=actor_user_id,
     ).model_dump()
+    if not persist:
+        return {**serialize_doc(doc), "is_preview": True}
     await db.pay_periods.insert_one(prepare_for_mongo(dict(doc)))
     doc.pop("_id", None)
     await _link_pending_carryovers(tenant_id, doc, actor_user_id)
