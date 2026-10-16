@@ -74,3 +74,14 @@ def get_bytes(storage_key: str) -> Tuple[bytes, str]:
         return _TEST_OBJECTS[storage_key]
     path = _safe_storage_path(storage_key)
     return path.read_bytes(), "application/octet-stream"
+
+
+def delete_bytes(storage_key: str) -> None:
+    if _use_test_storage():
+        _TEST_OBJECTS.pop(storage_key, None)
+        return
+    path = _safe_storage_path(storage_key)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return

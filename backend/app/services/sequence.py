@@ -185,6 +185,53 @@ async def _advance_counter_at_least(*, tenant_id: str, sequence_name: str, value
     )
 
 
+async def advance_record_number_counter_at_least(*, tenant_id: str, record_type: str, value: int) -> None:
+    normalized = normalize_record_type(record_type)
+    config = await _effective_config(tenant_id=tenant_id, record_type=normalized)
+    await _advance_counter_at_least(
+        tenant_id=tenant_id,
+        sequence_name=_sequence_name(normalized, config),
+        value=int(value),
+    )
+
+
+async def snapshot_record_number_counters(*, tenant_id: str, record_types: list[str]) -> dict[str, dict[str, Any]]:
+    snapshots: dict[str, dict[str, Any]] = {}
+    for record_type in record_types:
+        normalized = normalize_record_type(record_type)
+        config = await _effective_config(tenant_id=tenant_id, record_type=normalized)
+        sequence_name = _sequence_name(normalized, config)
+        counter = await db.counters.find_one({"tenant_id": tenant_id, "name": sequence_name}, {"_id": 0})
+        snapshots[normalized] = {
+            "sequence_name": sequence_name,
+            "existed": counter is not None,
+            "value": int(counter.get("value") or 0) if counter else None,
+        }
+    return snapshots
+
+
+async def restore_record_number_counters(
+    *,
+    tenant_id: str,
+    snapshots: dict[str, dict[str, Any]],
+    imported_maxima: dict[str, int],
+) -> None:
+    for record_type, snapshot in snapshots.items():
+        sequence_name = snapshot["sequence_name"]
+        imported_max = int(imported_maxima.get(record_type) or 0)
+        current = await db.counters.find_one({"tenant_id": tenant_id, "name": sequence_name}, {"_id": 0})
+        current_value = int(current.get("value") or 0) if current else 0
+        if current and imported_max > 0 and current_value > imported_max:
+            continue
+        if snapshot["existed"]:
+            await db.counters.update_one(
+                {"tenant_id": tenant_id, "name": sequence_name},
+                {"$set": {"value": int(snapshot["value"] or 0)}},
+            )
+        else:
+            await db.counters.delete_one({"tenant_id": tenant_id, "name": sequence_name})
+
+
 async def next_record_number(
     *,
     tenant_id: str,
