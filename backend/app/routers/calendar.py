@@ -96,6 +96,11 @@ class CompleteIn(BaseModel):
 
 class ReopenIn(BaseModel):
     reason: str
+    conflict_override_reason: Optional[str] = None
+
+
+class RestoreIn(BaseModel):
+    conflict_override_reason: Optional[str] = None
 
 
 class AvailabilityIn(BaseModel):
@@ -155,6 +160,7 @@ async def feed(
     visibility: Optional[str] = None,
     limit: int = Query(200, ge=1, le=500),
     skip: int = Query(0, ge=0),
+    window_first: bool = Query(False, description="Filter stored events to the window before applying the limit (Shop Schedule)."),
     user: dict = Depends(require_permission(Perm.SCHEDULE_READ)),
 ) -> dict:
     try:
@@ -165,7 +171,7 @@ async def feed(
             quote_id=quote_id, order_id=order_id, order_item_id=order_item_id,
             work_order_id=work_order_id, production_stage_id=production_stage_id,
             wrap_project_id=wrap_project_id, status=status, source_type=source_type,
-            visibility=visibility, limit=limit, skip=skip,
+            visibility=visibility, limit=limit, skip=skip, window_first=window_first,
         )
     except CalendarError as e:
         _raise(e)
@@ -326,6 +332,7 @@ async def reopen_event(event_id: str, payload: ReopenIn,
         return await calendar_service.reopen_event(
             tenant_id=user["tenant_id"], event_id=event_id, actor_user_id=user["id"],
             actor_email=user["email"], reason=payload.reason,
+            conflict_override_reason=payload.conflict_override_reason, actor_role=user.get("role"),
         )
     except CalendarError as e:
         _raise(e)
@@ -342,10 +349,12 @@ async def archive_event(event_id: str, user: dict = Depends(require_permission(P
 
 
 @router.post("/events/{event_id}/restore")
-async def restore_event(event_id: str, user: dict = Depends(require_permission(Perm.SCHEDULE_MANAGE))) -> dict:
+async def restore_event(event_id: str, payload: Optional[RestoreIn] = None,
+                        user: dict = Depends(require_permission(Perm.SCHEDULE_MANAGE))) -> dict:
     try:
         return await calendar_service.restore_event(
             tenant_id=user["tenant_id"], event_id=event_id, actor_user_id=user["id"], actor_email=user["email"],
+            conflict_override_reason=payload.conflict_override_reason if payload else None, actor_role=user.get("role"),
         )
     except CalendarError as e:
         _raise(e)
