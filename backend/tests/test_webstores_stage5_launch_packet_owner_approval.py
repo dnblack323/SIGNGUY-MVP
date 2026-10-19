@@ -316,10 +316,13 @@ async def test_stage5_owner_decisions_terms_readiness_and_authorization(stage5_c
         assert launch_ready.json()["checkout_enabled"] is False
         scheduled = await client.post(f"/api/webstores/{store['id']}/status", json={"status": "scheduled", "reason": "Too soon."})
         assert scheduled.status_code == 409
+        # Phase 1 safety lock: a store cannot go live without verified payment.
         live = await client.post(f"/api/webstores/{store['id']}/status", json={"status": "live", "reason": "Launch approved store."})
-        assert live.status_code == 200, live.text
-        assert live.json()["status"] == "live"
-        assert live.json()["checkout_enabled"] is False
+        assert live.status_code == 409, live.text
+        assert live.json()["detail"].startswith("Verified payment setup is required before a Webstore can go live.")
+        held = (await client.get(f"/api/webstores/{store['id']}")).json()["webstore"]
+        assert held["status"] == "launch_ready"
+        assert held["checkout_enabled"] is False
 
         current_product = (await client.get(f"/api/webstores/{store['id']}")).json()["products"][0]
         nonmaterial = await client.patch(f"/api/webstores/{store['id']}/products/{current_product['id']}", json={"expected_revision": current_product["revision"], "production_notes": "Internal-only heat press setting."})

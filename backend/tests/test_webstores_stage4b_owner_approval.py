@@ -255,6 +255,9 @@ async def test_owner_packet_terms_change_request_and_invalidation_are_versioned(
         assert packet_v1["snapshot"]["owner_preview"]["display_name"] == store["name"]
         assert packet_v1["snapshot"]["owner_preview"]["headline"] == "Team Store Launch"
         assert packet_v1["snapshot"]["qr_reference"]["destination"].startswith("/p/webstores/")
+        # Phase 1: no link to the not-yet-built QR image route.
+        assert "download_url" not in packet_v1["snapshot"]["qr_reference"]
+        assert not packet_v1.get("qr_code_url")
         assert "production_cost_cents" not in str(packet_v1["snapshot"])
         assert "supplier_source_info" not in str(packet_v1["snapshot"])
         assert "storage_key" not in str(packet_v1["snapshot"])
@@ -358,10 +361,13 @@ async def test_owner_packet_terms_change_request_and_invalidation_are_versioned(
         assert launch_ready.status_code == 200, launch_ready.text
         assert launch_ready.json()["status"] == "launch_ready"
         assert launch_ready.json()["checkout_enabled"] is False
+        # Phase 1 safety lock: a store cannot go live without verified payment.
         live = await client.post(f"/api/webstores/{store['id']}/status", json={"status": "live", "reason": "Launch approved store."})
-        assert live.status_code == 200, live.text
-        assert live.json()["status"] == "live"
-        assert live.json()["checkout_enabled"] is False
+        assert live.status_code == 409, live.text
+        assert live.json()["detail"].startswith("Verified payment setup is required before a Webstore can go live.")
+        held = (await client.get(f"/api/webstores/{store['id']}")).json()["webstore"]
+        assert held["status"] == "launch_ready"
+        assert held["checkout_enabled"] is False
         nonmaterial = await client.patch(f"/api/webstores/{store['id']}/products/{product['id']}", json={"expected_revision": patched.json()["revision"], "production_notes": "Internal heat press setting."})
         assert nonmaterial.status_code == 200
         still_ready = (await client.get(f"/api/webstores/{store['id']}/launch-readiness")).json()

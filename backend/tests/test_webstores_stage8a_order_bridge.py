@@ -150,7 +150,7 @@ async def test_verified_provider_event_completes_canonical_bridge_automatically(
             amount_cents=3000,
             currency="usd",
         ),
-        provider_authority=ProviderAuthority("test-fixture", "test", "acct-stage8a", "destination", True, True),
+        provider_authority=ProviderAuthority("test-fixture", "test", "acct-stage8a", "direct", True, True),
     )
 
     assert result["payment_event"]["reconciliation_state"] == "canonical_records_created"

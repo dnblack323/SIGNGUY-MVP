@@ -481,6 +481,11 @@ test("staff launch readiness shows packet versioning, terms, QR, schedule, and c
   expect(screen.getByTestId("webstore-launch-packet-summary")).toHaveTextContent("Version 2");
   expect(screen.getByTestId("webstore-qr-preview")).toHaveTextContent("/p/webstores/team-store-public");
   expect(screen.getByTestId("webstore-change-requests")).toHaveTextContent("Please mention Friday pickup");
+  // Phase 1: per-store Stripe onboarding is retired; go-live waits on verified payment.
+  expect(screen.queryByRole("button", { name: /Open Stripe Connect setup/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Resume onboarding/ })).not.toBeInTheDocument();
+  expect(screen.getByTestId("webstore-launch")).toHaveTextContent("Go live requires verified payment setup");
+  expect(screen.getByTestId("webstore-launch")).toBeDisabled();
 
   expect(screen.queryByTestId("webstore-intended-launch-at")).not.toBeInTheDocument();
   expect(screen.queryByTestId("webstore-intended-close-at")).not.toBeInTheDocument();
@@ -643,6 +648,7 @@ test("staff product builder separates planning from focused product setup", asyn
   expect(screen.getByTestId("webstore-product-editor-sections")).toHaveTextContent("Basic Information");
   fireEvent.change(screen.getByTestId("webstore-product-name"), { target: { value: "Updated Draft Shirt" } });
   await user.click(screen.getByRole("tab", { name: "Pricing and Shares" }));
+  expect(screen.getByTestId("webstore-product-platform-fee-locked")).toHaveTextContent("Not editable per product");
   fireEvent.change(screen.getByTestId("webstore-product-selling-price"), { target: { value: "2500" } });
   fireEvent.change(screen.getByTestId("webstore-product-production-cost"), { target: { value: "900" } });
   fireEvent.change(screen.getByTestId("webstore-product-owner-share"), { target: { value: "300" } });
@@ -682,6 +688,7 @@ test("staff product builder separates planning from focused product setup", asyn
     artwork_associations: [{ artwork_id: "art-1" }, { artwork_id: "art-2" }],
     mockup_associations: [{ mockup_id: "mock-1" }],
   })));
+  expect(updateWebstoreProduct.mock.calls.at(-1)[2]).not.toHaveProperty("platform_fee_basis_points");
 
   await user.click(within(screen.getByTestId("webstore-category-resources")).getByRole("button", { name: "Edit" }));
   await user.click(screen.getByTestId("webstore-save-category"));

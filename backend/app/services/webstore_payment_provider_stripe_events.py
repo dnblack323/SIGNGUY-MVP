@@ -14,9 +14,9 @@ class StripeWebhookMixin:
                 return failure
             payload = kwargs.get("payload")
             signature = str(kwargs.get("signature") or "")
-            secret = self.settings.stripe_webhook_secret
+            secret = self.settings.stripe_connect_webhook_secret
             if not isinstance(payload, (bytes, bytearray)) or not signature or not secret:
-                return self._failure("WEBHOOK_INPUT_INVALID", "A Stripe payload, signature, and webhook secret are required.")
+                return self._failure("WEBHOOK_INPUT_INVALID", "A Stripe payload, signature, and Connect webhook secret are required.")
             try:
                 event = stripe.Webhook.construct_event(bytes(payload), signature, secret)
                 event_type = str(event.get("type") or "")

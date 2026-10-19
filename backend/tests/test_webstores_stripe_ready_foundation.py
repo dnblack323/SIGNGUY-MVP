@@ -42,6 +42,7 @@ def _settings(monkeypatch: pytest.MonkeyPatch, **values: str) -> Settings:
         "STRIPE_CHECKOUT_CANCEL_URL": "https://example.test/checkout/cancel",
         "STRIPE_CONNECT_CHARGE_MODEL": "deferred",
         "STRIPE_WEBHOOK_SECRET": "webhook-foundation-only",
+        "STRIPE_CONNECT_WEBHOOK_SECRET": "connect-webhook-foundation-only",
     }
     defaults.update(values)
     for key, value in defaults.items():
@@ -141,12 +142,13 @@ async def test_development_webhook_harness_is_unavailable_without_dev_bypass(mon
 
 
 def test_provider_status_never_serializes_secrets(monkeypatch: pytest.MonkeyPatch):
-    settings = _settings(monkeypatch, STRIPE_ENABLED="true", STRIPE_CONNECT_CHARGE_MODEL="destination")
+    settings = _settings(monkeypatch, STRIPE_ENABLED="true", STRIPE_CONNECT_CHARGE_MODEL="direct")
     status = provider_configuration_status(settings)
     rendered = repr(status)
     assert settings.stripe_secret_key not in rendered
     assert settings.stripe_publishable_key not in rendered
     assert settings.stripe_webhook_secret not in rendered
+    assert settings.stripe_connect_webhook_secret not in rendered
 
 
 class _TypedProviderFixture:
@@ -229,7 +231,7 @@ async def test_unconfigured_refund_has_no_canonical_mutation():
 async def test_provider_refund_is_reconciled_before_canonical_recording_and_is_idempotent():
     suffix = uuid.uuid4().hex[:8]
     ctx = await _seed_refundable_webstore(suffix)
-    authority = ProviderAuthority("test-fixture", "test", "acct_test_fixture", "test-fixture", True, True)
+    authority = ProviderAuthority("test-fixture", "test", "acct_test_fixture", "direct", True, True)
     provider = _TypedProviderFixture(
         {
             "provider": "test-fixture",
@@ -262,7 +264,7 @@ async def test_provider_refund_is_reconciled_before_canonical_recording_and_is_i
 @pytest.mark.asyncio
 async def test_payout_and_dispute_reconciliation_accept_only_typed_events_and_reject_conflicts():
     ctx = await _seed_refundable_webstore(uuid.uuid4().hex[:8])
-    authority = ProviderAuthority("test-fixture", "test", "acct_test_fixture", "test-fixture", True, True)
+    authority = ProviderAuthority("test-fixture", "test", "acct_test_fixture", "direct", True, True)
     event_data = {
         "event_type": "payout",
         "provider": "test-fixture",
@@ -302,10 +304,10 @@ async def test_payout_and_dispute_reconciliation_accept_only_typed_events_and_re
     ("authority", "expected_state"),
     [
         (ProviderAuthority("stripe", "test", "acct_test", "deferred", True, True), "test_configuration_incomplete"),
-        (ProviderAuthority("stripe", "test", "acct_test", "destination", True, False), "connected_verification_required"),
-        (ProviderAuthority("stripe", "test", "acct_test", "destination", True, True, restriction_status="restricted"), "restricted"),
-        (ProviderAuthority("stripe", "test", "acct_test", "destination", True, True), "ready_for_test_checkout"),
-        (ProviderAuthority("stripe", "live", "acct_live", "destination", True, True), "live_ready"),
+        (ProviderAuthority("stripe", "test", "acct_test", "direct", True, False), "connected_verification_required"),
+        (ProviderAuthority("stripe", "test", "acct_test", "direct", True, True, restriction_status="restricted"), "restricted"),
+        (ProviderAuthority("stripe", "test", "acct_test", "direct", True, True), "ready_for_test_checkout"),
+        (ProviderAuthority("stripe", "live", "acct_live", "direct", True, True), "live_ready"),
     ],
 )
 def test_provider_status_maps_all_authoritative_states(monkeypatch: pytest.MonkeyPatch, authority, expected_state):
@@ -337,9 +339,9 @@ def test_provider_status_rejects_connected_account_mode_mismatch(monkeypatch: py
         STRIPE_MODE="live",
         STRIPE_SECRET_KEY="sk_live_mode_mismatch",
         STRIPE_PUBLISHABLE_KEY="pk_live_mode_mismatch",
-        STRIPE_CONNECT_CHARGE_MODEL="destination",
+        STRIPE_CONNECT_CHARGE_MODEL="direct",
     )
-    authority = ProviderAuthority("stripe", "test", "acct_test", "destination", True, True)
+    authority = ProviderAuthority("stripe", "test", "acct_test", "direct", True, True)
 
     status = provider_configuration_status(settings, authority)
 
@@ -376,7 +378,7 @@ async def test_typed_verified_payment_conversion_is_exactly_once_and_excludes_ra
             "immutable_snapshot": {"financial_lines": []},
         }
     )
-    authority = ProviderAuthority("test-fixture", "test", "acct_test_fixture", "test-fixture", True, True)
+    authority = ProviderAuthority("test-fixture", "test", "acct_test_fixture", "direct", True, True)
     verified = VerifiedProviderPayment(
         provider="test-fixture",
         provider_mode="test",

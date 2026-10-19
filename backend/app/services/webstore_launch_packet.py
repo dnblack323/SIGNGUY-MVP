@@ -87,7 +87,6 @@ async def _assemble_launch_packet_snapshot(user: dict, store: dict, fields: dict
     qr_reference = {
         "destination": qr_destination,
         "status": "launch_destination",
-        "download_url": f"/api/webstores/{store['id']}/qr-code-preview",
         "warning": "QR destination opens to buyers only after the Webstore lifecycle status is live.",
     }
     pricing_summary = {
@@ -146,7 +145,9 @@ async def _assemble_launch_packet_snapshot(user: dict, store: dict, fields: dict
         "snapshot_hash": _json_hash(snapshot),
         "pricing_summary": pricing_summary,
         "promotion_copy": promotion_copy,
-        "qr_code_url": fields.get("qr_code_url") or qr_reference["download_url"],
+        # No QR image route exists yet (marketing toolkit, Phase 8); only the
+        # destination link is shared until then.
+        "qr_code_url": fields.get("qr_code_url"),
         "share_url": fields.get("share_url") or qr_destination,
     }
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from .webstore_shared import *
+from ..core.security_guards import WEBSTORE_STRIPE_CHARGE_MODEL
 from .webstore_payment_boundary import provider_authority_for_webstore
 from .webstore_public_cart import _validate_personalization, _variant_allowed, quote_public_cart
 from .webstore_public_storefront import _storefront_by_slug
@@ -90,7 +91,8 @@ async def create_purchase_intent(slug: str, fields: dict[str, Any], *, allow_int
             }
         )
         line_total = int(line["line_total_cents"])
-        fee_bps = int(full_product.get("platform_fee_basis_points") or 0)
+        # Phase 1 lock: never charge a stored per-product platform fee.
+        fee_bps = 0
         financial_lines.append(
             {
                 "product_id": product_id,
@@ -279,6 +281,6 @@ async def create_buyer_order(
     """
     if provider_authority is None:
         return await create_purchase_intent(slug, fields)
-    if not provider_authority.verified or not provider_authority.webhook_verified or provider_authority.charge_model == "deferred":
+    if not provider_authority.verified or not provider_authority.webhook_verified or provider_authority.charge_model != WEBSTORE_STRIPE_CHARGE_MODEL:
         raise WebstoreError("payment_provider_not_configured", "Provider-authoritative Webstore preparation is unavailable", 503)
     return await create_purchase_intent(slug, fields, allow_internal_draft=True)

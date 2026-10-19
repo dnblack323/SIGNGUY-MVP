@@ -58,7 +58,7 @@ async def create_template(user: dict, fields: dict[str, Any]) -> dict:
         suggested_production_cost_cents=_clean_money(fields.get("suggested_production_cost_cents")),
         suggested_selling_price_cents=_clean_money(fields.get("suggested_selling_price_cents")),
         suggested_store_owner_share_cents=_clean_money(fields.get("suggested_store_owner_share_cents")),
-        platform_fee_basis_points=int(fields.get("platform_fee_basis_points", 0)),
+        platform_fee_basis_points=_locked_platform_fee_basis_points(fields.get("platform_fee_basis_points")),
         internal_notes=_clean_optional_text(fields.get("internal_notes")),
         active=status == "active",
         created_by_user_id=user.get("id"),
@@ -218,10 +218,7 @@ async def update_template(user: dict, template_id: str, fields: dict[str, Any]) 
         if key in fields:
             updates[key] = _clean_money(fields.get(key))
     if "platform_fee_basis_points" in fields:
-        bps = int(fields.get("platform_fee_basis_points") or 0)
-        if bps < 0 or bps > 10000:
-            raise WebstoreError("invalid_platform_fee", "Platform fee basis points must be between 0 and 10000", 400)
-        updates["platform_fee_basis_points"] = bps
+        updates["platform_fee_basis_points"] = _locked_platform_fee_basis_points(fields.get("platform_fee_basis_points"))
     if "status" in fields:
         updates["status"] = _clean_status(fields.get("status"), TEMPLATE_STATUSES, template.get("status", "active"), "template_status")
         updates["active"] = updates["status"] == "active"

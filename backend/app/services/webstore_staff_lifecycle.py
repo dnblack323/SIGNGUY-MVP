@@ -5,6 +5,26 @@ from .webstore_shared import *
 from .webstore_launch import _compat_launch_readiness, launch_readiness
 
 
+GO_LIVE_PAYMENT_REQUIRED_MESSAGE = "Verified payment setup is required before a Webstore can go live."
+
+
+def _require_go_live_payment_readiness(readiness: dict) -> None:
+    """Phase 1 safety lock: a Webstore may go live only with verified payment.
+
+    Preparing a store (launch_ready) still follows the ordinary launch gates.
+    Going live additionally requires provider-authoritative checkout readiness,
+    so no store can be public while buyers are unable to pay.
+    """
+    payment = readiness.get("payment_readiness") or {}
+    if not payment.get("provider_authority"):
+        reason = str(payment.get("reason") or "").strip()
+        raise WebstoreError(
+            "payment_not_ready",
+            f"{GO_LIVE_PAYMENT_REQUIRED_MESSAGE} {reason}".strip(),
+            409,
+        )
+
+
 async def set_webstore_status(user: dict, webstore_id: str, status: str, reason: Optional[str] = None) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_MANAGE if status in {"live", "launch_ready", "scheduled", "paused", "closed", "archived"} else Perm.WEBSTORE_WRITE)
     store = await _get_store(user["tenant_id"], webstore_id)
@@ -19,6 +39,8 @@ async def set_webstore_status(user: dict, webstore_id: str, status: str, reason:
         readiness = await _compat_launch_readiness(user, webstore_id)
         if not readiness["ready"]:
             raise WebstoreError("launch_gates_failed", "Webstore launch gates are not satisfied", 409)
+        if status == "live":
+            _require_go_live_payment_readiness(readiness)
     updates: dict[str, Any] = {"status": status}
     if status == "live":
         updates["launched_at"] = _now_iso()
@@ -145,6 +167,8 @@ async def transition_webstore_lifecycle(user: dict, webstore_id: str, lifecycle_
         readiness = await _compat_launch_readiness(user, webstore_id)
         if not readiness["ready"]:
             raise WebstoreError("launch_gates_failed", "Webstore launch gates are not satisfied", 409)
+        if target_status == "live":
+            _require_go_live_payment_readiness(readiness)
     updates: dict[str, Any] = {"status": target_status}
     if target_status == "live":
         updates["launched_at"] = _now_iso()

@@ -167,11 +167,14 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
             "key": "payment_ready",
             "state": payment["state"],
             "reason": payment["reason"],
-            "severity": "advisory",
-            "action": "Complete existing payment-readiness prerequisites when available.",
+            "severity": "required_for_live",
+            "action": "Verified payment setup is required before the Webstore can go live.",
             "resource": {"type": "payment_readiness", "id": webstore_id},
             "owner_wording": "Payment setup is not ready yet.",
+            # Not blocking for launch preparation; going live is refused
+            # separately until provider authority exists (Phase 1 lock).
             "blocking": False,
+            "required_for_live": True,
             "stage5_deferred": not bool(payment["provider_authority"]),
             "stage7_provider_authority": bool(payment["provider_authority"]),
         },
@@ -203,9 +206,12 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
         }
     )
     ready = all(not gate["blocking"] for gate in gates)
+    go_live_ready = ready and bool(payment["provider_authority"])
+    checks["go_live_ready"] = go_live_ready
     return {
         "webstore_id": webstore_id,
         "ready": ready,
+        "go_live_ready": go_live_ready,
         "checks": checks,
         "gates": gates,
         "current_packet": await _portal_launch_packet_with_history(user["tenant_id"], packet),

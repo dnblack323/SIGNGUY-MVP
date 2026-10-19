@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 import stripe
 
+from ..core.security_guards import WEBSTORE_STRIPE_CHARGE_MODEL
 from .webstore_payment_provider_types import ProviderResult
 
 class StripeCheckoutMixin:
@@ -35,8 +36,8 @@ class StripeCheckoutMixin:
                 return self._failure("CHECKOUT_INPUT_INVALID", "A connected account and valid server-priced line items are required.")
             if not str(kwargs.get("idempotency_key") or "").strip():
                 return self._failure("IDEMPOTENCY_KEY_REQUIRED", "Checkout-session creation requires an idempotency key.")
-            if self.settings.stripe_charge_model not in {"destination", "direct"}:
-                return self._failure("CHARGE_MODEL_UNSUPPORTED", "Stripe Connect charge model is not approved for Webstore checkout.")
+            if self.settings.stripe_charge_model != WEBSTORE_STRIPE_CHARGE_MODEL:
+                return self._failure("CHARGE_MODEL_UNSUPPORTED", "Webstore checkout accepts only Stripe Connect direct charges.")
             metadata = {
                 "tenant_id": str(kwargs.get("tenant_id") or ""),
                 "webstore_id": str(kwargs.get("webstore_id") or ""),
@@ -54,10 +55,9 @@ class StripeCheckoutMixin:
                 "payment_intent_data": {"metadata": metadata},
                 "idempotency_key": str(kwargs.get("idempotency_key") or kwargs.get("purchase_intent_id") or ""),
             }
-            if self.settings.stripe_charge_model == "destination":
-                params["payment_intent_data"]["transfer_data"] = {"destination": account_reference}
-            else:
-                params.update(self._account_request_options(account_reference))
+            # Direct charge: the Checkout Session is created on the connected
+            # account, so that account (not the SIGNGUY platform) is merchant.
+            params.update(self._account_request_options(account_reference))
             try:
                 session = await self._call(stripe.checkout.Session.create, **params)
                 return ProviderResult.success(

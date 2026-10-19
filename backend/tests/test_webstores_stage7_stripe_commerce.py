@@ -33,8 +33,9 @@ def _settings(monkeypatch: pytest.MonkeyPatch) -> Settings:
         "STRIPE_CONNECT_REFRESH_URL": "https://example.test/connect/refresh",
         "STRIPE_CHECKOUT_SUCCESS_URL": "https://example.test/checkout/success",
         "STRIPE_CHECKOUT_CANCEL_URL": "https://example.test/checkout/cancel",
-        "STRIPE_CONNECT_CHARGE_MODEL": "destination",
-        "STRIPE_WEBHOOK_SECRET": "whsec_stage7",
+        "STRIPE_CONNECT_CHARGE_MODEL": "direct",
+        "STRIPE_WEBHOOK_SECRET": "whsec_platform_stage7",
+        "STRIPE_CONNECT_WEBHOOK_SECRET": "whsec_connect_stage7",
     }
     for key, value in values.items():
         monkeypatch.setenv(key, value)
@@ -67,7 +68,7 @@ async def test_configured_factory_selects_real_adapter_without_network(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_checkout_session_uses_server_line_items_and_destination_account(monkeypatch: pytest.MonkeyPatch):
+async def test_checkout_session_uses_server_line_items_and_direct_charge_on_connected_account(monkeypatch: pytest.MonkeyPatch):
     settings = _settings(monkeypatch)
     provider = StripeWebstorePaymentProvider(settings)
     captured: dict = {}
@@ -91,7 +92,10 @@ async def test_checkout_session_uses_server_line_items_and_destination_account(m
     assert result.ok is True
     assert result.data["checkout_session_id"] == "cs_stage7"
     assert captured["line_items"][0]["price_data"]["unit_amount"] == 2500
-    assert captured["payment_intent_data"]["transfer_data"] == {"destination": "acct_stage7"}
+    # Direct charge: created on the connected account, never routed through the platform.
+    assert captured["stripe_account"] == "acct_stage7"
+    assert "transfer_data" not in captured["payment_intent_data"]
+    assert "application_fee_amount" not in captured["payment_intent_data"]
     assert captured["metadata"]["purchase_intent_id"] == "intent-a"
 
 
@@ -330,7 +334,7 @@ async def test_refund_webhook_reuses_refund_and_ledger_rows(monkeypatch: pytest.
             "idempotency_key": f"refund-{suffix}",
         }
     )
-    authority = ProviderAuthority("stripe", "test", "acct_stage7", "destination", True, True)
+    authority = ProviderAuthority("stripe", "test", "acct_stage7", "direct", True, True)
     result = ProviderResult.success(
         {
             "event_kind": "refund",
@@ -368,7 +372,7 @@ async def test_failed_refund_webhook_is_authority_checked_and_idempotent():
     suffix = uuid.uuid4().hex[:8]
     tenant_id = f"tenant-failed-refund-stage7-{suffix}"
     webstore_id = f"store-failed-refund-stage7-{suffix}"
-    authority = ProviderAuthority("stripe", "test", "acct_stage7", "destination", True, True)
+    authority = ProviderAuthority("stripe", "test", "acct_stage7", "direct", True, True)
     result = ProviderResult.success(
         {
             "event_kind": "refund",
@@ -529,7 +533,7 @@ async def test_verified_webhook_holds_payment_for_stage8_without_order_or_produc
             "immutable_snapshot": {"financial_lines": []},
         }
     )
-    authority = ProviderAuthority("stripe", "test", "acct_stage7", "destination", True, True)
+    authority = ProviderAuthority("stripe", "test", "acct_stage7", "direct", True, True)
     result = await process_verified_payment_event(
         verified_payment=VerifiedProviderPayment(
             provider="stripe",
@@ -579,7 +583,7 @@ async def test_verified_payment_rejects_wrong_webstore_reference():
             "status": "pending_payment",
         }
     )
-    authority = ProviderAuthority("stripe", "test", "acct_stage7", "destination", True, True)
+    authority = ProviderAuthority("stripe", "test", "acct_stage7", "direct", True, True)
 
     with pytest.raises(webstores_service.WebstoreError) as error:
         await process_verified_payment_event(
@@ -625,7 +629,7 @@ async def test_failed_payment_event_is_idempotent_and_does_not_create_commerce_r
             "status": "pending_payment",
         }
     )
-    authority = ProviderAuthority("stripe", "test", "acct_stage7", "destination", True, True)
+    authority = ProviderAuthority("stripe", "test", "acct_stage7", "direct", True, True)
     result = ProviderResult.success(
         {
             "event_kind": "payment_failure",
@@ -684,7 +688,7 @@ async def test_pending_payment_event_is_idempotent_without_marking_intent_failed
             "status": "pending_payment",
         }
     )
-    authority = ProviderAuthority("stripe", "test", "acct_stage7", "destination", True, True)
+    authority = ProviderAuthority("stripe", "test", "acct_stage7", "direct", True, True)
     result = ProviderResult.success(
         {
             "event_kind": "payment_pending",
