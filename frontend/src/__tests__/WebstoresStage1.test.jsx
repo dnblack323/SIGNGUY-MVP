@@ -161,7 +161,7 @@ beforeEach(() => {
   getWebstoreQuestionnaire.mockResolvedValue({ templates: [] });
   getWebstoreQuestionnaireResponse.mockResolvedValue({ submission: null });
   generateLaunchPacket.mockResolvedValue({});
-  getLaunchReadiness.mockResolvedValue({ ready: false, checks: {}, payment_unavailable_reason: "Not configured." });
+  getLaunchReadiness.mockResolvedValue({ setup_complete: false, ready_to_publish: false, checks: {}, payment_unavailable_reason: "Not configured." });
   getWebstoreSetupProgress.mockResolvedValue({ setup_state: "not_started", steps: [] });
   getWebstorePaymentProviderStatus.mockResolvedValue({ status: { label: "Not configured", reason: "Stripe integration is disabled." }, actions: {} });
   getWebstoreReports.mockResolvedValue({ order_count: 0, gross_sales_cents: 0, ledger_totals_cents: {} });
@@ -289,7 +289,8 @@ test("webstore detail exposes computed payment readiness without a manual ready 
     products: [],
   });
   getLaunchReadiness.mockResolvedValue({
-    ready: false,
+    setup_complete: false,
+    ready_to_publish: false,
     checks: { payment_ready: false, active_public_products_with_prices: false },
     payment_unavailable_reason: "Real verified provider checkout is not connected yet.",
   });
@@ -430,7 +431,7 @@ test("webstore detail shows setup intake, assignments, files, and answer preview
     launch_packets: [],
     products: [],
   });
-  getLaunchReadiness.mockResolvedValue({ ready: false, checks: { payment_ready: false }, payment_unavailable_reason: "Real verified provider checkout is not connected yet." });
+  getLaunchReadiness.mockResolvedValue({ setup_complete: false, ready_to_publish: false, checks: { payment_ready: false }, payment_unavailable_reason: "Real verified provider checkout is not connected yet." });
   getWebstoreReports.mockResolvedValue({ order_count: 0, gross_sales_cents: 0, ledger_totals_cents: {} });
   getWebstoreSetupProgress.mockResolvedValue({
     setup_state: "staff_review",
@@ -504,7 +505,7 @@ test("webstore overview presents one vertical guided setup module with the next 
   getWebstoreQuestionnaire.mockResolvedValue({ templates: [{ id: "fundraiser-template", sections: [] }] });
   getWebstoreQuestionnaireResponse.mockResolvedValue({ submission: null });
   listWebstoreAssignments.mockResolvedValue([{ id: "owner-1", role: "owner", email: "owner@example.com", status: "active" }]);
-  getLaunchReadiness.mockResolvedValue({ ready: false, payment_unavailable_reason: "Payment setup remains separate." });
+  getLaunchReadiness.mockResolvedValue({ setup_complete: false, ready_to_publish: false, payment_unavailable_reason: "Payment setup remains separate." });
   getWebstoreReports.mockResolvedValue({ order_count: 0, gross_sales_cents: 0, ledger_totals_cents: {} });
 
   const user = userEvent.setup();
@@ -535,7 +536,7 @@ test("guided setup branding files and appearance carry into Storefront without p
     launch_packets: [],
     products: [],
   });
-  getLaunchReadiness.mockResolvedValue({ ready: false, checks: { payment_ready: false }, payment_unavailable_reason: "Real verified provider checkout is not connected yet." });
+  getLaunchReadiness.mockResolvedValue({ setup_complete: false, ready_to_publish: false, checks: { payment_ready: false }, payment_unavailable_reason: "Real verified provider checkout is not connected yet." });
   getWebstoreReports.mockResolvedValue({ order_count: 0, gross_sales_cents: 0, ledger_totals_cents: {} });
   listWebstoreSetupFiles.mockResolvedValue([
     {

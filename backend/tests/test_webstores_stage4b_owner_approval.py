@@ -215,7 +215,8 @@ async def test_owner_packet_terms_change_request_and_invalidation_are_versioned(
         initial_readiness = (await client.get(f"/api/webstores/{store['id']}/launch-readiness")).json()
         assert initial_readiness["checks"]["included_products_ready"] is False
         assert initial_readiness["checks"]["packet_generated"] is False
-        assert initial_readiness["public_launch_blocked_until_batch_3"] is True
+        assert initial_readiness["setup_complete"] is False
+        assert initial_readiness["ready_to_publish"] is False
 
         blocked_packet = await client.post(f"/api/webstores/{store['id']}/launch-packets", json={"promotion_copy": "Review the booster launch."})
         assert blocked_packet.status_code == 409
@@ -350,13 +351,17 @@ async def test_owner_packet_terms_change_request_and_invalidation_are_versioned(
 
     async with await _client_as(stage4b_ctx["staff"]) as client:
         ready = (await client.get(f"/api/webstores/{store['id']}/launch-readiness")).json()
-        assert ready["ready"] is True
+        # Setup is complete, but the store is not ready to publish without payment.
+        assert ready["setup_complete"] is True
+        assert ready["ready_to_publish"] is False
         assert ready["checks"]["packet_approved"] is True
         assert ready["checks"]["terms_current"] is True
         assert ready["checks"]["payment_ready"] is False
-        assert ready["checks"]["buyer_commerce_connected"] is False
-        assert next(g for g in ready["gates"] if g["key"] == "payment_ready")["blocking"] is False
-        assert next(g for g in ready["gates"] if g["key"] == "buyer_commerce_connected")["stage5_deferred"] is True
+        payment_gate = next(g for g in ready["gates"] if g["key"] == "payment_ready")
+        assert payment_gate["blocking"] is False
+        assert payment_gate["required_to_publish"] is True
+        assert payment_gate["state"] == "blocked"
+        assert [g["key"] for g in ready["gates"]].count("payment_ready") == 1
         launch_ready = await client.post(f"/api/webstores/{store['id']}/status", json={"status": "launch_ready", "reason": "Stage 5 gates passed."})
         assert launch_ready.status_code == 200, launch_ready.text
         assert launch_ready.json()["status"] == "launch_ready"

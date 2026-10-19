@@ -47,24 +47,9 @@ async def test_configured_factory_selects_real_adapter_without_network(monkeypat
     settings = _settings(monkeypatch)
     provider = get_webstore_payment_provider(settings)
     assert isinstance(provider, StripeWebstorePaymentProvider)
-
-    account_calls: list[dict] = []
-
-    def create_account(**kwargs):
-        account_calls.append(kwargs)
-        return SimpleNamespace(id="acct_stage7")
-
-    def create_link(**kwargs):
-        return SimpleNamespace(url="https://connect.stripe.test/onboarding")
-
-    monkeypatch.setattr("app.services.webstore_payment_provider.stripe.Account.create", create_account)
-    monkeypatch.setattr("app.services.webstore_payment_provider.stripe.AccountLink.create", create_link)
-    result = await provider.create_connected_account_onboarding_link(tenant_id="tenant-a", webstore_id="store-a")
-
-    assert result.ok is True
-    assert result.data["account_reference"] == "acct_stage7"
-    assert result.data["onboarding_url"].startswith("https://")
-    assert account_calls[0]["metadata"]["tenant_id"] == "tenant-a"
+    # Per-Webstore Express onboarding was retired in Phase 1; shop-level
+    # onboarding arrives in Phase 7.
+    assert not hasattr(provider, "create_connected_account_onboarding_link")
 
 
 @pytest.mark.asyncio

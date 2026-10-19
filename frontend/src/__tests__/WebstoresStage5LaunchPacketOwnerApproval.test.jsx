@@ -63,7 +63,6 @@ function mockStage5PortalDetail() {
           { key: "packet_approved", state: "waiting", owner_wording: "Packet approval is still needed." },
           { key: "payment_ready", state: "not_configured", owner_wording: "Payment setup is not ready yet." },
         ],
-        public_launch_blocked_until_batch_3: true,
       },
     });
   });

@@ -1,4 +1,8 @@
-"""Stripe connected-account onboarding and readiness actions."""
+"""Stripe connected-account readiness actions.
+
+Shop-level onboarding (one connection per sign shop) is added in Webstores
+Phase 7. The previous per-Webstore Express account creation was removed.
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -8,47 +12,6 @@ import stripe
 from .webstore_payment_provider_types import ProviderResult
 
 class StripeAccountMixin:
-        async def create_connected_account_onboarding_link(self, **kwargs: Any) -> ProviderResult:
-            failure = self._configure()
-            if failure:
-                return failure
-            account_reference = self._account_id(kwargs)
-            try:
-                if not account_reference:
-                    account = await self._call(
-                        stripe.Account.create,
-                        type="express",
-                        capabilities={
-                            "card_payments": {"requested": True},
-                            "transfers": {"requested": True},
-                        },
-                        metadata={
-                            "tenant_id": str(kwargs.get("tenant_id") or ""),
-                            "webstore_id": str(kwargs.get("webstore_id") or ""),
-                            "app": "signguy-webstore",
-                        },
-                        idempotency_key=str(kwargs.get("idempotency_key") or f"webstore-connect-{kwargs.get('webstore_id')}"),
-                    )
-                    account_reference = str(account.id)
-                link = await self._call(
-                    stripe.AccountLink.create,
-                    account=account_reference,
-                    refresh_url=self.settings.stripe_connect_refresh_url,
-                    return_url=self.settings.stripe_connect_return_url,
-                    type="account_onboarding",
-                )
-                return ProviderResult.success(
-                    {
-                        "provider": self.provider_name,
-                        "provider_mode": self.settings.stripe_mode,
-                        "account_reference": account_reference,
-                        "onboarding_url": str(link.url),
-                        "onboarding_state": "pending",
-                    }
-                )
-            except Exception as exc:
-                return self._failure("PAYMENT_PROVIDER_ERROR", f"Stripe onboarding could not be started: {exc}")
-
         async def retrieve_connected_account_status(self, **kwargs: Any) -> ProviderResult:
             failure = self._configure()
             if failure:

@@ -13,9 +13,6 @@ class NotConfiguredWebstorePaymentProvider:
             message="Webstore Stripe integration is deferred and not enabled; no provider operation was performed.",
         )
 
-    async def create_connected_account_onboarding_link(self, **kwargs: Any) -> ProviderResult:
-        return self._failure()
-
     async def retrieve_connected_account_status(self, **kwargs: Any) -> ProviderResult:
         return self._failure()
 

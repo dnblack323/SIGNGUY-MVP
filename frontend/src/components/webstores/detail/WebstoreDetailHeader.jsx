@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { webstoreStatusLabel } from "./WebstoreDetailUtils";
 
 export default function WebstoreDetailHeader({ model }) {
   const {
@@ -35,7 +36,7 @@ export default function WebstoreDetailHeader({ model }) {
 return <>
       <PageHeader
         title={store.name}
-        subtitle={`Webstores setup - ${formatLabel(store.webstore_type || store.store_type || "general")} - ${formatLabel(store.status)}`}
+        subtitle={`Webstores setup - ${formatLabel(store.webstore_type || store.store_type || "general")} - ${webstoreStatusLabel(store.status)}`}
         actions={
           <div className="flex items-center gap-2 flex-wrap">
             {ownerAssignment ? (

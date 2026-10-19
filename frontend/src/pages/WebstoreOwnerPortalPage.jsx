@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { webstoreStatusLabel } from "@/components/webstores/detail/WebstoreDetailUtils";
 import {
   BrandingCard,
   SetupFilesCard,
@@ -37,7 +38,7 @@ export default function WebstoreOwnerPortalPage() {
           </p>
         </div>
         <Badge variant="outline" className="capitalize">
-          {String(data.webstore.status).replace(/_/g, " ")}
+          {webstoreStatusLabel(data.webstore.status)}
         </Badge>
       </div>
       <SetupProgressCard data={data} progress={portal.progress} />

@@ -165,13 +165,13 @@ return (
                   <Button
                     className="w-full"
                     disabled={
-                      !readiness.data?.ready || markLaunchReady.isPending
+                      !readiness.data?.setup_complete || markLaunchReady.isPending
                     }
                     onClick={() => markLaunchReady.mutate()}
                     data-testid="webstore-launch-ready"
                   >
                     <ShieldCheck className="size-4 mr-2" />
-                    Mark ready to launch
+                    Mark setup complete
                   </Button>
                   <Button
                     className="w-full"

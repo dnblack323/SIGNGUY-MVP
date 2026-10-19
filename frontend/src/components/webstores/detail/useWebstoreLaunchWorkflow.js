@@ -115,10 +115,10 @@ export function useWebstoreLaunchWorkflow({
       setWebstoreStatus(
         id,
         "launch_ready",
-        "All Stage 5 owner approval gates passed",
+        "All setup requirements are complete",
       ),
     onSuccess: async () => {
-      toast.success("Marked ready to launch");
+      toast.success("Marked setup complete");
       await refresh();
     },
     onError: (err) => toast.error(extractError(err)),

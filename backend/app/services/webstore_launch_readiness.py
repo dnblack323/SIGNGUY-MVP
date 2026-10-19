@@ -18,6 +18,7 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
     terms_version = store.get("required_terms_version") or CURRENT_WEBSTORE_TERMS_VERSION
     terms = await _terms_acceptance(user["tenant_id"], webstore_id, terms_version)
     payment = await _payment_readiness(store)
+    payment_verified = bool(payment["provider_authority"])
     type_requirements = evaluate_type_requirements(store)
     branding = await branding_svc.published_branding_for_store(store)
     branding_source = branding or store.get("branding") or {}
@@ -164,31 +165,17 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
             "requirements": type_requirements["items"],
         },
         {
+            # The single payment gate. It does not block setup completion,
+            # but a Webstore can be published only when it is ready.
             "key": "payment_ready",
-            "state": payment["state"],
+            "state": "ready" if payment_verified else "blocked",
             "reason": payment["reason"],
-            "severity": "required_for_live",
-            "action": "Verified payment setup is required before the Webstore can go live.",
+            "severity": "required_to_publish",
+            "action": "Verified payment setup is required before the Webstore can be published.",
             "resource": {"type": "payment_readiness", "id": webstore_id},
-            "owner_wording": "Payment setup is not ready yet.",
-            # Not blocking for launch preparation; going live is refused
-            # separately until provider authority exists (Phase 1 lock).
+            "owner_wording": "Payment setup is not ready yet." if not payment_verified else "Payment setup is verified.",
             "blocking": False,
-            "required_for_live": True,
-            "stage5_deferred": not bool(payment["provider_authority"]),
-            "stage7_provider_authority": bool(payment["provider_authority"]),
-        },
-        {
-            "key": "buyer_commerce_connected",
-            "state": "ready" if payment["provider_authority"] else "blocked",
-            "reason": "Verified provider checkout and webhook reconciliation are connected." if payment["provider_authority"] else payment["reason"],
-            "severity": "advisory",
-            "action": "Complete Stripe Connect setup and verification before enabling buyer checkout.",
-            "resource": {"type": "batch_scope", "id": "batch_3"},
-            "owner_wording": "Buyer checkout is available after provider verification.",
-            "blocking": False,
-            "stage5_deferred": not bool(payment["provider_authority"]),
-            "stage7_provider_authority": bool(payment["provider_authority"]),
+            "required_to_publish": True,
         },
     ]
     checks = {gate["key"]: not gate["blocking"] for gate in gates}
@@ -201,17 +188,17 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
             "launch_packet": bool(packet),
             "owner_approved": approved,
             "terms_fee_acknowledged": bool(terms),
-            "payment_ready": bool(payment["ready"]),
-            "buyer_commerce_connected": bool(payment["provider_authority"]),
+            "payment_ready": payment_verified,
         }
     )
-    ready = all(not gate["blocking"] for gate in gates)
-    go_live_ready = ready and bool(payment["provider_authority"])
-    checks["go_live_ready"] = go_live_ready
+    # Setup complete: every setup gate passes (payment may still be pending).
+    # Ready to publish: setup complete AND the payment provider is verified.
+    setup_complete = all(not gate["blocking"] for gate in gates)
+    ready_to_publish = setup_complete and payment_verified
     return {
         "webstore_id": webstore_id,
-        "ready": ready,
-        "go_live_ready": go_live_ready,
+        "setup_complete": setup_complete,
+        "ready_to_publish": ready_to_publish,
         "checks": checks,
         "gates": gates,
         "current_packet": await _portal_launch_packet_with_history(user["tenant_id"], packet),
@@ -222,7 +209,6 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
         "type_requirements": type_requirements,
         "payment_readiness_source": "provider_boundary",
         "payment_unavailable_reason": payment["reason"],
-        "public_launch_blocked_until_batch_3": not bool(payment["provider_authority"]),
     }
 
 

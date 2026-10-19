@@ -113,7 +113,7 @@ beforeEach(() => {
     launch_packets: [],
     products: [{ id: "prod-1", name: "Team Shirt", selling_price_cents: 2500, status: "active", public: true }],
   });
-  getLaunchReadiness.mockResolvedValue({ ready: false, checks: { payment_ready: false }, payment_unavailable_reason: "Real verified provider checkout is not connected yet." });
+  getLaunchReadiness.mockResolvedValue({ setup_complete: false, ready_to_publish: false, checks: { payment_ready: false }, payment_unavailable_reason: "Real verified provider checkout is not connected yet." });
   getWebstoreReports.mockResolvedValue({ order_count: 0, gross_sales_cents: 0, ledger_totals_cents: {} });
   getWebstoreOrders.mockResolvedValue({ items: [], total: 0 });
   handoffWebstoreOrderToProduction.mockResolvedValue({});

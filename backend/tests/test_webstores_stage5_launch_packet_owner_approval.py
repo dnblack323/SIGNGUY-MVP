@@ -212,7 +212,9 @@ async def test_stage5_owner_decisions_terms_readiness_and_authorization(stage5_c
         assert authorized_detail.status_code == 200, authorized_detail.text
         assert authorized_detail.json()["commerce_summary"]["order_count"] == 0
         assert authorized_detail.json()["commerce_summary"]["gross_sales_cents"] == 0
-        assert authorized_detail.json()["public_launch_blocked_until_batch_3"] is True
+        assert "public_launch_blocked_until_batch_3" not in authorized_detail.json()
+        owner_payment_gate = next(g for g in authorized_detail.json()["readiness_summary"] if g["key"] == "payment")
+        assert owner_payment_gate["owner_wording"] == "Payment setup is not live yet."
     async with await _portal_client(built["other_owner_token"]) as portal:
         denied = await portal.get(f"/api/portal/webstores/{store['id']}")
         assert denied.status_code == 403
@@ -292,7 +294,8 @@ async def test_stage5_owner_decisions_terms_readiness_and_authorization(stage5_c
         assert await db.approvals.count_documents({"tenant_id": stage5_ctx["tenant_id"], "parent_type": "webstore_product", "parent_id": built["product"]["id"]}) == product_history_before
         assert await db.approvals.count_documents({"tenant_id": stage5_ctx["tenant_id"], "parent_type": "webstore_mockup", "parent_id": built["mockup"]["id"]}) == mockup_history_before
         ready = (await client.get(f"/api/webstores/{store['id']}/launch-readiness")).json()
-        assert ready["ready"] is True
+        assert ready["setup_complete"] is True
+        assert ready["ready_to_publish"] is False
         assert ready["checks"]["questionnaire_complete"] is True
         assert ready["checks"]["included_products_ready"] is True
         assert ready["checks"]["branding_preview_complete"] is True
@@ -300,8 +303,8 @@ async def test_stage5_owner_decisions_terms_readiness_and_authorization(stage5_c
         assert ready["checks"]["terms_current"] is True
         assert ready["checks"]["active_public_products_with_prices"] is False
         assert ready["payment_readiness"]["ready"] is False
-        assert next(g for g in ready["gates"] if g["key"] == "payment_ready")["stage5_deferred"] is True
-        assert next(g for g in ready["gates"] if g["key"] == "buyer_commerce_connected")["blocking"] is False
+        assert next(g for g in ready["gates"] if g["key"] == "payment_ready")["required_to_publish"] is True
+        assert not any(g["key"] == "buyer_commerce_connected" for g in ready["gates"])
 
     async with await _client_as(stage5_ctx["basic_staff"]) as basic_client:
         forbidden_final = await basic_client.post(f"/api/webstores/{store['id']}/status", json={"status": "launch_ready", "reason": "Not authorized."})

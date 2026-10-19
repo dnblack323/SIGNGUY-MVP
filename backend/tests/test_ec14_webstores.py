@@ -258,13 +258,12 @@ async def test_public_storefront_cannot_go_live_before_provider_checkout_authori
             app.dependency_overrides[get_current_user] = _override(ctx["owner"])
             ready = await owner_client_again.get(f"/api/webstores/{store['id']}/launch-readiness")
             assert ready.status_code == 200
-            assert ready.json()["ready"] is True, ready.text
+            assert ready.json()["setup_complete"] is True, ready.text
             assert ready.json()["checks"]["payment_ready"] is False
-            assert ready.json()["public_launch_blocked_until_batch_3"] is True
+            assert ready.json()["ready_to_publish"] is False
             assert ready.json()["payment_readiness_source"] == "provider_boundary"
             launch_ready = await owner_client_again.post(f"/api/webstores/{store['id']}/status", json={"status": "launch_ready"})
             assert launch_ready.status_code == 200, launch_ready.text
-            assert ready.json()["go_live_ready"] is False
             # Phase 1 safety lock: going live requires provider payment authority.
             launched = await owner_client_again.post(f"/api/webstores/{store['id']}/status", json={"status": "live"})
             assert launched.status_code == 409, launched.text
