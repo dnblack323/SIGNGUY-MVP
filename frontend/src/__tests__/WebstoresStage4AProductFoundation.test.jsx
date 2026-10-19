@@ -175,7 +175,7 @@ beforeEach(() => {
       },
     ],
   });
-  getLaunchReadiness.mockResolvedValue({ ready: false, checks: { payment_ready: false }, payment_unavailable_reason: "Real verified provider checkout is not connected yet." });
+  getLaunchReadiness.mockResolvedValue({ setup_complete: false, ready_to_publish: false, checks: { payment_ready: false }, payment_unavailable_reason: "Real verified provider checkout is not connected yet." });
   getWebstorePaymentProviderStatus.mockResolvedValue({ status: { label: "Not configured", reason: "Stripe integration is disabled." }, actions: {} });
   getWebstoreReports.mockResolvedValue({ order_count: 0, gross_sales_cents: 0, ledger_totals_cents: {} });
   getWebstoreOrders.mockResolvedValue({ items: [], total: 0 });
@@ -459,28 +459,34 @@ test("staff launch readiness shows packet versioning, terms, QR, schedule, and c
     }],
   });
   getLaunchReadiness.mockResolvedValueOnce({
-    ready: false,
+    setup_complete: false,
+    ready_to_publish: false,
     current_terms_version: "webstore_terms_2026_07",
     terms_acceptance: null,
     payment_readiness: { state: "not_configured" },
     payment_unavailable_reason: "Real verified provider checkout is not connected yet.",
-    public_launch_blocked_until_batch_3: false,
     gates: [
       { key: "packet_delivered", state: "ready", reason: "Current packet version was delivered.", blocking: false, action: "Send the current packet version." },
       { key: "packet_approved", state: "blocked", reason: "Store Owner approval is required.", blocking: true, action: "Owner approves v2." },
       { key: "terms_current", state: "blocked", reason: "Store Owner must accept Terms version webstore_terms_2026_07.", blocking: true, action: "Owner accepts Terms." },
-      { key: "buyer_commerce_connected", state: "ready", reason: "Public storefront, checkout, Orders, and Production handoff are connected.", blocking: false },
+      { key: "payment_ready", state: "blocked", reason: "Real verified provider checkout is not connected yet.", blocking: false, required_to_publish: true },
     ],
   });
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
   await user.click(await screen.findByTestId("webstore-advanced-setup-toggle"));
   expect(await screen.findByTestId("webstore-readiness-gate-packet_delivered")).toHaveTextContent("Current packet version was delivered");
-  expect(screen.getByTestId("webstore-readiness-gate-buyer_commerce_connected")).toHaveTextContent("connected");
+  expect(screen.getByTestId("webstore-readiness-gate-payment_ready")).toHaveTextContent("not connected");
+  expect(screen.getByTestId("webstore-launch-ready")).toHaveTextContent("Mark setup complete");
   expect(screen.getByTestId("webstore-terms-readiness")).toHaveTextContent("Waiting on separate Store Owner Terms acceptance");
   expect(screen.getByTestId("webstore-launch-packet-summary")).toHaveTextContent("Version 2");
   expect(screen.getByTestId("webstore-qr-preview")).toHaveTextContent("/p/webstores/team-store-public");
   expect(screen.getByTestId("webstore-change-requests")).toHaveTextContent("Please mention Friday pickup");
+  // Phase 1: per-store Stripe onboarding is retired; go-live waits on verified payment.
+  expect(screen.queryByRole("button", { name: /Open Stripe Connect setup/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Resume onboarding/ })).not.toBeInTheDocument();
+  expect(screen.getByTestId("webstore-launch")).toHaveTextContent("Go live requires verified payment setup");
+  expect(screen.getByTestId("webstore-launch")).toBeDisabled();
 
   expect(screen.queryByTestId("webstore-intended-launch-at")).not.toBeInTheDocument();
   expect(screen.queryByTestId("webstore-intended-close-at")).not.toBeInTheDocument();
@@ -643,6 +649,7 @@ test("staff product builder separates planning from focused product setup", asyn
   expect(screen.getByTestId("webstore-product-editor-sections")).toHaveTextContent("Basic Information");
   fireEvent.change(screen.getByTestId("webstore-product-name"), { target: { value: "Updated Draft Shirt" } });
   await user.click(screen.getByRole("tab", { name: "Pricing and Shares" }));
+  expect(screen.getByTestId("webstore-product-platform-fee-locked")).toHaveTextContent("Not editable per product");
   fireEvent.change(screen.getByTestId("webstore-product-selling-price"), { target: { value: "2500" } });
   fireEvent.change(screen.getByTestId("webstore-product-production-cost"), { target: { value: "900" } });
   fireEvent.change(screen.getByTestId("webstore-product-owner-share"), { target: { value: "300" } });
@@ -682,6 +689,7 @@ test("staff product builder separates planning from focused product setup", asyn
     artwork_associations: [{ artwork_id: "art-1" }, { artwork_id: "art-2" }],
     mockup_associations: [{ mockup_id: "mock-1" }],
   })));
+  expect(updateWebstoreProduct.mock.calls.at(-1)[2]).not.toHaveProperty("platform_fee_basis_points");
 
   await user.click(within(screen.getByTestId("webstore-category-resources")).getByRole("button", { name: "Edit" }));
   await user.click(screen.getByTestId("webstore-save-category"));

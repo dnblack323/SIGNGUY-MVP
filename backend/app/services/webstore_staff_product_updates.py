@@ -53,7 +53,7 @@ async def update_product(user: dict, webstore_id: str, product_id: str, fields: 
     if "fundraiser_share_cents" in fields:
         updates["fundraiser_share_cents"] = _clean_money(fields.get("fundraiser_share_cents"), default=int(product.get("fundraiser_share_cents") or 0))
     if "platform_fee_basis_points" in fields:
-        updates["platform_fee_basis_points"] = _clean_basis_points(fields.get("platform_fee_basis_points"), default=int(product.get("platform_fee_basis_points") or 0))
+        updates["platform_fee_basis_points"] = _locked_platform_fee_basis_points(fields.get("platform_fee_basis_points"))
     if "fulfillment_methods" in fields:
         updates["fulfillment_methods"] = _normalize_fulfillment_methods(fields.get("fulfillment_methods"))
     if "default_fulfillment_method" in fields:

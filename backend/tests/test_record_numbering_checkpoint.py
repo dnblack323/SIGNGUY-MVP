@@ -359,7 +359,7 @@ async def test_webstore_buyer_order_numbers_are_idempotent_and_do_not_affect_can
         provider="test-fixture",
         mode="test",
         account_reference="acct_test_fixture",
-        charge_model="test-fixture",
+        charge_model="direct",
         webhook_verified=True,
         verified=True,
     )
@@ -368,6 +368,10 @@ async def test_webstore_buyer_order_numbers_are_idempotent_and_do_not_affect_can
 
     assert first["purchase_intent"]["status"] == "pending_payment"
     assert replay["purchase_intent"]["id"] == first["purchase_intent"]["id"]
+    # Phase 1 lock: a legacy stored per-product fee (200 bps above) is never charged.
+    stored_intent = await db.webstore_purchase_intents.find_one({"tenant_id": tenant_id, "id": first["purchase_intent"]["id"]}, {"_id": 0})
+    financial_lines = stored_intent["immutable_snapshot"]["financial_lines"]
+    assert financial_lines and all(line["platform_fee_cents"] == 0 and line["platform_fee_basis_points"] == 0 for line in financial_lines)
     assert await db.webstore_buyer_orders.count_documents({"tenant_id": tenant_id}) == 0
     assert await db.record_number_allocations.count_documents(
         {"tenant_id": tenant_id, "record_type": "webstore_order", "idempotency_key": idempotency_key}

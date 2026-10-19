@@ -84,7 +84,7 @@ async def create_product(user: dict, webstore_id: str, fields: dict[str, Any]) -
         selling_price_cents=selling_price_cents,
         store_owner_share_cents=store_owner_share_cents,
         fundraiser_share_cents=fundraiser_share_cents,
-        platform_fee_basis_points=_clean_basis_points(fields.get("platform_fee_basis_points"), default=int((template or {}).get("platform_fee_basis_points") or 0)),
+        platform_fee_basis_points=_locked_platform_fee_basis_points(fields.get("platform_fee_basis_points")),
         fulfillment_methods=_normalize_fulfillment_methods(fields.get("fulfillment_methods")),
         default_fulfillment_method=(str(fields.get("default_fulfillment_method")).strip().lower() if fields.get("default_fulfillment_method") else None),
         pickup_instructions=_clean_optional_text(fields.get("pickup_instructions"), limit=2000),

@@ -44,6 +44,8 @@ class GuardViolation:
 
 
 WEBSTORE_STRIPE_PLACEHOLDERS = frozenset({"", "change-me", "changeme", "placeholder", "test", "example"})
+WEBSTORE_STRIPE_CHARGE_MODEL = "direct"
+WEBSTORE_STRIPE_DISALLOWED_CHARGE_MODELS = frozenset({"destination", "separate"})
 
 
 def _valid_callback_url(value: str | None) -> bool:
@@ -72,7 +74,12 @@ def collect_webstore_stripe_violations(settings: Settings) -> list[GuardViolatio
         violations.append(GuardViolation("webstore_stripe_mode_invalid", "STRIPE_MODE must be test or live."))
     if charge_model == "deferred":
         violations.append(GuardViolation("webstore_stripe_charge_model_deferred", "Webstore Stripe charge model remains deferred."))
-    if charge_model not in {"deferred", "direct", "destination", "separate"}:
+    elif charge_model in WEBSTORE_STRIPE_DISALLOWED_CHARGE_MODELS:
+        # Destination and separate charges make the SIGNGUY platform account the
+        # merchant of record. V1 Webstores use direct charges on the producing
+        # shop's connected account only.
+        violations.append(GuardViolation("webstore_stripe_charge_model_not_allowed", "Webstores accept only Stripe Connect direct charges (STRIPE_CONNECT_CHARGE_MODEL=direct)."))
+    elif charge_model != WEBSTORE_STRIPE_CHARGE_MODEL:
         violations.append(GuardViolation("webstore_stripe_charge_model_invalid", "STRIPE_CONNECT_CHARGE_MODEL is not recognized."))
     if mode == "test" and secret.startswith("sk_live_"):
         violations.append(GuardViolation("webstore_stripe_mode_mismatch", "Test mode cannot use a live Stripe secret key."))
@@ -92,8 +99,12 @@ def collect_webstore_stripe_violations(settings: Settings) -> list[GuardViolatio
     ):
         if not _valid_callback_url(getattr(settings, name, None)):
             violations.append(GuardViolation("webstore_stripe_callback_url_invalid", f"{name} must be an absolute HTTP(S) URL."))
-    if not getattr(settings, "stripe_webhook_secret", None):
-        violations.append(GuardViolation("webstore_stripe_webhook_unavailable", "STRIPE_WEBHOOK_SECRET is required for provider event verification."))
+    connect_secret = (getattr(settings, "stripe_connect_webhook_secret", None) or "").strip()
+    platform_secret = (getattr(settings, "stripe_webhook_secret", None) or "").strip()
+    if not connect_secret:
+        violations.append(GuardViolation("webstore_stripe_webhook_unavailable", "STRIPE_CONNECT_WEBHOOK_SECRET is required for Webstore Connect event verification."))
+    elif platform_secret and connect_secret == platform_secret:
+        violations.append(GuardViolation("webstore_stripe_webhook_secret_shared", "STRIPE_CONNECT_WEBHOOK_SECRET must differ from the platform STRIPE_WEBHOOK_SECRET."))
     return violations
 
 

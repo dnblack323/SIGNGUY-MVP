@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from ..core.config import Settings, get_settings
-from ..core.security_guards import collect_webstore_stripe_violations
+from ..core.security_guards import WEBSTORE_STRIPE_CHARGE_MODEL, collect_webstore_stripe_violations
 from .webstore_payment_provider_not_configured import NotConfiguredWebstorePaymentProvider
 from .webstore_payment_provider_stripe import StripeWebstorePaymentProvider
 from .webstore_payment_provider_types import ProviderAuthority, ProviderResult, WebstorePaymentProvider
@@ -61,14 +61,17 @@ def provider_configuration_status(
                 "reason": "Provider verification requirements are not complete.",
                 "violations": [],
             }
-        if authoritative_status.charge_model == "deferred":
+        if authoritative_status.charge_model != WEBSTORE_STRIPE_CHARGE_MODEL:
+            deferred = authoritative_status.charge_model == "deferred"
             return {
                 "state": "connected_verification_required",
                 "label": "Connected — verification required",
                 "configured": True,
                 "provider_authority": False,
-                "reason": "The final Stripe Connect charge model remains deferred.",
-                "violations": ["webstore_stripe_charge_model_deferred"],
+                "reason": "The final Stripe Connect charge model remains deferred."
+                if deferred
+                else "Webstores accept only Stripe Connect direct charges.",
+                "violations": ["webstore_stripe_charge_model_deferred" if deferred else "webstore_stripe_charge_model_not_allowed"],
             }
         if not authoritative_status.account_reference:
             return {

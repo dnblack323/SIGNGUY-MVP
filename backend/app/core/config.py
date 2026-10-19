@@ -82,6 +82,9 @@ class Settings:
         self.stripe_checkout_success_url: str | None = os.environ.get("STRIPE_CHECKOUT_SUCCESS_URL") or None
         self.stripe_checkout_cancel_url: str | None = os.environ.get("STRIPE_CHECKOUT_CANCEL_URL") or None
         self.stripe_charge_model: str = os.environ.get("STRIPE_CONNECT_CHARGE_MODEL", "deferred").strip().lower()
+        # Webstore Connect events are signed with the Connect endpoint's own
+        # secret, never the platform Billing/Core payments webhook secret.
+        self.stripe_connect_webhook_secret: str | None = os.environ.get("STRIPE_CONNECT_WEBHOOK_SECRET") or None
 
         # AI provider. Only required when AI generation is enabled.
         self.ai_enabled: bool = os.environ.get("AI_ENABLED", "false").lower() == "true"

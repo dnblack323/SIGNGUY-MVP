@@ -72,6 +72,14 @@ export function formatLabel(value) {
   return String(value || "").replace(/_/g, " ");
 }
 
+// "launch_ready" means setup is complete; publishing still requires verified
+// payment, so it must never be shown to staff or owners as "launch ready".
+const WEBSTORE_STATUS_LABELS = { launch_ready: "setup complete" };
+
+export function webstoreStatusLabel(status) {
+  return WEBSTORE_STATUS_LABELS[status] || formatLabel(status);
+}
+
 export function formatDateTime(value) {
   if (!value) return "Not recorded";
   const date = new Date(value);

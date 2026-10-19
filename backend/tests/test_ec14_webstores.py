@@ -96,7 +96,7 @@ async def _build_launchable_store(client: AsyncClient, suffix: str) -> dict:
             "suggested_production_cost_cents": 700,
             "suggested_selling_price_cents": 2500,
             "suggested_store_owner_share_cents": 300,
-            "platform_fee_basis_points": 200,
+            "platform_fee_basis_points": 0,
             "default_variants": [{"size": "L", "color": "Black"}],
         },
     )
@@ -226,7 +226,7 @@ async def test_webstore_permission_tenant_and_owner_portal_scope(ctx):
 
 
 @pytest.mark.asyncio
-async def test_public_storefront_can_launch_before_provider_checkout_authority(ctx, monkeypatch):
+async def test_public_storefront_cannot_go_live_before_provider_checkout_authority(ctx, monkeypatch):
     monkeypatch.setenv("AUTH_DEV_BYPASS", "true")
     suffix = uuid.uuid4().hex[:6]
 
@@ -258,18 +258,21 @@ async def test_public_storefront_can_launch_before_provider_checkout_authority(c
             app.dependency_overrides[get_current_user] = _override(ctx["owner"])
             ready = await owner_client_again.get(f"/api/webstores/{store['id']}/launch-readiness")
             assert ready.status_code == 200
-            assert ready.json()["ready"] is True, ready.text
+            assert ready.json()["setup_complete"] is True, ready.text
             assert ready.json()["checks"]["payment_ready"] is False
-            assert ready.json()["public_launch_blocked_until_batch_3"] is True
+            assert ready.json()["ready_to_publish"] is False
             assert ready.json()["payment_readiness_source"] == "provider_boundary"
             launch_ready = await owner_client_again.post(f"/api/webstores/{store['id']}/status", json={"status": "launch_ready"})
             assert launch_ready.status_code == 200, launch_ready.text
+            # Phase 1 safety lock: going live requires provider payment authority.
             launched = await owner_client_again.post(f"/api/webstores/{store['id']}/status", json={"status": "live"})
-            assert launched.status_code == 200, launched.text
-            launched_store = await db.webstores.find_one({"tenant_id": ctx["tenant_id"], "id": store["id"]}, {"_id": 0})
-            assert launched_store["status"] == "live"
-            assert launched_store["checkout_enabled"] is False
-            public = await owner_client_again.get(f"/api/public/webstores/{store['public_slug']}")
-            assert public.status_code == 200, public.text
-            assert public.json()["webstore"]["checkout_enabled"] is False
+            assert launched.status_code == 409, launched.text
+            assert launched.json()["detail"].startswith("Verified payment setup is required before a Webstore can go live.")
+            lifecycle_live = await owner_client_again.post(f"/api/webstores/{store['id']}/lifecycle", json={"state": "live"})
+            assert lifecycle_live.status_code == 409, lifecycle_live.text
+            assert lifecycle_live.json()["detail"].startswith("Verified payment setup is required before a Webstore can go live.")
+            held_store = await db.webstores.find_one({"tenant_id": ctx["tenant_id"], "id": store["id"]}, {"_id": 0})
+            assert held_store["status"] == "launch_ready"
+            assert held_store["checkout_enabled"] is False
+            assert not held_store.get("launched_at")
             return

@@ -93,19 +93,8 @@ export function useWebstoreLaunchWorkflow({
 
   const paymentProviderAction = useMutation({
     mutationFn: (action) => requestWebstorePaymentProviderAction(id, action),
-    onSuccess: async (result, action) => {
-      const onboardingUrl = result?.result?.onboarding_url;
-      if (
-        onboardingUrl &&
-        (action === "connect" || action === "resume_onboarding")
-      ) {
-        window.open(onboardingUrl, "_blank", "noopener,noreferrer");
-      }
-      toast.success(
-        onboardingUrl
-          ? "Stripe Connect setup opened"
-          : "Stripe Connect status updated",
-      );
+    onSuccess: async () => {
+      toast.success("Stripe Connect status updated");
       await refresh();
     },
     onError: (err) => toast.error(extractError(err)),
@@ -126,10 +115,10 @@ export function useWebstoreLaunchWorkflow({
       setWebstoreStatus(
         id,
         "launch_ready",
-        "All Stage 5 owner approval gates passed",
+        "All setup requirements are complete",
       ),
     onSuccess: async () => {
-      toast.success("Marked ready to launch");
+      toast.success("Marked setup complete");
       await refresh();
     },
     onError: (err) => toast.error(extractError(err)),

@@ -104,9 +104,11 @@ export default function GuidedSetupModule({
       description: store.status === "live"
         ? "The Webstore is live."
         : ownerApproved
-          ? readiness?.ready
-            ? "Owner approval is recorded and the Webstore can be launched."
-            : readiness?.payment_unavailable_reason || "Owner approval is recorded; remaining launch gates are shown in Review & Launch."
+          ? readiness?.ready_to_publish
+            ? "Setup is complete and payment is verified. The Webstore can be published."
+            : readiness?.setup_complete
+              ? `Setup is complete. Publishing waits for verified payment setup.${readiness?.payment_unavailable_reason ? ` ${readiness.payment_unavailable_reason}` : ""}`
+              : "Owner approval is recorded; remaining setup items are shown in Review & Launch."
           : "The owner must approve the packet before launch.",
       complete: store.status === "live",
       locked: !packetSent,
@@ -131,7 +133,7 @@ export default function GuidedSetupModule({
       return <Button size="sm" onClick={onSendPacket} disabled={sendingPacket} data-testid="guided-send-packet">{sendingPacket ? "Sending..." : "Send Launch Packet"}</Button>;
     }
     if (step.key === "launch") {
-      if (!ownerApproved || !readiness?.ready) return <Button size="sm" variant="outline" onClick={() => onShowTab("review-launch")} data-testid="guided-open-launch-gates">Open Launch Gates</Button>;
+      if (!ownerApproved || !readiness?.ready_to_publish) return <Button size="sm" variant="outline" onClick={() => onShowTab("review-launch")} data-testid="guided-open-launch-gates">Open Launch Gates</Button>;
       return <Button size="sm" onClick={onLaunch} disabled={launching} data-testid="guided-launch-webstore">{launching ? "Launching..." : "Launch Webstore"}</Button>;
     }
     return null;

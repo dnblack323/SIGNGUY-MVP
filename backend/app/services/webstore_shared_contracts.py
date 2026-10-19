@@ -122,6 +122,24 @@ def _clean_basis_points(value: Any, *, default: int = 0) -> int:
     return amount
 
 
+def _locked_platform_fee_basis_points(value: Any) -> int:
+    """Return 0 for the per-product platform fee, rejecting any other value.
+
+    Webstores Phase 1 safety lock: the SIGNGUY platform fee is not charged per
+    product. The approved fee schedule is applied later from a store-level
+    snapshot, so a missing value always means 0 (legacy template values are
+    not inherited) and an explicit non-zero value is refused.
+    """
+    amount = _clean_basis_points(value, default=0)
+    if amount != 0:
+        raise WebstoreError(
+            "platform_fee_locked",
+            "Per-product platform fees are disabled. The approved platform fee is applied automatically at checkout once Webstores is released.",
+            400,
+        )
+    return 0
+
+
 def _normalize_fulfillment_methods(value: Any, *, default: Optional[list[str]] = None) -> list[str]:
     if value is None:
         return list(default or [])

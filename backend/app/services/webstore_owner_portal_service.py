@@ -96,7 +96,6 @@ async def owner_portal_detail(identity: dict, webstore_id: str) -> dict:
             "dispute_hold_cents": owner_report["dispute_hold_cents"],
             "product_quantities": owner_report["product_quantities"],
         },
-        "public_launch_blocked_until_batch_3": not bool(payment["provider_authority"]),
     }
 
 

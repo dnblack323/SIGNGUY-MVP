@@ -16,6 +16,7 @@ import { extractError } from "@/lib/api";
 import { createWebstore, createWebstoreOwner, listWebstores, sendWebstoreQuestionnaire, uploadWebstoreSetupFile } from "@/lib/webstores";
 import api from "@/lib/api";
 import { useAuth } from "@/auth/AuthContext";
+import { webstoreStatusLabel } from "@/components/webstores/detail/WebstoreDetailUtils";
 import { toast } from "sonner";
 
 const WEBSTORE_TYPES = [
@@ -272,7 +273,7 @@ export default function WebstoresPage() {
       <Card>
         <CardHeader><CardTitle className="text-base">Current Webstores</CardTitle></CardHeader>
         <CardContent className="p-0"><div className="divide-y">
-          {storeItems.map((store) => <Link key={store.id} to={`/webstores/${store.id}`} className="grid grid-cols-1 gap-3 p-4 text-sm hover:bg-slate-50 md:grid-cols-[minmax(0,1fr)_180px_180px]" data-testid={`webstore-row-${store.id}`}><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><div className="font-medium">{store.name}</div>{store.status === "live" && <CheckCircle2 className="size-4 text-emerald-700" />}</div><div className="mt-1 text-xs text-muted-foreground">Type: {typeLabel(store.store_type)} - Setup: {formatLabel(store.setup_state || "not_started")}</div><div className="mt-2 text-xs font-medium text-sky-900">{actionForStore(store)}</div></div><div className="flex items-start md:justify-end"><Badge variant={statusTone(store.status)} className="w-fit capitalize">{formatLabel(store.status)}</Badge></div><div className="text-xs text-muted-foreground md:text-right"><div>{store.checkout_enabled ? "Checkout on" : "Checkout off"}</div>{!store.checkout_enabled && store.checkout_unavailable_reason && <div className="mt-1">{store.checkout_unavailable_reason}</div>}</div></Link>)}
+          {storeItems.map((store) => <Link key={store.id} to={`/webstores/${store.id}`} className="grid grid-cols-1 gap-3 p-4 text-sm hover:bg-slate-50 md:grid-cols-[minmax(0,1fr)_180px_180px]" data-testid={`webstore-row-${store.id}`}><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><div className="font-medium">{store.name}</div>{store.status === "live" && <CheckCircle2 className="size-4 text-emerald-700" />}</div><div className="mt-1 text-xs text-muted-foreground">Type: {typeLabel(store.store_type)} - Setup: {formatLabel(store.setup_state || "not_started")}</div><div className="mt-2 text-xs font-medium text-sky-900">{actionForStore(store)}</div></div><div className="flex items-start md:justify-end"><Badge variant={statusTone(store.status)} className="w-fit capitalize">{webstoreStatusLabel(store.status)}</Badge></div><div className="text-xs text-muted-foreground md:text-right"><div>{store.checkout_enabled ? "Checkout on" : "Checkout off"}</div>{!store.checkout_enabled && store.checkout_unavailable_reason && <div className="mt-1">{store.checkout_unavailable_reason}</div>}</div></Link>)}
           {stores.isLoading && <div className="p-4 text-sm text-muted-foreground">Loading...</div>}
           {!stores.isLoading && storeItems.length === 0 && <div className="p-8 text-center text-sm text-muted-foreground">No Webstores yet. Select New Webstore to create your first draft.</div>}
         </div></CardContent>

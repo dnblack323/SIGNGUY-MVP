@@ -5,6 +5,7 @@ import asyncio
 from typing import Optional
 
 from ..core.db import db
+from ..core.security_guards import WEBSTORE_STRIPE_CHARGE_MODEL
 from ..core.time_utils import serialize_doc, utc_now
 from .webstore_context import WebstoreError
 from .webstore_payment_provider import ProviderAuthority, provider_configuration_status
@@ -41,7 +42,7 @@ def _event_response(event: dict) -> dict:
 
 def _require_provider_authority(authority: Optional[ProviderAuthority] = None) -> None:
     if authority is not None:
-        if authority.verified and authority.webhook_verified and authority.charge_model != "deferred":
+        if authority.verified and authority.webhook_verified and authority.charge_model == WEBSTORE_STRIPE_CHARGE_MODEL:
             return
         raise WebstoreError(
             "payment_provider_not_configured",

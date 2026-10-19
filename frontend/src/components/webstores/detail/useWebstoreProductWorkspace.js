@@ -122,9 +122,6 @@ export function useWebstoreProductWorkspace({
           productDraft.store_owner_share_cents,
         ),
         fundraiser_share_cents: toIntCents(productDraft.fundraiser_share_cents),
-        platform_fee_basis_points: toIntCents(
-          productDraft.platform_fee_basis_points ?? 0,
-        ),
         variants: productDraft.variants || [],
         personalization_enabled: Boolean(productDraft.personalization_enabled),
         personalization_fields: productDraft.personalization_fields || [],

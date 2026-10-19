@@ -72,21 +72,14 @@ return (
                               />
                             </div>
                             <div className="grid gap-1.5">
-                              <Label>Platform fee (basis points)</Label>
-                              <Input
-                                type="number"
-                                min="0"
-                                max="10000"
-                                value={
-                                  productDraft.platform_fee_basis_points ?? 0
-                                }
-                                onChange={(e) =>
-                                  setProductField(
-                                    "platform_fee_basis_points",
-                                    toIntCents(e.target.value),
-                                  )
-                                }
-                              />
+                              <Label>Platform fee</Label>
+                              <p
+                                className="rounded-md border bg-slate-50 px-3 py-2 text-sm text-muted-foreground"
+                                data-testid="webstore-product-platform-fee-locked"
+                              >
+                                Set automatically at checkout from the approved
+                                platform fee schedule. Not editable per product.
+                              </p>
                             </div>
                             <div className="rounded-md border bg-slate-50 p-3 text-sm">
                               <div className="font-medium">Internal margin</div>

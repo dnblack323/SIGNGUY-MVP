@@ -1,6 +1,5 @@
 import {
   Lock,
-  Mail,
   RotateCcw,
   ShieldCheck,
 } from "lucide-react";
@@ -124,31 +123,12 @@ return (
                         size="sm"
                         variant="outline"
                         disabled={paymentProviderAction.isPending}
-                        onClick={() => paymentProviderAction.mutate("connect")}
-                      >
-                        <Mail className="size-4 mr-2" />
-                        Open Stripe Connect setup
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={paymentProviderAction.isPending}
                         onClick={() =>
                           paymentProviderAction.mutate("refresh_status")
                         }
                       >
                         <RotateCcw className="size-4 mr-2" />
                         Refresh status
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={paymentProviderAction.isPending}
-                        onClick={() =>
-                          paymentProviderAction.mutate("resume_onboarding")
-                        }
-                      >
-                        Resume onboarding
                       </Button>
                       <Button
                         size="sm"
@@ -162,9 +142,9 @@ return (
                       </Button>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Provider authority is required before checkout or launch.
-                      Checkout remains blocked until the connected account and
-                      webhook verification are complete.
+                      Verified payment setup is required before this Webstore
+                      can go live. Connecting Stripe moves to the shop&apos;s
+                      Webstore payment settings in a later phase.
                     </div>
                   </div>
                   <div
@@ -185,13 +165,13 @@ return (
                   <Button
                     className="w-full"
                     disabled={
-                      !readiness.data?.ready || markLaunchReady.isPending
+                      !readiness.data?.setup_complete || markLaunchReady.isPending
                     }
                     onClick={() => markLaunchReady.mutate()}
                     data-testid="webstore-launch-ready"
                   >
                     <ShieldCheck className="size-4 mr-2" />
-                    Mark ready to launch
+                    Mark setup complete
                   </Button>
                   <Button
                     className="w-full"
@@ -201,7 +181,7 @@ return (
                     data-testid="webstore-launch"
                   >
                     <Lock className="size-4 mr-2" />
-                    Public commerce waits for Stage 6/7
+                    Go live requires verified payment setup
                   </Button>
                 </CardContent>
               </Card>

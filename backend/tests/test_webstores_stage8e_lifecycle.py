@@ -80,7 +80,7 @@ async def test_phase6_lifecycle_route_uses_canonical_pause_and_reopen_gate(monke
     user = _user(ctx["tenant_id"])
 
     async def ready_readiness(_user: dict, _webstore_id: str) -> dict:
-        return {"ready": True, "gates": [], "payment_readiness": {"provider_authority": True}}
+        return {"setup_complete": True, "ready_to_publish": True, "gates": [], "payment_readiness": {"provider_authority": True}}
 
     monkeypatch.setattr(svc, "launch_readiness", ready_readiness)
 
@@ -158,7 +158,7 @@ async def test_relaunch_rechecks_readiness_and_records_audited_transition(monkey
     )
 
     async def blocked_readiness(_user: dict, _webstore_id: str) -> dict:
-        return {"ready": False, "gates": [{"key": "catalog", "blocking": True}]}
+        return {"setup_complete": False, "ready_to_publish": False, "gates": [{"key": "catalog", "blocking": True}]}
 
     monkeypatch.setattr(svc, "launch_readiness", blocked_readiness)
     with pytest.raises(WebstoreError) as blocked:
@@ -166,7 +166,7 @@ async def test_relaunch_rechecks_readiness_and_records_audited_transition(monkey
     assert blocked.value.code == "launch_gates_failed"
 
     async def ready_readiness(_user: dict, _webstore_id: str) -> dict:
-        return {"ready": True, "gates": [], "payment_readiness": {"provider_authority": True}}
+        return {"setup_complete": True, "ready_to_publish": True, "gates": [], "payment_readiness": {"provider_authority": True}}
 
     monkeypatch.setattr(svc, "launch_readiness", ready_readiness)
     relaunched = await svc.relaunch_webstore(user, ctx["webstore_id"], reason="Current catalog reviewed")

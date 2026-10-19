@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from .webstore_shared import *
 
+RETIRED_PER_STORE_PAYMENT_ACTIONS = frozenset({"connect", "resume_onboarding", "disconnect"})
+
 def _provider_authority_from_record(record: Optional[dict], settings: Any) -> Optional[ProviderAuthority]:
     if not record or not record.get("connected_account_reference"):
         return None
@@ -138,11 +140,11 @@ async def payment_provider_status(user: dict, webstore_id: str) -> dict[str, Any
             "provider_authority": bool(status["provider_authority"]),
         },
         "actions": {
-            "connect": True,
-            "resume_onboarding": True,
+            "connect": False,
+            "resume_onboarding": False,
             "refresh_status": True,
             "view_requirements": True,
-            "disconnect": bool(record.get("connected_account_reference") or store.get("provider_account_reference")),
+            "disconnect": False,
         },
     }
 
@@ -151,7 +153,17 @@ async def payment_provider_action(user: dict, webstore_id: str, action: str) -> 
     _require_staff_perm(user, Perm.WEBSTORE_MANAGE)
     store = await _get_store(user["tenant_id"], webstore_id)
     settings = get_settings()
-    if action not in {"connect", "resume_onboarding", "refresh_status", "view_requirements", "disconnect"}:
+    if action in RETIRED_PER_STORE_PAYMENT_ACTIONS:
+        # Phase 1 safety lock: V1 Webstores use one shop-level Stripe
+        # connection (configured in a later phase). Per-store onboarding would
+        # create a separate connected account per store, and disconnect was
+        # never implemented.
+        raise WebstoreError(
+            "payment_provider_action_retired",
+            "Per-store Stripe setup is no longer available. The shop's Stripe connection will be managed in Webstore payment settings.",
+            409,
+        )
+    if action not in {"refresh_status", "view_requirements"}:
         raise WebstoreError("payment_provider_action_invalid", "Unsupported payment provider action", 400)
     record = await db.webstore_stripe_connect_records.find_one(
         {"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "record_type": "connected_account"},
@@ -159,27 +171,18 @@ async def payment_provider_action(user: dict, webstore_id: str, action: str) -> 
     )
     record = serialize_doc(record) if record else {}
     provider = get_webstore_payment_provider(get_settings())
-    if action in {"connect", "resume_onboarding"}:
-        result = await provider.create_connected_account_onboarding_link(
-            tenant_id=user["tenant_id"],
-            webstore_id=webstore_id,
-            owner_id=store.get("owner_id"),
-            connected_account_reference=record.get("connected_account_reference"),
-        )
-    elif action == "refresh_status":
+    if action == "refresh_status":
         result = await provider.synchronize_payment_readiness(
             tenant_id=user["tenant_id"],
             webstore_id=webstore_id,
             connected_account_reference=record.get("connected_account_reference"),
         )
-    elif action == "view_requirements":
+    else:
         result = await provider.retrieve_connected_account_status(
             tenant_id=user["tenant_id"],
             webstore_id=webstore_id,
             connected_account_reference=record.get("connected_account_reference"),
         )
-    else:
-        result = await provider.reconcile_provider_event(tenant_id=user["tenant_id"], webstore_id=webstore_id, action=action)
     await _audit(
         tenant_id=user["tenant_id"],
         webstore_id=webstore_id,
