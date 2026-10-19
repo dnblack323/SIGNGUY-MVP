@@ -97,6 +97,54 @@ Keep final report short enough for a nondeveloper. Detailed findings can use one
 6. Confirm the merged change runs on the intended integration environment. Mark `FUNCTIONAL BASELINE — OWNER VISUAL REVIEW PENDING` when appropriate; do not confuse agent checks with owner sign-off.
 7. Return the next single feature recommendation and STOP. No autonomous queue of ten features.
 
+## 6A. Phase Review Report and Code Quality Assessment (required before every feature)
+
+**Owner decision 2026-10-19.** It applies to every MVP feature or phase, not only Webstores. Present this report **before writing any code**, then STOP. Implementation begins only after the owner approves; the owner may approve, modify, remove or add scope, or authorise a rewrite. Approval of a master specification does not approve every phase.
+
+### Code Quality Assessment (per affected subsystem)
+
+| Rating | Classification | Required action |
+|---|---|---|
+| 🟢 | Clean | Keep the existing implementation |
+| 🟡 | Needs Cleanup | Simplify or refactor unnecessary complexity |
+| 🟠 | Duplicated | Consolidate competing implementations into one authority |
+| 🔴 | Poor Architecture | Evaluate replacing the subsystem with a cleaner, bounded implementation |
+| ⚫ | Obsolete | Remove code that no longer supports approved functionality |
+
+For each affected subsystem, document:
+
+1. Current rating and a short explanation.
+2. Existing files and components involved (real paths).
+3. Dead, duplicated, obsolete or unnecessarily complicated code.
+4. Decision: keep, clean up, consolidate, replace, or remove.
+5. Recommended implementation approach.
+6. Estimated effort and complexity.
+7. Risks and affected dependencies.
+8. Tests needed to prove the final implementation. Tests for intentionally retired behaviour are removed and replaced, never edited to hide defects.
+
+**Principles:**
+
+- MVP has not launched commercially and has no paying customers. Do not preserve legacy compatibility, duplicate implementations or dead code simply because they exist.
+- Compatibility code is justified only for current functionality, active integrations, data that must be preserved, approved contracts, or a necessary safe transition.
+- If repeated changes have made a subsystem unnecessarily complicated, prefer a clean, bounded rewrite when it gives a better long-term implementation. Do not rewrite functioning code for stylistic reasons, and do not answer an overcomplicated abstraction with another abstraction.
+- One authoritative system per responsibility. Never create a parallel Customer, Order, Payment, Work Order, Pricing Engine or Production system.
+- Clean as you go, inside the phase and its direct dependencies only. This assessment is not a new general audit (AGENTS.md, "Audits are complete").
+- Locked rules: a 🔴 or ⚫ recommendation that touches a system listed in `memory/AGENT_INSTRUCTIONS.md` as LOCKED or "do not destabilize" must name the rule and get explicit owner approval before any change.
+- Never delete data or run destructive migrations without explicit owner authorisation. Inspect affected development data first.
+
+### Phase Review Report contents
+
+1. **Existing functionality.** What MVP already has, with real paths. Separate implemented, tested and runtime-verified.
+2. **Reusable functionality.** The strongest source among MVP, `signguyai`, `signguyai_rebuild_version`, Price Lab and the Pricing Engine. Reproduce good behaviour in MVP's architecture rather than copying donor code.
+3. **Code Quality Assessment** (above).
+4. **Keep / Change / Add / Remove / Rewrite** lists.
+5. **Final user workflow.** What the shop employee, the owner/customer and buyers do; what is automatic; optional AI versus the non-AI path; the approvals required.
+6. **UI/UX.** Pages, tabs, overlays, buttons; compact, minimal navigation.
+7. **Implementation approach.** Claude Code / Codex / Emergent split, and what is parallel-safe.
+8. **Risks and dependencies.** Pricing, security, Stripe, data model, integrations, affected tests.
+9. **Completion criteria.**
+10. **Owner decisions,** each with a recommendation.
+
 ### Verification tiers
 
 - Class A: docs/UI labels/simple visual. Direct surface verification + relevant lint/config if needed.
@@ -143,7 +191,7 @@ In Codex use `.codex/agents/*.toml`; in Claude Code use `.claude/agents/*.md`. T
 
 The original read-only baseline kickoff has been used and is retired. For each approved feature send:
 
-> SIGNGUY-MVP — FEATURE `<F#> <name>` from `docs/MVP_COMMERCIAL_V1_LAUNCH_PLAN.md`. Read root AGENTS.md, the launch plan entry for this feature (scope, inventory rows, CIR/CH IDs, definition of done) and memory/AGENT_INSTRUCTIONS.md. Do NOT run a general audit. Branch from current origin/main. Inspect only the listed rows' Relevant Files and their direct dependencies; keep what works, complete the gap, remove obsolete code inside this feature only. Verify the real customer workflow on an isolated demo tenant, run the focused tests for the feature's verification class plus required CI, open ONE PR, and STOP with a plain-English report. Do not merge or deploy without owner approval. Do not start the next feature.
+> SIGNGUY-MVP — FEATURE `<F#> <name>` from `docs/MVP_COMMERCIAL_V1_LAUNCH_PLAN.md`. Read root AGENTS.md, the launch plan entry for this feature (scope, inventory rows, CIR/CH IDs, definition of done) and memory/AGENT_INSTRUCTIONS.md. Do NOT run a general audit. First present the Phase Review Report with its Code Quality Assessment (§6A) and STOP for owner approval. Branch from current origin/main. Inspect only the listed rows' Relevant Files and their direct dependencies; keep what works, complete the gap, remove obsolete code inside this feature only. Verify the real customer workflow on an isolated demo tenant, run the focused tests for the feature's verification class plus required CI, open ONE PR, and STOP with a plain-English report. Do not merge or deploy without owner approval. Do not start the next feature.
 
 ## 11. Owner working preferences
 

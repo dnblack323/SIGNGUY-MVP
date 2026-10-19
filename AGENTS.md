@@ -60,7 +60,24 @@ Historical plans use `/app/...` paths from the old hosted environment. Resolve t
 
 `MODE = BUILD`, scoped to **one** owner-approved feature from the launch plan. Do not start the next feature on your own. Explicit owner instructions such as `READ ONLY`, `PLAN ONLY`, `DRAFT PR`, `DO NOT MERGE` and active holds override ordinary merge habits. Never deploy to production, enable live billing, change paid entitlements or migrate live records without explicit release authorization.
 
-**Feature loop:** read the feature's audit rows → inspect only the relevant implementation → keep what works → complete or correct the gap → reuse superior Price Lab / original SignGuy AI behavior where the plan allows → remove obsolete or duplicate code inside that feature only → verify the real customer workflow → focused tests + required CI → PR → merge only with owner authorization → report → STOP.
+**Feature loop:** read the feature's audit rows → inspect only the relevant implementation → **write the Phase Review Report with its Code Quality Assessment and STOP for owner approval** → keep what works → complete or correct the gap → reuse superior Price Lab / original SignGuy AI behavior where the plan allows → remove obsolete or duplicate code inside that feature only → verify the real customer workflow → focused tests + required CI → PR → merge only with owner authorization → report → STOP.
+
+## Phase Review and Code Quality Assessment — required before every feature (owner decision 2026-10-19)
+
+Before writing code for **any** MVP feature or phase (not only Webstores), present a **Phase Review Report** that includes a **Code Quality Assessment** of every subsystem the feature touches, then STOP until the owner approves. Full template: `docs/MVP_BUILD_PLAYBOOK.md` §6A.
+
+| Rating | Classification | Required action |
+|---|---|---|
+| 🟢 | Clean | Keep the existing implementation |
+| 🟡 | Needs Cleanup | Simplify or refactor unnecessary complexity |
+| 🟠 | Duplicated | Consolidate competing implementations into one authority |
+| 🔴 | Poor Architecture | Evaluate replacing the subsystem with a cleaner, bounded implementation |
+| ⚫ | Obsolete | Remove code that no longer supports approved functionality |
+
+- MVP has not launched and has no paying customers: do not keep legacy compatibility, duplicate implementations or dead code merely because they exist. Prefer a clean, bounded rewrite when repeated changes have made a subsystem worse than a replacement would be; never rewrite working code for style alone.
+- The assessment is scoped to the feature's files and direct dependencies. It is **not** a new general audit (see "Audits are complete").
+- Major rewrites, data deletion, destructive migrations and implementation itself each require explicit owner approval. Approving one phase does not approve the next, and approving a small change does not approve a broad rewrite.
+- A 🔴 or ⚫ finding that touches a system listed as LOCKED or "do not destabilize" in `memory/AGENT_INSTRUCTIONS.md` must name that rule and get explicit owner approval before any change.
 
 ## Audits are complete — do not repeat them
 
@@ -71,7 +88,7 @@ The one-time baseline is done. Do **not** run another general code, feature or a
 - `docs/MVP_CODE_HEALTH_AND_CLEANUP_AUDIT.md` — code-health audit (cleanup IDs `CH-01`…`CH-23`).
 - `memory/code_issue_register.md` — open correctness defects (`CIR-…`).
 
-Inspect additional code only when a specific finding needs clarification for the current feature.
+Inspect additional code only when a specific finding needs clarification for the current feature, or for the feature's required Code Quality Assessment (limited to that feature's subsystems and direct dependencies).
 
 ## Binding contracts (reminder only — full text in `memory/AGENT_INSTRUCTIONS.md`)
 
