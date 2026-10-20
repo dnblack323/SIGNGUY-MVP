@@ -11,7 +11,7 @@ Phase 0 POC — combined test for the two integrations most likely to fail:
    - Verify content-type round trip.
 
 Run:
-    cd /app/backend && python scripts/poc_core.py
+    cd backend && python -m tests._test_env run -- python scripts/poc_core.py
 """
 from __future__ import annotations
 
@@ -22,12 +22,14 @@ import sys
 import uuid
 from pathlib import Path
 
-from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ReturnDocument
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(ROOT_DIR / ".env")
+sys.path.insert(0, str(ROOT_DIR))
+from app.core.test_isolation import require_isolated_script_target  # noqa: E402
+
+require_isolated_script_target(os.environ)  # exits before any write if not a disposable target
 
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]

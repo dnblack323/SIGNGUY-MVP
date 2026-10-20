@@ -316,7 +316,7 @@ async def test_digital_print_minimum_is_tenant_scoped_and_config_based(seeded_us
 
 
 @pytest.mark.asyncio
-async def test_digital_print_minimum_calculation_is_non_mutating(clean_db):
+async def test_digital_print_minimum_calculation_is_non_mutating(isolated_db):
     tenant_id = f"tenant-{uuid.uuid4().hex}"
     before = await _tenant_counts(tenant_id)
 

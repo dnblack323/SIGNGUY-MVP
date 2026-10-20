@@ -227,8 +227,8 @@ async def test_tenant_isolation_and_pricing_permission_enforcement(monkeypatch, 
 
 
 @pytest.mark.asyncio
-async def test_saved_calculation_indexes_are_defined(clean_db):
-    indexes = await clean_db.pricing_saved_calculations.index_information()
+async def test_saved_calculation_indexes_are_defined(isolated_db):
+    indexes = await isolated_db.pricing_saved_calculations.index_information()
     keys = [tuple(spec["key"]) for spec in indexes.values()]
     assert (("id", 1),) in keys
     assert (("tenant_id", 1), ("archived", 1), ("updated_at", -1)) in keys

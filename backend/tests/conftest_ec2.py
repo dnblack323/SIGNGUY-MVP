@@ -1,8 +1,8 @@
 """EC2 — Async pytest fixtures.
 
-Tests run in parallel across xdist workers against a shared MongoDB, so
-fixtures MUST NOT globally delete data mid-run. Each test scopes its own
-data via a unique tenant/user id and queries by that id.
+Each xdist worker has its own disposable database (see ``tests/_test_env.py``) that is
+dropped when the run ends, so nothing here deletes data. Tests within one worker still
+scope their data by unique tenant/user ids and query by those ids.
 
 The `_ensure_indexes_once` fixture is session-scoped so the EC2 unique indexes
 are created exactly once before any test runs.
@@ -24,11 +24,10 @@ async def _ensure_indexes_once():
 
 
 @pytest_asyncio.fixture()
-async def clean_db():
-    """Yield the module-level Motor `db` WITHOUT destructive cleanup.
+async def isolated_db():
+    """Yield the module-level Motor `db`, bound to this worker's disposable test database.
 
-    Tests must isolate via unique tenant/user ids (see `seeded_users`) so
-    parallel workers don't clobber each other.
+    Not cleaned between tests: isolate via unique tenant/user ids (see `seeded_users`).
     """
     from app.core.db import db
 
@@ -36,9 +35,9 @@ async def clean_db():
 
 
 @pytest_asyncio.fixture()
-async def seeded_users(clean_db) -> dict[str, Any]:
+async def seeded_users(isolated_db) -> dict[str, Any]:
     """Two tenants + one owner user each. All ids are unique per test."""
-    db = clean_db
+    db = isolated_db
     suffix = uuid.uuid4().hex[:8]
     tenant_a = {"id": f"tenant-a-{suffix}", "name": f"Alpha {suffix}", "slug": f"alpha-{suffix}"}
     tenant_b = {"id": f"tenant-b-{suffix}", "name": f"Bravo {suffix}", "slug": f"bravo-{suffix}"}

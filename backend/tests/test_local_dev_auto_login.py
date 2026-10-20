@@ -13,7 +13,7 @@ from app.routers import auth as auth_router
 
 
 @pytest.mark.asyncio
-async def test_dev_login_uses_configured_local_owner_and_platform_creator(clean_db):
+async def test_dev_login_uses_configured_local_owner_and_platform_creator(isolated_db):
     email = f"thesigntistslab-{uuid.uuid4().hex[:8]}@example.com"
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         with (

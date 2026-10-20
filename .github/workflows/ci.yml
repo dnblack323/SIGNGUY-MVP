@@ -19,11 +19,10 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      MONGO_URL: mongodb://localhost:27017
-      DB_NAME: signguy_ci
-      ENV: test
-      AUTH_DEV_BYPASS: "true"
-      CORS_ORIGINS: "*"
+      # Disposable CI service container. The test bootstrap refuses it if it already holds
+      # any database it did not create, and creates one owned database per xdist worker.
+      # MONGO_URL / DB_NAME are deliberately NOT set: tests refuse caller-supplied values.
+      SIGNGUY_TEST_MONGO_URL: mongodb://localhost:27017
       PYTHONPATH: backend
     steps:
       - uses: actions/checkout@v4

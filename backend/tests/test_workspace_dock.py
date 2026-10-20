@@ -59,9 +59,9 @@ async def test_workspace_dock_requires_authentication():
 
 
 @pytest.mark.asyncio
-async def test_open_workspace_persists_and_duplicate_open_updates_existing(seeded_users, clean_db):
+async def test_open_workspace_persists_and_duplicate_open_updates_existing(seeded_users, isolated_db):
     user = seeded_users["user_a"]
-    order = await _seed_order(clean_db, user["tenant_id"], uuid.uuid4().hex[:8])
+    order = await _seed_order(isolated_db, user["tenant_id"], uuid.uuid4().hex[:8])
 
     async with await _client_as(user) as client:
         response = await client.post("/api/workspaces/open", json=_open_order_payload(order["id"]))
@@ -85,7 +85,7 @@ async def test_open_workspace_persists_and_duplicate_open_updates_existing(seede
 
 
 @pytest.mark.asyncio
-async def test_user_and_tenant_ownership_are_enforced(seeded_users, clean_db):
+async def test_user_and_tenant_ownership_are_enforced(seeded_users, isolated_db):
     user_a = seeded_users["user_a"]
     user_b = seeded_users["user_b"]
     same_tenant_other_user = {
@@ -95,8 +95,8 @@ async def test_user_and_tenant_ownership_are_enforced(seeded_users, clean_db):
         "role": "owner",
         "is_active": True,
     }
-    await clean_db.users.insert_one(same_tenant_other_user)
-    order = await _seed_order(clean_db, user_a["tenant_id"], uuid.uuid4().hex[:8])
+    await isolated_db.users.insert_one(same_tenant_other_user)
+    order = await _seed_order(isolated_db, user_a["tenant_id"], uuid.uuid4().hex[:8])
 
     async with await _client_as(user_a) as client:
         created = await client.post("/api/workspaces/open", json=_open_order_payload(order["id"]))
@@ -116,11 +116,11 @@ async def test_user_and_tenant_ownership_are_enforced(seeded_users, clean_db):
 
 
 @pytest.mark.asyncio
-async def test_workspace_limit_pin_reorder_close_recent_and_reopen(seeded_users, clean_db):
+async def test_workspace_limit_pin_reorder_close_recent_and_reopen(seeded_users, isolated_db):
     user = seeded_users["user_a"]
     order_ids = []
     for idx in range(9):
-        order = await _seed_order(clean_db, user["tenant_id"], f"{uuid.uuid4().hex[:6]}-{idx}", number=f"{idx:06d}", job_name=f"Job {idx}")
+        order = await _seed_order(isolated_db, user["tenant_id"], f"{uuid.uuid4().hex[:6]}-{idx}", number=f"{idx:06d}", job_name=f"Job {idx}")
         order_ids.append(order["id"])
 
     async with await _client_as(user) as client:
@@ -154,14 +154,14 @@ async def test_workspace_limit_pin_reorder_close_recent_and_reopen(seeded_users,
 
 
 @pytest.mark.asyncio
-async def test_concurrent_open_enforces_limit_without_eviction(seeded_users, clean_db, monkeypatch):
+async def test_concurrent_open_enforces_limit_without_eviction(seeded_users, isolated_db, monkeypatch):
     from app.services import workspace_dock as workspace_dock_service
 
     monkeypatch.setattr(workspace_dock_service, "_state_lock", lambda tenant_id, user_id: asyncio.Lock())
     user = seeded_users["user_a"]
     order_ids = []
     for idx in range(9):
-        order = await _seed_order(clean_db, user["tenant_id"], f"{uuid.uuid4().hex[:6]}-race-{idx}", number=f"C{idx}", job_name=f"Concurrent {idx}")
+        order = await _seed_order(isolated_db, user["tenant_id"], f"{uuid.uuid4().hex[:6]}-race-{idx}", number=f"C{idx}", job_name=f"Concurrent {idx}")
         order_ids.append(order["id"])
 
     async with await _client_as(user) as client:
@@ -179,11 +179,11 @@ async def test_concurrent_open_enforces_limit_without_eviction(seeded_users, cle
 
 
 @pytest.mark.asyncio
-async def test_recent_limit_and_deleted_record_fail_safely(seeded_users, clean_db):
+async def test_recent_limit_and_deleted_record_fail_safely(seeded_users, isolated_db):
     user = seeded_users["user_a"]
     async with await _client_as(user) as client:
         for idx in range(21):
-            order = await _seed_order(clean_db, user["tenant_id"], f"{uuid.uuid4().hex[:6]}-recent-{idx}", number=f"R{idx}", job_name=f"Recent {idx}")
+            order = await _seed_order(isolated_db, user["tenant_id"], f"{uuid.uuid4().hex[:6]}-recent-{idx}", number=f"R{idx}", job_name=f"Recent {idx}")
             opened = await client.post("/api/workspaces/open", json=_open_order_payload(order["id"]))
             assert opened.status_code == 201
             workspace_id = opened.json()["open_workspaces"][0]["id"]
@@ -193,16 +193,16 @@ async def test_recent_limit_and_deleted_record_fail_safely(seeded_users, clean_d
         assert len(state["recent_workspaces"]) == 20
 
         inaccessible = state["recent_workspaces"][0]
-        await clean_db.orders.delete_one({"tenant_id": user["tenant_id"], "id": inaccessible["record_id"]})
+        await isolated_db.orders.delete_one({"tenant_id": user["tenant_id"], "id": inaccessible["record_id"]})
         response = await client.post(f"/api/workspaces/recent/{inaccessible['id']}/reopen")
         assert response.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_workspace_mutations_do_not_change_underlying_business_record(seeded_users, clean_db):
+async def test_workspace_mutations_do_not_change_underlying_business_record(seeded_users, isolated_db):
     user = seeded_users["user_a"]
-    order = await _seed_order(clean_db, user["tenant_id"], uuid.uuid4().hex[:8])
-    before = await clean_db.orders.find_one({"tenant_id": user["tenant_id"], "id": order["id"]}, {"_id": 0})
+    order = await _seed_order(isolated_db, user["tenant_id"], uuid.uuid4().hex[:8])
+    before = await isolated_db.orders.find_one({"tenant_id": user["tenant_id"], "id": order["id"]}, {"_id": 0})
 
     async with await _client_as(user) as client:
         opened = await client.post("/api/workspaces/open", json=_open_order_payload(order["id"]))
@@ -211,13 +211,13 @@ async def test_workspace_mutations_do_not_change_underlying_business_record(seed
         await client.post(f"/api/workspaces/{workspace_id}/pin")
         await client.post(f"/api/workspaces/{workspace_id}/close")
 
-    after = await clean_db.orders.find_one({"tenant_id": user["tenant_id"], "id": order["id"]}, {"_id": 0})
+    after = await isolated_db.orders.find_one({"tenant_id": user["tenant_id"], "id": order["id"]}, {"_id": 0})
     assert after == before
 
 
 @pytest.mark.asyncio
-async def test_workspace_dock_indexes_are_registered(clean_db):
-    indexes = await clean_db.workspace_docks.index_information()
+async def test_workspace_dock_indexes_are_registered(isolated_db):
+    indexes = await isolated_db.workspace_docks.index_information()
     key_sets = {tuple(spec["key"]) for spec in indexes.values()}
     assert (("id", 1),) in key_sets
     assert (("tenant_id", 1), ("user_id", 1)) in key_sets

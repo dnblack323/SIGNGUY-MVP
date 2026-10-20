@@ -258,7 +258,7 @@ def test_pure_portable_module_imports_without_saas_dependencies():
 
 
 @pytest.mark.asyncio
-async def test_export_and_preview_routes_are_tenant_scoped_permissioned_and_read_only(clean_db, seeded_users):
+async def test_export_and_preview_routes_are_tenant_scoped_permissioned_and_read_only(isolated_db, seeded_users):
     user = seeded_users["user_a"]
     other = seeded_users["user_b"]
     settings = build_starter_pack()

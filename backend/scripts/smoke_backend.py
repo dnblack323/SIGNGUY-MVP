@@ -1,4 +1,6 @@
-"""End-to-end backend smoke test covering the full Acceptance Criteria workflow.
+"""End-to-end backend smoke test (run via: python -m tests._test_env run -- python scripts/smoke_backend.py)
+
+End-to-end backend smoke test covering the full Acceptance Criteria workflow.
 
 Register two tenants -> verify isolation.
 Tenant A: register owner -> create customer -> create quote -> convert-to-order (twice, expect idempotent)
@@ -16,7 +18,13 @@ import uuid
 
 import requests
 
-BASE = os.environ.get("BASE", "http://localhost:8001") + "/api"
+_BACKEND = str(__import__("pathlib").Path(__file__).resolve().parents[1])
+sys.path.insert(0, _BACKEND)
+from app.core.test_isolation import require_isolated_script_target  # noqa: E402
+
+_ROOT = os.environ.get("SIGNGUY_TEST_API_BASE_URL", "").rstrip("/")
+require_isolated_script_target(os.environ, _ROOT)  # exits before any write if not a disposable target
+BASE = _ROOT + "/api"
 
 
 def _post(path, json=None, token=None, files=None, data=None, headers=None):

@@ -7,12 +7,20 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .test_isolation import under_test, validate_test_target
+
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(ROOT_DIR / ".env")
+# A test run never reads the developer's .env (it holds the dev database name and live
+# provider keys); the test bootstrap supplies a complete, isolated environment instead.
+if not under_test(os.environ):
+    load_dotenv(ROOT_DIR / ".env")
 
 
 class Settings:
     def __init__(self) -> None:
+        if under_test(os.environ):
+            # Fail closed at import time: a test process may only hold a disposable target.
+            validate_test_target(os.environ)
         self.mongo_url: str = os.environ["MONGO_URL"]
         self.db_name: str = os.environ["DB_NAME"]
         default_cors = "http://localhost:3000,http://127.0.0.1:3000"
