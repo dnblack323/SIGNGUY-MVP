@@ -1,4 +1,4 @@
-"""Questionnaire template management routes."""
+"""Read-only list of Webstore questionnaires. Editing happens in Form Maker."""
 from __future__ import annotations
 
 from .webstores_common import *
@@ -16,18 +16,3 @@ async def list_questionnaire_templates(
     except WebstoreSetupError as e:
         _raise_setup(e)
 
-
-@router.post("/setup/questionnaire-templates", status_code=201)
-async def create_questionnaire_template(payload: QuestionnaireTemplateIn, user: dict = Depends(get_current_user)) -> dict:
-    try:
-        return await setup_svc.save_questionnaire_template(user, payload.model_dump())
-    except WebstoreSetupError as e:
-        _raise_setup(e)
-
-
-@router.patch("/setup/questionnaire-templates/{template_id}")
-async def update_questionnaire_template(template_id: str, payload: QuestionnaireTemplateIn, user: dict = Depends(get_current_user)) -> dict:
-    try:
-        return await setup_svc.save_questionnaire_template(user, payload.model_dump(exclude_unset=True), template_id=template_id)
-    except WebstoreSetupError as e:
-        _raise_setup(e)

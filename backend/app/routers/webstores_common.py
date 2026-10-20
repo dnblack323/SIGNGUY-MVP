@@ -382,14 +382,6 @@ class BrandingReviewIn(BaseModel):
     note: Optional[str] = None
 
 
-class QuestionnaireTemplateIn(BaseModel):
-    store_type: str = "general"
-    title: Optional[str] = None
-    version: int = 1
-    sections: list[dict[str, Any]] = Field(default_factory=list)
-    status: str = "active"
-
-
 class QuestionnaireReturnIn(BaseModel):
     reason: str
 

@@ -206,36 +206,45 @@ async def _create_webstore(client: AsyncClient, suffix: str, *, store_type: str 
 
 
 @pytest.mark.asyncio
-async def test_webstore_adapter_idempotent_seeding_canonical_authority_and_response_preservation(forms_ctx):
+async def test_webstore_questionnaires_come_only_from_installed_form_maker_copies(forms_ctx):
     async with await _client_as(forms_ctx["user"]) as client:
         created = await _create_webstore(client, forms_ctx["suffix"], store_type="event")
         first = await client.get(f"/api/webstores/{created['store']['id']}/questionnaire")
-        second = await client.get(f"/api/webstores/{created['store']['id']}/questionnaire")
         assert first.status_code == 200, first.text
-        assert second.status_code == 200, second.text
-        shared_count = await db.form_templates.count_documents({"tenant_id": forms_ctx["tenant_id"], "module": "webstores"})
+        installed_count = await db.form_templates.count_documents({"tenant_id": forms_ctx["tenant_id"], "module": "webstores"})
         await client.get(f"/api/webstores/{created['store']['id']}/questionnaire")
-        assert await db.form_templates.count_documents({"tenant_id": forms_ctx["tenant_id"], "module": "webstores"}) == shared_count
+        await client.get("/api/webstores/setup/questionnaire-templates")
+        assert await db.form_templates.count_documents({"tenant_id": forms_ctx["tenant_id"], "module": "webstores"}) == installed_count
+        assert await db.webstore_questionnaire_templates.count_documents({"tenant_id": forms_ctx["tenant_id"]}) == 0
 
+        templates = first.json()["templates"]
+        assert [item["store_type"] for item in templates] == ["base", "event"]
+        assert all(item["source_template_id"].startswith("webstore_starter_questionnaire_") for item in templates)
+        assert all(item["source_template_version"] == 1 for item in templates)
+
+        # Template editing lives only in Form Maker; the old Webstore edit routes are gone.
         legacy_write = await client.post(
             "/api/webstores/setup/questionnaire-templates",
             json={"title": "Conflicting Legacy Edit", "store_type": "event", "sections": []},
         )
-        assert legacy_write.status_code == 409
+        assert legacy_write.status_code == 405
 
-        event_template = next(item for item in first.json()["templates"] if item["store_type"] == "event")
-        shared_form_id = event_template["shared_form_template_id"]
+        event_form_id = next(item["id"] for item in templates if item["store_type"] == "event")
         patched = await client.patch(
-            f"/api/forms/templates/{shared_form_id}",
+            f"/api/forms/templates/{event_form_id}",
             json={
                 "name": "Canonical Event Intake",
                 "status": "published",
-                "sections": [{"id": "event", "title": "Canonical Event", "questions": [{"key": "event_name", "label": "Event Name", "type": "text", "required": True}]}],
+                "sections": [{"id": "event", "title": "Canonical Event", "questions": [{"key": "event_name", "label": "Event Name", "type": "text", "required": False}]}],
             },
         )
         assert patched.status_code == 200, patched.text
         rebound = await client.get(f"/api/webstores/{created['store']['id']}/questionnaire")
         assert any(item["title"] == "Canonical Event Intake" and item["version"] == patched.json()["version"] for item in rebound.json()["templates"])
+        # Re-running the install never overwrites the shop's edited copy.
+        await client.get("/api/webstores/setup/questionnaire-templates", params={"store_type": "event"})
+        kept = await db.form_templates.find_one({"tenant_id": forms_ctx["tenant_id"], "id": event_form_id}, {"_id": 0})
+        assert kept["name"] == "Canonical Event Intake"
 
         assignment = (await client.get(f"/api/webstores/{created['store']['id']}/assignments")).json()["items"][0]
         raw = (await client.post(f"/api/webstores/{created['store']['id']}/assignments/{assignment['id']}/resend")).json()["invitation"]["invitation_url"].split("t=", 1)[1]
@@ -244,13 +253,20 @@ async def test_webstore_adapter_idempotent_seeding_canonical_authority_and_respo
     async with public:
         token = (await public.post("/api/portal/webstores/invitations/accept", json={"token": raw})).json()["token"]
 
-    answers = {"store_name": "Owner Name", "event_location": "Town Park"}
+    answers = {
+        "store_name": "Owner Name",
+        "event_location": "Town Park",
+        "customer_name": "Pat Organizer",
+        "phone_number": "555-0100",
+        "email_address": "pat@example.com",
+        "products_wanted": ["tshirts"],
+    }
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"Authorization": f"Bearer {token}"}) as portal:
         submitted = await portal.post(f"/api/portal/webstores/{created['store']['id']}/questionnaire", json={"answers": answers})
         assert submitted.status_code == 200, submitted.text
         submission = submitted.json()
         assert submission["submitted_snapshot"]["answers"] == answers
-        assert "event_name" in submission["missing_info_flags"]
+        assert submission["revision"] == 1
 
     async with await _client_as(forms_ctx["user"]) as client:
         preview = await client.post(

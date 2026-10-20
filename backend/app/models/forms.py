@@ -46,6 +46,7 @@ class FormTemplate(BaseDoc):
     mapping_config: dict[str, Any] = Field(default_factory=dict)
     private_config: dict[str, Any] = Field(default_factory=dict)
     source_template_id: Optional[str] = None
+    source_template_version: Optional[int] = None  # pack version a shop copy was installed from
     created_by_user_id: Optional[str] = None
     updated_by_user_id: Optional[str] = None
 

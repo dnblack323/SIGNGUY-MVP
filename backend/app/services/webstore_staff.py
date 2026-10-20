@@ -9,7 +9,6 @@ from .webstore_staff_templates import *
 from .webstore_staff_products import *
 from .webstore_staff_product_updates import *
 from .webstore_staff_categories import *
-from .webstore_staff_questionnaire import *
 from .webstore_staff_media import *
 from .webstore_staff_ai import *
 

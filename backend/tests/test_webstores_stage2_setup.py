@@ -13,6 +13,16 @@ from app.services.webstore_setup import WEBSTORE_SETUP_STATES
 from server import app
 
 
+# Visible required questions in the Webstore Starter base + event questionnaires block submit.
+EVENT_REQUIRED_ANSWERS = {
+    "customer_name": "Pat Organizer",
+    "phone_number": "555-0100",
+    "email_address": "pat@example.com",
+    "products_wanted": ["tshirts"],
+    "event_name": "Spring Fair",
+}
+
+
 def _override(user: dict):
     async def _get():
         return {**user}
@@ -150,6 +160,7 @@ async def test_questionnaire_snapshot_safe_apply_and_reversal_are_non_pricing(st
     token = accepted.json()["token"]
 
     answers = {
+        **EVENT_REQUIRED_ANSWERS,
         "store_name": "Owner Supplied Name",
         "event_location": "Town Park",
         "selling_price_cents": 1,
@@ -270,7 +281,7 @@ async def test_stage2_static_template_route_and_type_change_controls(stage2_ctx)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"Authorization": f"Bearer {token}"}) as portal:
         submit = await portal.post(
             f"/api/portal/webstores/{created['store']['id']}/questionnaire",
-            json={"answers": {"store_name": "Event Store", "event_location": "Field"}},
+            json={"answers": {**EVENT_REQUIRED_ANSWERS, "store_name": "Event Store", "event_location": "Field"}},
         )
         assert submit.status_code == 200, submit.text
 
@@ -352,9 +363,9 @@ async def test_stage2_questionnaire_required_answers_repeat_submit_and_explicit_
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"Authorization": f"Bearer {token}"}) as portal:
         missing = await portal.post(f"/api/portal/webstores/{created['store']['id']}/questionnaire", json={"answers": {"event_location": "Gym"}})
         assert missing.status_code == 400
-        submitted = await portal.post(f"/api/portal/webstores/{created['store']['id']}/questionnaire", json={"answers": {"store_name": "First Name", "event_location": "Gym"}})
+        submitted = await portal.post(f"/api/portal/webstores/{created['store']['id']}/questionnaire", json={"answers": {**EVENT_REQUIRED_ANSWERS, "store_name": "First Name", "event_location": "Gym"}})
         assert submitted.status_code == 200
-        repeat = await portal.post(f"/api/portal/webstores/{created['store']['id']}/questionnaire", json={"answers": {"store_name": "Second Name", "event_location": "Gym"}})
+        repeat = await portal.post(f"/api/portal/webstores/{created['store']['id']}/questionnaire", json={"answers": {**EVENT_REQUIRED_ANSWERS, "store_name": "Second Name", "event_location": "Gym"}})
         assert repeat.status_code == 200
         assert repeat.json()["id"] == submitted.json()["id"]
 
@@ -379,7 +390,7 @@ async def test_stage2_indexes_and_states_are_registered(stage2_ctx):
     expected = {
         "webstore_access_assignments",
         "webstore_invitations",
-        "webstore_questionnaire_templates",
+        "webstore_questionnaire_submissions",
         "webstore_setup_files",
         "webstore_answer_applications",
     }

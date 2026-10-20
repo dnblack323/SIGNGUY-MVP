@@ -107,14 +107,16 @@ async def _seed() -> dict[str, Any]:
     ) as staff_client:
         store_a = await build_launchable_store(staff_client, f"a-{run_id}")
         store_b = await build_launchable_store(staff_client, f"b-{run_id}")
+        # Webstore questionnaires are edited in Form Maker (the only template authority).
         template_response = await staff_client.post(
-            "/api/webstores/setup/questionnaire-templates",
+            "/api/forms/templates",
             json={
-                "store_type": "fundraiser",
-                "title": "Fundraiser intake",
-                "version": 1,
-                "webstore_id": store_a["store"]["id"],
-                "sections": [{"key": "purpose", "title": "Store purpose", "questions": [{"key": "purpose", "label": "Purpose"}]}],
+                "name": "Fundraiser intake",
+                "module": "webstores",
+                "context_type": "webstore",
+                "status": "published",
+                "private_config": {"adapter": "webstore_questionnaire", "store_type": "fundraiser"},
+                "sections": [{"id": "purpose", "title": "Store purpose", "questions": [{"key": "purpose", "label": "Purpose", "type": "text"}]}],
             },
         )
         if template_response.status_code not in {200, 201}:
