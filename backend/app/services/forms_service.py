@@ -371,7 +371,12 @@ def _question_is_visible(question: dict[str, Any], answers: dict[str, Any]) -> b
     return str(actual) == str(expected)
 
 
-def _validate_response_answers(template: dict[str, Any], answers: dict[str, Any]) -> None:
+def invalid_answer_keys(template: dict[str, Any], answers: dict[str, Any]) -> list[str]:
+    """Keys of visible questions whose answers are missing or invalid.
+
+    Hidden questions (conditional rules not met) are never checked. Shared by
+    Form Maker responses and Webstore questionnaires.
+    """
     errors: list[str] = []
     for section in template.get("sections") or []:
         for question in section.get("questions") or []:
@@ -404,8 +409,13 @@ def _validate_response_answers(template: dict[str, Any], answers: dict[str, Any]
                 errors.append(str(key))
             if validation.get("pattern") and not re.match(str(validation["pattern"]), text_value):
                 errors.append(str(key))
+    return sorted(set(errors))
+
+
+def _validate_response_answers(template: dict[str, Any], answers: dict[str, Any]) -> None:
+    errors = invalid_answer_keys(template, answers)
     if errors:
-        raise FormsError("form_response_validation_failed", f"Invalid or missing answers: {', '.join(sorted(set(errors)))}", 400)
+        raise FormsError("form_response_validation_failed", f"Invalid or missing answers: {', '.join(errors)}", 400)
 
 
 async def _safe_attachment_refs(attachments: list[Any], *, tenant_id: str) -> list[dict[str, Any]]:

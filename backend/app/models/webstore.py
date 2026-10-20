@@ -94,7 +94,6 @@ WebstoreSetupState = Literal[
 WebstoreAssignmentRole = Literal["owner", "manager"]
 WebstoreAssignmentStatus = Literal["invited", "active", "revoked", "expired", "replaced"]
 WebstoreInvitationStatus = Literal["pending", "sent", "send_failed", "accepted", "revoked", "expired", "superseded"]
-WebstoreQuestionnaireTemplateStatus = Literal["active", "inactive", "retired"]
 WebstoreSetupFileStatus = Literal["active", "replaced", "removed"]
 WebstoreAnswerApplicationStatus = Literal["applied", "reversed"]
 WebstoreBrandingStatus = Literal[
@@ -351,6 +350,9 @@ class WebstoreQuestionnaireSubmission(BaseDoc):
     open_to_suggestions: bool = True
     missing_info_flags: list[str] = Field(default_factory=list)
     status: QuestionnaireStatus = "pending"
+    # Immutable once submitted: revision N is never edited; a resubmission is a new record.
+    revision: Optional[int] = None
+    supersedes_submission_id: Optional[str] = None
     submitted_snapshot: dict[str, Any] = Field(default_factory=dict)
     inactive_answer_paths: list[str] = Field(default_factory=list)
     returned_reason: Optional[str] = None
@@ -394,17 +396,6 @@ class WebstoreInvitation(BaseDoc):
     delivery_message_id: Optional[str] = None
     delivery_error: Optional[str] = None
     created_by_user_id: Optional[str] = None
-
-
-class WebstoreQuestionnaireTemplate(BaseDoc):
-    tenant_id: str
-    scope: str = "tenant"
-    store_type: str = "general"
-    version: StrictInt = Field(default=1, ge=1)
-    title: str
-    sections: list[dict[str, Any]] = Field(default_factory=list)
-    status: WebstoreQuestionnaireTemplateStatus = "active"
-    source_template_id: Optional[str] = None
 
 
 class WebstoreSetupFile(BaseDoc):

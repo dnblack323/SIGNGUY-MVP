@@ -1021,6 +1021,7 @@ async def ensure_indexes() -> None:
     await db.webstore_questionnaire_submissions.create_index("id", unique=True)
     await db.webstore_questionnaire_submissions.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1)])
     await db.webstore_questionnaire_submissions.create_index([("tenant_id", 1), ("webstore_id", 1), ("portal_identity_id", 1), ("status", 1)])
+    await db.webstore_questionnaire_submissions.create_index([("tenant_id", 1), ("webstore_id", 1), ("revision", -1)])
 
     await db.webstore_access_assignments.create_index("id", unique=True)
     await db.webstore_access_assignments.create_index([("tenant_id", 1), ("webstore_id", 1), ("role", 1), ("status", 1)])
@@ -1040,8 +1041,6 @@ async def ensure_indexes() -> None:
     await db.webstore_invitations.create_index([("tenant_id", 1), ("webstore_id", 1), ("assignment_id", 1), ("status", 1)])
     await db.webstore_invitations.create_index([("expires_at", 1), ("status", 1)])
 
-    await db.webstore_questionnaire_templates.create_index("id", unique=True)
-    await db.webstore_questionnaire_templates.create_index([("tenant_id", 1), ("store_type", 1), ("status", 1), ("version", -1)])
 
     await db.webstore_setup_files.create_index("id", unique=True)
     await db.webstore_setup_files.create_index([("tenant_id", 1), ("webstore_id", 1), ("status", 1), ("created_at", -1)])
