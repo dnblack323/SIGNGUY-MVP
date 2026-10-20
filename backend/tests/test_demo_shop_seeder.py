@@ -79,9 +79,14 @@ def test_reset_needs_the_exact_database_name_confirmation(tmp_path):
         assert "requires --confirm signguy_local" in result.stderr
 
 
+def _disposable_env() -> dict[str, str]:
+    """The current test run's own environment. CI is kept: on GitHub the disposable MongoDB service listens on 27017,
+    which the test-target validator accepts only when CI=true (a developer machine must use a private mongod)."""
+    return _clean_env(keep_ci=True, **{k: os.environ[k] for k in (iso.RUN_ID_VAR, iso.OWNER_TOKEN_VAR, "DB_NAME", "MONGO_URL")})
+
+
 def test_active_test_environment_requires_the_disposable_flag(tmp_path):
-    env = _clean_env(**{k: os.environ[k] for k in (iso.RUN_ID_VAR, iso.OWNER_TOKEN_VAR, "DB_NAME", "MONGO_URL")})
-    result = _demo("seed", env=env)
+    result = _demo("seed", env=_disposable_env())
     assert result.returncode == 2 and "--disposable" in result.stderr
 
 
@@ -91,9 +96,22 @@ def test_disposable_flag_without_a_test_environment_is_refused():
 
 
 def test_disposable_reset_never_drops_anything():
-    env = _clean_env(**{k: os.environ[k] for k in (iso.RUN_ID_VAR, iso.OWNER_TOKEN_VAR, "DB_NAME", "MONGO_URL")})
+    result = _demo("reset", "--disposable", "--confirm", os.environ["DB_NAME"], env=_disposable_env())
+    assert result.returncode == 2 and "only ever drops the local development database" in result.stderr
+
+
+def test_ci_service_port_is_accepted_but_a_disposable_reset_is_still_refused():
+    """Reproduces the GitHub setup (disposable service on 27017, CI=true) without touching any MongoDB:
+    the validator accepts the CI port, and the reset still refuses to drop anything before it connects."""
+    env = {**_disposable_env(), "MONGO_URL": "mongodb://localhost:27017", "CI": "true"}
     result = _demo("reset", "--disposable", "--confirm", os.environ["DB_NAME"], env=env)
     assert result.returncode == 2 and "only ever drops the local development database" in result.stderr
+
+
+def test_the_developer_mongo_port_is_refused_outside_ci_even_for_a_disposable_target():
+    env = {k: v for k, v in {**_disposable_env(), "MONGO_URL": "mongodb://localhost:27017"}.items() if k not in CI_KEYS}
+    result = _demo("seed", "--disposable", env=env)
+    assert result.returncode == 2 and "Port 27017 is the developer MongoDB" in result.stderr
 
 
 def test_storage_path_must_be_an_app_object_storage_directory(tmp_path):
@@ -125,3 +143,79 @@ def test_demo_shop_seed_is_complete_coherent_and_idempotent():
     finally:
         _test_env.drop_owned_database(client, db_name, run_id, token_sha)
         client.close()
+
+
+# ---------------------------------------------------------------- verified cleanup of orphaned old uploads
+
+def _storage(tmp_path: Path, name: str, files: dict[str, bytes]) -> Path:
+    root = tmp_path / name / "backend" / ".data" / "object_storage"
+    for key, data in files.items():
+        (root / key).parent.mkdir(parents=True, exist_ok=True)
+        (root / key).write_bytes(data)
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _plan(source: Path, backup: Path):
+    from scripts.demo_shop import storage_cleanup as sc
+
+    return sc.plan(f"{source}={backup}")
+
+
+def test_storage_cleanup_deletes_only_backed_up_app_files_and_keeps_everything_else(tmp_path):
+    from scripts.demo_shop import storage_cleanup as sc
+
+    files = {"signguy-ai/tenants/t1/files/a.png": b"AAA", "tests/t-x/b.png": b"BBB"}
+    src, bak = _storage(tmp_path, "live", files), _storage(tmp_path, "backup", files)
+    outside = tmp_path / "live" / "backend" / ".data" / "runtime.log"
+    outside.write_text("keep me")
+    plan = _plan(src, bak)
+    assert plan.safe and sorted(plan.files) == sorted(files)
+    assert sc.execute(plan) == 2
+    assert src.is_dir() and not any(src.iterdir()), "files and now-empty folders are removed, the root stays"
+    assert outside.read_text() == "keep me"
+    assert all((bak / k).read_bytes() == v for k, v in files.items()), "the backup is never touched"
+
+
+@pytest.mark.parametrize("case", ["unexpected_key", "missing_from_backup", "different_in_backup"])
+def test_storage_cleanup_refuses_anything_that_is_not_provably_backed_up_and_ours(tmp_path, case):
+    from scripts.demo_shop import storage_cleanup as sc
+
+    files = {"signguy-ai/tenants/t1/files/a.png": b"AAA"}
+    src, bak = _storage(tmp_path, "live", files), _storage(tmp_path, "backup", files)
+    if case == "unexpected_key":
+        for root in (src, bak):
+            (root / "shared-assets").mkdir()
+            (root / "shared-assets" / "logo.png").write_bytes(b"shared")
+    elif case == "missing_from_backup":
+        (bak / "signguy-ai/tenants/t1/files/a.png").unlink()
+    else:
+        (bak / "signguy-ai/tenants/t1/files/a.png").write_bytes(b"CHANGED")
+    plan = _plan(src, bak)
+    assert not plan.safe
+    with pytest.raises(sc.StorageCleanupError):
+        sc.execute(plan)
+    assert (src / "signguy-ai/tenants/t1/files/a.png").read_bytes() == b"AAA", "nothing was deleted"
+
+
+def test_storage_cleanup_only_accepts_an_app_object_storage_folder_and_a_separate_backup(tmp_path):
+    from scripts.demo_shop import storage_cleanup as sc
+
+    src = _storage(tmp_path, "live", {"tests/a.png": b"A"})
+    with pytest.raises(sc.StorageCleanupError):
+        sc.plan(f"{tmp_path}={src}")  # not an object_storage folder
+    with pytest.raises(sc.StorageCleanupError):
+        sc.plan(f"{src}={src}")  # backup must be a different folder
+    with pytest.raises(sc.StorageCleanupError):
+        sc.plan(f"{src}={src / 'tests'}")  # backup must not live inside the storage being emptied
+    with pytest.raises(sc.StorageCleanupError):
+        sc.plan(str(src))  # needs the DIR=BACKUP pairing
+
+
+def test_reset_with_an_unsafe_storage_plan_stops_before_anything_is_dropped(tmp_path):
+    src = _storage(tmp_path, "live", {"signguy-ai/tenants/t1/files/a.png": b"AAA"})
+    bak = _storage(tmp_path, "backup", {})  # nothing backed up
+    # deliberately WITHOUT --confirm: even if the order of checks regressed, nothing could ever be dropped by this test
+    result = _demo("reset", "--env-file", _dev_env_file(tmp_path), "--clear-storage", f"{src}={bak}", env=_clean_env())
+    assert result.returncode == 2 and "nothing was changed" in result.stderr
+    assert (src / "signguy-ai/tenants/t1/files/a.png").exists()

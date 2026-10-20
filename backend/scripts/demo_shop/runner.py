@@ -103,9 +103,25 @@ async def verify_demo(target: DemoTarget) -> int:
         await api.aclose()
 
 
-async def run(command: str, target: DemoTarget, *, confirm: str | None) -> int:
+async def run(command: str, target: DemoTarget, *, confirm: str | None, clear_storage: list[str] | None = None) -> int:
+    plans = []
+    if command in ("reset", "storage-plan"):
+        from scripts.demo_shop import storage_cleanup as sc
+
+        try:
+            plans = [sc.plan(spec) for spec in (clear_storage or [])]
+        except sc.StorageCleanupError as exc:
+            raise UnsafeDemoTargetError(str(exc)) from exc
+        for p in plans:
+            print(p.summary())
+        if command == "storage-plan":
+            return 0 if all(p.safe for p in plans) else 1
+        if not all(p.safe for p in plans):  # decided before anything is dropped
+            raise UnsafeDemoTargetError("a --clear-storage folder is not safe to empty; nothing was changed")
     if command == "reset":
         reset_database(target, confirm)
+        for p in plans:
+            print(f"removed {sc.execute(p)} old files from {p.source}")
     if command == "verify":
         return await verify_demo(target)
     if command in ("seed", "reset"):

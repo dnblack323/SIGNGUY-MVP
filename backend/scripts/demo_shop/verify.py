@@ -146,5 +146,12 @@ async def run(api: DemoApi) -> int:
     r.check("no store has checkout enabled", all(not s.get("checkout_enabled") for s in stores))
     r.check("no payment provider is connected", all(not s.get("stripe_payment_ready") for s in stores))
     r.check("questionnaires are Form Maker templates", await db.form_templates.count_documents({"module": "webstores"}) >= 7)
+    print("no outside effects")
+    r.check("no email was sent or attempted", await db.email_logs.count_documents({}) == 0 and await db.email_activity.count_documents({}) == 0)
+    stripeish = await db.payments.count_documents({"$or": [{"provider": {"$nin": [None, "", "manual"]}}, {"stripe_payment_intent_id": {"$nin": [None, ""]}}, {"stripe_charge_id": {"$nin": [None, ""]}}]})
+    r.check("every payment is a manual record (no Stripe/provider ids)", stripeish == 0, f"{stripeish} provider-linked")
+    r.check("no Stripe account, checkout or payout exists for any store", all(not s.get("provider_account_reference") and not s.get("provider_charges_enabled") and not s.get("provider_payouts_enabled") for s in stores))
+    ai = {c: await db[c].count_documents({}) for c in ("ai_usage_ledger_entries", "ai_provider_cost_ledger_entries", "ai_credit_ledger_entries", "ai_action_requests", "assistant_voice_sessions")}
+    r.check("no AI usage, cost or credit spend", not any(ai.values()), str({k: v for k, v in ai.items() if v}))
     print(f"\n{len(r.rows) - r.failed} passed, {r.failed} failed")
     return 1 if r.failed else 0

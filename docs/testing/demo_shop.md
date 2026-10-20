@@ -8,7 +8,8 @@ uses, so numbering, snapshots, activity records and validation behave exactly as
 cd backend
 python -m scripts.demo_shop seed        # idempotent: creates what is missing, changes nothing that exists
 python -m scripts.demo_shop verify      # read-only: relationships, money, files, screens, one-tenant checks
-python -m scripts.demo_shop reset --confirm signguy_local   # DESTRUCTIVE: drops signguy_local, then seeds
+python -m scripts.demo_shop storage-plan --clear-storage DIR=BACKUP     # read-only: old uploads a reset would orphan
+python -m scripts.demo_shop reset --confirm signguy_local [--clear-storage DIR=BACKUP]   # DESTRUCTIVE: drop, empty verified storage, seed
 ```
 
 Options: `--env-file <path>` (the development `.env`; default `backend/.env`), `--storage-path <backend>/.data/object_storage`
@@ -24,6 +25,14 @@ Options: `--env-file <path>` (the development `.env`; default `backend/.env`), `
 * Live integrations are switched off in the seeding process: SendGrid, Stripe, OpenAI and SMS keys are blanked, so no email,
   charge or AI call can happen. Stores never enable checkout and no payment provider is configured.
 * No HTTP route or UI button calls this tool.
+
+## Old uploads (file storage)
+
+Dropping the database orphans the files it referenced in `<backend>/.data/object_storage`. `--clear-storage DIR=BACKUP`
+empties such a folder as part of `reset`, and only when every file passes: the folder is exactly a `.data/object_storage`
+directory, every key is under `signguy-ai/tenants/` or `tests/` (anything else aborts as possibly shared), and a byte-identical
+copy (size + sha256) exists in `BACKUP`. The plan is checked **before** the database is dropped; files are deleted (then empty
+folders), the storage root and everything outside it are untouched. `storage-plan` prints the same check without deleting.
 
 ## What it creates
 
