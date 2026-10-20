@@ -34,6 +34,7 @@ from pathlib import Path
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 
+from app.core.offline_mode import apply_offline_environment  # noqa: E402
 from app.core.test_isolation import (  # noqa: E402  (stdlib-only module; safe before app imports)
     OWNER_COLLECTION,
     OWNER_TOKEN_VAR,
@@ -54,18 +55,6 @@ MONGOD_VAR = "SIGNGUY_TEST_MONGOD"
 RUN_DIR_VAR = "SIGNGUY_TEST_RUN_DIR"
 SYSTEM_DBS = {"admin", "config", "local"}
 
-# Integrations a test run must never reach. Blanked even if the caller's shell sets them.
-_BLANKED = (
-    "SENDGRID_API_KEY", "SENDGRID_FROM_EMAIL", "SENDGRID_WEBHOOK_PUBLIC_KEY", "OPENAI_API_KEY",
-    "AI_PROVIDER_API_KEY", "STRIPE_API_KEY", "STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY",
-    "STRIPE_WEBHOOK_SECRET", "STRIPE_CONNECT_CLIENT_ID", "STRIPE_CONNECT_WEBHOOK_SECRET",
-    "SMS_PROVIDER_KEY", "SMS_PROVIDER_SECRET", "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET",
-    "OBJECT_STORAGE_BASE_URL", "PUBLIC_APP_URL",
-)
-_DISABLED = (
-    "AI_ENABLED", "SMS_ENABLED", "STRIPE_ENABLED", "STRIPE_WRITES_ENABLED", "STRIPE_WEBHOOK_ENABLED",
-    "GOOGLE_AUTH_ENABLED", "OPENAI_REALTIME_ENABLED", "SENDGRID_WEBHOOK_ENABLED",
-)
 _UNSET = ("DEV_LOGIN_EMAIL", "DEV_LOGIN_FULL_NAME", "DEV_LOGIN_PLATFORM_CREATOR", "STRIPE_MODE", "CORS_ORIGINS")
 
 
@@ -221,10 +210,7 @@ def _apply_safe_environment(run_dir: Path) -> None:
     env = os.environ
     for name in _UNSET:
         env.pop(name, None)
-    for name in _BLANKED:
-        env[name] = ""
-    for name in _DISABLED:
-        env[name] = "false"
+    apply_offline_environment(env)
     env.update(ENV="test", AUTH_DEV_BYPASS="true", STORAGE_BACKEND="filesystem",
                OBJECT_STORAGE_PATH=str(run_dir / "storage"), JWT_SECRET=secrets.token_hex(32))
 
