@@ -281,7 +281,7 @@ class TestCalculatorCategories:
 
     @pytest.mark.xfail(
         reason="Stale pre-isolation test: never ran in CI (needed a live server). /pricing/calculate no longer "
-        "keeps the original suggestion alongside a manual price; needs an owner decision, tracked in the Task 1 report.",
+        "keeps the original suggestion alongside a manual price; needs an owner decision, tracked in issue #51.",
         strict=False,
     )
     def test_manual_override_preserves_original_suggestion(self, session):
