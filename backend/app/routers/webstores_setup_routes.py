@@ -61,14 +61,6 @@ async def bound_questionnaire(webstore_id: str, user: dict = Depends(get_current
         _raise_setup(e)
 
 
-@router.post("/{webstore_id}/questionnaire/send")
-async def send_questionnaire(webstore_id: str, payload: QuestionnaireSendIn, user: dict = Depends(get_current_user)) -> dict:
-    try:
-        return await setup_svc.send_questionnaire_to_owner(user, webstore_id, payload.model_dump(exclude_none=True))
-    except WebstoreSetupError as e:
-        _raise_setup(e)
-
-
 @router.get("/{webstore_id}/questionnaire-response")
 async def questionnaire_response(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
     try:

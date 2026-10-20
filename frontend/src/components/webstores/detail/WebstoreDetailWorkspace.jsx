@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import InformationPacketDialog from "./InformationPacketDialog";
+import QuestionnaireReviewDialog from "./QuestionnaireReviewDialog";
+import { useParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ProductFoundationTab from "./ProductFoundationTab";
 import ProductPlanTab from "./ProductPlanTab";
@@ -19,7 +21,6 @@ import {
 
 export default function WebstoreDetailWorkspace() {
   const { id } = useParams();
-  const location = useLocation();
   const [templateId, setTemplateId] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
   const [advancedSetupOpen, setAdvancedSetupOpen] = useState(false);
@@ -40,9 +41,7 @@ export default function WebstoreDetailWorkspace() {
 
   const setupWorkflow = useWebstoreSetupWorkflow({
     id,
-    initialQuestionnaireDelivery: location.state?.questionnaireDelivery,
     assignments,
-    questionnaire,
     questionnaireResponse,
     refresh,
   });
@@ -107,13 +106,6 @@ export default function WebstoreDetailWorkspace() {
     return <div className="p-6 text-sm text-rose-700">Webstore not found.</div>;
   }
 
-  const questionnaireLink = setupWorkflow.questionnaireDelivery?.link
-    ? new URL(
-        setupWorkflow.questionnaireDelivery.link,
-        window.location.origin,
-      ).toString()
-    : "";
-
   const model = {
     ...queries,
     ...setupWorkflow,
@@ -128,7 +120,6 @@ export default function WebstoreDetailWorkspace() {
     formatLabel,
     id,
     nextRequiredAction,
-    questionnaireLink,
     selectedProductsCount,
     setActiveTab,
     setAdvancedSetupOpen,
@@ -141,6 +132,8 @@ export default function WebstoreDetailWorkspace() {
   return (
     <div className="space-y-4" data-testid="webstore-detail-page">
       <WebstoreDetailHeader model={model} />
+      <InformationPacketDialog webstoreId={id} open={model.packetOpen} onOpenChange={model.setPacketOpen} onSent={refresh} />
+      <QuestionnaireReviewDialog webstoreId={id} open={model.reviewOpen} onOpenChange={model.setReviewOpen} onChanged={refresh} />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Tabs
           value={activeTab}

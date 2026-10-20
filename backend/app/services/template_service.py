@@ -41,6 +41,8 @@ VALID_PLACEHOLDERS = {
     "appointment_date", "appointment_time", "appointment_location", "task_title",
     "due_date", "support_request_number", "feature_request_title", "bug_report_title",
     "shop_name", "contact_name",
+    # Webstore information packet
+    "store_name", "store_type_label", "questionnaire_link", "shop_email", "shop_phone",
 }
 PLACEHOLDER_RE = re.compile(r"{{\s*([a-zA-Z0-9_.-]+)\s*}}")
 

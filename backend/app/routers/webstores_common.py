@@ -101,9 +101,47 @@ class RelaunchIn(BaseModel):
     reason: Optional[str] = None
 
 
-class QuestionnaireSendIn(BaseModel):
+class WebstoreRequestCustomerIn(BaseModel):
+    name: str
+    company: Optional[str] = None
     email: Optional[str] = None
+    phone: Optional[str] = None
+    customer_type: Optional[str] = None
+
+
+class WebstoreRequestContactIn(BaseModel):
     name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class WebstoreRequestIn(BaseModel):
+    customer_id: Optional[str] = None
+    new_customer: Optional[WebstoreRequestCustomerIn] = None
+    confirm_new_customer: bool = False
+    contact: WebstoreRequestContactIn = Field(default_factory=WebstoreRequestContactIn)
+    store_type: str = "general"
+    store_name: Optional[str] = None
+    purpose: Optional[str] = None
+    target_launch_at: Optional[str] = None
+    deadline_at: Optional[str] = None
+    event_start_at: Optional[str] = None
+    notes: Optional[str] = None
+    intake_id: Optional[str] = None
+    idempotency_key: Optional[str] = None
+
+
+class PacketSendIn(BaseModel):
+    resend: bool = False
+
+
+class FulfillmentSettingsIn(BaseModel):
+    supported_methods: Optional[list[str]] = None
+    default_pickup_location: Optional[str] = None
+    pickup_instructions: Optional[str] = None
+    pickup_windows_enabled: Optional[bool] = None
+    default_window_start: Optional[str] = None
+    default_window_end: Optional[str] = None
 
 
 class LifecycleRevisionIn(BaseModel):

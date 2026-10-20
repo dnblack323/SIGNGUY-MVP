@@ -41,15 +41,15 @@ def test_status_reports_enabled_missing_secret_as_not_ok():
 
     s = cfg.get_settings()
     orig_enabled = s.sendgrid_webhook_enabled
-    orig_secret = s.sendgrid_webhook_secret
+    orig_secret = s.sendgrid_webhook_public_key
     s.sendgrid_webhook_enabled = True
-    s.sendgrid_webhook_secret = None
+    s.sendgrid_webhook_public_key = None
     try:
         status = integration_status()
         sg = next(i for i in status["integrations"] if i["name"] == "sendgrid_webhook")
         assert sg["enabled"] is True
         assert sg["ok"] is False
-        assert "SENDGRID_WEBHOOK_SECRET" in sg["missing_secrets"]
+        assert "SENDGRID_WEBHOOK_PUBLIC_KEY" in sg["missing_secrets"]
     finally:
         s.sendgrid_webhook_enabled = orig_enabled
-        s.sendgrid_webhook_secret = orig_secret
+        s.sendgrid_webhook_public_key = orig_secret

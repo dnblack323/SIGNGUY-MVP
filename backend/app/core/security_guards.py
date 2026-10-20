@@ -174,11 +174,18 @@ def collect_violations(settings: Settings) -> list[GuardViolation]:
         )
 
     # 3. Integration-enabled checks.
-    if settings.sendgrid_webhook_enabled and not settings.sendgrid_webhook_secret:
+    if settings.sendgrid_webhook_enabled and not getattr(settings, "sendgrid_webhook_public_key", None):
         violations.append(
             GuardViolation(
-                code="sendgrid_webhook_secret_missing",
-                message="SENDGRID_WEBHOOK_SECRET is required when SENDGRID_WEBHOOK_ENABLED=true.",
+                code="sendgrid_webhook_public_key_missing",
+                message="SENDGRID_WEBHOOK_PUBLIC_KEY is required when SENDGRID_WEBHOOK_ENABLED=true.",
+            )
+        )
+    if getattr(settings, "sendgrid_api_key", None) and not getattr(settings, "public_app_url", None):
+        violations.append(
+            GuardViolation(
+                code="public_app_url_missing",
+                message="PUBLIC_APP_URL is required when SendGrid email is configured, so emails contain full links.",
             )
         )
     if settings.stripe_writes_enabled and not settings.stripe_api_key:

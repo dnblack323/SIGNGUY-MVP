@@ -9,9 +9,10 @@ from .base import BaseDoc
 
 EmailStatus = Literal["queued", "sent", "delivered", "failed", "skipped"]
 EmailTemplate = Literal[
-    "quote_sent", "invoice_sent", "invoice_reminder", "document_sent", "general"
+    "quote_sent", "invoice_sent", "invoice_reminder", "document_sent", "general",
+    "webstore_invitation", "webstore_information_packet", "webstore_questionnaire", "webstore_launch_packet",
 ]
-EmailRelatedType = Literal["quote", "order", "work_order", "invoice", "document", "customer", "general"]
+EmailRelatedType = Literal["quote", "order", "work_order", "invoice", "document", "customer", "general", "webstore"]
 
 
 class EmailLog(BaseDoc):
@@ -22,6 +23,7 @@ class EmailLog(BaseDoc):
     template: EmailTemplate = "general"
     to_email: EmailStr
     from_email: str
+    reply_to: Optional[str] = None
     subject: str
     body: str  # plain text body sent
     status: EmailStatus = "queued"

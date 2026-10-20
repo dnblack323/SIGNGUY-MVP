@@ -81,6 +81,12 @@ async def _included_packet_products(tenant_id: str, webstore_id: str, public_slu
 async def _assemble_launch_packet_snapshot(user: dict, store: dict, fields: dict[str, Any]) -> dict[str, Any]:
     store = await _ensure_public_slug(store)
     owner = await _get_owner(user["tenant_id"], store["owner_id"])
+    customer = (
+        await db.customers.find_one({"tenant_id": user["tenant_id"], "id": owner["customer_id"]}, {"_id": 0, "name": 1, "company": 1})
+        if owner.get("customer_id") else None
+    )
+    # P2-14: the Customer owns the organization; old owner rows may still carry their own copy.
+    organization = ((customer or {}).get("company") or (customer or {}).get("name")) or owner.get("organization")
     published_branding = await branding_svc.published_branding_for_store(store)
     products = await _included_packet_products(user["tenant_id"], store["id"], store.get("public_slug"))
     qr_destination = store.get("public_url") or f"/p/webstores/{store.get('public_slug')}"
@@ -128,7 +134,7 @@ async def _assemble_launch_packet_snapshot(user: dict, store: dict, fields: dict
         "store_owner": {
             "name": owner.get("name"),
             "email": owner.get("email"),
-            "organization": owner.get("organization"),
+            "organization": organization,
         },
         "branding": branding_source,
         "owner_preview": {k: v for k, v in owner_preview.items() if v not in (None, "", {})},
@@ -300,47 +306,21 @@ async def send_launch_packet(user: dict, webstore_id: str, packet_id: str) -> di
     subject = f"{store.get('name')} launch packet is ready for review"
     body = (
         f"Your SignGuy Webstore launch packet version {packet.get('version')} is ready for review. "
-        f"Open your secure Store Owner portal: {portal_path}"
+        f"Open your secure Store Owner portal: {public_url(portal_path)}"
     )
-    ok, msg_id, error = send_email(to_email=owner["email"], subject=subject, body_text=body)
-    email_log_id = f"webstore-packet-delivery-{packet_id}"
-    await db.email_logs.update_one(
-        {"tenant_id": user["tenant_id"], "id": email_log_id},
-        {
-            "$setOnInsert": {
-                "id": email_log_id,
-                "tenant_id": user["tenant_id"],
-                "related_type": "general",
-                "related_id": packet_id,
-                "template": "general",
-                "to_email": owner["email"],
-                "from_email": "system@signguy.ai",
-                "subject": subject,
-                "body": body,
-                "sent_by": user["id"],
-                "attachment_file_ids": [],
-                "idempotency_key": idempotency_key,
-                "created_at": _now_iso(),
-            },
-            "$set": {
-                "status": "sent" if ok else "skipped",
-                "error_message": error,
-                "sendgrid_message_id": msg_id,
-                "updated_at": _now_iso(),
-            },
-        },
-        upsert=True,
-    )
-    await record_processed_activity(
+    log = await send_logged_email(
         tenant_id=user["tenant_id"],
-        email_log_id=email_log_id,
         to_email=owner["email"],
-        sendgrid_message_id=msg_id,
+        subject=subject,
+        body_text=body,
+        sent_by=user["id"],
+        template="webstore_launch_packet",
+        related_type="webstore",
+        related_id=webstore_id,
         related_entity_type="webstore_launch_packet",
-        related_entity_id=packet_id,
-        ok=ok,
-        error=error,
+        idempotency_key=idempotency_key,
     )
+    ok, error = log["status"] == "sent", log.get("error_message")
     now = _now_iso()
     updated = await db.webstore_launch_packets.find_one_and_update(
         {
@@ -381,6 +361,6 @@ async def send_launch_packet(user: dict, webstore_id: str, packet_id: str) -> di
         entity_type="webstore_launch_packet",
         entity_id=packet_id,
         summary=f"Webstore launch packet version {packet.get('version')} delivered for owner approval",
-        metadata={"version": packet.get("version"), "delivery_status": packet.get("delivery_status"), "email_log_id": email_log_id},
+        metadata={"version": packet.get("version"), "delivery_status": packet.get("delivery_status"), "email_log_id": log["id"]},
     )
     return packet

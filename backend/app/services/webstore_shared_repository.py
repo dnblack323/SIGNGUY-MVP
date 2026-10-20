@@ -48,10 +48,9 @@ async def _get_category(tenant_id: str, webstore_id: str, category_id: str) -> d
 
 
 async def _setup_file_for_product_reference(tenant_id: str, webstore_id: str, file_id: str) -> dict:
-    doc = await db.webstore_setup_files.find_one(
-        {"tenant_id": tenant_id, "webstore_id": webstore_id, "id": file_id, "status": "active"},
-        {"_id": 0},
-    )
+    from .webstore_setup_files import find_webstore_setup_file
+
+    doc = await find_webstore_setup_file(tenant_id, webstore_id, file_id)
     if not doc:
         raise WebstoreError("product_file_not_found", "The selected product file was not found for this Webstore", 404)
     ext = str(doc.get("extension") or "").lower()

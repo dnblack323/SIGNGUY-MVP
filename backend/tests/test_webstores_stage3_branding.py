@@ -105,6 +105,8 @@ def _type_content(store_type: str) -> dict:
         "promotional": {"campaign_message": "Limited seasonal promo.", "offer_wording": "Buy before Friday."},
         "employee": {"employee_ordering_instructions": "Use your employee ID at pickup.", "company_welcome": "Team gear"},
         "general": {"general_welcome": "Welcome shoppers.", "about_store": "Open store for branded items."},
+        # Team / School uses the general branding fields until Phase 5 adds type-specific branding.
+        "team_school": {"general_welcome": "Go Lions!", "about_store": "Spirit wear for families."},
     }[store_type]
 
 
@@ -350,9 +352,9 @@ async def test_owner_manager_assignment_scope_and_role_rules_are_enforced(brandi
         assert denied.status_code == 403
 
 
-@pytest.mark.parametrize("store_type", ["b2b", "fundraiser", "event", "promotional", "employee", "general"])
+@pytest.mark.parametrize("store_type", ["fundraiser", "event", "team_school", "b2b", "promotional", "general", "employee"])
 @pytest.mark.asyncio
-async def test_all_six_webstore_types_validate_and_preserve_type_specific_branding(branding_ctx, store_type):
+async def test_all_webstore_types_and_legacy_employee_validate_and_preserve_type_specific_branding(branding_ctx, store_type):
     store = await _seed_store(branding_ctx, store_type=store_type)
     async with await _client_as(branding_ctx["staff"]) as client:
         save = await client.patch(f"/api/webstores/{store['id']}/branding/draft", json={"content": _valid_branding(store)})

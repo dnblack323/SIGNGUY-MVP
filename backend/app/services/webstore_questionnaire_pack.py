@@ -19,15 +19,15 @@ from ..core.db import db
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.forms import FormTemplate
 from ..models.template_definition import TemplateDefinition, TemplatePack
-from ..models.webstore import LEGACY_WEBSTORE_TYPES, WEBSTORE_TYPES
+from ..models.webstore import WEBSTORE_TYPES
 from .template_service import PLATFORM_TENANT_ID
-from .webstore_questionnaire_content import STARTER_QUESTIONNAIRE_SECTIONS
+from .webstore_questionnaire_content import QUESTIONNAIRE_CONTENT_VERSION, STARTER_QUESTIONNAIRE_SECTIONS
 from .webstore_setup_contracts import SAFE_ANSWER_MAPPING, WEBSTORE_FORM_ADAPTER
 
 WEBSTORE_STARTER_PACK_ID = "webstore_starter"
-WEBSTORE_STARTER_PACK_VERSION = 1
-# Legacy "employee" stays until PR 2b turns it into a B2B preset.
-QUESTIONNAIRE_STORE_TYPES = ("base", *WEBSTORE_TYPES, *LEGACY_WEBSTORE_TYPES)
+WEBSTORE_STARTER_PACK_VERSION = QUESTIONNAIRE_CONTENT_VERSION
+# Employee/Company is a preset inside the B2B questionnaire, not a store type.
+QUESTIONNAIRE_STORE_TYPES = ("base", *WEBSTORE_TYPES)
 
 
 def _source_template_id(store_type: str) -> str:
@@ -87,7 +87,8 @@ async def ensure_platform_webstore_pack() -> dict[str, Any]:
         description="Webstore setup questionnaires installed into each shop's Form Maker.",
         pack_type="starter",
         version=WEBSTORE_STARTER_PACK_VERSION,
-        included_template_ids=ids,
+        # Questionnaires plus the information-packet emails (webstore_information_packet).
+        included_template_ids=[*ids, *(f"{WEBSTORE_STARTER_PACK_ID}_packet_{t}" for t in WEBSTORE_TYPES)],
         starter_pack=True,
     ).model_dump()
     created_at = pack.pop("created_at", utc_now())

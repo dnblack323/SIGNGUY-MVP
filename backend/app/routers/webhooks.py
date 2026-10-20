@@ -3,7 +3,7 @@
 Currently only SendGrid Event Webhook is wired. Additional providers will be
 added in later ECs (Stripe in EC3, etc.).
 
-The route reads the RAW request body (necessary for HMAC), verifies signature,
+The route reads the RAW request body (the signed bytes), verifies the ECDSA signature,
 short-circuits on missing config, and then hands events to the processor.
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ async def sendgrid_webhook(request: Request) -> dict:
     settings = get_settings()
 
     # Route is fail-closed: if not enabled or secret missing, reject.
-    if not settings.sendgrid_webhook_enabled or not settings.sendgrid_webhook_secret:
+    if not settings.sendgrid_webhook_enabled or not settings.sendgrid_webhook_public_key:
         # 404 to hide the surface when disabled — no leakage of enablement state.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
@@ -34,7 +34,7 @@ async def sendgrid_webhook(request: Request) -> dict:
     timestamp = request.headers.get("X-Twilio-Email-Event-Webhook-Timestamp", "")
 
     if not verify_signature(
-        secret=settings.sendgrid_webhook_secret,
+        public_key=settings.sendgrid_webhook_public_key,
         signature_header=signature,
         timestamp_header=timestamp,
         raw_body=raw,

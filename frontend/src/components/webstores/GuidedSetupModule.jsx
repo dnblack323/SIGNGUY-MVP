@@ -12,11 +12,11 @@ export default function GuidedSetupModule({
   branding,
   readiness,
   onShowTab,
-  onSendQuestionnaire,
+  onSendInformationPacket,
+  onReviewAnswers,
   onGeneratePacket,
   onSendPacket,
   onLaunch,
-  sendingQuestionnaire,
   generatingPacket,
   sendingPacket,
   launching,
@@ -63,7 +63,7 @@ export default function GuidedSetupModule({
         ? "The owner sent answers back. Review them before applying anything."
         : questionnaireSent
           ? "The type-specific questionnaire is with the owner."
-          : "Send the existing questionnaire for this Webstore type.",
+          : "Send the information packet with the questionnaire link for this Webstore type.",
       complete: questionnaireSubmitted,
       waiting: questionnaireSent && !questionnaireSubmitted,
     },
@@ -120,10 +120,10 @@ export default function GuidedSetupModule({
   const actionFor = (step) => {
     if (step.complete || step.waiting || step.locked) return null;
     if (step.key === "questionnaire") {
-      return <Button size="sm" onClick={onSendQuestionnaire} disabled={sendingQuestionnaire} data-testid="guided-send-questionnaire">{sendingQuestionnaire ? "Sending..." : "Send Questionnaire"}</Button>;
+      return <Button size="sm" onClick={onSendInformationPacket} data-testid="guided-send-questionnaire">Send Information Packet</Button>;
     }
     if (step.key === "answers") {
-      return <Button size="sm" onClick={() => onShowTab("review-launch")} data-testid="guided-review-answers">Review Answers</Button>;
+      return <Button size="sm" onClick={onReviewAnswers} data-testid="guided-review-answers">Review Answers</Button>;
     }
     if (step.key === "build") {
       return <Button size="sm" onClick={() => onShowTab(hasProducts ? "storefront" : "products")} data-testid="guided-build-products">{hasProducts ? "Open Storefront" : "Build Products"}</Button>;

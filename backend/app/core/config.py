@@ -32,6 +32,9 @@ class Settings:
         self.sendgrid_api_key: str | None = os.environ.get("SENDGRID_API_KEY") or None
         self.sendgrid_from_email: str | None = os.environ.get("SENDGRID_FROM_EMAIL") or None
         self.sendgrid_from_name: str = os.environ.get("SENDGRID_FROM_NAME", "SignGuy AI")
+        # Public frontend origin used to build absolute links in outbound email
+        # (e.g. https://app.example.com). Falls back to the first CORS origin outside production.
+        self.public_app_url: str | None = (os.environ.get("PUBLIC_APP_URL") or "").strip().rstrip("/") or None
 
         # Dev-only auth bypass: when true, /api/auth/dev-login is enabled.
         # Frontend uses it to auto-provision a Dev Shop so the user doesn't have to log in.
@@ -50,12 +53,13 @@ class Settings:
         self.env: str = os.environ.get("ENV", "development").strip().lower()
         self.deployment_context: str = os.environ.get("DEPLOYMENT_CONTEXT", "local").strip().lower()
 
-        # SendGrid webhook (inbound delivery events). Requires webhook secret when enabled.
+        # SendGrid Signed Event Webhook (inbound delivery events). SendGrid signs with
+        # ECDSA; this is the base64 verification public key from the Event Webhook settings.
         self.sendgrid_webhook_enabled: bool = (
             os.environ.get("SENDGRID_WEBHOOK_ENABLED", "false").lower() == "true"
         )
-        self.sendgrid_webhook_secret: str | None = (
-            os.environ.get("SENDGRID_WEBHOOK_SECRET") or None
+        self.sendgrid_webhook_public_key: str | None = (
+            (os.environ.get("SENDGRID_WEBHOOK_PUBLIC_KEY") or "").strip() or None
         )
 
         # Stripe (Core payments). Distinguish "writes enabled" from "webhook enabled".

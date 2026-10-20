@@ -76,7 +76,7 @@ async def _create_invitation(
     send: bool = True,
 ) -> dict:
     raw_token = generate_raw_token()
-    invitation_url = f"/portal/webstores/invitations/accept?t={raw_token}"
+    invitation_url = public_url(f"/portal/webstores/invitations/accept?t={raw_token}")
     invitation = WebstoreInvitation(
         tenant_id=tenant_id,
         webstore_id=webstore_id,
@@ -89,28 +89,26 @@ async def _create_invitation(
         created_by_user_id=user.get("id"),
     ).model_dump()
     if send:
-        ok, msg_id, error = send_email(
+        log = await send_logged_email(
+            tenant_id=tenant_id,
             to_email=email,
             subject="You're invited to a SignGuy Webstore setup workspace",
             body_text=(
                 f"You have been invited as a Webstore {role}. "
                 f"Use this 48-hour link to continue setup: {invitation_url}"
             ),
+            sent_by=user.get("id") or "system",
+            template="webstore_invitation",
+            related_type="webstore",
+            related_id=webstore_id,
+            related_entity_type="webstore_invitation",
         )
+        ok = log["status"] == "sent"
         invitation["status"] = "sent" if ok else "send_failed"
         invitation["sent_at"] = _now_iso() if ok else None
-        invitation["delivery_message_id"] = msg_id
-        invitation["delivery_error"] = error
-        await record_processed_activity(
-            tenant_id=tenant_id,
-            email_log_id=invitation["id"],
-            to_email=email,
-            sendgrid_message_id=msg_id,
-            related_entity_type="webstore_invitation",
-            related_entity_id=invitation["id"],
-            ok=ok,
-            error=error,
-        )
+        invitation["delivery_message_id"] = log.get("sendgrid_message_id")
+        invitation["delivery_error"] = log.get("error_message")
+        invitation["email_log_id"] = log["id"]
     await db.webstore_invitations.insert_one(prepare_for_mongo(invitation))
     await _audit(
         tenant_id=tenant_id,
@@ -212,7 +210,9 @@ async def list_assignments(user: dict, webstore_id: str) -> dict:
     return {"items": items}
 
 
-async def resend_invitation(user: dict, webstore_id: str, assignment_id: str) -> dict:
+async def resend_invitation(user: dict, webstore_id: str, assignment_id: str, *, send: bool = True) -> dict:
+    """Issue a fresh invitation (superseding pending ones). ``send=False`` returns the link without
+    emailing it, for callers such as the information packet that send their own email."""
     _require_staff_perm(user, Perm.WEBSTORE_MANAGE)
     assignment = await db.webstore_access_assignments.find_one({"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "id": assignment_id}, {"_id": 0})
     if not assignment or assignment.get("status") not in {"invited", "expired"}:
@@ -229,7 +229,7 @@ async def resend_invitation(user: dict, webstore_id: str, assignment_id: str) ->
         email=assignment["email"],
         name=assignment.get("name"),
         user=user,
-        send=True,
+        send=send,
     )
     await db.webstore_access_assignments.update_one(
         {"tenant_id": user["tenant_id"], "id": assignment_id},

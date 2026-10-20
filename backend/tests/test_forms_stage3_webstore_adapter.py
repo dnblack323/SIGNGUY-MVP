@@ -11,6 +11,8 @@ from app.core.db import db, ensure_indexes
 from app.core.portal_security import hash_token
 from app.deps import get_current_user
 from server import app
+from app.services.webstore_questionnaire_pack import WEBSTORE_STARTER_PACK_VERSION
+from tests.webstore_questionnaire_answers import complete_answers
 
 
 def _override(user: dict):
@@ -220,7 +222,7 @@ async def test_webstore_questionnaires_come_only_from_installed_form_maker_copie
         templates = first.json()["templates"]
         assert [item["store_type"] for item in templates] == ["base", "event"]
         assert all(item["source_template_id"].startswith("webstore_starter_questionnaire_") for item in templates)
-        assert all(item["source_template_version"] == 1 for item in templates)
+        assert all(item["source_template_version"] == WEBSTORE_STARTER_PACK_VERSION for item in templates)
 
         # Template editing lives only in Form Maker; the old Webstore edit routes are gone.
         legacy_write = await client.post(
@@ -253,14 +255,7 @@ async def test_webstore_questionnaires_come_only_from_installed_form_maker_copie
     async with public:
         token = (await public.post("/api/portal/webstores/invitations/accept", json={"token": raw})).json()["token"]
 
-    answers = {
-        "store_name": "Owner Name",
-        "event_location": "Town Park",
-        "customer_name": "Pat Organizer",
-        "phone_number": "555-0100",
-        "email_address": "pat@example.com",
-        "products_wanted": ["tshirts"],
-    }
+    answers = complete_answers("event", store_name="Owner Name", event_location="Town Park")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"Authorization": f"Bearer {token}"}) as portal:
         submitted = await portal.post(f"/api/portal/webstores/{created['store']['id']}/questionnaire", json={"answers": answers})
         assert submitted.status_code == 200, submitted.text

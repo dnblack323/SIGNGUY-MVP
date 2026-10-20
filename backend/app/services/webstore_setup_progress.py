@@ -34,7 +34,9 @@ async def _setup_progress(store: dict, *, staff: bool) -> dict:
     reviewed_count = await db.webstore_questionnaire_submissions.count_documents(
         {"tenant_id": tenant_id, "webstore_id": webstore_id, "status": "reviewed"}
     )
-    file_count = await db.webstore_setup_files.count_documents({"tenant_id": tenant_id, "webstore_id": webstore_id, "status": "active"})
+    from .webstore_setup_files import count_active_setup_files
+
+    file_count = await count_active_setup_files(tenant_id, webstore_id)
     state = await _derive_setup_state(store, invited_count, active_owner_count, draft_count, submitted_count, reviewed_count, file_count)
     type_requirements = evaluate_type_requirements(store)
     steps = [

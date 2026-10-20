@@ -21,7 +21,15 @@ async def notify(
     entity_id: Optional[str] = None,
     link: Optional[str] = None,
     metadata: Optional[dict[str, Any]] = None,
-) -> Notification:
+    dedupe_key: Optional[str] = None,
+) -> Optional[Notification]:
+    """Create one notification. With ``dedupe_key``, a repeat for the same recipient is skipped (returns None)."""
+    if dedupe_key:
+        metadata = {**(metadata or {}), "dedupe_key": dedupe_key}
+        if await db.notifications.find_one(
+            {"tenant_id": tenant_id, "recipient_user_id": recipient_user_id, "metadata.dedupe_key": dedupe_key}, {"_id": 1}
+        ):
+            return None
     n = Notification(
         tenant_id=tenant_id,
         recipient_user_id=recipient_user_id,
@@ -51,6 +59,7 @@ async def notify_tenant_owners(
     entity_id: Optional[str] = None,
     link: Optional[str] = None,
     metadata: Optional[dict[str, Any]] = None,
+    dedupe_key: Optional[str] = None,
 ) -> int:
     """Fan-out helper — deliver to every owner/admin in the tenant."""
     count = 0
@@ -71,6 +80,7 @@ async def notify_tenant_owners(
             entity_id=entity_id,
             link=link,
             metadata=metadata,
+            dedupe_key=dedupe_key,
         )
         count += 1
     return count

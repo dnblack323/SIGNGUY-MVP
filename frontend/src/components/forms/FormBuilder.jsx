@@ -24,6 +24,7 @@ export const FORM_QUESTION_TYPES = [
   { value: "radio", label: "Radio Buttons" },
   { value: "checkbox", label: "Checkboxes" },
   { value: "date", label: "Date Picker" },
+  { value: "time", label: "Time" },
   { value: "file_upload", label: "File Upload" },
   { value: "signature", label: "Signature" },
   { value: "heading", label: "Section Heading" },
@@ -35,11 +36,11 @@ const NON_INPUT_TYPES = new Set(["heading", "paragraph"]);
 const WEBSTORE_STORE_TYPES = [
   { value: "all", label: "All Webstores" },
   { value: "base", label: "Base setup" },
-  { value: "b2b", label: "B2B" },
   { value: "fundraiser", label: "Fundraiser" },
   { value: "event", label: "Event" },
+  { value: "team_school", label: "Team / School" },
+  { value: "b2b", label: "Business / B2B (incl. Employee / Company)" },
   { value: "promotional", label: "Promotional" },
-  { value: "employee", label: "Employee" },
   { value: "general", label: "General" },
 ];
 

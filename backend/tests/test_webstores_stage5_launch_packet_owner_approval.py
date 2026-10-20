@@ -98,7 +98,7 @@ async def _create_stage5_store(client: AsyncClient, ctx: dict) -> dict:
             "slug": f"stage5-store-{ctx['suffix']}",
             "store_type": "general",
             "setup_profile": {"store_purpose": "Spirit wear", "audience": "Families"},
-            "store_settings": {"fulfillment": {"method": "pickup", "pickup_copy": "Front desk pickup"}, "promo": {"copy_notes": "Share with families"}},
+            "store_settings": {"fulfillment": {"method": "shop_pickup", "methods": ["shop_pickup"], "pickup_copy": "Front desk pickup"}, "promo": {"copy_notes": "Share with families"}},
         },
     )
     assert store_resp.status_code == 201, store_resp.text

@@ -5,6 +5,9 @@
 - Never crashes the calling request.
 - EC2: on successful outbound, writes a `processed` row into `email_activity`
   so the observability feed shows the send before any provider webhook lands.
+- `send_logged_email` is the one send + EmailLog + activity path for system
+  emails. The EmailLog carries the SendGrid message id, which is how delivery
+  webhooks find the tenant.
 """
 from __future__ import annotations
 
@@ -14,6 +17,7 @@ from typing import Any, Optional
 from ..core.config import get_settings
 from ..core.db import db
 from ..core.time_utils import prepare_for_mongo, utc_now
+from ..models.email import EmailLog
 from ..models.email_activity import EmailActivity
 
 logger = logging.getLogger(__name__)
@@ -22,6 +26,18 @@ _settings = get_settings()
 
 def is_configured() -> bool:
     return bool(_settings.sendgrid_api_key and _settings.sendgrid_from_email)
+
+
+def public_url(path: str) -> str:
+    """Absolute frontend URL for a path, for links in outbound email.
+
+    Uses PUBLIC_APP_URL (required in production by the startup guard); outside
+    production falls back to the first CORS origin so links stay absolute.
+    """
+    if path.startswith(("http://", "https://")):
+        return path
+    base = _settings.public_app_url or (_settings.cors_origins[0] if _settings.cors_origins else "http://localhost:3000")
+    return f"{base.rstrip('/')}/{path.lstrip('/')}"
 
 
 def send_email(
@@ -96,3 +112,63 @@ async def record_processed_activity(
         await db.email_activity.insert_one(prepare_for_mongo(activity.model_dump()))
     except Exception:
         logger.exception("record_processed_activity failed for email_log_id=%s", email_log_id)
+
+
+async def send_logged_email(
+    *,
+    tenant_id: str,
+    to_email: str,
+    subject: str,
+    body_text: str,
+    sent_by: str,
+    body_html: Optional[str] = None,
+    reply_to: Optional[str] = None,
+    template: str = "general",
+    related_type: str = "general",
+    related_id: Optional[str] = None,
+    related_entity_type: Optional[str] = None,
+    customer_id: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
+) -> dict[str, Any]:
+    """Send one email and record it: EmailLog + `processed`/`dropped` activity.
+
+    With an idempotency key, a second call returns the first log without
+    sending again. Never raises for delivery problems; check `status`
+    (`sent`, `failed`, or `skipped` when SendGrid is not configured).
+    """
+    if idempotency_key:
+        existing = await db.email_logs.find_one({"tenant_id": tenant_id, "idempotency_key": idempotency_key}, {"_id": 0})
+        if existing:
+            return existing
+    ok, msg_id, error = send_email(
+        to_email=to_email, subject=subject, body_text=body_text, body_html=body_html, reply_to=reply_to,
+    )
+    log = EmailLog(
+        tenant_id=tenant_id,
+        customer_id=customer_id,
+        related_type=related_type,  # type: ignore[arg-type]
+        related_id=related_id,
+        template=template,  # type: ignore[arg-type]
+        to_email=to_email,  # type: ignore[arg-type]
+        from_email=_settings.sendgrid_from_email or "not-configured",
+        reply_to=reply_to,
+        subject=subject,
+        body=body_text,
+        status="sent" if ok else ("skipped" if error == "sendgrid_not_configured" else "failed"),
+        error_message=error,
+        sent_by=sent_by,
+        idempotency_key=idempotency_key,
+        sendgrid_message_id=msg_id,
+    ).model_dump()
+    await db.email_logs.insert_one(prepare_for_mongo(dict(log)))
+    await record_processed_activity(
+        tenant_id=tenant_id,
+        email_log_id=log["id"],
+        to_email=to_email,
+        sendgrid_message_id=msg_id,
+        related_entity_type=related_entity_type or related_type,
+        related_entity_id=related_id,
+        ok=ok,
+        error=error,
+    )
+    return log

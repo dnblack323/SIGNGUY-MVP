@@ -31,6 +31,7 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "accepted": {"converted_to_quote", "converted_to_order", "cancelled"},
     "converted_to_quote": set(),
     "converted_to_order": set(),
+    "converted_to_webstore": set(),  # set only by webstore_requests.create_webstore_request
     "rejected": set(),
     "cancelled": set(),
 }

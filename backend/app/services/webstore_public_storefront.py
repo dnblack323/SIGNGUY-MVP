@@ -7,11 +7,10 @@ from .webstore_payment_boundary import _provider_authority_from_record
 async def _fundraiser_progress(store: dict[str, Any]) -> dict[str, Any]:
     """Expose only completed, verified Webstore sales as fundraiser progress."""
     settings = store.get("store_settings") or {}
-    setup = store.get("setup_profile") or {}
     cart = settings.get("cart") or {}
     donation = settings.get("donations") or settings.get("donation") or {}
     goal = int(
-        setup.get("fundraiser_goal_amount")
+        (settings.get("fundraiser") or {}).get("goal_amount_cents")
         or cart.get("fundraiser_goal_cents")
         or donation.get("goal_amount_cents")
         or 0
@@ -109,10 +108,9 @@ async def public_product_image(slug: str, product_id: str, slot: str) -> tuple[d
     image = _product_image_map(serialize_doc(product)).get(slot)
     if not image or not image.get("file_id"):
         raise WebstoreError("product_image_not_found", "Product image was not found", 404)
-    file_doc = await db.webstore_setup_files.find_one(
-        {"tenant_id": full_store["tenant_id"], "webstore_id": store["id"], "id": image["file_id"], "status": "active"},
-        {"_id": 0},
-    )
+    from .webstore_setup_files import find_webstore_setup_file
+
+    file_doc = await find_webstore_setup_file(full_store["tenant_id"], store["id"], image["file_id"])
     if not file_doc:
         raise WebstoreError("product_image_not_found", "Product image was not found", 404)
     if str(file_doc.get("extension") or "").lower() not in PRODUCT_IMAGE_EXTENSIONS:

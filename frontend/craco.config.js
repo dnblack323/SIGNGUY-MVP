@@ -119,6 +119,18 @@ let webpackConfig = {
   },
 };
 
+// Browser-test safety (fail closed): with SIGNGUY_BROWSER_TEST=1 the dev server refuses to
+// start unless /api is explicitly proxied to a non-development backend (see
+// backend/tests/browser_target_guard.py, which then proves the proxy reaches the harness).
+if (process.env.SIGNGUY_BROWSER_TEST === "1") {
+  const target = process.env.SIGNGUY_DEV_API_TARGET || "";
+  if (!target || /:8001(\/|$)/.test(target)) {
+    throw new Error(
+      "SIGNGUY_BROWSER_TEST=1 requires SIGNGUY_DEV_API_TARGET to point at the isolated harness backend, not the development backend (port 8001).",
+    );
+  }
+}
+
 webpackConfig.devServer = (devServerConfig) => {
   const existingProxy = Array.isArray(devServerConfig.proxy)
     ? devServerConfig.proxy

@@ -18,8 +18,9 @@ export const STATUS_LABELS = {
 };
 
 export const TYPE_LABELS = {
-  b2b: "B2B",
+  b2b: "Business / B2B",
   fundraiser: "Fundraiser",
+  team_school: "Team / School",
   event: "Event",
   promotional: "Promotional",
   employee: "Employee Store",

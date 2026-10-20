@@ -128,7 +128,8 @@ async def test_report_catalog_is_pdf_governed_and_exposes_buildable_surfaces(rep
     assert body["authority"]["title"] == "SIGNGUY AI | REPORT CATALOG & CUSTOM REPORT BUILDER SPEC"
     assert body["authority"]["pages"] == 11
     assert body["authority"]["location"] == "Business & Finance -> Reports"
-    assert body["official_webstore_types"] == ["B2B", "Fundraiser", "Event", "Promotional", "General"]
+    # The six approved Webstore types (Phase 2, P2-2); Employee/Company is a B2B preset, not a type.
+    assert body["official_webstore_types"] == ["Fundraiser", "Event", "Team / School", "Business / B2B", "Promotional", "General"]
     assert "Employee" not in body["reports"][[report["key"] for report in body["reports"]].index("webstores.sales_by_store")]["limitations"][0]
     keys = {report["key"] for report in body["reports"]}
     assert "overview.executive_summary" in keys
@@ -318,3 +319,28 @@ async def test_webstore_employee_type_is_legacy(report_builder_ctx):
     rows = run.json()["rows"]
     assert rows
     assert rows[0]["store_type"] == "other_or_legacy"
+
+
+@pytest.mark.asyncio
+async def test_webstore_sales_group_team_school_as_official_type(report_builder_ctx):
+    tenant_a = report_builder_ctx["tenant_a"]
+    store_id = f"store-team-{uuid.uuid4().hex[:8]}"
+    await db.webstores.insert_one({
+        "id": store_id, "tenant_id": tenant_a, "name": "Lions Team Store", "slug": f"lions-{store_id}",
+        "store_type": "team_school", "status": "live", "visibility": "public",
+        "created_at": "2026-07-02T12:00:00+00:00", "updated_at": "2026-07-02T12:00:00+00:00",
+    })
+    await db.webstore_buyer_orders.insert_one({
+        "id": f"wbo-{uuid.uuid4().hex[:8]}", "tenant_id": tenant_a, "webstore_id": store_id, "status": "paid",
+        "total_cents": 4000, "tax_cents": 0, "shipping_cents": 0, "donation_cents": 0,
+        "created_at": "2026-07-02T12:00:00+00:00", "updated_at": "2026-07-02T12:00:00+00:00",
+    })
+    async with await _client(report_builder_ctx["owner_a"]) as client:
+        run = await client.post("/api/reports/webstores.sales_by_store/run", json={"filters": {}, "preview_limit": 100})
+
+    assert run.status_code == 200
+    by_store = {row["webstore_id"]: row for row in run.json()["rows"]}
+    assert by_store[store_id]["store_type"] == "team_school"
+    assert by_store[store_id]["sales_cents"] == 4000
+    # The historical Employee store from the fixture is still reported, as a legacy type.
+    assert [row["store_type"] for row in by_store.values() if row["webstore_id"] != store_id] == ["other_or_legacy"]

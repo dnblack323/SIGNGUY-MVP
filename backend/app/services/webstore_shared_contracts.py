@@ -84,13 +84,9 @@ async def _validate_webstore_asset_refs(tenant_id: str, webstore_id: str, value:
     file_ids = _collect_nested_file_ids(value)
     if not file_ids:
         return
-    found = {
-        doc["id"]
-        async for doc in db.webstore_setup_files.find(
-            {"tenant_id": tenant_id, "webstore_id": webstore_id, "id": {"$in": sorted(file_ids)}, "status": "active"},
-            {"_id": 0, "id": 1},
-        )
-    }
+    from .webstore_setup_files import existing_setup_file_ids
+
+    found = await existing_setup_file_ids(tenant_id, webstore_id, sorted(file_ids))
     missing = sorted(file_ids - found)
     if missing:
         raise WebstoreError(
@@ -166,12 +162,11 @@ def _effective_fulfillment_methods(product: dict[str, Any]) -> list[str]:
 
 
 def _public_cart_config(store: dict[str, Any]) -> dict[str, Any]:
-    setup = store.get("setup_profile") or {}
     settings = store.get("store_settings") or {}
     cart = settings.get("cart") or {}
     donation = settings.get("donations") or settings.get("donation") or {}
-    fundraiser_goal = setup.get("fundraiser_goal_amount") or cart.get("fundraiser_goal_cents") or 0
-    donation_enabled = donation.get("enabled", cart.get("donation_enabled", setup.get("allow_checkout_donations")))
+    fundraiser_goal = (settings.get("fundraiser") or {}).get("goal_amount_cents") or cart.get("fundraiser_goal_cents") or 0
+    donation_enabled = donation.get("enabled", cart.get("donation_enabled", False))
     if isinstance(donation_enabled, str):
         donation_enabled = donation_enabled.strip().lower() in {"yes", "true", "1", "on"}
     return {

@@ -17,6 +17,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-re
 import { relativeTime } from "@/lib/format";
 import { useAuth } from "@/auth/AuthContext";
 import { ALLOWED_TRANSITIONS, TRANSITION_LABELS, blankIntakeItem } from "@/lib/intake";
+import WebstoreRequestDialog from "@/components/webstores/WebstoreRequestDialog";
 
 function ReasonDialog({ open, onOpenChange, title, onConfirm, busy }) {
   const [reason, setReason] = useState("");
@@ -43,6 +44,8 @@ export default function IntakeDetailPage() {
   const [editingDetails, setEditingDetails] = useState(false);
   const [reasonTarget, setReasonTarget] = useState(null);
   const [newItem, setNewItem] = useState(null);
+  const [webstoreRequestOpen, setWebstoreRequestOpen] = useState(false);
+  const canStartWebstore = hasPerm("webstore:write");
 
   const { data: intake, isLoading } = useQuery({
     queryKey: ["intake", id],
@@ -125,6 +128,12 @@ export default function IntakeDetailPage() {
         subtitle={<span className="flex items-center gap-2"><StatusPill kind="intake" value={intake.status} /><StatusPill kind="intake_priority" value={intake.priority} /></span>}
         actions={
           <div className="flex flex-wrap gap-2">
+            {canStartWebstore && !intake.webstore_id && ["submitted", "under_review", "accepted"].includes(intake.status) && (
+              <Button size="sm" variant="outline" onClick={() => setWebstoreRequestOpen(true)} data-testid="intake-start-webstore-request">Start Webstore request</Button>
+            )}
+            {intake.webstore_id && (
+              <Button size="sm" variant="outline" onClick={() => navigate(`/webstores/${intake.webstore_id}`)} data-testid="intake-open-webstore">Open Webstore</Button>
+            )}
             {canWrite && allowedTargets.map((t) => (
               <Button key={t} size="sm" variant={t === "rejected" || t === "cancelled" ? "outline" : "default"} onClick={() => handleTransitionClick(t)} data-testid={`intake-transition-${t}-button`}>
                 {TRANSITION_LABELS[t]}
@@ -132,6 +141,15 @@ export default function IntakeDetailPage() {
             ))}
           </div>
         }
+      />
+
+      <WebstoreRequestDialog
+        open={webstoreRequestOpen}
+        onOpenChange={setWebstoreRequestOpen}
+        intakeId={intake.id}
+        customer={intake.customer_id ? { id: intake.customer_id, name: intake.contact_name || "Intake customer", email: intake.contact_email } : null}
+        defaults={{ storeName: intake.project_name || "", purpose: intake.project_description || "", contact: { name: intake.contact_name || "", email: intake.contact_email || "", phone: intake.contact_phone || "" } }}
+        onCreated={(store) => { qc.invalidateQueries({ queryKey: ["intake", id] }); navigate(`/webstores/${store.id}`); }}
       />
 
       {intake.missing_information?.length > 0 && (

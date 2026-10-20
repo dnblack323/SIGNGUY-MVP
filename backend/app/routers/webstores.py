@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from .webstores_collection import router as webstores_collection_router
+from .webstores_request_routes import router as webstores_request_routes_router
 from .webstores_setup_templates import router as webstores_setup_templates_router
 from .webstores_lifecycle import router as webstores_lifecycle_router
 from .webstores_orders_payments import router as webstores_orders_payments_router
@@ -17,6 +18,7 @@ from .webstores_reference import router as webstores_reference_router
 router = APIRouter()
 
 for subrouter in (
+    webstores_request_routes_router,
     webstores_collection_router,
     webstores_setup_templates_router,
     webstores_lifecycle_router,

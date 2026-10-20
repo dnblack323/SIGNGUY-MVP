@@ -40,8 +40,8 @@ def integration_status() -> dict[str, Any]:
             _report(
                 "sendgrid_webhook",
                 enabled=s.sendgrid_webhook_enabled,
-                configured=bool(s.sendgrid_webhook_secret),
-                missing=(["SENDGRID_WEBHOOK_SECRET"] if (s.sendgrid_webhook_enabled and not s.sendgrid_webhook_secret) else []),
+                configured=bool(s.sendgrid_webhook_public_key),
+                missing=(["SENDGRID_WEBHOOK_PUBLIC_KEY"] if (s.sendgrid_webhook_enabled and not s.sendgrid_webhook_public_key) else []),
             ),
             _report(
                 "stripe_writes",

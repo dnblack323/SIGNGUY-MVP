@@ -2,9 +2,7 @@ import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, FileQuestion } from "lucide-react";
-import FormRenderer, {
-  formQuestionIsVisible,
-} from "@/components/forms/FormRenderer";
+import FormRenderer, { formVisibleKeys } from "@/components/forms/FormRenderer";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,10 +21,9 @@ function answerIsEmpty(value) {
 }
 
 function visibleQuestions(sections = [], answers = {}) {
+  const visible = formVisibleKeys(sections, answers);
   return sections.flatMap((section) =>
-    (section.questions || []).filter((question) =>
-      formQuestionIsVisible(question, answers),
-    ),
+    (section.questions || []).filter((question) => visible.has(question.key)),
   );
 }
 

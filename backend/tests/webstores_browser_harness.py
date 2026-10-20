@@ -17,18 +17,11 @@ from typing import Any
 
 
 def _require_harness_environment() -> None:
-    if os.environ.get("WEBSTORES_BROWSER_HARNESS") != "1":
-        raise RuntimeError("WEBSTORES_BROWSER_HARNESS=1 is required")
-    if os.environ.get("ENV", "development").strip().lower() == "production":
-        raise RuntimeError("The browser harness cannot run in production")
-    if os.environ.get("AUTH_DEV_BYPASS", "false").strip().lower() == "true":
-        raise RuntimeError("The browser harness requires AUTH_DEV_BYPASS=false")
-    db_name = os.environ.get("DB_NAME", "")
-    if not db_name.startswith("webstores_browser_harness_"):
-        raise RuntimeError("The browser harness requires an isolated webstores_browser_harness_* DB_NAME")
-    jwt_secret = os.environ.get("JWT_SECRET", "")
-    if not jwt_secret or jwt_secret == "dev-secret-do-not-use-in-prod":
-        raise RuntimeError("The browser harness requires random JWT_SECRET material")
+    # Shared fail-closed rules (also used by the browser preflight); see tests/browser_target_guard.py.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from browser_target_guard import assert_backend_test_env
+
+    assert_backend_test_env(os.environ)
 
 
 _require_harness_environment()
@@ -156,6 +149,7 @@ async def _seed() -> dict[str, Any]:
 
     return {
         "run_id": run_id,
+        "db_name": os.environ["DB_NAME"],
         "api_base": f"http://127.0.0.1:{os.environ.get('WEBSTORES_BROWSER_BACKEND_PORT', '8102')}/api",
         "tenant_a": {"id": tenant_a_id, "slug": tenant_a_slug},
         "tenant_b": {"id": tenant_b_id, "slug": tenant_b_slug},

@@ -340,12 +340,12 @@ async def test_store_owner_and_manager_portal_scope_and_redaction(stage1_ctx):
 async def test_webstore_types_lifecycle_and_computed_readiness(stage1_ctx):
     async with await _client_as(stage1_ctx["owner"]) as client:
         created_types = []
-        for store_type in ["b2b", "fundraiser", "event", "promotional", "general"]:
+        for store_type in WEBSTORE_TYPES:
             built = await _create_owner_and_store(client, f"{stage1_ctx['suffix']}-{store_type}", store_type=store_type)
             created_types.append(built["store"]["store_type"])
             assert built["store"]["stripe_payment_ready"] is False
             assert built["store"]["public_slug"]
-        assert created_types == ["b2b", "fundraiser", "event", "promotional", "general"]
+        assert created_types == list(WEBSTORE_TYPES)
 
         legacy = {
             **built["store"],
@@ -389,7 +389,8 @@ async def test_webstore_types_lifecycle_and_computed_readiness(stage1_ctx):
         templates = await client.get("/api/webstores/setup/questionnaire-templates", params={"active_only": True})
         assert templates.status_code == 200, templates.text
         seeded_types = {item["store_type"] for item in templates.json()["items"]}
-        assert seeded_types == {"base", *WEBSTORE_TYPES, "employee"}
+        # Employee/Company is a preset inside the B2B questionnaire, not its own questionnaire.
+        assert seeded_types == {"base", *WEBSTORE_TYPES}
 
         rejected_employee = await client.post(
             "/api/webstores",

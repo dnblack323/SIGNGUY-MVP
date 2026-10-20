@@ -48,7 +48,7 @@ from . import ai_gateway
 from . import ai_studio
 from . import webstore_branding as branding_svc
 from .entitlements import has_entitlement
-from .email import record_processed_activity, send_email
+from .email import public_url, send_logged_email
 from .portal_identity import create_portal_identity
 from .sequence import next_number, next_record_number
 from . import storage

@@ -65,23 +65,53 @@ export async function getWebstoreQuestionnaire(id) {
   return r.data;
 }
 
-export async function sendWebstoreQuestionnaire(id, payload = {}) {
-  const r = await api.post(`/webstores/${id}/questionnaire/send`, payload);
+export async function createWebstoreRequest(payload) {
+  const r = await api.post(`/webstores/requests`, payload);
+  return r.data;
+}
+
+export async function findWebstoreCustomerMatches(params) {
+  const r = await api.get(`/webstores/setup/customer-matches`, { params });
+  return r.data?.items || [];
+}
+
+export async function getWebstoreFulfillmentSettings() {
+  const r = await api.get(`/webstores/setup/fulfillment-settings`);
+  return r.data;
+}
+
+export async function saveWebstoreFulfillmentSettings(payload) {
+  const r = await api.put(`/webstores/setup/fulfillment-settings`, payload);
+  return r.data;
+}
+
+export async function getWebstoreInformationPacket(id) {
+  const r = await api.get(`/webstores/${id}/information-packet`);
+  return r.data;
+}
+
+export async function sendWebstoreInformationPacket(id, { resend = false } = {}) {
+  const r = await api.post(`/webstores/${id}/information-packet/send`, { resend });
+  return r.data;
+}
+
+export async function getWebstoreQuestionnaireReview(id) {
+  const r = await api.get(`/webstores/${id}/questionnaire/review`);
+  return r.data;
+}
+
+export async function approveWebstoreQuestionnaire(id, submissionId) {
+  const r = await api.post(`/webstores/${id}/questionnaire/${submissionId}/approve`);
+  return r.data;
+}
+
+export async function returnWebstoreQuestionnaire(id, submissionId, reason) {
+  const r = await api.post(`/webstores/${id}/questionnaire/${submissionId}/return`, { reason });
   return r.data;
 }
 
 export async function getWebstoreQuestionnaireResponse(id) {
   const r = await api.get(`/webstores/${id}/questionnaire-response`);
-  return r.data;
-}
-
-export async function previewWebstoreAnswerApplication(id, payload) {
-  const r = await api.post(`/webstores/${id}/questionnaire/apply-preview`, payload);
-  return r.data;
-}
-
-export async function applyWebstoreAnswers(id, payload) {
-  const r = await api.post(`/webstores/${id}/questionnaire/apply`, payload);
   return r.data;
 }
 

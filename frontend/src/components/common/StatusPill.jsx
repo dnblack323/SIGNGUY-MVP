@@ -114,6 +114,7 @@ const INTAKE = {
   needs_information: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
   accepted: "bg-teal-100 text-teal-800 ring-1 ring-teal-200",
   converted_to_quote: "bg-violet-100 text-violet-800 ring-1 ring-violet-200",
+  converted_to_webstore: "bg-violet-100 text-violet-800 ring-1 ring-violet-200",
   converted_to_order: "bg-violet-100 text-violet-800 ring-1 ring-violet-200",
   rejected: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
   cancelled: "bg-slate-200 text-slate-600 ring-1 ring-slate-300",

@@ -7,6 +7,11 @@ export function formQuestionIsVisible(question, answers) {
   const actual = answers?.[dependsOn];
   const expected = rule.value;
   if (rule.operator === "not_equals") return actual !== expected;
+  if (rule.operator === "includes_any") {
+    const wanted = (Array.isArray(expected) ? expected : [expected]).map(String);
+    const values = Array.isArray(actual) ? actual : [actual];
+    return values.some((v) => v !== undefined && v !== null && v !== "" && wanted.includes(String(v)));
+  }
   if (rule.operator === "contains" || rule.operator === "includes")
     return Array.isArray(actual)
       ? actual.includes(expected)
@@ -17,14 +22,34 @@ export function formQuestionIsVisible(question, answers) {
   return actual === expected;
 }
 
+/** Keys currently shown: a question is hidden if its rule fails or the question it depends on is hidden. */
+export function formVisibleKeys(sections, answers) {
+  const byKey = new Map();
+  sections.forEach((s) => (s.questions || []).forEach((q) => byKey.set(q.key, q)));
+  const memo = new Map();
+  const shown = (key, depth = 0) => {
+    if (memo.has(key)) return memo.get(key);
+    const question = byKey.get(key);
+    const rule = question?.conditional || question?.conditional_visibility;
+    const parent = rule?.depends_on || rule?.question_key;
+    let result = formQuestionIsVisible(question, answers);
+    if (result && parent && parent !== key && byKey.has(parent) && depth < 20) result = shown(parent, depth + 1);
+    memo.set(key, result);
+    return result;
+  };
+  return new Set([...byKey.keys()].filter((key) => key && shown(key)));
+}
+
 export default function FormRenderer({
   sections = [],
   answers = {},
   onAnswersChange,
   readOnly = false,
   lockedAnswerIds = [],
+  onFileSelected,
 }) {
   const locked = new Set(lockedAnswerIds);
+  const visible = formVisibleKeys(sections, answers);
   const update = (key, value) => {
     if (readOnly || typeof onAnswersChange !== "function") return;
     onAnswersChange({ ...answers, [key]: value });
@@ -44,7 +69,7 @@ export default function FormRenderer({
             </p>
           )}
           {(section.questions || [])
-            .filter((question) => formQuestionIsVisible(question, answers))
+            .filter((question) => visible.has(question.key))
             .map((question) => (
               <div key={question.key} className="grid gap-1.5 text-sm">
                 {!["heading", "paragraph"].includes(question.type) && (
@@ -65,6 +90,7 @@ export default function FormRenderer({
                     question={question}
                     value={answers[question.key]}
                     onChange={(value) => update(question.key, value)}
+                    onFileSelected={onFileSelected}
                     readOnly={readOnly || locked.has(question.key)}
                   />
                 </div>

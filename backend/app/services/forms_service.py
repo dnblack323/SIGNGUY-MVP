@@ -357,6 +357,10 @@ def _question_is_visible(question: dict[str, Any], answers: dict[str, Any]) -> b
     actual = answers.get(depends_on)
     if operator == "not_equals":
         return str(actual) != str(expected)
+    if operator == "includes_any":
+        wanted = {str(v) for v in (expected if isinstance(expected, (list, tuple, set)) else [expected])}
+        values = actual if isinstance(actual, (list, tuple, set)) else [actual]
+        return any(str(v) in wanted for v in values if v not in (None, ""))
     if operator in {"contains", "includes"}:
         if isinstance(actual, (list, tuple, set)):
             return expected in actual or str(expected) in [str(item) for item in actual]
@@ -371,6 +375,27 @@ def _question_is_visible(question: dict[str, Any], answers: dict[str, Any]) -> b
     return str(actual) == str(expected)
 
 
+def visible_question_keys(template: dict[str, Any], answers: dict[str, Any]) -> set[str]:
+    """Keys of questions currently shown. A question is hidden when its rule fails
+    or when the question it depends on is itself hidden (stale answers never reveal)."""
+    by_key = {q.get("key"): q for s in template.get("sections") or [] for q in s.get("questions") or []}
+    memo: dict[str, bool] = {}
+
+    def shown(key: str, depth: int = 0) -> bool:
+        if key in memo:
+            return memo[key]
+        question = by_key[key]
+        rule = question.get("conditional") or question.get("conditional_visibility") or {}
+        parent = rule.get("depends_on") or rule.get("question_key") if isinstance(rule, dict) else None
+        result = _question_is_visible(question, answers)
+        if result and parent in by_key and parent != key and depth < 20:
+            result = shown(parent, depth + 1)
+        memo[key] = result
+        return result
+
+    return {key for key in by_key if key and shown(key)}
+
+
 def invalid_answer_keys(template: dict[str, Any], answers: dict[str, Any]) -> list[str]:
     """Keys of visible questions whose answers are missing or invalid.
 
@@ -378,9 +403,10 @@ def invalid_answer_keys(template: dict[str, Any], answers: dict[str, Any]) -> li
     Form Maker responses and Webstore questionnaires.
     """
     errors: list[str] = []
+    visible = visible_question_keys(template, answers)
     for section in template.get("sections") or []:
         for question in section.get("questions") or []:
-            if question.get("type") in {"heading", "paragraph"} or not _question_is_visible(question, answers):
+            if question.get("type") in {"heading", "paragraph"} or question.get("key") not in visible:
                 continue
             key = question.get("key")
             value = answers.get(key)

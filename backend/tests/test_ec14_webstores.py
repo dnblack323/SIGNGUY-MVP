@@ -71,8 +71,9 @@ async def _build_launchable_store(client: AsyncClient, suffix: str) -> dict:
     await db.webstores.update_one(
         {"tenant_id": store["tenant_id"], "id": store["id"]},
         {"$set": {
-            "setup_profile.fundraiser_goal_amount": 10000,
-            "setup_profile.profit_allocation_type": "fundraiser",
+            "store_settings.fundraiser.goal_amount_cents": 10000,
+            "store_settings.fundraiser.purpose": "Team travel",
+            "store_settings.fundraiser.allocation_type": "percentage",
             "store_settings.deadlines.order_deadline_at": "2099-12-31T23:59:59+00:00",
         }},
     )

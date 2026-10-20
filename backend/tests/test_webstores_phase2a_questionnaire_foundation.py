@@ -10,14 +10,9 @@ from app.core.db import db, ensure_indexes
 from app.deps import get_current_user
 from app.services import webstore_questionnaire_pack as pack
 from server import app
+from tests.webstore_questionnaire_answers import complete_answers
 
-BASE_REQUIRED = {
-    "customer_name": "Pat Organizer",
-    "phone_number": "555-0100",
-    "email_address": "pat@example.com",
-    "store_name": "Spring Fair Store",
-    "products_wanted": ["tshirts"],
-}
+BASE_REQUIRED = complete_answers("event")
 
 
 def _override(user: dict):
@@ -92,7 +87,8 @@ async def test_install_is_idempotent_tenant_scoped_and_hidden_from_templates_lib
     assert await db.form_templates.count_documents({"tenant_id": ctx["other_tenant_id"], "module": "webstores"}) == 0
 
     pack_doc = await db.template_packs.find_one({"id": pack.WEBSTORE_STARTER_PACK_ID}, {"_id": 0})
-    assert pack_doc["pack_type"] == "starter" and len(pack_doc["included_template_ids"]) == len(pack.QUESTIONNAIRE_STORE_TYPES)
+    questionnaire_ids = {f"webstore_starter_questionnaire_{t}" for t in pack.QUESTIONNAIRE_STORE_TYPES}
+    assert pack_doc["pack_type"] == "starter" and questionnaire_ids <= set(pack_doc["included_template_ids"])
     async with await _staff(ctx["user"]) as client:
         library = await client.get("/api/templates", params={"template_type": "questionnaire"})
         assert library.status_code == 200, library.text
