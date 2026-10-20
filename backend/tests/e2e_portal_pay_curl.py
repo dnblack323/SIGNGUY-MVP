@@ -1,4 +1,4 @@
-"""End-to-end curl-style verification against the LIVE public preview.
+"""End-to-end curl-style verification against a disposable local server.
 
 Uses AUTH_DEV_BYPASS to obtain a staff token, seeds a portal identity via the
 staff endpoint, mints a portal JWT locally (same JWT secret as backend),
@@ -11,17 +11,18 @@ then exercises:
   - portal messages excludes provider IDs
   - public introspect requires ?t=
 
-Run: python /app/backend/tests/e2e_portal_pay_curl.py
+Run: python -m tests._test_env run -- python tests/e2e_portal_pay_curl.py
 """
 from __future__ import annotations
 import os, sys, uuid, json
-sys.path.insert(0, "/app/backend")
+_BACKEND = str(__import__("pathlib").Path(__file__).resolve().parents[1])
+sys.path.insert(0, _BACKEND)
+from app.core.test_isolation import require_isolated_script_target  # noqa: E402
 
 import requests
-from dotenv import load_dotenv
-load_dotenv("/app/backend/.env")
 
-BASE = os.environ.get("SIGNGUY_API_BASE_URL", "http://localhost:8001").rstrip("/")
+BASE = os.environ.get("SIGNGUY_TEST_API_BASE_URL", "").rstrip("/")
+require_isolated_script_target(os.environ, BASE)  # exits before any write if not a disposable target
 
 def _step(name, ok, detail=""):
     tag = "PASS" if ok else "FAIL"

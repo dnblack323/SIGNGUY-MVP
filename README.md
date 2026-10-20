@@ -119,6 +119,10 @@ cd backend
 python -m pytest tests/ -q
 ```
 
+Tests run in a disposable, per-run MongoDB and never touch the development database.
+Do not export `DB_NAME`/`MONGO_URL` for tests (they are refused). See
+[`docs/testing/backend_test_isolation.md`](docs/testing/backend_test_isolation.md).
+
 ### Frontend
 
 ```bash

@@ -7,11 +7,10 @@ import uuid
 import requests
 import pytest
 
-BASE_URL_ENV = os.environ.get("SIGNGUY_API_BASE_URL")
-if not BASE_URL_ENV:
-    pytest.skip("SIGNGUY_API_BASE_URL is required for live foundation hardening tests", allow_module_level=True)
+from tests.live_server import live_base_url
 
-BASE_URL = BASE_URL_ENV.rstrip("/")
+# Runs against a disposable server bound to this worker's isolated test database.
+BASE_URL = live_base_url().rstrip("/")
 
 
 def _register(slug, email, password="TestPass123!"):

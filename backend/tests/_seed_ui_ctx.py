@@ -1,13 +1,17 @@
 """Seed portal identity + invoices; write JSON so Playwright can read the token."""
 import os, sys, uuid, json, asyncio
-sys.path.insert(0, "/app/backend")
-from dotenv import load_dotenv
-load_dotenv("/app/backend/.env")
+_BACKEND = str(__import__("pathlib").Path(__file__).resolve().parents[1])
+sys.path.insert(0, _BACKEND)
+from app.core.test_isolation import require_isolated_script_target  # noqa: E402
+
+require_isolated_script_target(os.environ)  # before app imports read any settings
+
 import requests
 from pymongo import MongoClient
 from app.core.portal_security import create_portal_token
 
-BASE = os.environ.get("SIGNGUY_API_BASE_URL", "http://localhost:8001").rstrip("/")
+BASE = os.environ.get("SIGNGUY_TEST_API_BASE_URL", "").rstrip("/")
+require_isolated_script_target(os.environ, BASE)  # exits before any write if not a disposable target
 r = requests.post(f"{BASE}/api/auth/dev-login", timeout=15).json()
 staff_token = r["access_token"]; tenant = r["user"]["tenant_id"]
 SH = {"Authorization": f"Bearer {staff_token}"}

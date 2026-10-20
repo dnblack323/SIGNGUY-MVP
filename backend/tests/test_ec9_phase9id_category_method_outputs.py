@@ -398,7 +398,7 @@ def test_banner_pricing_output_remains_unchanged_by_category_normalizer():
 
 
 @pytest.mark.asyncio
-async def test_normalized_category_output_is_pure_and_creates_no_persistent_records(clean_db):
+async def test_normalized_category_output_is_pure_and_creates_no_persistent_records(isolated_db):
     tenant_id = f"tenant-{uuid.uuid4().hex}"
     before = await _tenant_counts(tenant_id)
     settings = build_starter_pack()
@@ -413,7 +413,7 @@ async def test_normalized_category_output_is_pure_and_creates_no_persistent_reco
 
 
 @pytest.mark.asyncio
-async def test_manual_override_normalization_is_pure_and_creates_no_persistent_records(clean_db):
+async def test_manual_override_normalization_is_pure_and_creates_no_persistent_records(isolated_db):
     tenant_id = f"tenant-{uuid.uuid4().hex}"
     before = await _tenant_counts(tenant_id)
     settings = build_starter_pack()

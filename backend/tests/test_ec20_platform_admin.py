@@ -33,7 +33,7 @@ def _headers(user: dict) -> dict[str, str]:
 
 
 @pytest.fixture
-async def ec20_ctx(clean_db):
+async def ec20_ctx(isolated_db):
     suffix = uuid.uuid4().hex[:8]
     tenant = {
         "id": f"ec20-tenant-{suffix}",
