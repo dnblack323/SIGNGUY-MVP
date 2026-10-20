@@ -108,18 +108,21 @@ function VerifyPage() {
 
 function WebstoreInvitationAcceptPage() {
   const nav = useNavigate();
+  const { refresh } = usePortalAuth();
   const [status, setStatus] = useState("accepting");
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get("t");
     if (!token) { setStatus("missing"); return; }
     portalApi.post("/portal/webstores/invitations/accept", { token })
-      .then((r) => {
+      .then(async (r) => {
         localStorage.setItem("sg_portal_token", r.data.token);
+        // Load the new identity before navigating, or the portal guard still sees "signed out".
+        await refresh();
         setStatus("accepted");
         nav(`/portal/webstores/${r.data.webstore_id}`, { replace: true });
       })
       .catch((e) => setStatus(portalExtractError(e, "Invitation could not be accepted")));
-  }, [nav]);
+  }, [nav, refresh]);
   return (
     <div className="min-h-screen grid place-items-center p-6 text-sm" data-testid="portal-webstore-invitation-accept">
       {status === "accepting" ? "Opening your Webstore setup workspace..." : status}

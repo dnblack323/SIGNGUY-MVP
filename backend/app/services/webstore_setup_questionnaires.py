@@ -41,18 +41,21 @@ async def _bind(store: dict) -> list[dict]:
 async def owner_questionnaire(identity: dict, webstore_id: str) -> dict:
     store = await _owner_store(identity, webstore_id)
     templates = await _owner_templates(store)
-    submission = await db.webstore_questionnaire_submissions.find_one(
-        {"tenant_id": identity["tenant_id"], "webstore_id": webstore_id, "portal_identity_id": identity["id"], "status": {"$in": ["draft", "returned_for_changes"]}},
-        {"_id": 0},
-        sort=[("updated_at", -1)],
-    )
     from .webstore_information_packet import owner_welcome
 
-    owner = await db.webstore_owners.find_one({"tenant_id": store["tenant_id"], "id": store.get("owner_id")}, {"_id": 0})
     latest = await db.webstore_questionnaire_submissions.find_one(
         {"tenant_id": identity["tenant_id"], "webstore_id": webstore_id, "revision": {"$ne": None}},
         {"_id": 0, "id": 1, "status": 1, "revision": 1, "returned_reason": 1, "submitted_at": 1}, sort=[("revision", -1)],
     )
+    # The form is open while the owner has a draft, or while the newest revision was returned for changes.
+    submission = await db.webstore_questionnaire_submissions.find_one(
+        {"tenant_id": identity["tenant_id"], "webstore_id": webstore_id, "portal_identity_id": identity["id"], "status": "draft"},
+        {"_id": 0},
+        sort=[("updated_at", -1)],
+    )
+    if not submission and latest and latest.get("status") == "returned_for_changes":
+        submission = await db.webstore_questionnaire_submissions.find_one({"tenant_id": identity["tenant_id"], "id": latest["id"]}, {"_id": 0})
+    owner = await db.webstore_owners.find_one({"tenant_id": store["tenant_id"], "id": store.get("owner_id")}, {"_id": 0})
     return {
         "webstore": _owner_safe_store(store),
         "templates": templates,
@@ -121,9 +124,12 @@ async def submit_questionnaire(identity: dict, webstore_id: str, fields: dict[st
     draft = await save_questionnaire_draft(identity, webstore_id, fields)
     templates = draft.get("template_snapshot", {}).get("templates") or []
     answers = draft.get("answers") or {}
-    invalid = invalid_answer_keys({"sections": [s for t in templates for s in t.get("sections") or []]}, answers)
+    sections = [s for t in templates for s in t.get("sections") or []]
+    invalid = invalid_answer_keys({"sections": sections}, answers)
     if invalid:
-        raise WebstoreSetupError("questionnaire_required_answers_missing", f"Missing or invalid answers: {', '.join(invalid)}", 400)
+        labels = {q.get("key"): q.get("label") for s in sections for q in s.get("questions") or []}
+        listed = "; ".join(f"{labels.get(k) or k} ({k})" for k in invalid)
+        raise WebstoreSetupError("questionnaire_required_answers_missing", f"Please complete these answers: {listed}", 400)
     previous = await db.webstore_questionnaire_submissions.find_one(
         {"tenant_id": identity["tenant_id"], "webstore_id": webstore_id, "revision": {"$ne": None}},
         {"_id": 0, "id": 1, "revision": 1},

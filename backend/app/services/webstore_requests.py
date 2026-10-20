@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from pydantic import ValidationError
+
 from ..core.db import db
 from ..core.time_utils import utc_now
 from ..services.audit import record_audit
@@ -51,7 +53,11 @@ async def _resolve_customer(user: dict, fields: dict[str, Any]) -> dict:
         "phone": _clean_optional_text(new.get("phone"), limit=40),
         "customer_type": new.get("customer_type") or "business",
     }.items() if v not in (None, "")}
-    return await create_customer(tenant_id=tenant_id, actor=user, data=data)
+    try:
+        return await create_customer(tenant_id=tenant_id, actor=user, data=data)
+    except ValidationError as exc:
+        fields_in_error = sorted({str(err["loc"][0]) for err in exc.errors() if err.get("loc")})
+        raise WebstoreError("customer_details_invalid", f"Check the customer details: {', '.join(fields_in_error)} is not valid", 400) from exc
 
 
 async def _resolve_owner(user: dict, customer: dict, contact: dict[str, Any]) -> dict:

@@ -1,20 +1,7 @@
 import { Link } from "react-router-dom";
-import {
-  Copy,
-  ExternalLink,
-  Eye,
-  Mail,
-  RotateCcw,
-  Send,
-} from "lucide-react";
+import { ExternalLink, Eye, Mail, RotateCcw } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
 import { webstoreStatusLabel } from "./WebstoreDetailUtils";
 
 export default function WebstoreDetailHeader({ model }) {
@@ -25,10 +12,8 @@ export default function WebstoreDetailHeader({ model }) {
     nextRequiredAction,
     ownerAssignment,
     questionnaire,
-    questionnaireDelivery,
-    questionnaireLink,
     relaunch,
-    sendQuestionnaire,
+    setPacketOpen,
     setupProgress,
     store,
   } = model;
@@ -55,12 +40,11 @@ return <>
             <Button
               variant="outline"
               size="sm"
-              disabled={sendQuestionnaire.isPending || !ownerAssignment}
-              onClick={() => sendQuestionnaire.mutate()}
-              data-testid="webstore-send-questionnaire"
+              onClick={() => setPacketOpen(true)}
+              data-testid="webstore-information-packet"
             >
               <Mail className="size-4 mr-2" />
-              Send Questionnaire
+              Information Packet
             </Button>
             {["closed", "completed"].includes(store.status) && (
               <Button
@@ -96,54 +80,6 @@ return <>
           </div>
         }
       />
-
-      {questionnaireDelivery && (
-        <Alert
-          variant={questionnaireDelivery.email_sent ? "default" : "destructive"}
-          data-testid="webstore-questionnaire-delivery"
-        >
-          <Mail className="size-4" />
-          <AlertTitle>
-            {questionnaireDelivery.email_sent
-              ? "Questionnaire sent"
-              : "Questionnaire email was not sent"}
-          </AlertTitle>
-          <AlertDescription className="space-y-2">
-            <div>
-              {questionnaireDelivery.email_sent
-                ? `Sent to ${questionnaireDelivery.email}.`
-                : `Delivery error: ${questionnaireDelivery.delivery_error || "delivery unavailable"}.`}
-            </div>
-            {questionnaireLink && (
-              <div className="flex flex-wrap items-center gap-2">
-                <a
-                  className="break-all underline"
-                  href={questionnaireLink}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {questionnaireLink}
-                </a>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(questionnaireLink);
-                    toast.success("Questionnaire link copied");
-                  }}
-                >
-                  <Copy className="size-4 mr-2" />
-                  Copy link
-                </Button>
-              </div>
-            )}
-            <div className="text-xs">
-              This owner link expires after 48 hours. Send it to the store owner only.
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
 
       <div
         className="grid gap-3 rounded-lg border bg-white p-4 shadow-sm md:grid-cols-[1fr_280px]"

@@ -98,6 +98,9 @@ async def test_request_links_customer_dedupes_and_shows_request_received(ctx):
         assert again.json()["webstore"]["setup_profile"]["b2b_preset"] == "employee_company"
         assert await db.customers.count_documents({"tenant_id": ctx["tenant_id"]}) == 1
 
+        bad_email = await client.post("/api/webstores/requests", json={"new_customer": {"name": "Bad Email Co", "email": "not-an-email@@x"}, "store_type": "general"})
+        assert bad_email.status_code == 400 and "email" in bad_email.text
+
     async with await _staff(ctx["other_user"]) as other:
         assert (await other.get("/api/webstores/setup/customer-matches", params={"email": f"boosters-{ctx['suffix']}@example.com"})).json()["items"] == []
 
@@ -201,8 +204,12 @@ async def test_review_brief_checks_approve_apply_and_revision_comparison(ctx):
 
     second = {**first, "pickup_window_2_date": "2099-03-26", "pickup_location": "Lincoln High main gym", "colors_to_avoid": "Red"}
     async with _portal(token) as portal:
+        reopened = (await portal.get(f"/api/portal/webstores/{store['id']}/questionnaire")).json()
+        assert reopened["submission"]["id"] == sub1["id"] and reopened["latest_revision"]["status"] == "returned_for_changes"
         sub2 = (await portal.post(f"/api/portal/webstores/{store['id']}/questionnaire", json={"answers": second})).json()
+        after = (await portal.get(f"/api/portal/webstores/{store['id']}/questionnaire")).json()
     assert sub2["revision"] == 2
+    assert after["submission"] is None and after["latest_revision"]["status"] == "submitted"  # form closes after resubmit
 
     async with await _staff(ctx["user"]) as client:
         review = (await client.get(f"/api/webstores/{store['id']}/questionnaire/review")).json()

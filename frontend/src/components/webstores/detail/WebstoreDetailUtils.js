@@ -62,19 +62,13 @@ export function productCatalogStatus(product = {}) {
   );
 }
 
-export function editableAnswerValue(value) {
-  if (Array.isArray(value)) return value.join(", ");
-  if (value && typeof value === "object") return JSON.stringify(value);
-  return value ?? "";
-}
-
 export function formatLabel(value) {
   return String(value || "").replace(/_/g, " ");
 }
 
 // "launch_ready" means setup is complete; publishing still requires verified
 // payment, so it must never be shown to staff or owners as "launch ready".
-const WEBSTORE_STATUS_LABELS = { launch_ready: "setup complete" };
+const WEBSTORE_STATUS_LABELS = { draft: "Request Received", launch_ready: "setup complete" };
 
 export function webstoreStatusLabel(status) {
   return WEBSTORE_STATUS_LABELS[status] || formatLabel(status);

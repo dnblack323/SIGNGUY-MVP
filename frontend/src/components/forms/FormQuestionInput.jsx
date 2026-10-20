@@ -5,6 +5,7 @@ export default function FormQuestionInput({
   question,
   value,
   onChange,
+  onFileSelected,
   readOnly = false,
 }) {
   const type = question?.type || "text";
@@ -90,24 +91,21 @@ export default function FormQuestionInput({
   }
   if (type === "file_upload") {
     return (
-      <Input
-        type="file"
-        disabled={readOnly}
-        accept={(question.file_settings?.accept || []).join(",")}
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          onChange(
-            file
-              ? {
-                  file_name: file.name,
-                  size_bytes: file.size,
-                  content_type: file.type,
-                  field_key: question.key,
-                }
-              : null,
-          );
-        }}
-      />
+      <div className="grid gap-1">
+        <Input
+          type="file"
+          disabled={readOnly}
+          accept={(question.file_settings?.accept || []).join(",")}
+          onChange={async (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return onChange(null);
+            // With an uploader (e.g. the Webstore portal) the file is stored first and the answer keeps its id.
+            if (onFileSelected) return onChange(await onFileSelected(question, file));
+            return onChange({ file_name: file.name, size_bytes: file.size, content_type: file.type, field_key: question.key });
+          }}
+        />
+        {value?.file_name && <span className="text-xs text-muted-foreground">Uploaded: {value.file_name}</span>}
+      </div>
     );
   }
 

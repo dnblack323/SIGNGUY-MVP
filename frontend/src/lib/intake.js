@@ -7,7 +7,7 @@
  */
 export const INTAKE_STATUSES = [
   "draft", "submitted", "under_review", "needs_information",
-  "accepted", "converted_to_quote", "converted_to_order", "rejected", "cancelled",
+  "accepted", "converted_to_quote", "converted_to_order", "converted_to_webstore", "rejected", "cancelled",
 ];
 
 export const ALLOWED_TRANSITIONS = {
@@ -18,6 +18,7 @@ export const ALLOWED_TRANSITIONS = {
   accepted: ["converted_to_quote", "converted_to_order", "cancelled"],
   converted_to_quote: [],
   converted_to_order: [],
+  converted_to_webstore: [], // set only by "Start Webstore request"
   rejected: [],
   cancelled: [],
 };

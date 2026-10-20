@@ -46,6 +46,7 @@ export default function FormRenderer({
   onAnswersChange,
   readOnly = false,
   lockedAnswerIds = [],
+  onFileSelected,
 }) {
   const locked = new Set(lockedAnswerIds);
   const visible = formVisibleKeys(sections, answers);
@@ -89,6 +90,7 @@ export default function FormRenderer({
                     question={question}
                     value={answers[question.key]}
                     onChange={(value) => update(question.key, value)}
+                    onFileSelected={onFileSelected}
                     readOnly={readOnly || locked.has(question.key)}
                   />
                 </div>

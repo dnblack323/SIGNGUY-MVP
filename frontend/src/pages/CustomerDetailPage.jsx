@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { extractError } from "@/lib/api";
 import PageHeader from "@/components/layout/PageHeader";
@@ -18,7 +18,8 @@ import TaskHandoffButton from "@/components/tasks/TaskHandoffButton";
 import AIContextualActions from "@/components/ai/AIContextualActions";
 import { centsToDollarsString, relativeTime } from "@/lib/format";
 import { buildShopScheduleUrl } from "@/lib/shopScheduleLinks";
-import { Archive, ArchiveRestore, ArrowLeft, CalendarDays, Save } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, CalendarDays, Save, Store } from "lucide-react";
+import WebstoreRequestDialog from "@/components/webstores/WebstoreRequestDialog";
 import { useAuth } from "@/auth/AuthContext";
 import { useWorkspaceDirty } from "@/context/WorkspaceContext";
 
@@ -72,6 +73,9 @@ export default function CustomerDetailPage() {
   const { hasPerm } = useAuth();
   const canWrite = hasPerm("customer:write");
   const canSchedule = hasPerm("schedule:manage");
+  const canRequestWebstore = hasPerm("webstore:write");
+  const [webstoreRequestOpen, setWebstoreRequestOpen] = useState(false);
+  const navigate = useNavigate();
 
   const { data: c, isLoading } = useQuery({
     queryKey: ["customer", id],
@@ -149,6 +153,14 @@ export default function CustomerDetailPage() {
 
   return (
     <div className="space-y-4" data-testid="customer-detail-page">
+      {canRequestWebstore && (
+        <WebstoreRequestDialog
+          open={webstoreRequestOpen}
+          onOpenChange={setWebstoreRequestOpen}
+          customer={{ id, name: c.name, email: c.email }}
+          onCreated={(store) => navigate(`/webstores/${store.id}`)}
+        />
+      )}
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon"><Link to="/customers"><ArrowLeft className="size-4" /></Link></Button>
         <PageHeader
@@ -161,6 +173,11 @@ export default function CustomerDetailPage() {
                 { label: "Create Document", tool: "document_writer", mode: "customer_order_document" },
               ]} />
               <TaskHandoffButton sourceType="customer" sourceId={id} defaults={{ title: `Follow up with ${c.name}`, task_type: "customer_followup" }} />
+              {canRequestWebstore && (
+                <Button variant="outline" size="sm" onClick={() => setWebstoreRequestOpen(true)} data-testid="customer-new-webstore-request">
+                  <Store className="size-4 mr-1" />New Webstore request
+                </Button>
+              )}
               {canSchedule && (
                 <Button asChild variant="outline" size="sm" data-testid="customer-schedule-button">
                   <Link to={buildShopScheduleUrl({ create: true, customerId: id, title: `Appointment with ${c.name}` })}>

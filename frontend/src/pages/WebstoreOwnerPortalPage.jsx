@@ -49,6 +49,9 @@ export default function WebstoreOwnerPortalPage() {
         onAnswersChange={portal.setAnswers}
         onSaveDraft={portal.saveDraft}
         onSubmit={portal.submitQuestionnaire}
+        onFileSelected={portal.uploadQuestionFile}
+        saveState={portal.saveState}
+        submitting={portal.submitting}
       />
       <SetupFilesCard
         files={portal.files}

@@ -23,8 +23,9 @@ export default function OverviewTab({ model }) {
     questionnaireSubmission,
     readiness,
     sendPacket,
-    sendQuestionnaire,
     setActiveTab,
+    setPacketOpen,
+    setReviewOpen,
     setupFileItems,
     store,
   } = model;
@@ -40,11 +41,11 @@ export default function OverviewTab({ model }) {
         branding={detail.data?.branding}
         readiness={readiness.data}
         onShowTab={setActiveTab}
-        onSendQuestionnaire={() => sendQuestionnaire.mutate()}
+        onSendInformationPacket={() => setPacketOpen(true)}
+        onReviewAnswers={() => setReviewOpen(true)}
         onGeneratePacket={() => packet.mutate()}
         onSendPacket={() => sendPacket.mutate()}
         onLaunch={() => launch.mutate()}
-        sendingQuestionnaire={sendQuestionnaire.isPending}
         generatingPacket={packet.isPending}
         sendingPacket={sendPacket.isPending}
         launching={launch.isPending}
