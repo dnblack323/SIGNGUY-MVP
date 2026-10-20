@@ -4,6 +4,9 @@ from __future__ import annotations
 from .forms_service import invalid_answer_keys
 from .webstore_questionnaire_pack import QUESTIONNAIRE_STORE_TYPES, questionnaires_by_ids, questionnaires_for_store_type
 from .webstore_setup_common import *
+from .webstore_questionnaire_content import ACKNOWLEDGEMENT_TEXT, ACKNOWLEDGEMENT_VERSION
+from .webstore_shop_settings import filter_questionnaire_to_shop, get_fulfillment_settings
+from .webstore_questionnaire_review import consistency_checks
 from .webstore_setup_portal_scope import _owner_safe_store, _owner_store
 from .webstore_setup_progress import _refresh_setup_state
 
@@ -37,13 +40,26 @@ async def _bind(store: dict) -> list[dict]:
 
 async def owner_questionnaire(identity: dict, webstore_id: str) -> dict:
     store = await _owner_store(identity, webstore_id)
-    templates = await _bound_templates(store)
+    templates = await _owner_templates(store)
     submission = await db.webstore_questionnaire_submissions.find_one(
         {"tenant_id": identity["tenant_id"], "webstore_id": webstore_id, "portal_identity_id": identity["id"], "status": {"$in": ["draft", "returned_for_changes"]}},
         {"_id": 0},
         sort=[("updated_at", -1)],
     )
-    return {"webstore": _owner_safe_store(store), "templates": templates, "submission": serialize_doc(submission) if submission else None}
+    from .webstore_information_packet import owner_welcome
+
+    owner = await db.webstore_owners.find_one({"tenant_id": store["tenant_id"], "id": store.get("owner_id")}, {"_id": 0})
+    latest = await db.webstore_questionnaire_submissions.find_one(
+        {"tenant_id": identity["tenant_id"], "webstore_id": webstore_id, "revision": {"$ne": None}},
+        {"_id": 0, "id": 1, "status": 1, "revision": 1, "returned_reason": 1, "submitted_at": 1}, sort=[("revision", -1)],
+    )
+    return {
+        "webstore": _owner_safe_store(store),
+        "templates": templates,
+        "submission": serialize_doc(submission) if submission else None,
+        "latest_revision": serialize_doc(latest) if latest else None,
+        "welcome": await owner_welcome(store, owner),
+    }
 
 
 async def _bound_templates(store: dict) -> list[dict]:
@@ -54,10 +70,15 @@ async def _bound_templates(store: dict) -> list[dict]:
     return templates or await _bind(store)
 
 
+async def _owner_templates(store: dict) -> list[dict]:
+    """Bound questionnaires as the owner sees them: only fulfillment methods this shop supports."""
+    return filter_questionnaire_to_shop(await _bound_templates(store), await get_fulfillment_settings(store["tenant_id"]))
+
+
 async def save_questionnaire_draft(identity: dict, webstore_id: str, fields: dict[str, Any]) -> dict:
     store = await _owner_store(identity, webstore_id)
     owner_id = identity.get("webstore_owner_id") or store["owner_id"]
-    templates = await _bound_templates(store)
+    templates = await _owner_templates(store)
     payload = {
         "answers": fields.get("answers") or {},
         "known_products": fields.get("known_products") or [],
@@ -110,6 +131,11 @@ async def submit_questionnaire(identity: dict, webstore_id: str, fields: dict[st
     )
     revision = int(previous["revision"]) + 1 if previous else 1
     now = _now_iso()
+    acknowledgement = (
+        {"version": ACKNOWLEDGEMENT_VERSION, "text": ACKNOWLEDGEMENT_TEXT, "accepted_at": now,
+         "portal_identity_id": identity["id"], "revision": revision}
+        if "confirmed" in (answers.get("intake_acknowledgement") or []) else None
+    )
     snapshot = {
         "answers": answers,
         "known_products": draft.get("known_products") or [],
@@ -129,6 +155,7 @@ async def submit_questionnaire(identity: dict, webstore_id: str, fields: dict[st
                 "missing_info_flags": [],
                 "revision": revision,
                 "supersedes_submission_id": previous["id"] if previous else None,
+                "acknowledgement": acknowledgement,
                 "updated_at": now,
             }
         },
@@ -139,6 +166,10 @@ async def submit_questionnaire(identity: dict, webstore_id: str, fields: dict[st
     await db.webstores.update_one(
         {"tenant_id": identity["tenant_id"], "id": webstore_id},
         {"$set": {"setup_state": "questionnaire_submitted", "updated_at": now}},
+    )
+    await db.webstores.update_one(
+        {"tenant_id": identity["tenant_id"], "id": webstore_id, "status": {"$in": ["draft", "questionnaire_sent", "waiting_on_store_owner", "changes_requested"]}},
+        {"$set": {"status": "questionnaire_submitted"}},
     )
     await _audit(
         tenant_id=identity["tenant_id"],
@@ -157,14 +188,30 @@ async def submit_questionnaire(identity: dict, webstore_id: str, fields: dict[st
         tenant_id=identity["tenant_id"],
         module="webstores",
         kind="webstore.questionnaire_submitted",
-        title=f"{store.get('name')} questionnaire submitted",
-        body="The store owner submitted setup answers. Review and apply safe answers in the Webstore workspace.",
+        title=f"{store.get('name')} questionnaire ready for review",
+        body=f"Revision {revision} was submitted. Open the review to check the summary and Approve & Apply.",
         severity="info",
         entity_type="webstore",
         entity_id=webstore_id,
         link=f"/webstores/{webstore_id}",
         metadata={"submission_id": draft["id"], "webstore_id": webstore_id, "revision": revision},
+        dedupe_key=f"webstore.questionnaire_submitted:{draft['id']}",
     )
+    warnings = consistency_checks(store, submitted or {}, await get_fulfillment_settings(identity["tenant_id"]))
+    if warnings:
+        await notify_tenant_owners(
+            tenant_id=identity["tenant_id"],
+            module="webstores",
+            kind="webstore.questionnaire_correction_needed",
+            title=f"{store.get('name')} questionnaire needs a correction",
+            body="; ".join(w["message"] for w in warnings)[:500],
+            severity="warning",
+            entity_type="webstore",
+            entity_id=webstore_id,
+            link=f"/webstores/{webstore_id}",
+            metadata={"submission_id": draft["id"], "codes": [w["code"] for w in warnings]},
+            dedupe_key=f"webstore.questionnaire_correction_needed:{draft['id']}",
+        )
     return serialize_doc(submitted or {})
 
 
@@ -174,11 +221,29 @@ async def return_questionnaire(user: dict, webstore_id: str, submission_id: str,
     submission = await db.webstore_questionnaire_submissions.find_one({"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "id": submission_id}, {"_id": 0})
     if not submission:
         raise WebstoreSetupError("questionnaire_submission_not_found", "Questionnaire submission not found", 404)
+    if submission.get("status") == "returned_for_changes":
+        return {"submission_id": submission_id, "status": "returned_for_changes", "reason": submission.get("returned_reason")}
+    if submission.get("status") != "submitted":
+        raise WebstoreSetupError("questionnaire_not_returnable", "Only a submitted questionnaire that has not been applied can be returned", 409)
     await db.webstore_questionnaire_submissions.update_one(
         {"tenant_id": user["tenant_id"], "id": submission_id},
-        {"$set": {"status": "returned_for_changes", "returned_reason": reason, "updated_at": _now_iso()}},
+        {"$set": {"status": "returned_for_changes", "returned_reason": reason, "returned_at": _now_iso(), "updated_at": _now_iso()}},
     )
     await _refresh_setup_state(user["tenant_id"], webstore_id)
+    store = await _get_store(user["tenant_id"], webstore_id)
+    await notify_tenant_owners(
+        tenant_id=user["tenant_id"],
+        module="webstores",
+        kind="webstore.questionnaire_returned",
+        title=f"{store.get('name')} questionnaire returned for changes",
+        body=reason,
+        severity="info",
+        entity_type="webstore",
+        entity_id=webstore_id,
+        link=f"/webstores/{webstore_id}",
+        metadata={"submission_id": submission_id, "returned_by": user.get("email")},
+        dedupe_key=f"webstore.questionnaire_returned:{submission_id}",
+    )
     return {"submission_id": submission_id, "status": "returned_for_changes", "reason": reason}
 
 

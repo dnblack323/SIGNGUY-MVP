@@ -92,7 +92,7 @@ async def _create_ready_store(client: AsyncClient, ctx: dict) -> dict:
             "slug": f"batch2-store-{ctx['suffix']}",
             "store_type": "general",
             "setup_profile": {"store_purpose": "Team merchandise", "audience": "Supporters"},
-            "store_settings": {"fulfillment": {"method": "pickup", "pickup_copy": "Front office pickup"}, "promo": {"copy_notes": "Share before Friday"}},
+            "store_settings": {"fulfillment": {"method": "shop_pickup", "methods": ["shop_pickup"], "pickup_copy": "Front office pickup"}, "promo": {"copy_notes": "Share before Friday"}},
         },
     )
     assert store_resp.status_code == 201, store_resp.text

@@ -13,6 +13,7 @@ FORM_REQUEST_STATUSES = ("pending", "sent", "opened", "submitted", "expired", "r
 FORM_RESPONSE_STATUSES = ("submitted", "reviewed", "superseded")
 FORM_FIELD_TYPES = (
     "text",
+    "time",
     "textarea",
     "number",
     "email",

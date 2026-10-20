@@ -50,7 +50,7 @@ def _portal_perms_for_role(role: str) -> list[str]:
 def _token_response(invitation: dict, raw_token: str) -> dict:
     response = serialize_doc(invitation)
     response.pop("token_hash", None)
-    response["invitation_url"] = f"/portal/webstores/invitations/accept?t={raw_token}"
+    response["invitation_url"] = public_url(f"/portal/webstores/invitations/accept?t={raw_token}")
     return response
 
 

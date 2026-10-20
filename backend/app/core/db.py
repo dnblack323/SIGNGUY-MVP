@@ -144,6 +144,7 @@ async def ensure_indexes() -> None:
     await db.email_logs.create_index([("tenant_id", 1), ("related_type", 1), ("related_id", 1)])
     await db.email_logs.create_index([("tenant_id", 1), ("status", 1), ("created_at", -1)])
     await db.email_logs.create_index([("to_email", 1), ("created_at", -1)])
+    await db.email_logs.create_index("sendgrid_message_id", sparse=True)
 
     # EC20 - Platform Admin support and analytics
     await db.platform_settings.create_index("id", unique=True)

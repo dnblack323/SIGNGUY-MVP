@@ -6,7 +6,7 @@ The application refuses to start in production when:
 
 1. `AUTH_DEV_BYPASS=true`.
 2. `JWT_SECRET` is missing or matches a known placeholder (see `JWT_PLACEHOLDER_SECRETS` in `security_guards.py`).
-3. `SENDGRID_WEBHOOK_ENABLED=true` and `SENDGRID_WEBHOOK_SECRET` is missing.
+3. `SENDGRID_WEBHOOK_ENABLED=true` and `SENDGRID_WEBHOOK_PUBLIC_KEY` is missing; or `SENDGRID_API_KEY` is set without `PUBLIC_APP_URL`.
 4. `STRIPE_WRITES_ENABLED=true` and `STRIPE_API_KEY` is missing.
 5. `STRIPE_WEBHOOK_ENABLED=true` and `STRIPE_WEBHOOK_SECRET` is missing.
 6. `AI_ENABLED=true` and `AI_PROVIDER_API_KEY` is missing.
@@ -45,7 +45,7 @@ Before setting `ENV=production`:
 - [ ] Set `DEPLOYMENT_CONTEXT=production` and `ENV=production` for hosted production.
 - [ ] Set explicit `CORS_ORIGINS`; do not use `*`.
 - [ ] Set `STORAGE_BACKEND=filesystem` and `OBJECT_STORAGE_PATH`.
-- [ ] Set `SENDGRID_WEBHOOK_SECRET` if enabling the delivery-event webhook.
+- [ ] Set `PUBLIC_APP_URL` (links in emails) and, if enabling the delivery-event webhook, `SENDGRID_WEBHOOK_PUBLIC_KEY`.
 - [ ] Set `STRIPE_API_KEY` (live) and `STRIPE_WEBHOOK_SECRET` when enabling Stripe writes/webhook.
 - [ ] Set `AI_PROVIDER_API_KEY` when enabling AI generation.
 - [ ] Set `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` when enabling Google sign-in.

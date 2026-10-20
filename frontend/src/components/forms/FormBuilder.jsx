@@ -24,6 +24,7 @@ export const FORM_QUESTION_TYPES = [
   { value: "radio", label: "Radio Buttons" },
   { value: "checkbox", label: "Checkboxes" },
   { value: "date", label: "Date Picker" },
+  { value: "time", label: "Time" },
   { value: "file_upload", label: "File Upload" },
   { value: "signature", label: "Signature" },
   { value: "heading", label: "Section Heading" },

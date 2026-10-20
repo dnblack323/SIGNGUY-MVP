@@ -7,9 +7,10 @@ from pydantic import BaseModel, EmailStr, Field
 
 from ..core.db import db
 from ..core.permissions import Perm
-from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
+from ..core.time_utils import utc_now
 from ..deps import require_permission
-from ..models.customer import Customer, CustomerAddress, CustomerContact, CustomerLifecycleStatus, CustomerType
+from ..models.customer import CustomerAddress, CustomerContact, CustomerLifecycleStatus, CustomerType
+from ..services.customer_service import create_customer as create_customer_record
 from ..services.customer_service import (
     duplicate_candidates,
     merge_customers,
@@ -18,7 +19,6 @@ from ..services.customer_service import (
     serialize_customer,
 )
 from ..services.audit import record_audit
-from ..services.sequence import next_record_number
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
@@ -96,27 +96,7 @@ async def list_customers(
 
 @router.post("", status_code=201)
 async def create_customer(payload: CustomerIn, user: dict = Depends(require_permission(Perm.CUSTOMER_WRITE))) -> dict:
-    raw = payload.model_dump(exclude_none=True)
-    normalized = mongo_customer_payload({"tenant_id": user["tenant_id"], **raw})
-    c = Customer(**normalized)
-    allocation = await next_record_number(
-        tenant_id=user["tenant_id"],
-        record_type="customer",
-        issued_to_entity_type="customer",
-        issued_to_entity_id=c.id,
-        actor_user_id=user["id"],
-        actor_email=user["email"],
-        reason="customer.create",
-    )
-    c.number = allocation.number
-    await db.customers.insert_one(prepare_for_mongo(c.model_dump()))
-    await record_audit(
-        tenant_id=user["tenant_id"], actor_user_id=user["id"], actor_email=user["email"],
-        action="customer.create", entity_type="customer", entity_id=c.id,
-        summary=f"Customer '{c.name}' created",
-        diff={"customer_type": c.customer_type, "lifecycle_status": c.lifecycle_status},
-    )
-    return serialize_customer(c.model_dump())
+    return await create_customer_record(tenant_id=user["tenant_id"], actor=user, data=payload.model_dump(exclude_none=True))
 
 
 @router.get("/duplicates")

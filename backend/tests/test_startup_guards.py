@@ -29,7 +29,9 @@ class FakeSettings:
     auth_dev_bypass: bool = False
     jwt_secret: str = "a-strong-non-placeholder-secret-1234567890"
     sendgrid_webhook_enabled: bool = False
-    sendgrid_webhook_secret: str | None = None
+    sendgrid_webhook_public_key: str | None = None
+    sendgrid_api_key: str | None = None
+    public_app_url: str | None = None
     stripe_writes_enabled: bool = False
     stripe_webhook_enabled: bool = False
     stripe_api_key: str | None = None
@@ -102,10 +104,17 @@ def test_production_stripe_webhook_requires_secret_when_enabled():
     assert any(v.code == "stripe_webhook_secret_missing" for v in vs)
 
 
-def test_production_sendgrid_webhook_requires_secret_when_enabled():
-    s = _prod(sendgrid_webhook_enabled=True, sendgrid_webhook_secret=None)
+def test_production_sendgrid_webhook_requires_public_key_when_enabled():
+    s = _prod(sendgrid_webhook_enabled=True, sendgrid_webhook_public_key=None)
     vs = collect_violations(s)
-    assert any(v.code == "sendgrid_webhook_secret_missing" for v in vs)
+    assert any(v.code == "sendgrid_webhook_public_key_missing" for v in vs)
+
+
+def test_production_sendgrid_email_requires_public_app_url():
+    vs = collect_violations(_prod(sendgrid_api_key="SG.test-only", public_app_url=None))
+    assert any(v.code == "public_app_url_missing" for v in vs)
+    vs = collect_violations(_prod(sendgrid_api_key="SG.test-only", public_app_url="https://app.signguy.test"))
+    assert all(v.code != "public_app_url_missing" for v in vs)
 
 
 def test_production_ai_requires_key_when_enabled():
@@ -157,7 +166,7 @@ def test_disabled_integrations_dont_require_credentials():
         v.code not in {
             "stripe_api_key_missing",
             "stripe_webhook_secret_missing",
-            "sendgrid_webhook_secret_missing",
+            "sendgrid_webhook_public_key_missing",
             "ai_provider_key_missing",
             "sms_provider_credentials_missing",
         }

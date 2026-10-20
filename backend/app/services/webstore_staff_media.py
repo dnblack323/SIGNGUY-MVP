@@ -46,10 +46,9 @@ async def create_artwork(user: dict, webstore_id: str, fields: dict[str, Any]) -
         await _get_product(user["tenant_id"], product_id, webstore_id)
     file_id = fields.get("file_id") or fields.get("original_file_id")
     if file_id:
-        file_doc = await db.webstore_setup_files.find_one(
-            {"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "id": file_id, "status": "active"},
-            {"_id": 0},
-        )
+        from .webstore_setup_files import find_webstore_setup_file
+
+        file_doc = await find_webstore_setup_file(user["tenant_id"], webstore_id, file_id)
         if not file_doc:
             raise WebstoreError("artwork_file_not_found", "Selected artwork file was not found for this Webstore", 404)
     art = WebstoreArtworkFile(

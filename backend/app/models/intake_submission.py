@@ -31,7 +31,7 @@ IntakeSourceType = Literal[
 
 IntakeStatus = Literal[
     "draft", "submitted", "under_review", "needs_information",
-    "accepted", "converted_to_quote", "converted_to_order",
+    "accepted", "converted_to_quote", "converted_to_order", "converted_to_webstore",
     "rejected", "cancelled",
 ]
 
@@ -131,6 +131,7 @@ class IntakeSubmission(BaseDoc):
 
     quote_id: Optional[str] = None
     order_id: Optional[str] = None
+    webstore_id: Optional[str] = None  # set when the intake starts a Webstore request
 
     questionnaire_submission_ids: list[str] = Field(default_factory=list)  # references `customer_intakes` rows
     file_ids: list[str] = Field(default_factory=list)  # submission-level assets (not tied to one item)

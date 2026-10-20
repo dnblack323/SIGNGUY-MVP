@@ -150,10 +150,9 @@ async def public_branding_asset(slug: str, file_id: str) -> tuple[dict, bytes, s
     )
     if not version or file_id not in _collect_image_file_ids(version.get("branding") or {}):
         raise WebstoreBrandingError("branding_asset_not_found", "Branding asset not found", 404)
-    doc = await db.webstore_setup_files.find_one(
-        {"tenant_id": store["tenant_id"], "webstore_id": store["id"], "id": file_id, "status": {"$ne": "removed"}},
-        {"_id": 0},
-    )
+    from .webstore_setup_files import find_webstore_setup_file
+
+    doc = await find_webstore_setup_file(store["tenant_id"], store["id"], file_id, include_replaced=True)
     if not doc or not doc.get("inline_preview_allowed"):
         raise WebstoreBrandingError("branding_asset_not_found", "Branding asset not found", 404)
     data, content_type = storage.get_bytes(doc["storage_key"])

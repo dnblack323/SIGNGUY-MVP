@@ -4,6 +4,7 @@ from __future__ import annotations
 from .webstore_shared import *
 from .webstore_launch import _invalidate_packet_approval_if_needed, _payment_readiness, _terms_acceptance
 from .webstore_staff_products import list_products
+from .webstore_setup_files import count_active_setup_files
 
 
 async def create_owner(user: dict, fields: dict[str, Any]) -> dict:
@@ -14,7 +15,6 @@ async def create_owner(user: dict, fields: dict[str, Any]) -> dict:
         name=_clean_text(fields.get("name"), "name"),
         email=email,
         phone=_clean_optional_text(fields.get("phone"), limit=40),
-        organization=_clean_optional_text(fields.get("organization")),
         customer_id=fields.get("customer_id"),
         status=fields.get("status", "active"),
     ).model_dump()
@@ -137,7 +137,6 @@ async def create_webstore(user: dict, fields: dict[str, Any]) -> dict:
         await db.webstore_access_assignments.delete_many({"tenant_id": user["tenant_id"], "webstore_id": store["id"]})
         await db.webstore_invitations.delete_many({"tenant_id": user["tenant_id"], "webstore_id": store["id"]})
         await db.webstore_questionnaire_submissions.delete_many({"tenant_id": user["tenant_id"], "webstore_id": store["id"]})
-        await db.webstore_setup_files.delete_many({"tenant_id": user["tenant_id"], "webstore_id": store["id"]})
         await db.webstore_answer_applications.delete_many({"tenant_id": user["tenant_id"], "webstore_id": store["id"]})
         raise WebstoreError(exc.code, exc.detail, exc.status_code) from exc
     updated = await db.webstores.find_one({"tenant_id": user["tenant_id"], "id": store["id"]}, {"_id": 0})
@@ -295,7 +294,7 @@ async def update_webstore(user: dict, webstore_id: str, updates: dict[str, Any])
                     await db.webstore_access_assignments.count_documents({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}),
                     await db.webstore_invitations.count_documents({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}),
                     await db.webstore_questionnaire_submissions.count_documents({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}),
-                    await db.webstore_setup_files.count_documents({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}),
+                    await count_active_setup_files(user["tenant_id"], webstore_id),
                 ]
             )
             if owner_activity_count:

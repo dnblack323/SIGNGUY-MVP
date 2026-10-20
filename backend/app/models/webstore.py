@@ -7,11 +7,11 @@ from pydantic import Field, StrictInt
 
 from .base import BaseDoc
 
-WEBSTORE_TYPES = ("b2b", "fundraiser", "event", "promotional", "general")
-LEGACY_WEBSTORE_TYPES = ("employee",)
+WEBSTORE_TYPES = ("fundraiser", "event", "team_school", "b2b", "promotional", "general")
 WEBSTORE_TYPE_LABELS = {
-    "b2b": "B2B",
+    "b2b": "Business / B2B",
     "fundraiser": "Fundraiser",
+    "team_school": "Team / School",
     "event": "Event",
     "promotional": "Promotional",
     "employee": "Employee",
@@ -74,7 +74,7 @@ WebstoreStatus = Literal[
 WebstoreOwnerStatus = Literal["active", "disabled", "archived"]
 # Keep employee readable for persisted legacy records, but do not include it in
 # WEBSTORE_TYPES, which is the authority for new Webstore creation.
-WebstoreType = Literal["b2b", "fundraiser", "event", "promotional", "employee", "general"]
+WebstoreType = Literal["b2b", "fundraiser", "event", "team_school", "promotional", "employee", "general"]
 WebstoreProductStatus = Literal["draft", "planned", "incomplete", "ready", "active", "inactive", "archived"]
 WebstoreTemplateScope = Literal["tenant", "platform"]
 WebstoreTemplateStatus = Literal["draft", "active", "archived"]
@@ -94,7 +94,6 @@ WebstoreSetupState = Literal[
 WebstoreAssignmentRole = Literal["owner", "manager"]
 WebstoreAssignmentStatus = Literal["invited", "active", "revoked", "expired", "replaced"]
 WebstoreInvitationStatus = Literal["pending", "sent", "send_failed", "accepted", "revoked", "expired", "superseded"]
-WebstoreSetupFileStatus = Literal["active", "replaced", "removed"]
 WebstoreAnswerApplicationStatus = Literal["applied", "reversed"]
 WebstoreBrandingStatus = Literal[
     "draft",
@@ -234,6 +233,8 @@ class Webstore(BaseDoc):
     event_location: Optional[str] = None
     primary_owner_assignment_id: Optional[str] = None
     creation_idempotency_key: Optional[str] = None
+    information_packet: dict[str, Any] = Field(default_factory=dict)  # sent_count, last_sent_at, last_email_log_id
+    source_intake_id: Optional[str] = None
 
 
 class WebstoreProductTemplate(BaseDoc):
@@ -353,6 +354,8 @@ class WebstoreQuestionnaireSubmission(BaseDoc):
     # Immutable once submitted: revision N is never edited; a resubmission is a new record.
     revision: Optional[int] = None
     supersedes_submission_id: Optional[str] = None
+    acknowledgement: Optional[dict[str, Any]] = None  # P2-5: version, text, accepted_at, portal_identity_id, revision
+    returned_at: Optional[str] = None
     submitted_snapshot: dict[str, Any] = Field(default_factory=dict)
     inactive_answer_paths: list[str] = Field(default_factory=list)
     returned_reason: Optional[str] = None
@@ -394,31 +397,9 @@ class WebstoreInvitation(BaseDoc):
     revoked_at: Optional[str] = None
     superseded_at: Optional[str] = None
     delivery_message_id: Optional[str] = None
+    email_log_id: Optional[str] = None
     delivery_error: Optional[str] = None
     created_by_user_id: Optional[str] = None
-
-
-class WebstoreSetupFile(BaseDoc):
-    tenant_id: str
-    webstore_id: str
-    category: str
-    file_name: str
-    extension: str
-    content_type: str
-    detected_content_type: str
-    size_bytes: StrictInt = Field(ge=0)
-    storage_key: str
-    uploaded_by_actor_type: str
-    uploaded_by_id: Optional[str] = None
-    status: WebstoreSetupFileStatus = "active"
-    version: StrictInt = Field(default=1, ge=1)
-    replaces_file_id: Optional[str] = None
-    replaced_by_file_id: Optional[str] = None
-    safe_preview_available: bool = False
-    inline_preview_allowed: bool = False
-    private_download_only: bool = True
-    svg_sanitized: bool = False
-    notes: Optional[str] = None
 
 
 class WebstoreAnswerApplication(BaseDoc):

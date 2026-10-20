@@ -136,8 +136,8 @@ async def test_fundraiser_progress_is_paid_only_and_donation_promo_are_previewed
     await ensure_indexes()
     store, product = await _seed_store(
         store_type="fundraiser",
-        setup={"fundraiser_goal_amount": 10000},
         settings={
+            "fundraiser": {"goal_amount_cents": 10000},
             "donation": {"enabled": True, "minimum_cents": 100, "maximum_cents": 2000},
             "promo_codes": [{"code": "TEAM10", "discount_type": "percentage", "discount_basis_points": 1000}],
         },

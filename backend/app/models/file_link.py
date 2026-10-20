@@ -10,7 +10,7 @@ attachments; this table backs future portal + document-share flows.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import Field
 
@@ -25,3 +25,4 @@ class FileLink(BaseDoc):
     role: Optional[str] = None    # e.g. "primary", "reference", "signed_pdf"
     created_by: Optional[str] = None
     archived: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)  # context-specific, e.g. Webstore setup file category/version

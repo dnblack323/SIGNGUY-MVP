@@ -384,3 +384,61 @@ async def merge_customers(
 def mongo_customer_payload(data: dict[str, Any], existing: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     normalized = apply_customer_compatibility(data, existing)
     return prepare_for_mongo(normalized)
+
+
+async def create_customer(*, tenant_id: str, actor: dict, data: dict[str, Any]) -> dict[str, Any]:
+    """Create one Customer with its record number and audit row (shared by the API and Webstore requests)."""
+    from ..models.customer import Customer
+    from .sequence import next_record_number
+
+    c = Customer(**mongo_customer_payload({"tenant_id": tenant_id, **data}))
+    allocation = await next_record_number(
+        tenant_id=tenant_id,
+        record_type="customer",
+        issued_to_entity_type="customer",
+        issued_to_entity_id=c.id,
+        actor_user_id=actor["id"],
+        actor_email=actor.get("email") or "",
+        reason="customer.create",
+    )
+    c.number = allocation.number
+    await db.customers.insert_one(prepare_for_mongo(c.model_dump()))
+    await record_audit(
+        tenant_id=tenant_id, actor_user_id=actor["id"], actor_email=actor.get("email") or "",
+        action="customer.create", entity_type="customer", entity_id=c.id,
+        summary=f"Customer '{c.name}' created",
+        diff={"customer_type": c.customer_type, "lifecycle_status": c.lifecycle_status},
+    )
+    return serialize_customer(c.model_dump())
+
+
+async def find_matching_customers(*, tenant_id: str, name: Any = None, email: Any = None, phone: Any = None) -> list[dict[str, Any]]:
+    """Existing customers that share an exact email or phone (strong) or name (warning)."""
+    probe = {"name": name, "email": email, "phone": phone}
+    clauses: list[dict[str, Any]] = []
+    if normalize_email(email):
+        clauses += [{"email": {"$regex": f"^{re.escape(str(email).strip())}$", "$options": "i"}},
+                    {"contacts.email": {"$regex": f"^{re.escape(str(email).strip())}$", "$options": "i"}}]
+    if normalize_text(name):
+        clauses += [{"name": {"$regex": f"^{re.escape(str(name).strip())}$", "$options": "i"}},
+                    {"company": {"$regex": f"^{re.escape(str(name).strip())}$", "$options": "i"}}]
+    docs: list[dict[str, Any]] = []
+    if clauses:
+        docs = [d async for d in db.customers.find(
+            {"tenant_id": tenant_id, "merged_into": None, "archived": {"$ne": True}, "$or": clauses}, {"_id": 0}
+        ).limit(25)]
+    phone_key = normalize_phone(phone)
+    if phone_key and len(phone_key) >= 7:
+        known = {d["id"] for d in docs}
+        async for d in db.customers.find(
+            {"tenant_id": tenant_id, "merged_into": None, "archived": {"$ne": True}, "phone": {"$nin": [None, ""]}}, {"_id": 0}
+        ).limit(2000):
+            if d["id"] not in known and normalize_phone(d.get("phone")) == phone_key:
+                docs.append(d)
+    matches = []
+    for doc in docs:
+        reasons = match_reasons(probe, doc)
+        if reasons:
+            strong = any(r in {"Matching email", "Matching phone"} for r in reasons)
+            matches.append({"customer": serialize_customer(doc), "match_reasons": reasons, "strong": strong})
+    return sorted(matches, key=lambda m: not m["strong"])

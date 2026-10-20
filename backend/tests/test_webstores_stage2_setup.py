@@ -11,16 +11,11 @@ from app.core.portal_security import hash_token
 from app.deps import get_current_user
 from app.services.webstore_setup import WEBSTORE_SETUP_STATES
 from server import app
+from tests.webstore_questionnaire_answers import complete_answers
 
 
 # Visible required questions in the Webstore Starter base + event questionnaires block submit.
-EVENT_REQUIRED_ANSWERS = {
-    "customer_name": "Pat Organizer",
-    "phone_number": "555-0100",
-    "email_address": "pat@example.com",
-    "products_wanted": ["tshirts"],
-    "event_name": "Spring Fair",
-}
+EVENT_REQUIRED_ANSWERS = complete_answers("event")
 
 
 def _override(user: dict):
@@ -251,8 +246,12 @@ async def test_setup_files_are_validated_stored_versioned_and_allowlisted(stage2
         )
         assert replacement.status_code == 201, replacement.text
         assert replacement.json()["file"]["version"] == 2
-        previous = await db.webstore_setup_files.find_one({"tenant_id": stage2_ctx["tenant_id"], "id": file_doc["id"]}, {"_id": 0})
-        assert previous["status"] == "replaced"
+        # Setup files live in the canonical Files store, linked to the Webstore (P2-9).
+        previous = await db.file_links.find_one({"tenant_id": stage2_ctx["tenant_id"], "id": file_doc["id"]}, {"_id": 0})
+        assert previous["metadata"]["status"] == "replaced" and previous["archived"] is True
+        assert previous["parent_type"] == "webstore" and previous["parent_id"] == created["store"]["id"]
+        assert await db.files.find_one({"tenant_id": stage2_ctx["tenant_id"], "id": previous["file_id"]}, {"_id": 0, "id": 1})
+        assert await db.webstore_setup_files.count_documents({"tenant_id": stage2_ctx["tenant_id"]}) == 0
 
         download = await client.get(f"/api/webstores/{created['store']['id']}/setup-files/{replacement.json()['file']['id']}/download")
         assert download.status_code == 200

@@ -111,7 +111,7 @@ export default function FormQuestionInput({
     );
   }
 
-  const inputType = ["date", "email", "number"].includes(type) ? type : "text";
+  const inputType = ["date", "time", "email", "number"].includes(type) ? type : "text";
   return (
     <Input
       type={inputType}
