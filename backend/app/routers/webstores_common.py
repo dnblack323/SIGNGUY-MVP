@@ -34,20 +34,42 @@ def _raise_branding(e: WebstoreBrandingError) -> None:
 
 
 
-async def sync_next_action_after_change(request: Request):
-    """Router dependency: after a successful POST/PUT/PATCH/DELETE on a Webstore route,
-    keep the Webstore's next-action task in step (one place, instead of per-service calls).
-    Runs only when the handler succeeded (an error skips the code after ``yield``)."""
-    yield
+async def _sync_after_change(request: Request, tenant_id: Optional[str]) -> None:
     webstore_id = request.path_params.get("webstore_id")
-    if request.method in {"GET", "HEAD", "OPTIONS"} or not webstore_id:
+    if request.method in {"GET", "HEAD", "OPTIONS"} or not webstore_id or not tenant_id:
         return
     from ..core.db import db
     from ..services.webstore_next_action import sync_next_action_side_effects
 
-    store = await db.webstores.find_one({"id": webstore_id}, {"_id": 0, "tenant_id": 1})
-    if store:
-        await sync_next_action_side_effects(store["tenant_id"], webstore_id)
+    if await db.webstores.find_one({"tenant_id": tenant_id, "id": webstore_id}, {"_id": 1}):
+        await sync_next_action_side_effects(tenant_id, webstore_id)
+
+
+async def sync_next_action_after_change(request: Request, user: dict = Depends(get_current_user)):
+    """Staff router dependency: after a successful POST/PUT/PATCH/DELETE on a Webstore route,
+    keep the Webstore's next-action task in step (one place, instead of per-service calls).
+    Runs only when the handler succeeded (an error skips the code after ``yield``). Every
+    staff Webstore route already authenticates; FastAPI reuses that same user here."""
+    yield
+    await _sync_after_change(request, user.get("tenant_id"))
+
+
+async def sync_next_action_after_owner_change(request: Request):
+    """Owner portal router dependency. The portal router also serves the public invitation
+    accept (no Webstore id), so the tenant comes from the verified portal token instead."""
+    yield
+    from ..core.portal_security import decode_portal_token
+
+    scheme, _, token = (request.headers.get("authorization") or "").partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return
+    try:
+        payload = decode_portal_token(token)
+    except Exception:  # noqa: BLE001 - the handler already authenticated; nothing to sync otherwise
+        return
+    if payload.get("sub_scope") == "portal":
+        await _sync_after_change(request, payload.get("tenant_id"))
+
 
 class OwnerIn(BaseModel):
     name: str

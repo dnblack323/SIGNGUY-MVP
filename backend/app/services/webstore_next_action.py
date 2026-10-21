@@ -77,7 +77,9 @@ async def compute_next_action(store: dict, readiness: Optional[dict] = None) -> 
     stage = stage_of(store)
     if stage == "archived":
         return _action("none", "none", "Archived", "This store is archived.", "overview")
-    if stage == "closed":
+    if stage == "closed" and store.get("status") == "completed":
+        return _action("none", "none", "Completed — prepare a relaunch or archive when ready", "This store is complete.", "overview")
+    if stage == "closed" and store.get("status") != "relaunch_ready":
         return _action("review_closed_orders", "shop", "Ordering closed — finish production and fulfillment", "Ordering has closed.", "overview")
     if stage == "paused":
         return _action("resume_store", "shop", "Store is paused — resume or close it", "Your store is paused.", "review-launch")
@@ -157,9 +159,24 @@ def task_key(store: dict, action: dict) -> str:
     return f"webstore:{store['id']}:next:{action['key']}:{action['occurrence']}"
 
 
-def list_snapshot(action: dict, stage: str) -> dict[str, Any]:
+def list_snapshot(action: dict, stage: str, setup_state: str, gates: str) -> dict[str, Any]:
     """The compact next action stored on the Webstore for the list (written by sync only)."""
-    return {k: action[k] for k in ("key", "actor", "staff_text", "tab")} | {"stage": stage}
+    return {k: action[k] for k in ("key", "actor", "staff_text", "tab")} | {"stage": stage, "setup_state": setup_state, "gates": gates}
+
+
+async def external_gates(store: dict, *, payment: Optional[dict] = None, entitlements: Optional[dict] = None) -> str:
+    """Fingerprint of the gates that change outside Webstore routes (subscription entitlement,
+    payment provider). A snapshot taken under different values is stale."""
+    from .entitlements import has_entitlement
+    from .webstore_constants import WEBSTORES_FEATURE_KEY
+    from .webstore_launch_state import _payment_readiness
+
+    key = store.get("entitlement_feature_key") or WEBSTORES_FEATURE_KEY
+    cache = entitlements if entitlements is not None else {}
+    if key not in cache:
+        cache[key] = await has_entitlement(tenant_id=store["tenant_id"], feature_key=key)
+    payment = payment or await _payment_readiness(store)
+    return f"{key}={int(cache[key])};payment={payment.get('state')}"
 
 
 async def _active_assignee(tenant_id: str, store: dict) -> Optional[str]:
@@ -186,11 +203,14 @@ async def _sync_once(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any
         return None
     store = serialize_doc(store)
     action = await compute_next_action(store)
-    await db.webstores.update_one({"tenant_id": tenant_id, "id": webstore_id}, {"$set": {"next_action_snapshot": list_snapshot(action, stage_of(store))}})
+    from .webstore_setup_progress import compute_setup_state
+
+    snapshot = list_snapshot(action, stage_of(store), await compute_setup_state(store), await external_gates(store))
+    await db.webstores.update_one({"tenant_id": tenant_id, "id": webstore_id}, {"$set": {"next_action_snapshot": snapshot}})
     wanted = task_key(store, action) if action["actor"] == "shop" and action["key"] != "none" else None
     now = utc_now().isoformat()
     if wanted:
-        from .task_service import create_task, transition_task
+        from .task_service import assign_task, create_task, restore_task, transition_task
 
         assignee = await _active_assignee(tenant_id, store)
         task = await create_task(tenant_id=tenant_id, actor_user_id="system", actor_email="system", payload={
@@ -203,12 +223,15 @@ async def _sync_once(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any
             "visibility": "staff",
             "idempotency_key": wanted,
         })
+        if task.get("archived_at"):
+            # Archived by hand while the step is still pending: bring it back (one visible task).
+            task = await restore_task(tenant_id=tenant_id, task_id=task["id"], actor_user_id="system", actor_email="system")
         if task.get("status") in {"completed", "canceled"}:
             # The same step is pending again: reopen through the task service (clears completion fields).
             task = await transition_task(tenant_id=tenant_id, task_id=task["id"], target="in_progress", actor_user_id="system",
                                          actor_email="system", reason="Webstore next action is pending again", allow_reopen=True)
         if task.get("assigned_user_id") != assignee:
-            await db.tasks.update_one({"tenant_id": tenant_id, "id": task["id"]}, {"$set": {"assigned_user_id": assignee, "updated_at": now}})
+            await assign_task(tenant_id=tenant_id, task_id=task["id"], actor_user_id="system", actor_email="system", assigned_user_id=assignee)
     # Close superseded tasks only after the replacement exists, so a failure never leaves none.
     async for task in db.tasks.find(
         {"tenant_id": tenant_id, "webstore_id": webstore_id, "task_type": TASK_TYPE, "status": {"$nin": ["completed", "canceled"]},
@@ -261,4 +284,4 @@ async def sync_next_action_side_effects(tenant_id: str, webstore_id: str) -> Opt
         return None
 
 
-__all__ = ["list_snapshot", "staff_next_action", "owner_next_action", "with_derived_state", "compute_next_action", "staff_view", "owner_view", "task_key", "sync_next_action_side_effects", "TASK_TYPE"]
+__all__ = ["external_gates", "list_snapshot", "staff_next_action", "owner_next_action", "with_derived_state", "compute_next_action", "staff_view", "owner_view", "task_key", "sync_next_action_side_effects", "TASK_TYPE"]

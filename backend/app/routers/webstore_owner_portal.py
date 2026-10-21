@@ -14,9 +14,9 @@ from ..services.webstore_branding import WebstoreBrandingError
 from ..services.webstore_setup import WebstoreSetupError
 from ..services.webstores import WebstoreError
 
-from .webstores_common import sync_next_action_after_change
+from .webstores_common import sync_next_action_after_owner_change
 
-router = APIRouter(prefix="/portal/webstores", tags=["portal-webstores"], dependencies=[Depends(sync_next_action_after_change)])
+router = APIRouter(prefix="/portal/webstores", tags=["portal-webstores"], dependencies=[Depends(sync_next_action_after_owner_change)])
 
 
 def _raise(e: WebstoreError) -> None:

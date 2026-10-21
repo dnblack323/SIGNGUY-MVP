@@ -134,6 +134,7 @@ def _linked_record_label(doc: dict) -> Optional[str]:
         ("work_order", "work_order_id"),
         ("invoice", "invoice_id"),
         ("production_stage", "production_stage_id"),
+        ("webstore", "webstore_id"),
     ):
         if doc.get(field):
             return f"{source_type.replace('_', ' ')} {str(doc[field])[:10]}"

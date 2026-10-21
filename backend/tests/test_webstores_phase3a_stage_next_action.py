@@ -228,3 +228,45 @@ async def test_old_records_derive_stage_and_retired_statuses_are_refused(ctx):
         await apply_store_status(tenant_id=ctx["tenant_id"], webstore_id=store_id, status="mockups_generated", source="test")
     async with await _staff(ctx["outsider"]) as other:
         assert (await other.get(f"/api/webstores/{store_id}/next-action")).status_code == 404
+
+
+async def test_tasks_restore_reassign_and_link_through_the_task_service(ctx):
+    from app.services.task_service import get_task
+    from app.services.webstore_next_action import sync_next_action_side_effects
+
+    async with await _staff(ctx["user"]) as client:
+        store = await _request(client, ctx["suffix"])
+        task = (await _open_tasks(ctx["tenant_id"], store["id"]))[0]
+        assert (await get_task(tenant_id=ctx["tenant_id"], task_id=task["id"]))["linked_record_label"].startswith("webstore ")
+        # Archived by hand while still pending: the next sync restores it.
+        await db.tasks.update_one({"id": task["id"]}, {"$set": {"archived_at": "2026-10-20T00:00:00+00:00"}})
+        await sync_next_action_side_effects(ctx["tenant_id"], store["id"])
+        assert (await db.tasks.find_one({"id": task["id"]}, {"_id": 0}))["archived_at"] is None
+        # A new assignee is applied through assign_task (history recorded).
+        assert (await client.patch(f"/api/webstores/{store['id']}", json={"assignee_user_id": ctx["teammate"]["id"]})).status_code == 200
+    moved = await db.tasks.find_one({"id": task["id"]}, {"_id": 0})
+    assert moved["assigned_user_id"] == ctx["teammate"]["id"] and moved["assignment_history"]
+
+
+async def test_closed_stage_statuses_and_external_gate_changes(ctx):
+    from app.services.webstore_next_action import compute_next_action
+
+    base = {"tenant_id": ctx["tenant_id"], "id": f"closed-{ctx['suffix']}", "owner_id": "o", "name": "Closed", "slug": f"closed-{ctx['suffix']}",
+            "public_slug": f"closed-{ctx['suffix']}", "store_type": "general", "information_packet": {"sent_count": 1}}
+    await db.webstores.insert_one({**base, "status": "relaunch_ready"})
+    assert (await compute_next_action({**base, "status": "completed"}))["actor"] == "none"  # no fulfillment task
+    assert (await compute_next_action({**base, "status": "closed"}))["key"] == "review_closed_orders"
+    assert (await compute_next_action({**base, "status": "relaunch_ready"}))["key"] != "review_closed_orders"
+
+    async with await _staff(ctx["user"]) as client:
+        store = await _request(client, ctx["suffix"])
+        await db.webstores.update_one({"id": store["id"]}, {"$set": {"information_packet.sent_count": 1, "status": "questionnaire_submitted"}})
+        await db.webstore_questionnaire_submissions.insert_one({"id": f"s-{ctx['suffix']}", "tenant_id": ctx["tenant_id"], "webstore_id": store["id"], "status": "reviewed", "revision": 1})
+        await client.patch(f"/api/webstores/{store['id']}", json={"description": "sync"})  # snapshot taken without the entitlement
+        before = [i for i in (await client.get("/api/webstores")).json()["items"] if i["id"] == store["id"]][0]
+        assert before["next_action"]["key"] == "entitlement"
+        # The subscription projection enables the feature outside any Webstore route.
+        await db.feature_entitlements.insert_one({"tenant_id": ctx["tenant_id"], "feature_key": "webstores", "enabled": True})
+        after = [i for i in (await client.get("/api/webstores")).json()["items"] if i["id"] == store["id"]][0]
+    assert after["next_action"]["key"] != "entitlement"
+    assert after["setup_state"] != "not_started"  # computed, not the stale stored value
