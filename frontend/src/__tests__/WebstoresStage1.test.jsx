@@ -72,6 +72,8 @@ jest.mock("axios", () => ({
 }));
 
 jest.mock("@/lib/webstores", () => ({
+  listWebstoreMessages: jest.fn(() => Promise.resolve({ items: [] })),
+  sendWebstoreMessage: jest.fn(),
   createWebstore: jest.fn(),
   createWebstoreAssignment: jest.fn(),
   createWebstoreOwner: jest.fn(),

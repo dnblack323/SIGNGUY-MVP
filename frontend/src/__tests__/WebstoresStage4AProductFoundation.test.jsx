@@ -54,6 +54,8 @@ import {
 import { useAuth } from "@/auth/AuthContext";
 
 jest.mock("@/lib/webstores", () => ({
+  listWebstoreMessages: jest.fn(() => Promise.resolve({ items: [] })),
+  sendWebstoreMessage: jest.fn(),
   archiveProductTemplate: jest.fn(),
   archiveWebstoreProduct: jest.fn(),
   archiveWebstoreProductCategory: jest.fn(),

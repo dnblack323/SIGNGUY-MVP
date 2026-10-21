@@ -15,6 +15,16 @@ export async function listWebstoreActivity(id, params = {}) {
   return r.data;
 }
 
+export async function listWebstoreMessages(id) {
+  const r = await api.get(`/webstores/${id}/messages`);
+  return r.data;
+}
+
+export async function sendWebstoreMessage(id, body) {
+  const r = await api.post(`/webstores/${id}/messages`, { body });
+  return r.data;
+}
+
 export async function transitionWebstoreLifecycle(id, payload) {
   const r = await api.post(`/webstores/${id}/lifecycle`, payload);
   return r.data;

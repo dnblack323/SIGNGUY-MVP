@@ -109,6 +109,31 @@ async def accept_invitation(payload: InvitationAcceptIn) -> dict:
         _raise_setup(e)
 
 
+class OwnerMessageIn(BaseModel):
+    body: str = Field(min_length=1, max_length=5000)
+
+
+@router.get("/{webstore_id}/messages")
+async def owner_messages(webstore_id: str, identity: dict = Depends(_webstore_identity)) -> dict:
+    """The owner's thread with the shop for this Webstore."""
+    from ..services.webstore_messages import owner_messages as load
+
+    try:
+        return await load(identity, webstore_id)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/messages", status_code=201)
+async def owner_send_message(webstore_id: str, payload: OwnerMessageIn, identity: dict = Depends(_webstore_identity)) -> dict:
+    from ..services.webstore_messages import owner_send
+
+    try:
+        return await owner_send(identity, webstore_id, payload.body)
+    except WebstoreError as e:
+        _raise(e)
+
+
 @router.get("/{webstore_id}/next-action")
 async def next_action(webstore_id: str, identity: dict = Depends(_webstore_identity)) -> dict:
     """Owner-safe stage and next step (no staff-only blockers)."""

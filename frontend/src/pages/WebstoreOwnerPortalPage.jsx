@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import WorkspaceTimeline from "@/components/workspace/WorkspaceTimeline";
+import WebstoreMessages from "@/components/webstores/WebstoreMessages";
+import portalApi, { portalExtractError } from "@/portal/portalApi";
 import {
   BrandingCard,
   SetupFilesCard,
@@ -18,6 +20,9 @@ import {
   TermsCard,
 } from "@/components/webstores/owner-portal/OwnerPortalSummarySections";
 import { useWebstoreOwnerPortal } from "@/components/webstores/owner-portal/useWebstoreOwnerPortal";
+
+const loadOwnerMessages = async (id) => (await portalApi.get(`/portal/webstores/${id}/messages`)).data;
+const sendOwnerMessage = async (id, body) => (await portalApi.post(`/portal/webstores/${id}/messages`, { body })).data;
 
 // Owner portal tabs (Phase 3, D3-5). Marketing stays hidden until Phase 8.
 const OWNER_TABS = [
@@ -156,6 +161,14 @@ export default function WebstoreOwnerPortalPage() {
         </TabsContent>
 
         <TabsContent value="messages" className="space-y-4">
+          <WebstoreMessages
+            webstoreId={webstoreId}
+            viewer="owner"
+            load={loadOwnerMessages}
+            send={sendOwnerMessage}
+            extractError={portalExtractError}
+            intro="Questions or ideas for your store? Message the shop here."
+          />
           <SetupFilesCard
             files={portal.files}
             fileCategory={portal.fileCategory}
