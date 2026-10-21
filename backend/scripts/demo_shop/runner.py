@@ -25,6 +25,17 @@ class Ctx:
         bucket[kind] = bucket.get(kind, 0) + 1
 
 
+def busy_operations(ops: list[dict], db_name: str) -> list[dict]:
+    """Operations running against ``db_name``'s own namespaces.
+
+    Matching on the namespace keeps the check meaningful: the reset's own admin connection, the driver's background
+    heartbeat (``admin.$cmd`` ``hello``) and server threads such as the checkpointer are not work on the database, and
+    counting them would make the guard fail every time. Anything an app is doing to ``signguy_local.*`` still counts.
+    """
+    prefix = f"{db_name}."
+    return [op for op in ops if str(op.get("ns") or "").startswith(prefix)]
+
+
 def reset_database(target: DemoTarget, confirm: str | None) -> None:
     """Drop the one verified development database. Never a wildcard, never another name."""
     if target.mode != "development" or target.db_name != DEV_DATABASE:
@@ -34,8 +45,7 @@ def reset_database(target: DemoTarget, confirm: str | None) -> None:
     client = MongoClient(target.mongo_url, serverSelectionTimeoutMS=5000)
     try:
         if target.db_name in client.list_database_names():
-            busy = [op for op in client.admin.command("currentOp", {"$all": True, "ns": {"$regex": "^" + target.db_name + "[.]"}, "active": True})["inprog"]
-                    if op.get("op") not in ("none",) and "currentOp" not in str(op.get("command", ""))]
+            busy = busy_operations(client.admin.command("currentOp", {"$all": True})["inprog"], target.db_name)
             if busy:
                 raise UnsafeDemoTargetError(f"{len(busy)} active operation(s) are running on {target.db_name}; stop the app first")
             tenants = client[target.db_name]["tenants"].estimated_document_count()
