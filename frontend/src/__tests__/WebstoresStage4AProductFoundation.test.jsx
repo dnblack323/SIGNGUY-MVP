@@ -108,7 +108,7 @@ jest.mock("@/auth/AuthContext", () => ({
 
 jest.mock("@/lib/api", () => ({
   __esModule: true,
-  default: {},
+  default: { get: jest.fn(() => Promise.resolve({ data: [] })) },
   extractError: (error) => error?.response?.data?.detail || error?.message || "Request failed",
 }));
 
@@ -474,7 +474,7 @@ test("staff launch readiness shows packet versioning, terms, QR, schedule, and c
   });
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
-  await user.click(await screen.findByTestId("webstore-advanced-setup-toggle"));
+  await user.click(await screen.findByRole("tab", { name: "Approval & Launch" }));
   expect(await screen.findByTestId("webstore-readiness-gate-packet_delivered")).toHaveTextContent("Current packet version was delivered");
   expect(screen.getByTestId("webstore-readiness-gate-payment_ready")).toHaveTextContent("not connected");
   expect(screen.getByTestId("webstore-launch-ready")).toHaveTextContent("Mark setup complete");
@@ -612,9 +612,11 @@ test("staff product builder separates planning from focused product setup", asyn
 
   expect(await screen.findByText(/Team Store/)).toBeInTheDocument();
   expect(screen.getByText(/Webstores setup/)).toBeInTheDocument();
-  expect(screen.getByTestId("webstore-builder-progress")).toHaveTextContent("Webstores Feed");
   expect(screen.getByRole("tab", { name: "Storefront" })).toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: "Review & Launch" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Approval & Launch" })).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "Messages & Activity" }));
+  expect(screen.getByTestId("webstore-builder-progress")).toHaveTextContent("Activity");
+  await user.click(screen.getByRole("tab", { name: "Overview" }));
 
   await user.click(screen.getByRole("tab", { name: "Products" }));
   const plan = screen.getByTestId("webstore-product-plan");

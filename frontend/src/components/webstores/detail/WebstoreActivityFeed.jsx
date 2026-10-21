@@ -13,15 +13,12 @@ export default function WebstoreActivityFeed({ model }) {
   const { activity, detail, feedItems, formatActivityLabel, formatDateTime, id } = model;
 
 return (
-        <aside
-          className="space-y-3 xl:sticky xl:top-4 xl:self-start"
-          data-testid="webstore-builder-progress"
-        >
+        <section className="space-y-3" data-testid="webstore-builder-progress">
           <Card className="border-amber-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Bell className="size-4 text-amber-700" />
-                Webstores Feed
+                Activity
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
@@ -68,6 +65,6 @@ return (
               )}
             </CardContent>
           </Card>
-        </aside>
+        </section>
   );
 }

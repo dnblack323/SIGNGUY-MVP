@@ -134,7 +134,7 @@ jest.mock("@/auth/AuthContext", () => ({
 
 jest.mock("@/lib/api", () => ({
   __esModule: true,
-  default: {},
+  default: { get: jest.fn(() => Promise.resolve({ data: [] })) },
   extractError: (error) => error?.response?.data?.detail || error?.message || "Request failed",
 }));
 
@@ -153,6 +153,12 @@ jest.mock("sonner", () => ({
     message: jest.fn(),
   },
 }));
+
+// The backend read model (Phase 3) supplies stage and next action on the detail response.
+function stageOf(key, label) {
+  const path = key === "draft" ? [{ key, staff_label: label }] : [{ key: "draft", staff_label: "Request received" }, { key, staff_label: label }];
+  return { key, staff_label: label, owner_label: label, path };
+}
 
 const PACKET = {
   webstore_id: "ws-1",
@@ -339,7 +345,7 @@ test("webstore detail exposes computed payment readiness without a manual ready 
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
   expect(await screen.findByText(/Team Store/)).toBeInTheDocument();
-  await userEvent.setup().click(screen.getByTestId("webstore-advanced-setup-toggle"));
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Approval & Launch" }));
   expect(screen.getByTestId("webstore-payment-readiness")).toHaveTextContent("Payment readiness: Not connected");
   expect(screen.queryByLabelText("Payment boundary ready")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Preview Not Ready/ })).toBeDisabled();
@@ -440,6 +446,8 @@ test("webstore detail shows setup intake, assignments, files, and the one-click 
       terms_fee_acknowledged: false,
       setup_profile: { starting_products: ["Team Shirts"] },
     },
+    stage: stageOf("draft", "Request received"),
+    next_action: { key: "review_questionnaire", actor: "shop", staff_text: "Review questionnaire revision 2", tab: "setup", blockers: [] },
     launch_packets: [],
     products: [],
   });
@@ -462,18 +470,16 @@ test("webstore detail shows setup intake, assignments, files, and the one-click 
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-2", path: "/webstores/:id" });
 
   expect(await screen.findByText(/Setup Store/)).toBeInTheDocument();
-  expect(screen.getByText(/Request Received/)).toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: "Products" })).toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: "Storefront" })).toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: "Review & Launch" })).toBeInTheDocument();
-  expect(screen.getByTestId("webstore-setup-checklist")).toBeInTheDocument();
+  expect(screen.getByText(/Webstores setup - event - Request received/)).toBeInTheDocument();
+  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+    "Overview", "Setup", "Products", "Storefront", "Approval & Launch", "Orders & Production", "Messages & Activity",
+  ]);
+  expect(screen.getByTestId("webstore-timeline-next-action")).toHaveTextContent("Review questionnaire revision 2");
   await user.click(screen.getByRole("tab", { name: "Products" }));
   expect(screen.getByTestId("webstore-starting-product-ideas")).toHaveTextContent("Team Shirts");
-  await user.click(screen.getByRole("tab", { name: "Overview" }));
-  await user.click(screen.getByTestId("webstore-advanced-setup-toggle"));
+  await user.click(screen.getByRole("tab", { name: "Setup" }));
   expect(screen.getByTestId("webstore-setup-state")).toHaveTextContent("staff_review");
-  expect(await screen.findAllByText("owner@example.com")).toHaveLength(2);
+  expect(await screen.findAllByText("owner@example.com")).toHaveLength(1); // the assignments card (Setup tab)
   expect(await screen.findByTestId("webstore-assignment-resend-assign-2")).toBeInTheDocument();
   expect(await screen.findByText("logo.png")).toBeInTheDocument();
   expect(screen.getByTestId("questionnaire-status")).toHaveTextContent("Ready for review · revision 2");
@@ -488,34 +494,61 @@ test("webstore detail shows setup intake, assignments, files, and the one-click 
   expect(toast.success).toHaveBeenCalledWith("Answers approved and applied to the draft store");
 });
 
-test("webstore overview presents one vertical guided setup module with the next action", async () => {
+test("webstore overview shows the backend next action with one primary button", async () => {
   getWebstore.mockResolvedValue({
-    webstore: {
-      id: "ws-guided",
-      name: "Guided Store",
-      store_type: "fundraiser",
-      status: "draft",
-      setup_state: "not_started",
-      setup_profile: {},
-    },
+    webstore: { id: "ws-guided", name: "Guided Store", store_type: "fundraiser", status: "draft", setup_profile: {} },
+    stage: stageOf("draft", "Request received"),
+    next_action: { key: "send_information_packet", actor: "shop", staff_text: "Send the information packet", tab: "setup", blockers: [] },
     launch_packets: [],
     products: [],
   });
   getWebstoreQuestionnaire.mockResolvedValue({ templates: [{ id: "fundraiser-template", sections: [] }] });
   getWebstoreQuestionnaireResponse.mockResolvedValue({ submission: null });
   listWebstoreAssignments.mockResolvedValue([{ id: "owner-1", role: "owner", email: "owner@example.com", status: "active" }]);
-  getLaunchReadiness.mockResolvedValue({ setup_complete: false, ready_to_publish: false, payment_unavailable_reason: "Payment setup remains separate." });
 
   const user = userEvent.setup();
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-guided", path: "/webstores/:id" });
 
-  expect(await screen.findByTestId("webstore-guided-setup-module")).toBeInTheDocument();
-  expect(screen.getByTestId("guided-setup-step-questionnaire")).toHaveTextContent("Send the information packet");
-  expect(screen.getByTestId("guided-setup-step-answers")).toHaveTextContent("Review answers");
-  expect(screen.getByTestId("guided-setup-step-build")).toHaveTextContent("Build products and Storefront");
-  await user.click(screen.getByTestId("guided-send-questionnaire"));
+  expect(await screen.findByTestId("webstore-timeline")).toBeInTheDocument();
+  expect(screen.getByTestId("webstore-timeline-stage-draft")).toHaveAttribute("aria-current", "step");
+  expect(screen.getByTestId("webstore-timeline-next-action")).toHaveTextContent("Send the information packet");
+  expect(screen.queryByText(/Next required action/)).not.toBeInTheDocument();
+  await user.click(screen.getByTestId("webstore-primary-action"));
   expect(await screen.findByTestId("information-packet-dialog")).toBeInTheDocument();
   await waitFor(() => expect(getWebstoreInformationPacket).toHaveBeenCalledWith("ws-guided"));
+});
+
+test("an owner-owned next action never offers a shop control, and publishing appears only when the backend says so", async () => {
+  getWebstore.mockResolvedValue({
+    webstore: { id: "ws-wait", name: "Waiting Store", store_type: "general", status: "sent_for_approval" },
+    stage: stageOf("owner_review", "Owner approval"),
+    next_action: {
+      key: "packet_approved", actor: "owner", staff_text: "Waiting for the owner to approve the launch packet", tab: "review-launch",
+      blockers: [{ key: "packet_approved", reason: "Store Owner approval is required." }, { key: "payment_ready", reason: "Real verified provider checkout is not connected yet." }],
+    },
+    launch_packets: [],
+    products: [],
+  });
+  const user = userEvent.setup();
+  const view = renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-wait", path: "/webstores/:id" });
+
+  expect(await screen.findByTestId("webstore-primary-action")).toHaveTextContent("Open Approval & Launch");
+  expect(screen.getByTestId("webstore-timeline-next-action")).toHaveTextContent("Waiting on owner");
+  expect(screen.getByTestId("webstore-timeline-blockers")).toHaveTextContent("not connected");
+  expect(screen.queryByRole("button", { name: /Publish Webstore/ })).not.toBeInTheDocument();
+  await user.click(screen.getByTestId("webstore-primary-action"));
+  expect(screen.getByRole("tab", { name: "Approval & Launch" })).toHaveAttribute("data-state", "active");
+  view.unmount();
+
+  getWebstore.mockResolvedValue({
+    webstore: { id: "ws-ready", name: "Ready Store", store_type: "general", status: "launch_ready" },
+    stage: stageOf("ready_to_launch", "Ready to publish"),
+    next_action: { key: "publish", actor: "shop", staff_text: "Ready to publish", tab: "review-launch", blockers: [] },
+    launch_packets: [],
+    products: [],
+  });
+  renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-ready", path: "/webstores/:id" });
+  expect(await screen.findByTestId("webstore-primary-action")).toHaveTextContent("Publish Webstore");
 });
 
 test("guided setup branding files and appearance carry into Storefront without publishing", async () => {
@@ -591,12 +624,12 @@ test("guided setup branding files and appearance carry into Storefront without p
   expect(screen.getByTestId("branding-field-store_information.welcome_heading")).toHaveValue("Welcome setup");
   expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
   expect(publishWebstoreBranding).not.toHaveBeenCalled();
-  expect(screen.getAllByRole("tab")).toHaveLength(4);
+  expect(screen.getAllByRole("tab")).toHaveLength(7);
   await user.click(screen.getByRole("tab", { name: "Overview" }));
-  expect(screen.getByTestId("webstore-setup-checklist")).toBeInTheDocument();
+  expect(screen.getByTestId("webstore-timeline")).toBeInTheDocument();
 });
 
-test("Stage 8B shows canonical Webstore Orders inside the existing four-tab workspace", async () => {
+test("Stage 8B shows canonical Webstore Orders on the Orders & Production tab", async () => {
   getWebstoreOrders.mockResolvedValue({
     source_of_truth: "canonical_orders",
     total: 1,
@@ -617,16 +650,19 @@ test("Stage 8B shows canonical Webstore Orders inside the existing four-tab work
 
   renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
 
+  await userEvent.setup().click(await screen.findByRole("tab", { name: "Orders & Production" }));
   expect(await screen.findByTestId("webstore-order-order-stage8b-ui")).toHaveTextContent("Order #801");
   expect(screen.getByTestId("webstore-order-order-stage8b-ui")).toHaveTextContent("Projection Buyer");
   expect(screen.getByTestId("webstore-order-order-stage8b-ui")).toHaveTextContent("$32.00");
-  expect(screen.getAllByRole("tab")).toHaveLength(4);
+  expect(screen.getAllByRole("tab")).toHaveLength(7);
   expect(screen.queryByText(/internal_cost|stripe_payment_intent/i)).not.toBeInTheDocument();
 });
 
 test("Stage 8E offers a readiness-gated relaunch for closed Webstores", async () => {
   getWebstore.mockResolvedValue({
     webstore: { id: "ws-closed", name: "Closed Store", store_type: "general", status: "closed" },
+    stage: stageOf("closed", "Closed"),
+    next_action: { key: "review_closed_orders", actor: "shop", staff_text: "Ordering closed - finish production and fulfillment", tab: "overview", blockers: [] },
     launch_packets: [],
     products: [],
   });
@@ -636,5 +672,5 @@ test("Stage 8E offers a readiness-gated relaunch for closed Webstores", async ()
   const user = userEvent.setup();
   await user.click(await screen.findByTestId("webstore-relaunch"));
   await waitFor(() => expect(relaunchWebstore).toHaveBeenCalledWith("ws-closed", "Staff requested Webstore relaunch"));
-  expect(screen.getAllByRole("tab")).toHaveLength(4);
+  expect(screen.getAllByRole("tab")).toHaveLength(7);
 });
