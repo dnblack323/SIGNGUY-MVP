@@ -123,7 +123,7 @@ def owner_view(store: dict, action: dict) -> dict[str, Any]:
     return {
         "stage": {"key": view["key"], "label": view["owner_label"]},
         "next_action": {
-            "key": action["key"] if action["actor"] == "owner" else "shop_working",
+            "key": action["key"] if action["actor"] in {"owner", "none"} else "shop_working",
             "for_you": action["actor"] == "owner",
             "text": action["owner_text"] if action["actor"] in {"owner", "none"} or view["key"] in {"live", "closed", "paused", "archived"} else OWNER_IDLE_TEXT,
         },
@@ -186,14 +186,11 @@ async def _active_assignee(tenant_id: str, store: dict) -> Optional[str]:
 
 
 async def _auto_complete(tenant_id: str, task: dict, now: str) -> None:
-    await db.tasks.update_one(
-        {"tenant_id": tenant_id, "id": task["id"], "status": task.get("status")},
-        {"$set": {"status": "completed", "completed_at": now, "completed_by_user_id": None, "updated_at": now,
-                  "version": int(task.get("version") or 1) + 1},
-         "$push": {"status_history": {"from": task.get("status"), "to": "completed", "at": now, "actor_user_id": "system",
-                                      "reason": "Webstore next action moved on"},
-                   "completion_history": {"completed_at": now, "completed_by_user_id": None, "at": now}}},
-    )
+    from .task_service import transition_task
+
+    # Through the task service so the completion is audited and the assignee is told.
+    await transition_task(tenant_id=tenant_id, task_id=task["id"], target="completed", actor_user_id="system", actor_email="system",
+                          reason="Webstore next action moved on", system_complete=True)
 
 
 async def _sync_once(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any]]:
@@ -209,7 +206,7 @@ async def _sync_once(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any
     wanted = task_key(store, action) if action["actor"] == "shop" and action["key"] != "none" else None
     now = utc_now().isoformat()
     if wanted:
-        from .task_service import assign_task, create_task, restore_task, transition_task
+        from .task_service import assign_task, create_task, restore_task, transition_task, update_task
 
         assignee = await _active_assignee(tenant_id, store)
         task = await create_task(tenant_id=tenant_id, actor_user_id="system", actor_email="system", payload={
@@ -229,6 +226,9 @@ async def _sync_once(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any
             # The same step is pending again: reopen through the task service (clears completion fields).
             task = await transition_task(tenant_id=tenant_id, task_id=task["id"], target="in_progress", actor_user_id="system",
                                          actor_email="system", reason="Webstore next action is pending again", allow_reopen=True)
+        title = f"{store.get('name')}: {action['staff_text']}"
+        if task.get("title") != title:  # e.g. the Webstore was renamed while the step is pending
+            task = await update_task(tenant_id=tenant_id, task_id=task["id"], actor_user_id="system", actor_email="system", updates={"title": title})
         if task.get("assigned_user_id") != assignee:
             await assign_task(tenant_id=tenant_id, task_id=task["id"], actor_user_id="system", actor_email="system", assigned_user_id=assignee)
     # Close superseded tasks only after the replacement exists, so a failure never leaves none.
