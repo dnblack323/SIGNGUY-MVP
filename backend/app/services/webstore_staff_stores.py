@@ -4,7 +4,7 @@ from __future__ import annotations
 from .webstore_shared import *
 from .webstore_launch import _invalidate_packet_approval_if_needed, _payment_readiness, _terms_acceptance
 from .webstore_staff_products import list_products
-from .webstore_next_action import compute_next_action, staff_view, with_derived_state
+from .webstore_next_action import compute_next_action, external_gates, staff_view, with_derived_state
 from .webstore_stage import stage_of
 from .webstore_setup_files import count_active_setup_files
 
@@ -154,6 +154,7 @@ async def list_webstores(user: dict, *, status: Optional[str] = None) -> dict:
     filters = {"status": status} if status else {"status": {"$ne": "archived"}}
     result = await stores_repo.list(tenant_id=user["tenant_id"], filters=filters, sort=[("updated_at", -1)])
     items = []
+    entitlements: dict[str, bool] = {}  # one entitlement lookup per feature key for the whole list
     for item in result["items"]:
         safe_item = dict(item)
         type_requirements = evaluate_type_requirements(safe_item)
@@ -170,9 +171,19 @@ async def list_webstores(user: dict, *, status: Optional[str] = None) -> dict:
         }
         safe_item["stage"] = stage_of(safe_item)
         snapshot = safe_item.pop("next_action_snapshot", None)
-        # The sync keeps a snapshot on every change; a missing or other-stage snapshot is computed here.
-        fresh = snapshot and snapshot.get("stage") == safe_item["stage"]
-        action = {**snapshot, "blockers": []} if fresh else await compute_next_action(safe_item)
+        # The sync keeps a snapshot on every change. It is recomputed here when missing, taken in
+        # another stage, or taken before an entitlement/payment change made outside Webstore routes.
+        fresh = (
+            snapshot
+            and snapshot.get("stage") == safe_item["stage"]
+            and snapshot.get("gates") == await external_gates(safe_item, payment=payment, entitlements=entitlements)
+        )
+        if fresh:
+            action = {**snapshot, "blockers": []}
+            safe_item["setup_state"] = snapshot.get("setup_state") or safe_item.get("setup_state")
+        else:
+            safe_item = await with_derived_state(safe_item)
+            action = await compute_next_action(safe_item)
         journey = staff_view(safe_item, action)
         safe_item.update(journey)
         # Kept for current list UI; the same text as next_action (one producer).
