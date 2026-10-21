@@ -808,6 +808,10 @@ async def ensure_indexes() -> None:
     await db.message_threads.create_index([("tenant_id", 1), ("work_order_id", 1)])
     await db.message_threads.create_index([("tenant_id", 1), ("production_stage_id", 1)])
     await db.message_threads.create_index([("tenant_id", 1), ("calendar_event_id", 1)])
+    await db.message_threads.create_index(
+        [("tenant_id", 1), ("webstore_id", 1)], unique=True,
+        partialFilterExpression={"thread_type": "webstore_discussion"}, name="webstore_discussion_once",
+    )
     await db.thread_messages.create_index("id", unique=True)
     await db.thread_messages.create_index([("tenant_id", 1), ("thread_id", 1), ("created_at", 1)])
     await db.thread_messages.create_index(

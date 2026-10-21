@@ -42,6 +42,8 @@ jest.mock("@/portal/portalApi", () => ({
 }));
 
 jest.mock("@/lib/webstores", () => ({
+  listWebstoreMessages: jest.fn(() => Promise.resolve({ items: [] })),
+  sendWebstoreMessage: jest.fn(),
   getLaunchReadiness: jest.fn(),
   getWebstore: jest.fn(),
   getWebstoreBranding: jest.fn(),

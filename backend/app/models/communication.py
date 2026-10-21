@@ -17,6 +17,7 @@ ThreadType = Literal[
     "production_discussion",
     "appointment_discussion",
     "announcement_discussion",
+    "webstore_discussion",  # Phase 3 (W5): one shop <-> Webstore owner thread per Webstore
 ]
 Visibility = Literal["internal", "employee_visible"]
 MessageType = Literal["message", "system"]
@@ -41,6 +42,7 @@ class MessageThread(BaseDoc):
     task_id: Optional[str] = None
     calendar_event_id: Optional[str] = None
     announcement_id: Optional[str] = None
+    webstore_id: Optional[str] = None
     visibility: Visibility = "internal"
     archived_at: Optional[str] = None
     last_message_at: Optional[str] = None
@@ -51,6 +53,7 @@ class ThreadMessage(BaseDoc):
     thread_id: str
     sender_user_id: Optional[str] = None
     sender_employee_id: Optional[str] = None
+    sender_portal_identity_id: Optional[str] = None  # a Webstore owner/manager writing from the portal
     body: str
     message_type: MessageType = "message"
     visibility: Visibility = "internal"

@@ -72,6 +72,31 @@ async def next_action(webstore_id: str, user: dict = Depends(get_current_user)) 
         _raise(e)
 
 
+class WebstoreMessageIn(BaseModel):
+    body: str = Field(min_length=1, max_length=5000)
+
+
+@router.get("/{webstore_id}/messages")
+async def webstore_messages(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
+    """The shop <-> owner thread for this Webstore (Phase 3, W5)."""
+    from ..services.webstore_messages import staff_messages
+
+    try:
+        return await staff_messages(user, webstore_id)
+    except WebstoreError as e:
+        _raise(e)
+
+
+@router.post("/{webstore_id}/messages", status_code=201)
+async def send_webstore_message(webstore_id: str, payload: WebstoreMessageIn, user: dict = Depends(get_current_user)) -> dict:
+    from ..services.webstore_messages import staff_send
+
+    try:
+        return await staff_send(user, webstore_id, payload.body)
+    except WebstoreError as e:
+        _raise(e)
+
+
 @router.get("/{webstore_id}/questionnaire/review")
 async def questionnaire_review(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
     try:
