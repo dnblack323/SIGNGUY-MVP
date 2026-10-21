@@ -83,6 +83,17 @@ async def apply_store_status(
     """
     if status in RETIRED_STATUSES:
         raise WebstoreError("retired_webstore_status", f"{status} is no longer used", 400)
+    for _ in range(5):
+        result = await _apply_once(tenant_id, webstore_id, status, source, actor_id, actor_email, reason, extra, validate, only_from, metadata)
+        if result is not _RACED:
+            return result
+    raise WebstoreError("webstore_busy", "The Webstore changed while saving; try again", 409)
+
+
+_RACED = object()
+
+
+async def _apply_once(tenant_id, webstore_id, status, source, actor_id, actor_email, reason, extra, validate, only_from, metadata):
     store = await db.webstores.find_one({"tenant_id": tenant_id, "id": webstore_id}, {"_id": 0})
     if not store:
         raise WebstoreError("webstore_not_found", "Webstore not found", 404)
@@ -99,7 +110,11 @@ async def apply_store_status(
             updates["stage_changed_at"] = now
     elif not store.get("stage"):
         updates["stage"] = stage_of(store)
-    await db.webstores.update_one({"tenant_id": tenant_id, "id": webstore_id}, {"$set": updates})
+    # Only write over the status this decision was based on; a concurrent change means decide again.
+    expected = {"status": store["status"]} if "status" in store else {"status": {"$exists": False}}
+    written = await db.webstores.update_one({"tenant_id": tenant_id, "id": webstore_id, **expected}, {"$set": updates})
+    if not written.matched_count:
+        return _RACED
     if changing:
         await _record_lifecycle_event(
             tenant_id=tenant_id, webstore_id=webstore_id, from_status=current, to_status=status,
