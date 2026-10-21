@@ -382,6 +382,9 @@ async def accept_invitation(raw_token: str) -> dict:
         portal_type=identity.get("portal_type"),
         employee_id=identity.get("employee_id"),
     )
+    from .webstore_next_action import sync_next_action_side_effects
+
+    await sync_next_action_side_effects(invitation["tenant_id"], invitation["webstore_id"])
     return {"token": token, "identity": serialize_doc(identity), "webstore_id": invitation["webstore_id"]}
 
 __all__ = ['_current_assignment', '_link_or_create_identity', '_create_invitation', 'create_assignment', 'list_assignments', 'resend_invitation', 'revoke_assignment', 'change_primary_owner', 'accept_invitation']

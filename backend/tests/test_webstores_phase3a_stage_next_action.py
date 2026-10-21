@@ -270,3 +270,58 @@ async def test_closed_stage_statuses_and_external_gate_changes(ctx):
         after = [i for i in (await client.get("/api/webstores")).json()["items"] if i["id"] == store["id"]][0]
     assert after["next_action"]["key"] != "entitlement"
     assert after["setup_state"] != "not_started"  # computed, not the stale stored value
+
+
+async def test_status_write_never_overwrites_a_concurrent_change(ctx, monkeypatch):
+    import app.services.webstore_stage as stage_mod
+
+    async with await _staff(ctx["user"]) as client:
+        store = await _request(client, ctx["suffix"])
+    real_db = stage_mod.db
+    calls = {"n": 0}
+
+    class RacingStores:
+        def __getattr__(self, name):
+            return getattr(real_db.webstores, name)
+
+        async def find_one(self, *args, **kwargs):
+            doc = await real_db.webstores.find_one(*args, **kwargs)
+            calls["n"] += 1
+            if calls["n"] == 1:  # another request moves the store right after our read
+                await real_db.webstores.update_one({"id": store["id"]}, {"$set": {"status": "questionnaire_sent"}})
+            return doc
+
+    class RacingDb:
+        webstores = RacingStores()
+
+        def __getattr__(self, name):
+            return getattr(real_db, name)
+
+    monkeypatch.setattr(stage_mod, "db", RacingDb())
+    result = await apply_store_status(tenant_id=ctx["tenant_id"], webstore_id=store["id"], status="questionnaire_sent",
+                                      source="test", validate=False, only_from={"draft"})
+    monkeypatch.undo()
+    assert calls["n"] >= 2  # the stale decision was retried
+    assert result["status"] == "questionnaire_sent"
+    # The retry saw the newer status, so no second transition was recorded from the stale "draft".
+    events = [e async for e in db.webstore_lifecycle_events.find({"webstore_id": store["id"], "metadata.source": "test"}, {"_id": 0})]
+    assert events == []
+
+
+async def test_terminal_owner_view_rename_and_task_source(ctx):
+    from app.services.task_service import update_task
+    from app.services.webstore_next_action import owner_view
+
+    view = owner_view({"status": "archived"}, {"key": "none", "actor": "none", "owner_text": "This store is archived."})
+    assert view["next_action"]["key"] == "none" and view["next_action"]["for_you"] is False
+
+    async with await _staff(ctx["user"]) as client:
+        store = await _request(client, ctx["suffix"])
+        task = (await _open_tasks(ctx["tenant_id"], store["id"]))[0]
+        await client.patch(f"/api/webstores/{store['id']}", json={"name": "Renamed Store"})
+    assert (await db.tasks.find_one({"id": task["id"]}, {"_id": 0}))["title"].startswith("Renamed Store:")
+
+    other = await _request(await _staff(ctx["user"]), f"{ctx['suffix']}b")
+    moved = await update_task(tenant_id=ctx["tenant_id"], task_id=task["id"], actor_user_id="u", actor_email="e",
+                              updates={"source_type": "webstore", "source_id": other["id"]})
+    assert moved["webstore_id"] == other["id"]
