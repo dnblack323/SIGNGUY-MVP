@@ -58,6 +58,7 @@ beforeEach(() => {
 test("owner portal records product and mockup approval decisions separately from launch approval", async () => {
   const user = userEvent.setup();
   renderWithProviders(<WebstoreOwnerPortalPage />, { route: "/portal/webstores/ws-1", path: "/portal/webstores/:webstoreId" });
+  await user.click(await screen.findByRole("tab", { name: "Store Setup" }));
 
   expect(await screen.findByText("Approval Shirt")).toBeInTheDocument();
   const product = screen.getByText("Approval Shirt").closest(".grid");
@@ -127,6 +128,7 @@ test("owner portal shows launch packet preview and submits explicit rejection co
   });
 
   renderWithProviders(<WebstoreOwnerPortalPage />, { route: "/portal/webstores/ws-1", path: "/portal/webstores/:webstoreId" });
+  await user.click(await screen.findByRole("tab", { name: "Store Setup" }));
 
   expect(await screen.findByText("Version 3")).toBeInTheDocument();
   expect(screen.getByTestId("portal-launch-packet-preview")).toHaveTextContent("Team Store Launch");

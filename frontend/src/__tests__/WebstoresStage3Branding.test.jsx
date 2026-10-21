@@ -31,7 +31,7 @@ jest.mock("axios", () => ({ get: jest.fn(), post: jest.fn() }));
 
 jest.mock("@/lib/api", () => ({
   __esModule: true,
-  default: {},
+  default: { get: jest.fn(() => Promise.resolve({ data: [] })) },
   extractError: (error) => error?.response?.data?.detail || error?.message || "Request failed",
 }));
 
@@ -240,6 +240,7 @@ test("owner portal can approve submitted branding but cannot publish", async () 
 
   renderWithProviders(<WebstoreOwnerPortalPage />, { route: "/portal/webstores/ws-1", path: "/portal/webstores/:webstoreId" });
 
+  await userEvent.click(await screen.findByRole("tab", { name: "Store Setup" }));
   const editor = await screen.findByTestId("webstore-branding-editor");
   expect(within(editor).queryByRole("button", { name: /Publish/ })).not.toBeInTheDocument();
   expect(within(editor).getByTestId("branding-feedback")).toHaveTextContent("Use the blue logo");
@@ -278,6 +279,7 @@ test("owner portal separates packet approval, change requests, and Terms accepta
 
   renderWithProviders(<WebstoreOwnerPortalPage />, { route: "/portal/webstores/ws-1", path: "/portal/webstores/:webstoreId" });
 
+  await userEvent.click(await screen.findByRole("tab", { name: "Store Setup" }));
   expect(await screen.findByTestId("portal-launch-packet-products")).toHaveTextContent("Team Shirt");
   expect(screen.getByTestId("portal-readiness-summary")).toHaveTextContent("Packet approval is still needed");
   await userEvent.click(screen.getByTestId("portal-approve-packet"));

@@ -21,12 +21,6 @@ export default function OwnerPortalQuestionnaire({
   const returned = open && latest?.status === "returned_for_changes";
   return (
     <>
-      {questionnaire?.welcome && (
-        <Card data-testid="owner-portal-welcome">
-          <CardHeader><CardTitle className="text-base">{questionnaire.welcome.title}</CardTitle></CardHeader>
-          <CardContent><pre className="whitespace-pre-wrap font-sans text-sm text-muted-foreground">{questionnaire.welcome.body}</pre></CardContent>
-        </Card>
-      )}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Questionnaire</CardTitle>
@@ -68,5 +62,16 @@ export default function OwnerPortalQuestionnaire({
         </CardContent>
       </Card>
     </>
+  );
+}
+
+// The welcome text sent with the information packet, shown on the portal Overview.
+export function OwnerPortalWelcome({ welcome }) {
+  if (!welcome) return null;
+  return (
+    <Card data-testid="owner-portal-welcome">
+      <CardHeader><CardTitle className="text-base">{welcome.title}</CardTitle></CardHeader>
+      <CardContent><pre className="whitespace-pre-wrap font-sans text-sm text-muted-foreground">{welcome.body}</pre></CardContent>
+    </Card>
   );
 }

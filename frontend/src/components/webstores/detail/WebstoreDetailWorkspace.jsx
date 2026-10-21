@@ -5,9 +5,11 @@ import { useParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ProductFoundationTab from "./ProductFoundationTab";
 import ProductPlanTab from "./ProductPlanTab";
+import OrdersActivityTabs from "./OrdersActivityTabs";
+import SetupTab from "./SetupTab";
 import StorefrontReviewTabs from "./StorefrontReviewTabs";
-import WebstoreActivityFeed from "./WebstoreActivityFeed";
 import WebstoreDetailHeader from "./WebstoreDetailHeader";
+import { STAFF_TABS } from "./WebstoreNextAction";
 import OverviewTab from "./OverviewTab";
 import { useWebstoreDetailQueries } from "./useWebstoreDetailQueries";
 import { useWebstoreLaunchWorkflow } from "./useWebstoreLaunchWorkflow";
@@ -23,7 +25,6 @@ export default function WebstoreDetailWorkspace() {
   const { id } = useParams();
   const [templateId, setTemplateId] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
-  const [advancedSetupOpen, setAdvancedSetupOpen] = useState(false);
 
   const queries = useWebstoreDetailQueries(id);
   const {
@@ -72,11 +73,9 @@ export default function WebstoreDetailWorkspace() {
     : [];
   const selectedProductsCount = activeProducts.length;
   const uploadCount = setupFileItems.length;
-  const nextRequiredAction = selectedProductsCount
-    ? "Continue setup on selected draft products before launch preparation."
-    : startingProductIdeas.length
-      ? "Review your starting product ideas under Products."
-      : "Add a custom product or copy one from a template.";
+  // Stage and next action come from the backend read model (Phase 3); no frontend copy.
+  const stage = detail.data?.stage;
+  const nextAction = detail.data?.next_action;
 
   const feedItems = useMemo(
     () =>
@@ -113,16 +112,15 @@ export default function WebstoreDetailWorkspace() {
     ...launchWorkflow,
     activeProducts,
     activeTab,
-    advancedSetupOpen,
     feedItems,
     formatActivityLabel,
     formatDateTime,
     formatLabel,
     id,
-    nextRequiredAction,
+    nextAction,
     selectedProductsCount,
     setActiveTab,
-    setAdvancedSetupOpen,
+    stage,
     setTemplateId,
     startingProductIdeas,
     templateId,
@@ -134,46 +132,25 @@ export default function WebstoreDetailWorkspace() {
       <WebstoreDetailHeader model={model} />
       <InformationPacketDialog webstoreId={id} open={model.packetOpen} onOpenChange={model.setPacketOpen} onSent={refresh} />
       <QuestionnaireReviewDialog webstoreId={id} open={model.reviewOpen} onOpenChange={model.setReviewOpen} onChanged={refresh} />
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="space-y-4 min-w-0"
-          data-testid="webstore-detail-tabs"
-        >
-          <TabsList className="flex h-auto flex-wrap justify-start gap-1 rounded-md border bg-slate-100 p-1">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 min-w-0" data-testid="webstore-detail-tabs">
+        <TabsList className="flex h-auto flex-wrap justify-start gap-1 rounded-md border bg-slate-100 p-1">
+          {STAFF_TABS.map((tab) => (
             <TabsTrigger
+              key={tab.value}
               className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow"
-              value="overview"
+              value={tab.value}
             >
-              Overview
+              {tab.label}
             </TabsTrigger>
-            <TabsTrigger
-              className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow"
-              value="products"
-            >
-              Products
-            </TabsTrigger>
-            <TabsTrigger
-              className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow"
-              value="storefront"
-            >
-              Storefront
-            </TabsTrigger>
-            <TabsTrigger
-              className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow"
-              value="review-launch"
-            >
-              Review & Launch
-            </TabsTrigger>
-          </TabsList>
-          <OverviewTab model={model} />
-          <ProductPlanTab model={model} />
-          <ProductFoundationTab model={model} />
-          <StorefrontReviewTabs model={model} />
-        </Tabs>
-        <WebstoreActivityFeed model={model} />
-      </div>
+          ))}
+        </TabsList>
+        <OverviewTab model={model} />
+        <SetupTab model={model} />
+        <ProductPlanTab model={model} />
+        <ProductFoundationTab model={model} />
+        <StorefrontReviewTabs model={model} />
+        <OrdersActivityTabs model={model} />
+      </Tabs>
     </div>
   );
 }

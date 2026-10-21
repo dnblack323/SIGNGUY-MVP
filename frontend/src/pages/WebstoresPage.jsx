@@ -7,15 +7,16 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import api from "@/lib/api";
 import { listWebstores } from "@/lib/webstores";
 import { useAuth } from "@/auth/AuthContext";
-import { webstoreStatusLabel } from "@/components/webstores/detail/WebstoreDetailUtils";
 import WebstoreFulfillmentSettingsDialog from "@/components/webstores/WebstoreFulfillmentSettingsDialog";
 import WebstoreRequestDialog, { WEBSTORE_REQUEST_TYPES } from "@/components/webstores/WebstoreRequestDialog";
 
-function statusTone(status) {
-  if (status === "live") return "secondary";
-  if (["closed", "archived"].includes(status)) return "destructive";
+function stageTone(stage) {
+  if (stage === "live") return "secondary";
+  if (["closed", "archived"].includes(stage)) return "destructive";
   return "outline";
 }
 
@@ -27,31 +28,43 @@ function typeLabel(value) {
   return WEBSTORE_REQUEST_TYPES.find((type) => type.value === value)?.label || formatLabel(value || "general");
 }
 
-function actionForStore(store) {
-  if (store.manager_action_required) return store.manager_action_required;
-  const status = store.setup_state || store.status;
-  if (["questionnaire_sent", "waiting_on_store_owner"].includes(status)) return "Waiting on owner questionnaire";
-  if (status === "questionnaire_submitted") return "Review answers and apply setup fields";
-  if (["products_selected", "ai_setup_ready", "artwork_needs_review"].includes(status)) return "Finish product setup and mockups";
-  if (["store_packet_generated", "sent_for_approval"].includes(status)) return "Review owner approval packet";
-  if (store.status === "live") return store.checkout_enabled ? "Live and accepting orders" : "Live but checkout is off";
-  if (!store.checkout_enabled && ["launch_ready", "owner_approved"].includes(store.status)) return "Payment setup incomplete";
-  return "Continue setup";
+function formatUpdated(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString();
 }
 
+// The stage filter uses the backend stage labels; the list carries them on each row.
+const ALL = "all";
+
 export default function WebstoresPage() {
-  const { hasPerm } = useAuth();
+  const { hasPerm, user } = useAuth();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
   const [fulfillmentOpen, setFulfillmentOpen] = useState(false);
+  const [stageFilter, setStageFilter] = useState(ALL);
+  const [needsMe, setNeedsMe] = useState(false);
   const canRead = hasPerm("webstore:read");
   const canManage = hasPerm("webstore:manage");
   const stores = useQuery({ queryKey: ["webstores"], queryFn: () => listWebstores(), enabled: canRead });
+  const users = useQuery({ queryKey: ["users"], queryFn: async () => (await api.get("/users")).data, enabled: canRead });
+  const userItems = Array.isArray(users.data) ? users.data : users.data?.items || [];
+  const userName = (userId) => {
+    const match = userItems.find((u) => u.id === userId);
+    return match ? match.name || match.email : userId ? "Team member" : "Unassigned";
+  };
   const storeItems = stores.data?.items || [];
-  const ownerWaitingCount = storeItems.filter((store) => ["questionnaire_sent", "waiting_on_store_owner"].includes(store.setup_state || store.status)).length;
-  const submittedCount = storeItems.filter((store) => (store.setup_state || store.status) === "questionnaire_submitted").length;
-  const checkoutBlockedCount = storeItems.filter((store) => !store.checkout_enabled && ["launch_ready", "owner_approved", "live"].includes(store.status)).length;
+  // Counts come from the one backend next action, not from frontend status rules.
+  const ownerWaitingCount = storeItems.filter((store) => store.next_action?.actor === "owner").length;
+  const submittedCount = storeItems.filter((store) => store.next_action?.key === "review_questionnaire").length;
+  const checkoutBlockedCount = storeItems.filter((store) => store.next_action?.key === "payment_ready").length;
+  const stageOptions = [...new Map(storeItems.filter((store) => store.stage).map((store) => [store.stage.key, store.stage.staff_label])).entries()];
+  const needsMeStore = (store) =>
+    store.next_action?.actor === "shop" && (!store.assignee_user_id || store.assignee_user_id === user?.id);
+  const visibleStores = storeItems.filter(
+    (store) => (stageFilter === ALL || store.stage?.key === stageFilter) && (!needsMe || needsMeStore(store)),
+  );
 
   const handleCreated = async (store) => {
     await qc.invalidateQueries({ queryKey: ["webstores"] });
@@ -74,11 +87,25 @@ export default function WebstoresPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Current Webstores</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+          <CardTitle className="text-base">Current Webstores</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={stageFilter} onValueChange={setStageFilter}>
+              <SelectTrigger className="h-8 w-48" data-testid="webstores-stage-filter"><SelectValue placeholder="All stages" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All stages</SelectItem>
+                {stageOptions.map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Button variant={needsMe ? "default" : "outline"} size="sm" aria-pressed={needsMe} onClick={() => setNeedsMe((on) => !on)} data-testid="webstores-needs-me">Needs me</Button>
+          </div>
+        </CardHeader>
         <CardContent className="p-0"><div className="divide-y">
-          {storeItems.map((store) => <Link key={store.id} to={`/webstores/${store.id}`} className="grid grid-cols-1 gap-3 p-4 text-sm hover:bg-slate-50 md:grid-cols-[minmax(0,1fr)_180px_180px]" data-testid={`webstore-row-${store.id}`}><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><div className="font-medium">{store.name}</div>{store.status === "live" && <CheckCircle2 className="size-4 text-emerald-700" />}</div><div className="mt-1 text-xs text-muted-foreground">Type: {typeLabel(store.store_type)} - Setup: {formatLabel(store.setup_state || "not_started")}</div><div className="mt-2 text-xs font-medium text-sky-900">{actionForStore(store)}</div></div><div className="flex items-start md:justify-end"><Badge variant={statusTone(store.status)} className="w-fit capitalize">{webstoreStatusLabel(store.status)}</Badge></div><div className="text-xs text-muted-foreground md:text-right"><div>{store.checkout_enabled ? "Checkout on" : "Checkout off"}</div>{!store.checkout_enabled && store.checkout_unavailable_reason && <div className="mt-1">{store.checkout_unavailable_reason}</div>}</div></Link>)}
+          <div className="hidden gap-3 px-4 py-2 text-xs font-medium uppercase text-muted-foreground md:grid md:grid-cols-[minmax(0,1.2fr)_160px_minmax(0,1.4fr)_150px_100px]"><div>Webstore</div><div>Stage</div><div>Next action</div><div>Assignee</div><div className="text-right">Updated</div></div>
+          {visibleStores.map((store) => <Link key={store.id} to={`/webstores/${store.id}`} className="grid grid-cols-1 gap-3 p-4 text-sm hover:bg-slate-50 md:grid-cols-[minmax(0,1.2fr)_160px_minmax(0,1.4fr)_150px_100px]" data-testid={`webstore-row-${store.id}`}><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><div className="font-medium">{store.name}</div>{store.stage?.key === "live" && <CheckCircle2 className="size-4 text-emerald-700" />}</div><div className="mt-1 text-xs text-muted-foreground">{typeLabel(store.store_type)}{store.checkout_enabled ? " - Checkout on" : ""}</div></div><div><Badge variant={stageTone(store.stage?.key)} className="w-fit" data-testid={`webstore-row-stage-${store.id}`}>{store.stage?.staff_label || "Request received"}</Badge></div><div className="min-w-0"><div className={`text-xs font-medium ${store.next_action?.actor === "owner" ? "text-amber-800" : "text-sky-900"}`} data-testid={`webstore-row-next-${store.id}`}>{store.next_action?.actor === "owner" ? "Waiting on owner: " : ""}{store.next_action?.staff_text}</div></div><div className="text-xs text-muted-foreground" data-testid={`webstore-row-assignee-${store.id}`}>{userName(store.assignee_user_id)}</div><div className="text-xs text-muted-foreground md:text-right">{formatUpdated(store.updated_at || store.created_at)}</div></Link>)}
           {stores.isLoading && <div className="p-4 text-sm text-muted-foreground">Loading...</div>}
           {!stores.isLoading && storeItems.length === 0 && <div className="p-8 text-center text-sm text-muted-foreground">No Webstores yet. Select New Webstore request to record your first one.</div>}
+          {!stores.isLoading && storeItems.length > 0 && visibleStores.length === 0 && <div className="p-8 text-center text-sm text-muted-foreground" data-testid="webstores-filter-empty">No Webstores match these filters.</div>}
         </div></CardContent>
       </Card>
     </div>

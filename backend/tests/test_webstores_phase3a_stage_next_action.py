@@ -100,7 +100,8 @@ async def test_one_next_action_drives_one_task_and_reads_never_change_the_store(
         token = (await public.post("/api/portal/webstores/invitations/accept", json={"token": raw})).json()["token"]
     async with _portal(token) as portal:
         owner = (await portal.get(f"/api/portal/webstores/{store['id']}/next-action")).json()
-        assert owner["stage"] == {"key": "intake_pending", "label": "Complete your questionnaire"}
+        assert {k: owner["stage"][k] for k in ("key", "label")} == {"key": "intake_pending", "label": "Complete your questionnaire"}
+        assert [step["key"] for step in owner["stage"]["path"]][:3] == ["draft", "intake_pending", "setup_in_progress"]
         assert owner["next_action"] == {"key": "owner_complete_questionnaire", "for_you": True, "text": "Complete your store questionnaire."}
         submitted = (await portal.post(f"/api/portal/webstores/{store['id']}/questionnaire", json={"answers": complete_answers("event")})).json()
         detail = (await portal.get(f"/api/portal/webstores/{store['id']}")).json()

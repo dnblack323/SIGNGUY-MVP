@@ -148,7 +148,8 @@ def owner_view(store: dict, action: dict) -> dict[str, Any]:
     """Owner-safe: no staff blockers, and shop work shows as 'nothing needed from you'."""
     view = stage_view(store)
     return {
-        "stage": {"key": view["key"], "label": view["owner_label"]},
+        "stage": {"key": view["key"], "label": view["owner_label"],
+                  "path": [{"key": step["key"], "label": step["owner_label"]} for step in view["path"]]},
         "next_action": {
             "key": action["key"] if action["actor"] in {"owner", "none"} else "shop_working",
             "for_you": action["actor"] == "owner",

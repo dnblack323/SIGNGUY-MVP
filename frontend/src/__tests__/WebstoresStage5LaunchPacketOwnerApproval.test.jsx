@@ -78,6 +78,7 @@ test("Stage 5 owner portal exposes packet decisions, terms, readiness, and QR pr
   const user = userEvent.setup();
   renderWithProviders(<WebstoreOwnerPortalPage />, { route: "/portal/webstores/ws-1", path: "/portal/webstores/:webstoreId" });
 
+  await user.click(await screen.findByRole("tab", { name: "Store Setup" }));
   expect(await screen.findByText("Version 5")).toBeInTheDocument();
   expect(screen.getByText("Manual launch copy from the shop.")).toBeInTheDocument();
   expect(screen.getByTestId("portal-launch-packet-preview")).toHaveTextContent("Final Launch Review");

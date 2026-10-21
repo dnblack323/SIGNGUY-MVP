@@ -1,12 +1,16 @@
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { webstoreStatusLabel } from "@/components/webstores/detail/WebstoreDetailUtils";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import WorkspaceTimeline from "@/components/workspace/WorkspaceTimeline";
 import {
   BrandingCard,
   SetupFilesCard,
 } from "@/components/webstores/owner-portal/OwnerPortalFilesBranding";
 import OwnerPortalLaunchPacket from "@/components/webstores/owner-portal/OwnerPortalLaunchPacket";
 import OwnerPortalProducts from "@/components/webstores/owner-portal/OwnerPortalProducts";
-import OwnerPortalQuestionnaire from "@/components/webstores/owner-portal/OwnerPortalQuestionnaire";
+import OwnerPortalQuestionnaire, { OwnerPortalWelcome } from "@/components/webstores/owner-portal/OwnerPortalQuestionnaire";
 import {
   ChangeRequestHistoryCard,
   CommerceSummaryCard,
@@ -15,9 +19,19 @@ import {
 } from "@/components/webstores/owner-portal/OwnerPortalSummarySections";
 import { useWebstoreOwnerPortal } from "@/components/webstores/owner-portal/useWebstoreOwnerPortal";
 
+// Owner portal tabs (Phase 3, D3-5). Marketing stays hidden until Phase 8.
+const OWNER_TABS = [
+  { value: "overview", label: "Overview" },
+  { value: "setup", label: "Store Setup" },
+  { value: "orders", label: "Orders & Reports" },
+  { value: "payments", label: "Payments & Payouts" },
+  { value: "messages", label: "Messages & Files" },
+];
+
 export default function WebstoreOwnerPortalPage() {
   const portal = useWebstoreOwnerPortal();
   const { data, err, webstoreId } = portal;
+  const [tab, setTab] = useState("overview");
 
   if (err)
     return (
@@ -28,6 +42,9 @@ export default function WebstoreOwnerPortalPage() {
   if (!data)
     return <div className="text-sm text-muted-foreground">Loading...</div>;
 
+  const journey = data.journey || {};
+  const nextStep = journey.next_action;
+
   return (
     <div className="space-y-4" data-testid="webstore-owner-portal-page">
       <div className="flex items-center justify-between gap-3">
@@ -37,50 +54,118 @@ export default function WebstoreOwnerPortalPage() {
             Review setup, products, and launch approval.
           </p>
         </div>
-        <Badge variant="outline" className="capitalize">
-          {webstoreStatusLabel(data.webstore.status)}
-        </Badge>
+        {journey.stage && (
+          <Badge variant="outline" data-testid="portal-webstore-stage">
+            {journey.stage.label}
+          </Badge>
+        )}
       </div>
-      <SetupProgressCard data={data} progress={portal.progress} />
-      <CommerceSummaryCard summary={data.commerce_summary} />
-      <OwnerPortalQuestionnaire
-        questionnaire={portal.questionnaire}
-        answers={portal.answers}
-        onAnswersChange={portal.setAnswers}
-        onSaveDraft={portal.saveDraft}
-        onSubmit={portal.submitQuestionnaire}
-        onFileSelected={portal.uploadQuestionFile}
-        saveState={portal.saveState}
-        submitting={portal.submitting}
-      />
-      <SetupFilesCard
-        files={portal.files}
-        fileCategory={portal.fileCategory}
-        setupFile={portal.setupFile}
-        onFileCategoryChange={portal.setFileCategory}
-        onSetupFileChange={portal.setSetupFile}
-        onUpload={portal.uploadSetupFile}
-      />
-      <BrandingCard webstoreId={webstoreId} products={data.products || []} />
-      <OwnerPortalProducts
-        products={data.products || []}
-        productComments={portal.productComments}
-        onProductCommentsChange={portal.setProductComments}
-        onDecideProduct={portal.decideProduct}
-        onDecideMockup={portal.decideMockup}
-      />
-      <OwnerPortalLaunchPacket
-        data={data}
-        packetComment={portal.packetComment}
-        onPacketCommentChange={portal.setPacketComment}
-        changeRequest={portal.changeRequest}
-        onChangeRequestChange={portal.setChangeRequest}
-        onApprove={portal.approve}
-        onReject={portal.rejectPacket}
-        onRequestChanges={portal.requestChanges}
-      />
-      <TermsCard data={data} onAcceptTerms={portal.acceptTerms} />
-      <ChangeRequestHistoryCard requests={data.change_requests || []} />
+      <Tabs value={tab} onValueChange={setTab} className="space-y-4" data-testid="webstore-owner-portal-tabs">
+        <TabsList className="flex h-auto flex-wrap justify-start gap-1 rounded-md border bg-slate-100 p-1">
+          {OWNER_TABS.map((item) => (
+            <TabsTrigger
+              key={item.value}
+              value={item.value}
+              className="data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:shadow"
+            >
+              {item.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-4">
+          <OwnerPortalWelcome welcome={portal.questionnaire?.welcome} />
+          <WorkspaceTimeline
+            title="Your store"
+            testId="portal-webstore-timeline"
+            stages={journey.stage?.path || []}
+            currentKey={journey.stage?.key}
+            nextAction={
+              nextStep && {
+                heading: nextStep.for_you ? "Your next step" : "Nothing needed from you",
+                text: nextStep.text,
+              }
+            }
+            action={
+              nextStep?.for_you ? (
+                <Button size="sm" onClick={() => setTab("setup")} data-testid="portal-next-step-open">
+                  Go to Store Setup
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" onClick={() => setTab("messages")}>
+                  Messages & Files
+                </Button>
+              )
+            }
+          />
+          <SetupProgressCard data={data} progress={portal.progress} />
+        </TabsContent>
+
+        <TabsContent value="setup" className="space-y-4">
+          <OwnerPortalQuestionnaire
+            questionnaire={portal.questionnaire}
+            answers={portal.answers}
+            onAnswersChange={portal.setAnswers}
+            onSaveDraft={portal.saveDraft}
+            onSubmit={portal.submitQuestionnaire}
+            onFileSelected={portal.uploadQuestionFile}
+            saveState={portal.saveState}
+            submitting={portal.submitting}
+          />
+          <BrandingCard webstoreId={webstoreId} products={data.products || []} />
+          <OwnerPortalProducts
+            products={data.products || []}
+            productComments={portal.productComments}
+            onProductCommentsChange={portal.setProductComments}
+            onDecideProduct={portal.decideProduct}
+            onDecideMockup={portal.decideMockup}
+          />
+          <OwnerPortalLaunchPacket
+            data={data}
+            packetComment={portal.packetComment}
+            onPacketCommentChange={portal.setPacketComment}
+            changeRequest={portal.changeRequest}
+            onChangeRequestChange={portal.setChangeRequest}
+            onApprove={portal.approve}
+            onReject={portal.rejectPacket}
+            onRequestChanges={portal.requestChanges}
+          />
+          <TermsCard data={data} onAcceptTerms={portal.acceptTerms} />
+          <ChangeRequestHistoryCard requests={data.change_requests || []} />
+        </TabsContent>
+
+        <TabsContent value="orders" className="space-y-4">
+          <CommerceSummaryCard summary={data.commerce_summary} />
+        </TabsContent>
+
+        <TabsContent value="payments" className="space-y-4">
+          <Card data-testid="portal-payments-explainer">
+            <CardHeader>
+              <CardTitle className="text-base">Payments & Payouts</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-muted-foreground">
+              <p>
+                The shop runs checkout for your store and is the merchant for every order. Shoppers pay the shop directly.
+              </p>
+              <p>
+                Any fundraising share or payout agreed with the shop is shown under Orders & Reports. You do not need to
+                connect a payment account.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="messages" className="space-y-4">
+          <SetupFilesCard
+            files={portal.files}
+            fileCategory={portal.fileCategory}
+            setupFile={portal.setupFile}
+            onFileCategoryChange={portal.setFileCategory}
+            onSetupFileChange={portal.setSetupFile}
+            onUpload={portal.uploadSetupFile}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

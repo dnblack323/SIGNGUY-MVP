@@ -1,4 +1,3 @@
-import { Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +9,8 @@ import {
 import { TabsContent } from "@/components/ui/tabs";
 import WebstoreBrandingEditor from "@/components/webstores/WebstoreBranding";
 import { centsToDollarsString } from "@/lib/format";
+import OverviewLaunchGatesCard from "./OverviewLaunchGatesCard";
+import OverviewLaunchPacketCard from "./OverviewLaunchPacketCard";
 
 export default function StorefrontReviewTabs({ model }) {
   const {
@@ -25,17 +26,6 @@ export default function StorefrontReviewTabs({ model }) {
 
 return <>
           <TabsContent value="storefront" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Storefront Setup</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground">
-                Store information, owner assignments, setup files, and type-specific settings remain available from Overview. Use Advanced Setup there when you need the detailed controls.
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="storefront" className="space-y-4">
             <WebstoreBrandingEditor
               webstoreId={id}
               products={detail.data?.products || []}
@@ -43,17 +33,10 @@ return <>
           </TabsContent>
 
           <TabsContent value="review-launch" className="space-y-4">
-            <Card>
-              <CardHeader><CardTitle className="text-base">Storefront Preview</CardTitle></CardHeader>
-              <CardContent className="text-sm text-muted-foreground">Review the customer-facing appearance before requesting approval. Changes remain drafts until they are reviewed and published.</CardContent>
-            </Card>
-            <WebstoreBrandingEditor
-              webstoreId={id}
-              products={detail.data?.products || []}
-            />
-          </TabsContent>
-
-          <TabsContent value="review-launch" className="space-y-4">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <OverviewLaunchGatesCard model={model} />
+              <OverviewLaunchPacketCard model={model} />
+            </div>
             <Card data-testid="webstore-product-approval-panel">
               <CardHeader>
                 <CardTitle className="text-base">

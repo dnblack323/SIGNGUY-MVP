@@ -44,10 +44,20 @@ def stage_of(store: dict) -> str:
     return INTERNAL_STATUS_TO_PHASE6.get(store.get("status") or "draft", "draft")
 
 
+# The main journey shown by timelines; paused replaces live and archived is appended only when current.
+MAIN_PATH = ("draft", "intake_pending", "setup_in_progress", "owner_review", "payment_setup_pending", "ready_to_launch", "live", "closed")
+
+
+def stage_path(stage: str) -> list[str]:
+    path = [("paused" if key == "live" and stage == "paused" else key) for key in MAIN_PATH]
+    return path + ["archived"] if stage == "archived" else path
+
+
 def stage_view(store: dict) -> dict[str, Any]:
     stage = stage_of(store)
     return {"key": stage, "staff_label": STAGE_LABELS[stage]["staff"], "owner_label": STAGE_LABELS[stage]["owner"],
-            "changed_at": store.get("stage_changed_at")}
+            "changed_at": store.get("stage_changed_at"),
+            "path": [{"key": key, "staff_label": STAGE_LABELS[key]["staff"], "owner_label": STAGE_LABELS[key]["owner"]} for key in stage_path(stage)]}
 
 
 async def apply_store_status(
@@ -115,4 +125,4 @@ async def _apply_once(tenant_id, webstore_id, status, source, actor_id, actor_em
     return serialize_doc(updated) if updated else None
 
 
-__all__ = ["STAGES", "STAGE_LABELS", "RETIRED_STATUSES", "stage_of", "stage_view", "apply_store_status"]
+__all__ = ["STAGES", "STAGE_LABELS", "MAIN_PATH", "stage_path", "RETIRED_STATUSES", "stage_of", "stage_view", "apply_store_status"]
