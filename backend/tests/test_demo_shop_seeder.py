@@ -219,3 +219,18 @@ def test_reset_with_an_unsafe_storage_plan_stops_before_anything_is_dropped(tmp_
     result = _demo("reset", "--env-file", _dev_env_file(tmp_path), "--clear-storage", f"{src}={bak}", env=_clean_env())
     assert result.returncode == 2 and "nothing was changed" in result.stderr
     assert (src / "signguy-ai/tenants/t1/files/a.png").exists()
+
+
+def test_busy_guard_counts_work_on_the_database_but_not_its_own_admin_traffic():
+    from scripts.demo_shop.runner import busy_operations
+
+    own_traffic = [
+        {"op": "command", "ns": "admin.$cmd.aggregate", "command": {"currentOp": 1}},   # the reset's own currentOp call
+        {"op": "command", "ns": "admin.$cmd", "command": {"hello": 1}},                  # driver heartbeat
+        {"op": "none", "ns": "", "desc": "Checkpointer"},                                # server background thread
+        {"op": "command", "ns": "signguy_test_other.customers"},                          # a different database
+        {"op": "command", "ns": "signguy_local_backup.orders"},                           # prefix lookalike, not the same database
+    ]
+    assert busy_operations(own_traffic, "signguy_local") == []
+    app_work = {"op": "query", "ns": "signguy_local.customers"}
+    assert busy_operations([*own_traffic, app_work], "signguy_local") == [app_work]
