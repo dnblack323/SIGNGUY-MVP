@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import ContextualHelp from "@/components/help/ContextualHelp";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, Copy, Layers3, Plus, RotateCcw, Save } from "lucide-react";
 import api, { extractError } from "@/lib/api";
@@ -135,7 +136,7 @@ export default function ProductionWorkflowsPage() {
 
   return (
     <div className="space-y-4" data-testid="production-workflows-page">
-      <PageHeader title="Production Workflows" subtitle="Configure reusable production stage definitions for EC11 core production." />
+      <PageHeader title="Production Workflows" subtitle="Configure reusable production stage definitions for EC11 core production." actions={<ContextualHelp surfaceKey="production.workflows" module="production" />} />
 
       <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
         <Card>

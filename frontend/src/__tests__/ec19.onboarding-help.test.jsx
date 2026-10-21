@@ -33,26 +33,16 @@ jest.mock("@/lib/onboarding", () => ({
   getSetupPackageHandoff: jest.fn(),
   updateSetupPackageHandoff: jest.fn(),
   recordTestPortal: jest.fn(),
-  searchHelp: jest.fn(),
-  getContextualHelp: jest.fn(),
-  sendHelpFeedback: jest.fn(),
-  createSupportEscalation: jest.fn(),
-  getFailedSubscriptionGuidance: jest.fn(),
 }));
 
-import {
-  createSupportEscalation,
-  getContextualHelp,
-  getFailedSubscriptionGuidance,
-  getOnboardingDashboard,
-  getPlaceholderRegistry,
-  getSetupPackageHandoff,
-  previewPlaceholders,
-  searchHelp,
-  sendHelpFeedback,
-} from "@/lib/onboarding";
+jest.mock("@/lib/help", () => ({
+  ...jest.requireActual("@/lib/help"),
+  getContextualHelp: jest.fn(),
+}));
+
+import { getOnboardingDashboard, getPlaceholderRegistry, getSetupPackageHandoff, previewPlaceholders } from "@/lib/onboarding";
+import { getContextualHelp } from "@/lib/help";
 import OnboardingPage from "@/pages/OnboardingPage";
-import HelpCenterPage from "@/pages/HelpCenterPage";
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -70,15 +60,6 @@ beforeEach(() => {
   getSetupPackageHandoff.mockResolvedValue({ available: true, handoff_status: "not_started", purchase: { package_key: "standard" } });
   getContextualHelp.mockResolvedValue({ items: [{ id: "ctx-1", title: "Setup progress", body: "Required steps drive launch readiness." }] });
   previewPlaceholders.mockResolvedValue({ rendered: "Hi Acme", placeholders: ["customer_name"], missing_placeholders: [] });
-  searchHelp.mockResolvedValue({
-    items: [
-      { id: "help-1", slug: "pricing-setup-guide", title: "Pricing setup guide", category: "module_guides", body: "Use Pricing Foundation and approve only selected fields." },
-      { id: "help-2", slug: "failed-subscription-guidance", title: "Failed subscription guidance", category: "billing", body: "Past-due billing states come from EC13." },
-    ],
-  });
-  getFailedSubscriptionGuidance.mockResolvedValue({ dunning_state: "day_8_14_soft_restriction", guidance: "Resolve billing to avoid deeper restrictions.", mutated_billing: false });
-  sendHelpFeedback.mockResolvedValue({ id: "fb-1" });
-  createSupportEscalation.mockResolvedValue({ id: "sup-1", status: "open" });
 });
 
 test("renders EC19 onboarding dashboard and placeholder exercise controls", async () => {
@@ -96,23 +77,4 @@ test("renders EC19 onboarding dashboard and placeholder exercise controls", asyn
   await user.click(screen.getByRole("button", { name: /Preview/i }));
   await waitFor(() => expect(previewPlaceholders).toHaveBeenCalled());
   expect(await screen.findByText(/Hi Acme/i)).toBeInTheDocument();
-});
-
-test("renders EC19 Help Center articles, billing guidance, feedback, and support", async () => {
-  const user = userEvent.setup();
-  renderWithProviders(<HelpCenterPage />);
-
-  expect(await screen.findByTestId("help-center-page")).toBeInTheDocument();
-  await waitFor(() => expect(searchHelp).toHaveBeenCalled());
-  expect(screen.getAllByText("Pricing setup guide").length).toBeGreaterThan(0);
-  expect(screen.getByText("day_8_14_soft_restriction")).toBeInTheDocument();
-  expect(screen.getByText("read-only")).toBeInTheDocument();
-
-  await user.click(screen.getByRole("button", { name: /Helpful/i }));
-  await waitFor(() => expect(sendHelpFeedback).toHaveBeenCalledWith(expect.objectContaining({ article_slug: "pricing-setup-guide" })));
-
-  await user.type(screen.getByLabelText(/Subject/i), "Need setup help");
-  await user.type(screen.getByLabelText(/Message/i), "Please review onboarding.");
-  await user.click(screen.getByRole("button", { name: /Send/i }));
-  await waitFor(() => expect(createSupportEscalation).toHaveBeenCalledWith(expect.objectContaining({ source_surface: "help_center" })));
 });

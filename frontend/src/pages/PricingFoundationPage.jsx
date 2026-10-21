@@ -1,3 +1,4 @@
+import ContextualHelp from "@/components/help/ContextualHelp";
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { extractError } from "@/lib/api";
@@ -114,11 +115,14 @@ export default function PricingFoundationPage() {
       <PageHeader
         title="Pricing Foundation"
         subtitle="Shop defaults + per-category setup. Run the wizards to tailor these values to your shop."
-        actions={canWrite ? (
-          <Button variant="outline" onClick={() => setQuizOpen(true)} data-testid="open-grouped-quiz-button">
-            <Wand2 className="size-4 mr-1" />Quick Setup (Grouped Quiz)
-          </Button>
-        ) : null}
+        actions={<>
+          <ContextualHelp surfaceKey="pricing.foundation" module="pricing" />
+          {canWrite ? (
+            <Button variant="outline" onClick={() => setQuizOpen(true)} data-testid="open-grouped-quiz-button">
+              <Wand2 className="size-4 mr-1" />Quick Setup (Grouped Quiz)
+            </Button>
+          ) : null}
+        </>}
       />
 
       <div className="rounded-lg border bg-accent/40 p-4 flex gap-3 items-start" data-testid="starter-notice">

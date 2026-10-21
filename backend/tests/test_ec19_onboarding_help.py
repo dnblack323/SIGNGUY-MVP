@@ -226,19 +226,19 @@ async def test_help_center_lifecycle_contextual_feedback_support_and_billing_gui
         article = await owner.get(f"/api/help/articles/ec19-draft-{ctx['suffix']}")
         contextual = await owner.get("/api/help/contextual/pricing.quiz", params={"module": "pricing"})
         role = await owner.get("/api/help/role-guides/owner")
-        feedback = await owner.post("/api/help/feedback", json={"article_slug": "pricing-setup-guide", "helpful": True, "idempotency_key": f"fb-{ctx['suffix']}"})
-        feedback_dup = await owner.post("/api/help/feedback", json={"article_slug": "pricing-setup-guide", "helpful": True, "idempotency_key": f"fb-{ctx['suffix']}"})
-        support = await owner.post("/api/help/support/escalations", json={"subject": "Need setup help", "message": "Please review setup", "idempotency_key": f"sup-{ctx['suffix']}"})
+        feedback = await owner.post("/api/help/feedback", json={"article_slug": "pricing-setup", "helpful": True, "idempotency_key": f"fb-{ctx['suffix']}"})
+        feedback_dup = await owner.post("/api/help/feedback", json={"article_slug": "pricing-setup", "helpful": True, "idempotency_key": f"fb-{ctx['suffix']}"})
+        # Support requests go through the single community support queue; Help Center no longer has its own.
+        support = await owner.post("/api/help/support/escalations", json={"subject": "Need setup help", "message": "Please review setup"})
         assert search.status_code == 200
-        assert any(item["slug"] == "pricing-setup-guide" for item in search.json()["items"])
+        assert any(item["slug"] == "pricing-setup" for item in search.json()["items"])
         assert article.status_code == 200
         assert contextual.status_code == 200
-        assert contextual.json()["items"][0]["article_slug"] == "pricing-setup-guide"
+        assert contextual.json()["items"][0]["article_slug"] == "pricing-setup"
         assert role.status_code == 200
         assert feedback.status_code == 201
         assert feedback_dup.json()["id"] == feedback.json()["id"]
-        assert support.status_code == 201
-        assert support.json()["tenant_id"] == ctx["tenant_id"]
+        assert support.status_code in {404, 405}
 
         account = {"id": f"bill-{ctx['suffix']}", "tenant_id": ctx["tenant_id"], "status": "past_due", "created_at": _now(), "updated_at": _now()}
         sub = {

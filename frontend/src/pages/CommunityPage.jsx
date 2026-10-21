@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import api, { extractError } from "@/lib/api";
 import PageHeader from "@/components/layout/PageHeader";
 import EmptyState from "@/components/common/EmptyState";
 import TableSkeleton from "@/components/common/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,8 +19,21 @@ const TAB_FROM_PATH = {
   "/help/contact": "support",
 };
 
+const HEADER_FROM_TAB = {
+  community: ["Community", "Shared shop community and founder spaces. See what is and is not available yet in the documentation."],
+  bugs: ["Bug Reports", "Tell us when something is broken. Your reports and their status are listed here."],
+  features: ["Feature Requests", "Suggest improvements and vote on ideas from other shops."],
+  support: ["Contact Support", "Ask for help. Your requests, their status and any replies are listed here."],
+};
+
+const STATUS_TONE = { open: "secondary", new: "secondary", resolved: "outline", closed: "outline", fixed: "outline", shipped: "outline" };
+
+function StatusBadge({ status }) {
+  return <Badge variant={STATUS_TONE[status] || "default"} className="shrink-0">{String(status || "open").replace(/_/g, " ")}</Badge>;
+}
+
 function Field({ label, children }) {
-  return <div className="grid gap-1.5"><Label className="text-xs">{label}</Label>{children}</div>;
+  return <label className="grid gap-1.5"><span className="text-xs font-medium leading-none">{label}</span>{children}</label>;
 }
 
 function SmallSelect({ value, onChange, children }) {
@@ -166,7 +178,7 @@ function FeaturesTab({ features, load }) {
       </form>
       <div className="space-y-3">
         {features.length === 0 ? <EmptyState icon={Sparkles} title="No feature requests" /> : features.map((f) => (
-          <RowCard key={f.id} title={f.title} meta={`${f.category || "general"} - ${f.status}`} right={<Button size="sm" variant="outline" onClick={() => vote(f.id)}><ThumbsUp className="size-4 mr-1" />{f.vote_count || 0}</Button>}>
+          <RowCard key={f.id} title={f.title} meta={f.category || "general"} right={<div className="flex items-center gap-2"><StatusBadge status={f.status} /><Button size="sm" variant="outline" onClick={() => vote(f.id)}><ThumbsUp className="size-4 mr-1" />{f.vote_count || 0}</Button></div>}>
             <p>{f.description}</p>
             {f.staff_response && <p className="mt-2 rounded bg-slate-50 p-2 text-xs">{f.staff_response}</p>}
           </RowCard>
@@ -177,12 +189,18 @@ function FeaturesTab({ features, load }) {
 }
 
 function BugsTab({ bugs, load }) {
-  const [form, setForm] = useState({ title: "", description: "", severity: "medium", reproducibility: "" });
+  const EMPTY_BUG = { title: "", description: "", severity: "medium", reproducibility: "", steps: "", expected_behavior: "", actual_behavior: "" };
+  const [form, setForm] = useState(EMPTY_BUG);
   async function submit(e) {
     e.preventDefault();
     try {
-      await api.post("/community/bug-reports", form);
-      setForm({ title: "", description: "", severity: "medium", reproducibility: "" });
+      const steps = form.steps.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      await api.post("/community/bug-reports", {
+        ...form,
+        steps,
+        browser_metadata: { page: window.location.pathname, viewport: `${window.innerWidth}x${window.innerHeight}`, language: navigator.language },
+      });
+      setForm(EMPTY_BUG);
       await load();
       toast.success("Bug report submitted");
     } catch (err) { toast.error(extractError(err)); }
@@ -200,12 +218,15 @@ function BugsTab({ bugs, load }) {
           </SmallSelect>
         </Field>
         <Field label="Reproducibility"><Input value={form.reproducibility} onChange={(e) => setForm((f) => ({ ...f, reproducibility: e.target.value }))} /></Field>
-        <Field label="Description"><Textarea rows={5} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} required /></Field>
+        <Field label="What happened?"><Textarea rows={4} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} required /></Field>
+        <Field label="Steps to repeat it (one per line)"><Textarea rows={3} value={form.steps} onChange={(e) => setForm((f) => ({ ...f, steps: e.target.value }))} /></Field>
+        <Field label="What you expected"><Input value={form.expected_behavior} onChange={(e) => setForm((f) => ({ ...f, expected_behavior: e.target.value }))} /></Field>
+        <Field label="What actually happened"><Input value={form.actual_behavior} onChange={(e) => setForm((f) => ({ ...f, actual_behavior: e.target.value }))} /></Field>
         <Button type="submit"><Bug className="size-4 mr-1" />Report bug</Button>
       </form>
       <div className="space-y-3">
         {bugs.length === 0 ? <EmptyState icon={Bug} title="No bug reports" /> : bugs.map((b) => (
-          <RowCard key={b.id} title={b.title} meta={`${b.severity} - ${b.status}`}>
+          <RowCard key={b.id} title={b.title} meta={`${b.severity} severity`} right={<StatusBadge status={b.status} />}>
             <p>{b.description}</p>
             {b.staff_response && <p className="mt-2 rounded bg-slate-50 p-2 text-xs">{b.staff_response}</p>}
           </RowCard>
@@ -248,13 +269,14 @@ function SupportTab({ support, load }) {
           </SmallSelect>
         </Field>
         {route && <div className="rounded bg-slate-50 p-2 text-xs text-slate-600">Routes to: {route.destination_label}</div>}
+        <p className="text-xs text-muted-foreground">Quick answers: <Link className="underline" to="/help/docs?article=troubleshooting">Troubleshooting</Link> and the <Link className="underline" to="/help/docs?article=faq">FAQ</Link>.</p>
         <Field label="Subject"><Input value={form.subject} onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))} required /></Field>
         <Field label="Description"><Textarea rows={5} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} required /></Field>
         <Button type="submit"><LifeBuoy className="size-4 mr-1" />Create request</Button>
       </form>
       <div className="space-y-3">
         {support.length === 0 ? <EmptyState icon={LifeBuoy} title="No support requests" /> : support.map((s) => (
-          <RowCard key={s.id} title={s.subject} meta={`${s.request_type} - ${s.status}`} right={<Badge variant={s.destination_type === "platform_admin" ? "default" : "secondary"}>{s.destination_type === "platform_admin" ? "Platform" : "Tenant"}</Badge>}>
+          <RowCard key={s.id} title={s.subject} meta={s.request_type.replace(/_/g, " ")} right={<div className="flex items-center gap-2"><StatusBadge status={s.status} /><Badge variant={s.destination_type === "platform_admin" ? "default" : "secondary"}>{s.destination_type === "platform_admin" ? "Platform" : "Shop"}</Badge></div>}>
             <p>{s.description}</p>
           </RowCard>
         ))}
@@ -267,11 +289,12 @@ export default function CommunityPage() {
   const location = useLocation();
   const initialTab = useMemo(() => TAB_FROM_PATH[location.pathname] || "community", [location.pathname]);
   const { loading, spaces, posts, features, bugs, support, load } = useCommunityData();
+  const [title, subtitle] = HEADER_FROM_TAB[initialTab];
   if (loading) return <TableSkeleton />;
   return (
     <div className="space-y-4" data-testid="community-page">
-      <PageHeader title="Community" subtitle="Shared shop community, founder access, feedback, bug reports, and support routing." />
-      <Tabs defaultValue={initialTab} className="space-y-4">
+      <PageHeader title={title} subtitle={subtitle} />
+      <Tabs key={location.pathname} defaultValue={initialTab} className="space-y-4">
         <TabsList className="flex flex-wrap justify-start">
           <TabsTrigger value="community"><MessageSquare className="size-4 mr-1" />Community</TabsTrigger>
           <TabsTrigger value="founders"><ShieldCheck className="size-4 mr-1" />Founders</TabsTrigger>

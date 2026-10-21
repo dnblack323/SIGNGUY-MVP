@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { HelpCircle } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { getContextualHelp } from "@/lib/onboarding";
+import { getContextualHelp, helpDocsPath } from "@/lib/help";
 
 export default function ContextualHelp({ surfaceKey, module, label = "Help" }) {
   const help = useQuery({
@@ -25,6 +26,11 @@ export default function ContextualHelp({ surfaceKey, module, label = "Help" }) {
             <div key={item.id || item.help_key} className="space-y-1">
               <div className="font-medium text-sm">{item.title}</div>
               <p className="text-sm text-muted-foreground">{item.body}</p>
+              {item.article_slug && (
+                <Link to={helpDocsPath(item.article_slug)} className="text-sm text-primary underline underline-offset-2" data-testid={`contextual-help-article-${item.help_key}`}>
+                  Read the full article
+                </Link>
+              )}
             </div>
           ))}
           {help.isLoading && <div className="text-sm text-muted-foreground">Loading...</div>}

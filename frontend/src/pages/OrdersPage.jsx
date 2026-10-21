@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ContextualHelp from "@/components/help/ContextualHelp";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api, { extractError } from "@/lib/api";
@@ -106,7 +107,7 @@ export default function OrdersPage() {
       )}
       <div className="flex h-10 items-center justify-between gap-3" data-testid="orders-table-utility-row">
         <p className="text-sm text-slate-500" data-testid="orders-result-count">{countLabel}</p>
-        <div className="min-w-0 shrink-0" aria-hidden="true" />
+        <div className="min-w-0 shrink-0"><ContextualHelp surfaceKey="orders.list" module="orders" /></div>
       </div>
       {isLoading ? <TableSkeleton /> : items.length === 0 ? (
         <EmptyState icon={ShoppingBag} title="No orders yet" description="Convert a quote or use New Order from the ribbon." />

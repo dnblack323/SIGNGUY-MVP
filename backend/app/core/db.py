@@ -1243,6 +1243,7 @@ async def ensure_indexes() -> None:
     await db.help_articles.create_index("slug", unique=True)
     await db.help_articles.create_index([("status", 1), ("category", 1), ("updated_at", -1)])
     await db.help_articles.create_index([("module", 1), ("status", 1)])
+    await db.help_articles.create_index("aliases")
     await db.help_articles.create_index([("title", "text"), ("body", "text"), ("search_keywords", "text")])
 
     await db.help_feedback.create_index("id", unique=True)

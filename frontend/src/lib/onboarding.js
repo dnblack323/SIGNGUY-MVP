@@ -47,27 +47,3 @@ export async function updateSetupPackageHandoff(payload) {
 export async function recordTestPortal(payload) {
   return (await api.post("/onboarding/test-portal", { result: payload })).data;
 }
-
-export async function searchHelp(params = {}) {
-  return (await api.get("/help/articles", { params })).data;
-}
-
-export async function getHelpArticle(slug) {
-  return (await api.get(`/help/articles/${slug}`)).data;
-}
-
-export async function getContextualHelp(surfaceKey, params = {}) {
-  return (await api.get(`/help/contextual/${surfaceKey}`, { params })).data;
-}
-
-export async function sendHelpFeedback(payload) {
-  return (await api.post("/help/feedback", payload)).data;
-}
-
-export async function createSupportEscalation(payload) {
-  return (await api.post("/help/support/escalations", payload)).data;
-}
-
-export async function getFailedSubscriptionGuidance() {
-  return (await api.get("/help/billing/failed-subscription")).data;
-}

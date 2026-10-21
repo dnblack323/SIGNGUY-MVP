@@ -1,3 +1,4 @@
+import ContextualHelp from "@/components/help/ContextualHelp";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +16,7 @@ export default function OverviewQuestionnaireCard({ model }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Questionnaire</CardTitle>
+        <CardTitle className="text-base">Questionnaire <ContextualHelp surfaceKey="webstores.questionnaire" module="webstores" /></CardTitle>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-3 text-sm">
         <span className="text-muted-foreground">
