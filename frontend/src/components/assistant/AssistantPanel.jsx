@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
+import { AssistantBoundary, useAssistantSession } from "./AssistantSession";
 import { Bot, Check, ExternalLink, Mic, MicOff, Pause, Send, Square, Volume2, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -31,7 +32,6 @@ import {
   proposeAssistantAction,
   recordVoiceUsage,
   saveAssistantMemory,
-  sendAssistantMessage,
   updateAssistantRoutine,
 } from "@/lib/businessAssistant";
 
@@ -123,16 +123,15 @@ function ProposalCard({ proposal, onUpdated }) {
   );
 }
 
-export default function AssistantPanel({ compact = false }) {
+function AssistantPanelContent({ compact = false }) {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const session = useAssistantSession();
+  const { mode, setMode, message, setMessage, conversationId, messages, sources, proposals,
+    setProposals, loading, setLoading, activate } = session;
+  useEffect(() => { activate(); }, [activate]);
   const [catalog, setCatalog] = useState(null);
   const [voiceConfig, setVoiceConfig] = useState(null);
-  const [mode, setMode] = useState("owner");
-  const [message, setMessage] = useState("");
-  const [conversationId, setConversationId] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [sources, setSources] = useState([]);
-  const [proposals, setProposals] = useState([]);
   const [quickActions, setQuickActions] = useState([]);
   const [delegation, setDelegation] = useState(null);
   const [memoryItems, setMemoryItems] = useState([]);
@@ -141,7 +140,6 @@ export default function AssistantPanel({ compact = false }) {
   const [routineDraft, setRoutineDraft] = useState("");
   const [insights, setInsights] = useState([]);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const [voiceState, setVoiceState] = useState("idle");
   const [voiceTranscript, setVoiceTranscript] = useState("");
   const [voiceSessionId, setVoiceSessionId] = useState(null);
@@ -153,8 +151,11 @@ export default function AssistantPanel({ compact = false }) {
   const context = useMemo(() => {
     const contextType = searchParams.get("context_type");
     const contextId = searchParams.get("context_id");
-    return contextType && contextId ? { source_entity_type: contextType, source_entity_id: contextId } : {};
-  }, [searchParams]);
+    if (contextType && contextId) return { source_entity_type: contextType, source_entity_id: contextId };
+    const match = location.pathname.match(/^\/(customers|quotes|orders|invoices|work-orders)\/([^/]+)$/);
+    const types = { customers: "customer", quotes: "quote", orders: "order", invoices: "invoice", "work-orders": "work_order" };
+    return match ? { source_entity_type: types[match[1]], source_entity_id: match[2] } : {};
+  }, [searchParams, location.pathname]);
 
   useEffect(() => {
     let active = true;
@@ -195,24 +196,11 @@ export default function AssistantPanel({ compact = false }) {
 
   const submit = async () => {
     if (!message.trim()) return;
-    setLoading(true);
     setError("");
     try {
-      const result = await sendAssistantMessage({
-        message,
-        mode,
-        conversation_id: conversationId || undefined,
-        context,
-        idempotency_key: `assistant-message-${Date.now()}`,
-      });
-      setConversationId(result.conversation.id);
-      setMessages((prev) => [...prev, result.user_message, result.assistant_message]);
-      setSources(result.sources || []);
-      setMessage("");
+      await session.send(context);
     } catch (err) {
       setError(extractError(err, "Unable to ask the assistant"));
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -505,6 +493,10 @@ export default function AssistantPanel({ compact = false }) {
       <section className="space-y-4">
         {error && <Alert variant="destructive" data-testid="assistant-error"><AlertTitle>Business Assistant</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
         <div className="flex flex-wrap items-center gap-3">
+          <label>Conversation <select aria-label="Conversation" value={conversationId || ""} disabled={loading} onChange={(event) => session.selectConversation(event.target.value || null).catch(() => setError("Unable to load conversation"))}>
+            <option value="">New conversation</option>{session.conversations.map((item) => <option key={item.id} value={item.id}>{item.title || "Conversation"}</option>)}
+          </select></label>
+          <Link className="text-sm underline" to="/settings/assistant">Assistant Settings</Link>
           <div className="min-w-[180px]">
             <Label>Mode</Label>
             <Select value={mode} onValueChange={setMode}>
@@ -552,7 +544,7 @@ export default function AssistantPanel({ compact = false }) {
             <SourceList sources={sources} />
             <div className="grid gap-2 md:grid-cols-[1fr_auto]">
               <Textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ask the Business Assistant..." rows={3} data-testid="assistant-message-input" />
-              <Button onClick={submit} disabled={loading || !message.trim()} data-testid="assistant-send"><Send className="mr-2 size-4" />Send</Button>
+              <Button onClick={submit} disabled={loading || !session.ready || !message.trim()} data-testid="assistant-send"><Send className="mr-2 size-4" />Send</Button>
             </div>
           </CardContent>
         </Card>
@@ -660,6 +652,13 @@ export default function AssistantPanel({ compact = false }) {
     </div>
   );
 }
+
+function PrivatePanel(props) {
+  const session = useAssistantSession();
+  return <AssistantPanelContent key={session.identity} {...props} />;
+}
+
+export default function AssistantPanel(props) { return <AssistantBoundary><PrivatePanel {...props} /></AssistantBoundary>; }
 
 function SparklesIcon() {
   return <Bot className="size-4" />;

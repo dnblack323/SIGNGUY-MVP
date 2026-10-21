@@ -1,5 +1,20 @@
 import api from "@/lib/api";
 
+export async function createAssistantConversation(payload) {
+  const { data } = await api.post("/assistant/conversations", payload);
+  return data;
+}
+
+export async function getAssistantPreferences() {
+  const { data } = await api.get("/assistant/preferences");
+  return data;
+}
+
+export async function saveAssistantPreferences(payload) {
+  const { data } = await api.put("/assistant/preferences", payload);
+  return data;
+}
+
 export async function getAssistantCatalog() {
   const { data } = await api.get("/assistant/catalog");
   return data;
@@ -16,7 +31,7 @@ export async function getAssistantConversation(conversationId) {
 }
 
 export async function sendAssistantMessage(payload) {
-  const { data } = await api.post("/assistant/messages", payload);
+  const { data } = await api.post("/assistant/messages", payload, { timeout: 75000 });
   return data;
 }
 

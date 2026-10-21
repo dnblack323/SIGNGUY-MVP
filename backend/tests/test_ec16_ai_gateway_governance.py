@@ -83,6 +83,7 @@ async def test_zero_credit_blocks_billable_request_and_creates_alert(ctx):
 @pytest.mark.asyncio
 async def test_rate_limit_blocks_second_request_and_platform_dashboard_counts(ctx):
     capability_key = await _setup_capability(ctx)
+    before_dispatches = sum([int(d.get("provider_dispatch_count") or 0) async for d in db.ai_action_requests.find({})])
     async with await _client_as(ctx["platform_admin"]) as platform:
         grant = await platform.post(f"/api/ai/platform/credit-accounts/{ctx['tenant_id']}/grants", json={"included_credits": 5, "reason": "governance test"})
         assert grant.status_code == 201, grant.text
@@ -101,5 +102,5 @@ async def test_rate_limit_blocks_second_request_and_platform_dashboard_counts(ct
     async with await _client_as(ctx["platform_admin"]) as platform:
         dashboard = await platform.get("/api/ai/platform/dashboard")
         assert dashboard.status_code == 200
-        assert dashboard.json()["external_provider_calls"] == 0
+        assert dashboard.json()["external_provider_calls"] == before_dispatches
         assert dashboard.json()["open_alerts"] >= 1

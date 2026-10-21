@@ -138,29 +138,20 @@ async def test_entitlement_permission_portal_and_tenant_isolation(ctx):
     async with await _client_as(ctx["owner"]) as owner:
         cross = await owner.post(
             "/api/assistant/messages",
-            json={"message": "summarize this customer", "context": {"source_entity_type": "customer", "source_entity_id": ctx["other_customer_id"]}},
+            json={"message": "summarize this customer", "idempotency_key": "cross-context", "context": {"source_entity_type": "customer", "source_entity_id": ctx["other_customer_id"]}},
         )
         assert cross.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_source_linked_bi_answer_and_no_invoice_payment_mutation(ctx):
-    before = {
-        "invoices": await db.invoices.count_documents({"tenant_id": ctx["tenant_id"]}),
-        "payments": await db.payments.count_documents({"tenant_id": ctx["tenant_id"]}),
-    }
+async def test_unconfigured_real_text_fails_closed_without_business_mutation(ctx):
+    before = await db.invoices.find_one({"tenant_id": ctx["tenant_id"]})
     async with await _client_as(ctx["owner"]) as client:
-        response = await client.post("/api/assistant/messages", json={"message": "What is the latest invoice?", "mode": "finance", "idempotency_key": f"ask-{ctx['suffix']}"})
-        assert response.status_code == 201, response.text
-    body = response.json()
-    assert "Latest invoice" in body["answer"]
-    assert body["sources"][0]["source_type"] == "invoice"
-    assert body["sources"][0]["route"].startswith("/invoices/")
-    assert body["credit_display"] == "AI credits apply"
-    assert await db.invoices.count_documents({"tenant_id": ctx["tenant_id"]}) == before["invoices"]
-    assert await db.payments.count_documents({"tenant_id": ctx["tenant_id"]}) == before["payments"]
-    action = await db.ai_action_requests.find_one({"tenant_id": ctx["tenant_id"], "id": body["action_request"]["id"]}, {"_id": 0})
-    assert action["capability_key"] == "assistant.chat"
+        response = await client.post("/api/assistant/messages", json={"message": "What is the latest invoice?", "idempotency_key": f"ask-{ctx['suffix']}"})
+    assert response.status_code == 503, response.text
+    assert await db.invoices.find_one({"tenant_id": ctx["tenant_id"]}) == before
+    assert await db.payments.count_documents({"tenant_id": ctx["tenant_id"]}) == 0
+    assert await db.ai_action_requests.count_documents({"tenant_id": ctx["tenant_id"], "capability_key": "assistant.chat"}) == 0
 
 
 @pytest.mark.asyncio

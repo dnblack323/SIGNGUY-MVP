@@ -1,13 +1,13 @@
 # EC18 Business Assistant, Actions, Intelligence, and Realtime Voice
 
-**Status:** implemented on `CODEX-ec18-branch`
+**Status:** historical EC18 foundation implemented on `CODEX-ec18-branch`; **Business Assistant V1 is REQUIRED for initial release**. Owner approved Stage A launch scope/architecture and user-private conversations/memory on 2026-10-21. [Stage B implementation evidence](../BUSINESS_ASSISTANT_V1_STAGE_B_REVIEW.md#stage-b-implementation-and-final-verification) records completed real text transport, shared state, private history, eight read tools, five personalities and Gateway controls. Automated/browser verification used mocks; owner acceptance is pending. C–F and live provider/voice acceptance remain unstarted.
 **Entitlement:** `business_assistant`
 **Primary permission:** `ai_assistant:use`
 **Credit display:** `AI credits apply`
 
 ## Scope
 
-EC18 implements the paid Business Assistant over the existing EC13 entitlement and EC16 AI gateway contracts. It adds tenant-scoped conversations, messages, source citations, validated context snapshots, structured action proposals, safe execution records, memory controls, routines, proactive insights, quick actions, AI Studio delegation, voice-session metadata, and an OpenAI Realtime browser voice boundary.
+EC18 implements the Business Assistant foundation over the existing EC13 entitlement and EC16 AI gateway contracts. The assistant belongs to the standard subscription under the October 14 commercial decision, with usage credits/cost controls; it is not a separate paid add-on. The foundation adds tenant-scoped conversations, messages, source citations, validated context snapshots, structured action proposals, execution records, memory controls, routines, proactive insights, quick actions, AI Studio delegation, voice-session metadata, and an OpenAI Realtime browser voice boundary. Launch readiness requires the gaps identified in Stage A to be closed and verified; historical descriptions below document intent/contracts, not blanket current runtime proof.
 
 EC18 does not implement Stripe products, Checkout Sessions, subscriptions, billing portal sessions, webhooks, trials, setup-package purchases, AI-credit packs, EC4 customer invoice/payment mutations, Webstore payout changes, Meta/Facebook activation, EC19 help/onboarding, BYOK, MCP, final credit prices, or final production provider activation.
 
@@ -115,7 +115,7 @@ OpenAI Realtime voice follows the backend-issued short-lived credential model:
 - Browser tool calls create backend action proposals and still require explicit confirmation before execution.
 - If no OpenAI key is configured or `OPENAI_REALTIME_ENABLED=false`, voice returns `OpenAI Voice is not configured` and no fake session is created.
 - Raw voice audio is not stored by default.
-- Voice usage is metered only from explicit provider usage events; EC18 does not invent usage or cost.
+- Voice usage reporting currently forwards browser events and derives audio seconds from tokens; it is **not yet trustworthy provider-cost reconciliation**. Stage A requires server-observed usage, enforced session budgets and explicit unknown/incomplete states. Do not present the current simulated Gateway result as actual provider cost.
 
 Configuration:
 

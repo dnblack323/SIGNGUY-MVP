@@ -4,7 +4,8 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from ..models.user import AssistantPreferences
 
 from ..deps import get_current_user
 from ..services import business_assistant as svc
@@ -23,11 +24,43 @@ class ConversationIn(BaseModel):
 
 
 class AssistantAskIn(BaseModel):
-    message: str
+    model_config = ConfigDict(extra="forbid")
+    message: str = Field(min_length=1, max_length=4000)
     conversation_id: Optional[str] = None
     mode: str = "owner"
     context: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: Optional[str] = None
+
+
+class PreferencesUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    personality_key: Optional[str] = None
+    display_name: Optional[str] = None
+    response_length: Optional[str] = None
+    voice: Optional[str] = None
+    spoken_replies: Optional[bool] = None
+    timezone: Optional[str] = None
+
+
+@router.get("/preferences")
+async def get_preferences(user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.get_preferences(user)
+    except BusinessAssistantError as exc:
+        _raise(exc)
+
+
+@router.put("/preferences")
+async def update_preferences(payload: PreferencesUpdateIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        updates = payload.model_dump(exclude_unset=True)
+        current = (await svc.get_preferences(user))["preferences"]
+        AssistantPreferences.model_validate({**current, **updates})
+        return await svc.update_preferences(user, updates)
+    except BusinessAssistantError as exc:
+        _raise(exc)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid assistant preferences")
 
 
 class ActionProposalIn(BaseModel):

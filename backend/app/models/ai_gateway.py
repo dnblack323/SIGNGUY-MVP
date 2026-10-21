@@ -147,7 +147,7 @@ class AIProviderCostLedgerEntry(BaseDoc):
     provider_key: str
     model_key: str
     estimated_cost_micros: StrictInt = Field(default=0, ge=0)
-    actual_cost_micros: StrictInt = Field(default=0, ge=0)
+    actual_cost_micros: Optional[StrictInt] = Field(default=None, ge=0)
     actual_cost_cents: Optional[StrictInt] = Field(default=None, ge=0)
     currency: str = "usd"
     input_units: StrictInt = Field(default=0, ge=0)

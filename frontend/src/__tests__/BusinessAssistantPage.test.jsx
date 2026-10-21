@@ -2,6 +2,22 @@ import React from "react";
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test-utils";
+import {
+  createVoiceSession,
+  createAssistantConversation,
+  getAssistantConversation,
+  listAssistantConversations,
+  getAssistantPreferences,
+  getAssistantCatalog,
+  getVoiceConfig,
+  listAssistantInsights,
+  listAssistantMemory,
+  listAssistantQuickActions,
+  listAssistantRoutines,
+  recordVoiceUsage,
+  sendAssistantMessage,
+} from "@/lib/businessAssistant";
+import BusinessAssistantPage from "@/pages/BusinessAssistantPage";
 
 jest.mock("@/auth/AuthContext", () => ({
   __esModule: true,
@@ -14,6 +30,11 @@ jest.mock("@/auth/AuthContext", () => ({
 jest.mock("@/lib/businessAssistant", () => ({
   __esModule: true,
   getAssistantCatalog: jest.fn(),
+  createAssistantConversation: jest.fn(),
+  getAssistantConversation: jest.fn(),
+  listAssistantConversations: jest.fn(),
+  getAssistantPreferences: jest.fn(),
+  saveAssistantPreferences: jest.fn(),
   getVoiceConfig: jest.fn(),
   sendAssistantMessage: jest.fn(),
   proposeAssistantAction: jest.fn(),
@@ -37,18 +58,7 @@ jest.mock("@/lib/businessAssistant", () => ({
   dismissAssistantInsight: jest.fn(),
 }));
 
-import {
-  createVoiceSession,
-  getAssistantCatalog,
-  getVoiceConfig,
-  listAssistantInsights,
-  listAssistantMemory,
-  listAssistantQuickActions,
-  listAssistantRoutines,
-  recordVoiceUsage,
-  sendAssistantMessage,
-} from "@/lib/businessAssistant";
-import BusinessAssistantPage from "@/pages/BusinessAssistantPage";
+
 
 const originalFetch = global.fetch;
 const originalRtcPeerConnection = global.RTCPeerConnection;
@@ -56,6 +66,11 @@ const originalMediaDevices = global.navigator.mediaDevices;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  localStorage.clear();
+  createAssistantConversation.mockResolvedValue({ id: "conv-1", title: "Conversation" });
+  getAssistantConversation.mockResolvedValue({ messages: [] });
+  listAssistantConversations.mockResolvedValue([]);
+  getAssistantPreferences.mockResolvedValue({ preferences: { personality_key: "ops_partner", timezone: "UTC", response_length: "concise" }, options: [] });
   getAssistantCatalog.mockResolvedValue({
     entitlement_feature_key: "business_assistant",
     credit_display: "AI credits apply",
