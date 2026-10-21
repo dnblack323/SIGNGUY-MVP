@@ -12,7 +12,10 @@ the action moves on (D3-6).
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import Any, Optional
+
+from pymongo.errors import DuplicateKeyError
 
 from .webstore_context import db, serialize_doc, utc_now
 from .webstore_stage import stage_of, stage_view
@@ -20,6 +23,7 @@ from .webstore_stage import stage_of, stage_view
 logger = logging.getLogger(__name__)
 
 TASK_TYPE = "webstore_next_action"
+SYNC_LEASE = timedelta(seconds=30)
 SYSTEM_ACTOR = {"id": "system", "email": "system", "role": "owner"}
 
 # gate key -> (actor, tab, staff text); owner text comes from the gate's owner wording.
@@ -83,7 +87,7 @@ async def compute_next_action(store: dict, readiness: Optional[dict] = None) -> 
     if readiness is None:
         from .webstore_launch_readiness import _compat_launch_readiness
 
-        readiness = await _compat_launch_readiness({**SYSTEM_ACTOR, "tenant_id": store["tenant_id"]}, store["id"])
+        readiness = await _compat_launch_readiness({**SYSTEM_ACTOR, "tenant_id": store["tenant_id"]}, store["id"], ensure_slug=False)
     gates = {gate["key"]: gate for gate in readiness.get("gates") or []}
     blockers = [
         {"key": key, "reason": gate.get("reason"), "owner_wording": gate.get("owner_wording")}
@@ -150,56 +154,108 @@ def task_key(store: dict, action: dict) -> str:
     return f"webstore:{store['id']}:next:{action['key']}:{action['occurrence']}"
 
 
-async def sync_next_action_side_effects(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any]]:
-    """Keep exactly one open Task for the shop's next action. Best effort: never breaks the caller."""
-    try:
-        store = await db.webstores.find_one({"tenant_id": tenant_id, "id": webstore_id}, {"_id": 0})
-        if not store:
-            return None
-        store = serialize_doc(store)
-        action = await compute_next_action(store)
-        wanted = task_key(store, action) if action["actor"] == "shop" and action["key"] != "none" else None
-        now = utc_now().isoformat()
-        async for task in db.tasks.find(
-            {"tenant_id": tenant_id, "webstore_id": webstore_id, "task_type": TASK_TYPE, "status": {"$nin": ["completed", "canceled"]}},
-            {"_id": 0, "id": 1, "idempotency_key": 1, "status": 1},
-        ):
-            if task.get("idempotency_key") != wanted:
-                await db.tasks.update_one(
-                    {"tenant_id": tenant_id, "id": task["id"]},
-                    {"$set": {"status": "completed", "completed_at": now, "updated_at": now},
-                     "$push": {"status_history": {"from": task.get("status"), "to": "completed", "at": now, "actor_user_id": "system",
-                                                  "reason": "Webstore next action moved on"}}},
-                )
-        if wanted:
-            from .task_service import create_task
+def list_snapshot(action: dict) -> dict[str, Any]:
+    """The compact next action stored on the Webstore for the list (written by sync only)."""
+    return {k: action[k] for k in ("key", "actor", "staff_text", "tab")}
 
-            task = await create_task(tenant_id=tenant_id, actor_user_id="system", actor_email="system", payload={
-                "title": f"{store.get('name')}: {action['staff_text']}",
-                "description": "Created from the Webstore's next action. It closes automatically when the step is done.",
-                "task_type": TASK_TYPE,
-                "source_type": "webstore",
-                "source_id": webstore_id,
-                "assigned_user_id": store.get("assignee_user_id"),
-                "visibility": "staff",
-                "idempotency_key": wanted,
-            })
-            fixes: dict[str, Any] = {}
-            if task.get("status") in {"completed", "canceled"}:
-                fixes["status"] = "not_started"  # the same step is pending again
-            if task.get("assigned_user_id") != store.get("assignee_user_id"):
-                fixes["assigned_user_id"] = store.get("assignee_user_id")
-            if fixes:
-                await db.tasks.update_one(
-                    {"tenant_id": tenant_id, "id": task["id"]},
-                    {"$set": {**fixes, "updated_at": now},
-                     "$push": {"status_history": {"from": task.get("status"), "to": fixes.get("status", task.get("status")), "at": now,
-                                                  "actor_user_id": "system", "reason": "Webstore next action is pending"}}},
+
+async def _active_assignee(tenant_id: str, store: dict) -> Optional[str]:
+    user_id = store.get("assignee_user_id")
+    if user_id and await db.users.find_one({"tenant_id": tenant_id, "id": user_id, "is_active": True}, {"_id": 1}):
+        return user_id
+    return None  # an assignee who left the shop never blocks the task
+
+
+async def _auto_complete(tenant_id: str, task: dict, now: str) -> None:
+    await db.tasks.update_one(
+        {"tenant_id": tenant_id, "id": task["id"], "status": task.get("status")},
+        {"$set": {"status": "completed", "completed_at": now, "completed_by_user_id": None, "updated_at": now,
+                  "version": int(task.get("version") or 1) + 1},
+         "$push": {"status_history": {"from": task.get("status"), "to": "completed", "at": now, "actor_user_id": "system",
+                                      "reason": "Webstore next action moved on"},
+                   "completion_history": {"completed_at": now, "completed_by_user_id": None, "at": now}}},
+    )
+
+
+async def _sync_once(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any]]:
+    store = await db.webstores.find_one({"tenant_id": tenant_id, "id": webstore_id}, {"_id": 0})
+    if not store:
+        return None
+    store = serialize_doc(store)
+    action = await compute_next_action(store)
+    await db.webstores.update_one({"tenant_id": tenant_id, "id": webstore_id}, {"$set": {"next_action_snapshot": list_snapshot(action)}})
+    wanted = task_key(store, action) if action["actor"] == "shop" and action["key"] != "none" else None
+    now = utc_now().isoformat()
+    if wanted:
+        from .task_service import create_task, transition_task
+
+        assignee = await _active_assignee(tenant_id, store)
+        task = await create_task(tenant_id=tenant_id, actor_user_id="system", actor_email="system", payload={
+            "title": f"{store.get('name')}: {action['staff_text']}",
+            "description": "Created from the Webstore's next action. It closes automatically when the step is done.",
+            "task_type": TASK_TYPE,
+            "source_type": "webstore",
+            "source_id": webstore_id,
+            "assigned_user_id": assignee,
+            "visibility": "staff",
+            "idempotency_key": wanted,
+        })
+        if task.get("status") in {"completed", "canceled"}:
+            # The same step is pending again: reopen through the task service (clears completion fields).
+            task = await transition_task(tenant_id=tenant_id, task_id=task["id"], target="in_progress", actor_user_id="system",
+                                         actor_email="system", reason="Webstore next action is pending again", allow_reopen=True)
+        if task.get("assigned_user_id") != assignee:
+            await db.tasks.update_one({"tenant_id": tenant_id, "id": task["id"]}, {"$set": {"assigned_user_id": assignee, "updated_at": now}})
+    # Close superseded tasks only after the replacement exists, so a failure never leaves none.
+    async for task in db.tasks.find(
+        {"tenant_id": tenant_id, "webstore_id": webstore_id, "task_type": TASK_TYPE, "status": {"$nin": ["completed", "canceled"]},
+         "idempotency_key": {"$ne": wanted}},
+        {"_id": 0, "id": 1, "status": 1, "version": 1},
+    ):
+        await _auto_complete(tenant_id, task, now)
+    return action
+
+
+async def _acquire(lock_id: str) -> bool:
+    now = utc_now()
+    try:
+        await db.webstore_next_action_locks.update_one(
+            {"_id": lock_id, "until": {"$lt": now.isoformat()}},
+            {"$set": {"until": (now + SYNC_LEASE).isoformat()}, "$unset": {"pending": ""}},
+            upsert=True,
+        )
+        return True
+    except DuplicateKeyError:  # another sync holds an unexpired lease
+        return False
+
+
+async def sync_next_action_side_effects(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any]]:
+    """Keep exactly one open Task for the shop's next action. Best effort: never breaks the caller.
+
+    Syncs for one Webstore are serialized with a short lease. A sync that finds
+    the lease taken marks the Webstore pending, and the holder runs once more
+    before releasing, so the last change always wins.
+    """
+    lock_id = f"{tenant_id}:{webstore_id}"
+    action = None
+    try:
+        for _ in range(5):
+            if not await _acquire(lock_id):
+                await db.webstore_next_action_locks.update_one({"_id": lock_id}, {"$set": {"pending": True}})
+                if not await _acquire(lock_id):
+                    return action  # the holder will see "pending" and run again
+            try:
+                action = await _sync_once(tenant_id, webstore_id)
+            finally:
+                released = await db.webstore_next_action_locks.find_one_and_update(
+                    {"_id": lock_id}, {"$set": {"until": ""}},
                 )
+            if not (released or {}).get("pending"):
+                return action
         return action
     except Exception:  # noqa: BLE001 - side effects must never fail the user's action
         logger.exception("Webstore next-action sync failed for %s", webstore_id)
         return None
 
 
-__all__ = ["staff_next_action", "owner_next_action", "with_derived_state", "compute_next_action", "staff_view", "owner_view", "task_key", "sync_next_action_side_effects", "TASK_TYPE"]
+__all__ = ["list_snapshot", "staff_next_action", "owner_next_action", "with_derived_state", "compute_next_action", "staff_view", "owner_view", "task_key", "sync_next_action_side_effects", "TASK_TYPE"]

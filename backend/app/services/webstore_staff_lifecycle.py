@@ -159,6 +159,8 @@ async def transition_webstore_lifecycle(user: dict, webstore_id: str, lifecycle_
         tenant_id=user["tenant_id"], webstore_id=webstore_id, status=target_status, source="phase6_lifecycle_route",
         actor_id=user["id"], actor_email=user.get("email"), reason=reason, extra=updates,
     )
+    if (updated or {}).get("status") == store.get("status"):
+        return {"webstore": updated or {}, "lifecycle_state": requested_state, "event": None}  # already there; nothing recorded
     event = await db.webstore_lifecycle_events.find_one(
         {"tenant_id": user["tenant_id"], "webstore_id": webstore_id}, {"_id": 0}, sort=[("created_at", -1)]
     )

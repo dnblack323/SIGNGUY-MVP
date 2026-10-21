@@ -1,6 +1,7 @@
 """Webstores Phase 3a: one stage, one next action, idempotent tasks, one history."""
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
@@ -110,10 +111,13 @@ async def test_one_next_action_drives_one_task_and_reads_never_change_the_store(
         assert review["next_action"]["key"] == "review_questionnaire"
         assert [t["idempotency_key"] for t in await _open_tasks(ctx["tenant_id"], store["id"])] == [f"webstore:{store['id']}:next:review_questionnaire:1"]
         await client.post(f"/api/webstores/{store['id']}/questionnaire/{submitted['id']}/return", json={"reason": "Fix the venue"})
-        assert (await client.get(f"/api/webstores/{store['id']}/next-action")).json()["next_action"]["key"] == "owner_update_questionnaire"
+        returned = (await client.get(f"/api/webstores/{store['id']}/next-action")).json()
+        assert returned["next_action"]["key"] == "owner_update_questionnaire"
+        assert returned["stage"]["key"] == "intake_pending"  # stage and next action agree
         assert await _open_tasks(ctx["tenant_id"], store["id"]) == []
     async with _portal(token) as portal:
         rev2 = (await portal.post(f"/api/portal/webstores/{store['id']}/questionnaire", json={"answers": complete_answers("event", event_location="Gym")})).json()
+    assert (await db.webstores.find_one({"id": store["id"]}, {"_id": 0, "stage": 1}))["stage"] == "setup_in_progress"
     async with await _staff(ctx["user"]) as client:
         assert [t["idempotency_key"] for t in await _open_tasks(ctx["tenant_id"], store["id"])] == [f"webstore:{store['id']}:next:review_questionnaire:2"]
         await client.post(f"/api/webstores/{store['id']}/questionnaire/{rev2['id']}/approve")
@@ -146,6 +150,55 @@ async def test_assignee_owns_the_next_action_task(ctx):
     await sync_next_action_side_effects(ctx["tenant_id"], store["id"])
     tasks = await _open_tasks(ctx["tenant_id"], store["id"])
     assert len(tasks) == 1 and tasks[0]["assigned_user_id"] == ctx["teammate"]["id"]
+    assert tasks[0]["status"] == "in_progress" and tasks[0].get("completed_at") is None
+
+    # An assignee who left the shop never blocks the next task.
+    await db.users.update_one({"id": ctx["teammate"]["id"]}, {"$set": {"is_active": False}})
+    await db.webstores.update_one({"id": store["id"]}, {"$set": {"information_packet.sent_count": 1}})
+    await sync_next_action_side_effects(ctx["tenant_id"], store["id"])
+    assert await _open_tasks(ctx["tenant_id"], store["id"]) == []  # owner's turn now
+    await db.webstores.update_one({"id": store["id"]}, {"$set": {"information_packet.sent_count": 0}})
+    await sync_next_action_side_effects(ctx["tenant_id"], store["id"])
+    tasks = await _open_tasks(ctx["tenant_id"], store["id"])
+    assert len(tasks) == 1 and tasks[0]["assigned_user_id"] is None
+
+
+async def test_concurrent_syncs_keep_exactly_one_open_task(ctx):
+    from app.services.webstore_next_action import sync_next_action_side_effects
+
+    async with await _staff(ctx["user"]) as client:
+        store = await _request(client, ctx["suffix"])
+    await db.tasks.delete_many({"tenant_id": ctx["tenant_id"], "webstore_id": store["id"]})
+    await asyncio.gather(*(sync_next_action_side_effects(ctx["tenant_id"], store["id"]) for _ in range(6)))
+    assert len(await _open_tasks(ctx["tenant_id"], store["id"])) == 1
+    lock = await db.webstore_next_action_locks.find_one({"_id": f"{ctx['tenant_id']}:{store['id']}"})
+    assert lock["until"] == ""  # released
+
+
+async def test_noop_lifecycle_request_reports_no_event(ctx):
+    async with await _staff(ctx["user"]) as client:
+        store = await _request(client, ctx["suffix"])
+        before = await db.webstore_lifecycle_events.count_documents({"webstore_id": store["id"]})
+        resp = await client.post(f"/api/webstores/{store['id']}/lifecycle", json={"state": "draft"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["event"] is None
+    assert await db.webstore_lifecycle_events.count_documents({"webstore_id": store["id"]}) == before
+
+
+async def test_history_written_before_phase3_keeps_its_actor_type(ctx):
+    from app.services.webstore_shared_audit import webstore_activity_feed
+
+    store_id = f"hist-{ctx['suffix']}"
+    await db.activity_events.insert_many([
+        {"id": f"a1-{ctx['suffix']}", "tenant_id": ctx["tenant_id"], "module": "webstores", "action": "webstore.packet_approved", "actor_user_id": "portal-owner-1",
+         "actor_email": "owner@example.com", "metadata": {"webstore_id": store_id}, "created_at": "2026-10-01T00:00:00+00:00"},
+        {"id": f"a2-{ctx['suffix']}", "tenant_id": ctx["tenant_id"], "module": "webstores", "action": "webstore.refund_failed", "actor_user_id": "system",
+         "actor_email": "system", "metadata": {"webstore_id": store_id}, "created_at": "2026-10-02T00:00:00+00:00"},
+    ])
+    await db.webstore_activity_events.insert_one({"id": f"l1-{ctx['suffix']}", "tenant_id": ctx["tenant_id"], "webstore_id": store_id,
+                                                  "actor_type": "portal_webstore_owner", "actor_id": "portal-owner-1", "action": "webstore.packet_approved"})
+    feed = {item["action"]: item["actor_type"] for item in await webstore_activity_feed(ctx["tenant_id"], store_id)}
+    assert feed == {"webstore.packet_approved": "portal_webstore_owner", "webstore.refund_failed": "system"}
 
 
 async def test_old_records_derive_stage_and_retired_statuses_are_refused(ctx):
@@ -155,7 +208,12 @@ async def test_old_records_derive_stage_and_retired_statuses_are_refused(ctx):
     async with await _staff(ctx["user"]) as client:
         view = (await client.get(f"/api/webstores/{store_id}/next-action")).json()
     assert view["stage"]["key"] == "owner_review"
-    assert "stage" not in (await db.webstores.find_one({"id": store_id}, {"_id": 0}))  # derived on read, not migrated
+    raw = await db.webstores.find_one({"id": store_id}, {"_id": 0})
+    assert "stage" not in raw and "updated_at" not in raw  # derived on read, not migrated
+    async with await _staff(ctx["user"]) as client:
+        assert (await client.get("/api/webstores")).status_code == 200
+        assert (await client.get(f"/api/webstores/{store_id}")).status_code == 200
+    assert await db.webstores.find_one({"id": store_id}, {"_id": 0}) == raw  # no slug allocated, nothing written
     with pytest.raises(WebstoreError):
         await apply_store_status(tenant_id=ctx["tenant_id"], webstore_id=store_id, status="mockups_generated", source="test")
     async with await _staff(ctx["outsider"]) as other:

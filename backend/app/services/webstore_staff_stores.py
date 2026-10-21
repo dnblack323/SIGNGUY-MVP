@@ -5,6 +5,7 @@ from .webstore_shared import *
 from .webstore_launch import _invalidate_packet_approval_if_needed, _payment_readiness, _terms_acceptance
 from .webstore_staff_products import list_products
 from .webstore_next_action import compute_next_action, staff_view, with_derived_state
+from .webstore_stage import stage_of
 from .webstore_setup_files import count_active_setup_files
 
 
@@ -167,8 +168,11 @@ async def list_webstores(user: dict, *, status: Optional[str] = None) -> dict:
             "complete": type_requirements["complete"],
             "missing_count": len(type_requirements["missing"]),
         }
-        safe_item = await with_derived_state(safe_item)
-        journey = staff_view(safe_item, await compute_next_action(safe_item))
+        safe_item["stage"] = stage_of(safe_item)
+        snapshot = safe_item.pop("next_action_snapshot", None)
+        # The sync keeps a snapshot on every change; only records never synced are computed here.
+        action = {**snapshot, "blockers": []} if snapshot else await compute_next_action(safe_item)
+        journey = staff_view(safe_item, action)
         safe_item.update(journey)
         # Kept for current list UI; the same text as next_action (one producer).
         safe_item["manager_action_required"] = journey["next_action"]["staff_text"]

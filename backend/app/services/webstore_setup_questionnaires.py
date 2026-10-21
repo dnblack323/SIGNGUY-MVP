@@ -232,6 +232,10 @@ async def return_questionnaire(user: dict, webstore_id: str, submission_id: str,
         {"tenant_id": user["tenant_id"], "id": submission_id},
         {"$set": {"status": "returned_for_changes", "returned_reason": reason, "returned_at": _now_iso(), "updated_at": _now_iso()}},
     )
+    await apply_store_status(
+        tenant_id=user["tenant_id"], webstore_id=webstore_id, status="waiting_on_store_owner", source="questionnaire_returned",
+        actor_id=user["id"], actor_email=user.get("email"), reason=reason, validate=False, only_from={"questionnaire_submitted"},
+    )
     store = await _get_store(user["tenant_id"], webstore_id)
     await notify_tenant_owners(
         tenant_id=user["tenant_id"],
