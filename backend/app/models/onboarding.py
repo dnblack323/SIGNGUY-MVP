@@ -1,4 +1,4 @@
-"""EC19 onboarding, help center, and contextual documentation contracts."""
+"""Guided onboarding progress, help center, and contextual documentation contracts."""
 from __future__ import annotations
 
 from typing import Any, Literal, Optional
@@ -10,8 +10,6 @@ from .base import BaseDoc
 OnboardingProgramStatus = Literal["draft", "active", "retired"]
 OnboardingTaskStatus = Literal["not_started", "in_progress", "completed", "skipped", "deferred", "blocked"]
 OnboardingTaskLevel = Literal["required", "recommended", "optional"]
-OnboardingImportStatus = Literal["uploaded", "pending_provider", "unavailable", "reviewed", "discarded"]
-TemplateExerciseStatus = Literal["draft", "previewed", "saved", "discarded"]
 HelpArticleStatus = Literal["draft", "published", "archived"]
 HelpAudience = Literal["owner", "admin", "staff", "platform"]
 SupportEscalationStatus = Literal["open", "triaged", "resolved", "closed"]
@@ -36,6 +34,8 @@ class TenantOnboardingInstance(BaseDoc):
     status: OnboardingTaskStatus = "not_started"
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
+    current_task_key: Optional[str] = None
+    prompt_dismissed_at: Optional[str] = None
     created_by_user_id: Optional[str] = None
     updated_by_user_id: Optional[str] = None
 
@@ -52,42 +52,6 @@ class OnboardingTaskState(BaseDoc):
     blocked_reason: Optional[str] = None
     completed_at: Optional[str] = None
     updated_by_user_id: Optional[str] = None
-
-
-class OnboardingStepResponse(BaseDoc):
-    tenant_id: str
-    task_key: str
-    response_type: str
-    payload: dict[str, Any] = Field(default_factory=dict)
-    idempotency_key: Optional[str] = None
-    applied: bool = False
-    applied_record_ids: list[str] = Field(default_factory=list)
-    created_by_user_id: str
-
-
-class OnboardingImportRecord(BaseDoc):
-    tenant_id: str
-    import_type: str
-    file_name: str
-    file_type: Optional[str] = None
-    file_size_bytes: Optional[int] = Field(default=None, ge=0)
-    status: OnboardingImportStatus = "uploaded"
-    analysis_status: str = "not_requested"
-    analysis_boundary: str = "ec17_ec16_provider_deferred"
-    warnings: list[str] = Field(default_factory=list)
-    created_by_user_id: str
-
-
-class OnboardingTemplateExercise(BaseDoc):
-    tenant_id: str
-    template_id: Optional[str] = None
-    template_type: str
-    name: str
-    body: dict[str, Any] = Field(default_factory=dict)
-    preview: dict[str, Any] = Field(default_factory=dict)
-    missing_placeholders: list[str] = Field(default_factory=list)
-    status: TemplateExerciseStatus = "draft"
-    created_by_user_id: str
 
 
 class HelpArticle(BaseDoc):
