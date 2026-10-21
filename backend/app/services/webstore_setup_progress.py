@@ -77,14 +77,19 @@ async def _derive_setup_state(store: dict, invited: int, owners: int, drafts: in
     elif drafts:
         state = "questionnaire_in_progress"
     else:
-        state = store.get("setup_state") if store.get("setup_state") in WEBSTORE_SETUP_STATES else "not_started"
-    if state != store.get("setup_state"):
-        await db.webstores.update_one({"tenant_id": store["tenant_id"], "id": store["id"]}, {"$set": {"setup_state": state, "updated_at": _now_iso()}})
+        state = "not_started"
     return state
 
 
-async def _refresh_setup_state(tenant_id: str, webstore_id: str) -> None:
-    store = await _get_store(tenant_id, webstore_id)
-    await _setup_progress(store, staff=False)
+async def compute_setup_state(store: dict) -> str:
+    """Setup state is derived on read and never stored (D3-2)."""
+    return (await _setup_progress(store, staff=False))["setup_state"]
 
-__all__ = ['setup_progress_for_staff', 'setup_progress_for_portal', '_setup_progress', '_derive_setup_state', '_refresh_setup_state']
+
+async def _refresh_next_action(tenant_id: str, webstore_id: str) -> None:
+    """Called after setup changes (never on reads): keeps the next-action task in step."""
+    from .webstore_next_action import sync_next_action_side_effects
+
+    await sync_next_action_side_effects(tenant_id, webstore_id)
+
+__all__ = ['setup_progress_for_staff', 'setup_progress_for_portal', '_setup_progress', '_derive_setup_state', 'compute_setup_state', '_refresh_next_action']

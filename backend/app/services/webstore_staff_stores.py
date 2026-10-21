@@ -4,6 +4,7 @@ from __future__ import annotations
 from .webstore_shared import *
 from .webstore_launch import _invalidate_packet_approval_if_needed, _payment_readiness, _terms_acceptance
 from .webstore_staff_products import list_products
+from .webstore_next_action import compute_next_action, staff_view, with_derived_state
 from .webstore_setup_files import count_active_setup_files
 
 
@@ -166,11 +167,11 @@ async def list_webstores(user: dict, *, status: Optional[str] = None) -> dict:
             "complete": type_requirements["complete"],
             "missing_count": len(type_requirements["missing"]),
         }
-        safe_item["manager_action_required"] = (
-            f"Complete {type_requirements['label']} requirements: {type_requirements['missing'][0]['label']}"
-            if type_requirements["missing"]
-            else None
-        )
+        safe_item = await with_derived_state(safe_item)
+        journey = staff_view(safe_item, await compute_next_action(safe_item))
+        safe_item.update(journey)
+        # Kept for current list UI; the same text as next_action (one producer).
+        safe_item["manager_action_required"] = journey["next_action"]["staff_text"]
         items.append(safe_item)
     return {**result, "items": items}
 
@@ -178,15 +179,7 @@ async def list_webstores(user: dict, *, status: Optional[str] = None) -> dict:
 async def list_activity(user: dict, webstore_id: str, *, limit: int = 30) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_READ)
     store = await _get_store(user["tenant_id"], webstore_id)
-    safe_limit = max(1, min(limit, 100))
-    items = [
-        serialize_doc(doc)
-        async for doc in db.webstore_activity_events.find(
-            {"tenant_id": user["tenant_id"], "webstore_id": store["id"]},
-            {"_id": 0},
-        ).sort([("created_at", -1)]).limit(safe_limit)
-    ]
-    return {"items": items}
+    return {"items": await webstore_activity_feed(user["tenant_id"], store["id"], limit=max(1, min(limit, 100)))}
 
 
 async def get_webstore(user: dict, webstore_id: str) -> dict:
@@ -209,8 +202,10 @@ async def get_webstore(user: dict, webstore_id: str) -> dict:
         _portal_change_request(doc)
         async for doc in db.webstore_change_requests.find({"tenant_id": user["tenant_id"], "webstore_id": webstore_id}, {"_id": 0}).sort([("created_at", -1)])
     ]
+    store = await with_derived_state(store)
     return {
         "webstore": store,
+        **staff_view(store, await compute_next_action(store)),
         "products": detail_products,
         "launch_packets": packet_items,
         "change_requests": changes,
@@ -246,8 +241,13 @@ async def update_webstore(user: dict, webstore_id: str, updates: dict[str, Any])
             "launch_timezone",
             "payment_readiness_status",
             "store_settings",
+            "assignee_user_id",
         }
     }
+    if "assignee_user_id" in allowed and allowed["assignee_user_id"]:
+        assignee = await db.users.find_one({"tenant_id": user["tenant_id"], "id": allowed["assignee_user_id"], "is_active": True}, {"_id": 0, "id": 1})
+        if not assignee:
+            raise WebstoreError("assignee_not_found", "Choose an active team member in this shop", 400)
     if "name" in allowed:
         allowed["name"] = _clean_text(allowed["name"], "name")
     if "description" in allowed:

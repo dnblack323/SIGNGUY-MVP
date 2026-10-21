@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .webstore_shared import *
 from .webstore_launch_state import _open_change_requests, _payment_readiness, _terms_acceptance
+from .webstore_stage import apply_store_status
 
 async def _record_launch_packet_decision(
     *,
@@ -88,11 +89,15 @@ async def owner_approve_launch_packet(identity: dict, webstore_id: str, packet_i
         entity_id=packet_id,
         updates={"status": "owner_approved", "owner_decision_at": now, "owner_decision_by_portal_identity_id": identity["id"]},
     )
-    await stores_repo.update(
+    await apply_store_status(
         tenant_id=identity["tenant_id"],
-        entity_id=webstore_id,
-        updates={
-            "status": "approved",
+        webstore_id=webstore_id,
+        status="approved",
+        source="owner_packet_approval",
+        actor_id=identity["id"],
+        actor_email=identity.get("email"),
+        validate=False,
+        extra={
             "owner_approved_at": now,
             "owner_approved_by_portal_identity_id": identity["id"],
             "owner_approved_packet_id": packet_id,
@@ -162,7 +167,7 @@ async def owner_request_launch_packet_changes(identity: dict, webstore_id: str, 
         entity_id=packet_id,
         updates={"status": "changes_requested", "owner_decision_at": now, "change_request_reason": comment},
     )
-    await stores_repo.update(tenant_id=identity["tenant_id"], entity_id=webstore_id, updates={"status": "changes_requested"})
+    await apply_store_status(tenant_id=identity["tenant_id"], webstore_id=webstore_id, status="changes_requested", source="owner_packet_rejected", actor_id=identity["id"], actor_email=identity.get("email"), validate=False)
     await _audit(
         tenant_id=identity["tenant_id"],
         webstore_id=webstore_id,
@@ -200,7 +205,7 @@ async def owner_reject_launch_packet(identity: dict, webstore_id: str, packet_id
         entity_id=packet_id,
         updates={"status": "rejected", "owner_decision_at": now, "owner_decision_by_portal_identity_id": identity["id"], "change_request_reason": comment},
     )
-    await stores_repo.update(tenant_id=identity["tenant_id"], entity_id=webstore_id, updates={"status": "changes_requested"})
+    await apply_store_status(tenant_id=identity["tenant_id"], webstore_id=webstore_id, status="changes_requested", source="owner_change_request", actor_id=identity["id"], actor_email=identity.get("email"), validate=False)
     await _audit(
         tenant_id=identity["tenant_id"],
         webstore_id=webstore_id,
@@ -257,7 +262,7 @@ async def staff_update_change_request(user: dict, webstore_id: str, request_id: 
     if status in {"resolved", "declined", "superseded"}:
         remaining = await _open_change_requests(user["tenant_id"], webstore_id)
         if not remaining and store.get("status") == "changes_requested":
-            await stores_repo.update(tenant_id=user["tenant_id"], entity_id=webstore_id, updates={"status": "store_packet_generated"})
+            await apply_store_status(tenant_id=user["tenant_id"], webstore_id=webstore_id, status="store_packet_generated", source="change_request_resolved", actor_id=user.get("id"), actor_email=user.get("email"), validate=False)
     await _audit(
         tenant_id=user["tenant_id"],
         webstore_id=webstore_id,

@@ -4,7 +4,7 @@ from __future__ import annotations
 from .webstore_setup_common import *
 from .webstore_setup_assignment_access import create_assignment
 from .webstore_setup_questionnaires import bind_questionnaire_templates
-from .webstore_setup_progress import _refresh_setup_state
+from .webstore_setup_progress import _refresh_next_action
 
 
 async def initialize_store_setup(user: dict, store: dict, owner: dict, fields: dict[str, Any]) -> None:
@@ -40,6 +40,6 @@ async def initialize_store_setup(user: dict, store: dict, owner: dict, fields: d
     for raw in fields.get("manager_emails") or []:
         await create_assignment(user, store["id"], {"role": "manager", "email": raw, "name": raw}, send=True)
     await bind_questionnaire_templates(user, store["id"])
-    await _refresh_setup_state(store["tenant_id"], store["id"])
+    await _refresh_next_action(store["tenant_id"], store["id"])
 
 __all__ = ['initialize_store_setup']

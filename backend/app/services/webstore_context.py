@@ -23,7 +23,6 @@ from ..models.order import Order, OrderItem
 from ..models.webstore import (
     Webstore,
     WebstoreAIUsageEvent,
-    WebstoreActivity,
     WebstoreArtworkFile,
     WebstoreBuyerOrder,
     WebstoreChangeRequest,
@@ -104,7 +103,6 @@ terms_acceptances_repo = WebstoreRepository("webstore_terms_acceptances")
 change_requests_repo = WebstoreRepository("webstore_change_requests")
 buyer_orders_repo = WebstoreRepository("webstore_buyer_orders")
 ledger_repo = WebstoreRepository("webstore_ledger_entries")
-activity_repo = WebstoreRepository("webstore_activity_events")
 lifecycle_events_repo = WebstoreRepository("webstore_lifecycle_events")
 ai_repo = WebstoreRepository("webstore_ai_usage_events")
 

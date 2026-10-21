@@ -43,6 +43,7 @@ RELATION_COLLECTIONS = {
     "work_order_id": "work_orders",
     "invoice_id": "invoices",
     "production_stage_id": "production_stage_instances",
+    "webstore_id": "webstores",
 }
 
 SOURCE_TYPE_TO_FIELD = {
@@ -53,6 +54,7 @@ SOURCE_TYPE_TO_FIELD = {
     "work_order": "work_order_id",
     "invoice": "invoice_id",
     "production_stage": "production_stage_id",
+    "webstore": "webstore_id",
     "employee": "assigned_employee_id",
     "user": "assigned_user_id",
 }

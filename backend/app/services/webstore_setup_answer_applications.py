@@ -4,7 +4,6 @@ from __future__ import annotations
 from ..core.money import dollars_to_cents
 from .forms_service import visible_question_keys
 from .webstore_setup_common import *
-from .webstore_setup_progress import _refresh_setup_state
 
 
 def _get_path(data: dict, path: str) -> Any:
@@ -160,7 +159,6 @@ async def apply_questionnaire_answers(user: dict, webstore_id: str, fields: dict
         summary="Safe Webstore questionnaire answers applied",
         metadata={"idempotency_key": key},
     )
-    await _refresh_setup_state(user["tenant_id"], webstore_id)
     return {"application": serialize_doc(app_doc), "idempotent_replay": False}
 
 

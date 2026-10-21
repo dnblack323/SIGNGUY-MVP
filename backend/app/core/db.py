@@ -200,6 +200,8 @@ async def ensure_indexes() -> None:
     await db.activity_events.create_index("id", unique=True)
     await db.activity_events.create_index([("tenant_id", 1), ("module", 1), ("created_at", -1)])
     await db.activity_events.create_index([("tenant_id", 1), ("entity_type", 1), ("entity_id", 1)])
+    # Webstore history (Phase 3: the single Webstore activity store)
+    await db.activity_events.create_index([("tenant_id", 1), ("module", 1), ("metadata.webstore_id", 1), ("created_at", -1)])
     await db.activity_events.create_index([("tenant_id", 1), ("severity", 1), ("created_at", -1)])
 
     # notifications
@@ -1144,9 +1146,6 @@ async def ensure_indexes() -> None:
     await db.webstore_ledger_entries.create_index([("tenant_id", 1), ("webstore_id", 1), ("source_type", 1), ("source_id", 1), ("entry_type", 1)])
     await db.webstore_ledger_entries.create_index([("tenant_id", 1), ("reversal_of_ledger_entry_id", 1)])
 
-    await db.webstore_activity_events.create_index("id", unique=True)
-    await db.webstore_activity_events.create_index([("tenant_id", 1), ("webstore_id", 1), ("created_at", -1)])
-    await db.webstore_activity_events.create_index([("tenant_id", 1), ("action", 1), ("created_at", -1)])
     await db.webstore_lifecycle_events.create_index("id", unique=True)
     await db.webstore_lifecycle_events.create_index([("tenant_id", 1), ("webstore_id", 1), ("created_at", -1)])
     await db.webstore_lifecycle_events.create_index([("tenant_id", 1), ("to_state", 1), ("created_at", -1)])

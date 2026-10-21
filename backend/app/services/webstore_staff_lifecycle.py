@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .webstore_shared import *
 from .webstore_launch import _compat_launch_readiness, launch_readiness
+from .webstore_stage import apply_store_status
 
 
 GO_LIVE_PAYMENT_REQUIRED_MESSAGE = "Verified payment setup is required before a Webstore can go live."
@@ -40,7 +41,7 @@ async def set_webstore_status(user: dict, webstore_id: str, status: str, reason:
             raise WebstoreError("launch_gates_failed", "Webstore setup is not complete", 409)
         if status == "live":
             _require_ready_to_publish(readiness)
-    updates: dict[str, Any] = {"status": status}
+    updates: dict[str, Any] = {}
     if status == "live":
         updates["launched_at"] = _now_iso()
         updates["checkout_enabled"] = bool(readiness["payment_readiness"]["provider_authority"])
@@ -57,20 +58,9 @@ async def set_webstore_status(user: dict, webstore_id: str, status: str, reason:
     elif status == "archived":
         updates["archived_at"] = _now_iso()
         updates["checkout_enabled"] = False
-    updated = await stores_repo.update(tenant_id=user["tenant_id"], entity_id=webstore_id, updates=updates)
-    from_state = _phase6_state_for_status(store.get("status", "draft"))
-    to_state = _phase6_state_for_status(status)
-    await _record_lifecycle_event(
-        tenant_id=user["tenant_id"],
-        webstore_id=webstore_id,
-        from_status=store.get("status"),
-        to_status=status,
-        from_state=from_state,
-        to_state=to_state,
-        actor_id=user["id"],
-        actor_email=user.get("email"),
-        reason=reason,
-        metadata={"source": "status_route"},
+    updated = await apply_store_status(
+        tenant_id=user["tenant_id"], webstore_id=webstore_id, status=status, source="status_route",
+        actor_id=user["id"], actor_email=user.get("email"), reason=reason, extra=updates,
     )
     await _audit(
         tenant_id=user["tenant_id"],
@@ -119,26 +109,11 @@ async def relaunch_webstore(user: dict, webstore_id: str, reason: Optional[str] 
         )
     if current_status != "relaunch_ready":
         _validate_status_change(current_status, "relaunch_ready")
-    updated = await stores_repo.update(
-        tenant_id=user["tenant_id"],
-        entity_id=webstore_id,
-        updates={
-            "status": "relaunch_ready",
-            "checkout_enabled": False,
-            "relaunch_requested_at": _now_iso(),
-        },
-    )
-    await _record_lifecycle_event(
-        tenant_id=user["tenant_id"],
-        webstore_id=webstore_id,
-        from_status=current_status,
-        to_status="relaunch_ready",
-        from_state=_phase6_state_for_status(current_status),
-        to_state="closed",
-        actor_id=user["id"],
-        actor_email=user.get("email"),
-        reason=reason,
-        metadata={"source": "relaunch_route", "readiness_rechecked": True},
+    updated = await apply_store_status(
+        tenant_id=user["tenant_id"], webstore_id=webstore_id, status="relaunch_ready", source="relaunch_route",
+        actor_id=user["id"], actor_email=user.get("email"), reason=reason, validate=False,
+        extra={"checkout_enabled": False, "relaunch_requested_at": _now_iso()},
+        metadata={"readiness_rechecked": True},
     )
     await _audit(
         tenant_id=user["tenant_id"],
@@ -168,7 +143,7 @@ async def transition_webstore_lifecycle(user: dict, webstore_id: str, lifecycle_
             raise WebstoreError("launch_gates_failed", "Webstore setup is not complete", 409)
         if target_status == "live":
             _require_ready_to_publish(readiness)
-    updates: dict[str, Any] = {"status": target_status}
+    updates: dict[str, Any] = {}
     if target_status == "live":
         updates["launched_at"] = _now_iso()
         updates["checkout_enabled"] = bool(readiness["payment_readiness"]["provider_authority"])
@@ -180,18 +155,12 @@ async def transition_webstore_lifecycle(user: dict, webstore_id: str, lifecycle_
     elif target_status == "archived":
         updates["archived_at"] = _now_iso()
         updates["checkout_enabled"] = False
-    updated = await stores_repo.update(tenant_id=user["tenant_id"], entity_id=webstore_id, updates=updates)
-    event = await _record_lifecycle_event(
-        tenant_id=user["tenant_id"],
-        webstore_id=webstore_id,
-        from_status=store.get("status"),
-        to_status=target_status,
-        from_state=current_state,
-        to_state=requested_state,
-        actor_id=user["id"],
-        actor_email=user.get("email"),
-        reason=reason,
-        metadata={"source": "phase6_lifecycle_route"},
+    updated = await apply_store_status(
+        tenant_id=user["tenant_id"], webstore_id=webstore_id, status=target_status, source="phase6_lifecycle_route",
+        actor_id=user["id"], actor_email=user.get("email"), reason=reason, extra=updates,
+    )
+    event = await db.webstore_lifecycle_events.find_one(
+        {"tenant_id": user["tenant_id"], "webstore_id": webstore_id}, {"_id": 0}, sort=[("created_at", -1)]
     )
     await _audit(
         tenant_id=user["tenant_id"],

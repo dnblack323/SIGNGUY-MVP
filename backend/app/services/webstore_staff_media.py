@@ -66,7 +66,6 @@ async def create_artwork(user: dict, webstore_id: str, fields: dict[str, Any]) -
         notes=_clean_optional_text(fields.get("notes")),
     ).model_dump()
     await db.webstore_artwork_files.insert_one(prepare_for_mongo(art))
-    await stores_repo.update(tenant_id=user["tenant_id"], entity_id=webstore_id, updates={"status": "artwork_needs_review"})
     await _audit(
         tenant_id=user["tenant_id"],
         webstore_id=webstore_id,
@@ -106,7 +105,6 @@ async def create_mockup(user: dict, webstore_id: str, fields: dict[str, Any]) ->
         notes=_clean_optional_text(fields.get("notes")),
     ).model_dump()
     await db.webstore_mockups.insert_one(prepare_for_mongo(mockup))
-    await stores_repo.update(tenant_id=user["tenant_id"], entity_id=webstore_id, updates={"status": "mockups_generated"})
     await _audit(
         tenant_id=user["tenant_id"],
         webstore_id=webstore_id,

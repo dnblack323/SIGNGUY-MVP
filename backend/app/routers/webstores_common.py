@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from ..core.permissions import Perm
@@ -32,6 +32,22 @@ def _raise_setup(e: WebstoreSetupError) -> None:
 def _raise_branding(e: WebstoreBrandingError) -> None:
     raise HTTPException(status_code=e.status_code, detail=e.detail)
 
+
+
+async def sync_next_action_after_change(request: Request):
+    """Router dependency: after a successful POST/PUT/PATCH/DELETE on a Webstore route,
+    keep the Webstore's next-action task in step (one place, instead of per-service calls).
+    Runs only when the handler succeeded (an error skips the code after ``yield``)."""
+    yield
+    webstore_id = request.path_params.get("webstore_id")
+    if request.method in {"GET", "HEAD", "OPTIONS"} or not webstore_id:
+        return
+    from ..core.db import db
+    from ..services.webstore_next_action import sync_next_action_side_effects
+
+    store = await db.webstores.find_one({"id": webstore_id}, {"_id": 0, "tenant_id": 1})
+    if store:
+        await sync_next_action_side_effects(store["tenant_id"], webstore_id)
 
 class OwnerIn(BaseModel):
     name: str
@@ -75,6 +91,7 @@ class WebstorePatchIn(BaseModel):
     stripe_onboarding_required: Optional[bool] = None
     payment_readiness_status: Optional[str] = None
     store_settings: Optional[dict[str, Any]] = None
+    assignee_user_id: Optional[str] = None
     deadline_at: Optional[str] = None
     target_launch_at: Optional[str] = None
     event_start_at: Optional[str] = None

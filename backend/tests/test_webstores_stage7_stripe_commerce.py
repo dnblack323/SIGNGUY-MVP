@@ -386,8 +386,8 @@ async def test_failed_refund_webhook_is_authority_checked_and_idempotent():
 
     assert first["already_processed"] is False
     assert replay["already_processed"] is True
-    assert await db.webstore_activity_events.count_documents(
-        {"tenant_id": tenant_id, "action": "webstore.refund_failed"}
+    assert await db.activity_events.count_documents(
+        {"tenant_id": tenant_id, "module": "webstores", "action": "webstore.refund_failed"}
     ) == 1
     assert await db.payments.count_documents({"tenant_id": tenant_id}) == 0
 

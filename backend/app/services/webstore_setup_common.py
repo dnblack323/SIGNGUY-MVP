@@ -54,49 +54,11 @@ def _token_response(invitation: dict, raw_token: str) -> dict:
     return response
 
 
-async def _audit(
-    *,
-    tenant_id: str,
-    webstore_id: str,
-    actor_type: str,
-    action: str,
-    entity_type: str,
-    entity_id: str,
-    summary: str,
-    actor_id: Optional[str] = None,
-    actor_email: Optional[str] = None,
-    metadata: Optional[dict[str, Any]] = None,
-) -> None:
-    await db.webstore_activity_events.insert_one(
-        prepare_for_mongo(
-            {
-                "id": secrets.token_hex(16),
-                "created_at": utc_now(),
-                "updated_at": utc_now(),
-                "tenant_id": tenant_id,
-                "webstore_id": webstore_id,
-                "actor_type": actor_type,
-                "actor_id": actor_id,
-                "actor_email": actor_email,
-                "action": action,
-                "entity_type": entity_type,
-                "entity_id": entity_id,
-                "summary": summary,
-                "metadata": metadata or {},
-            }
-        )
-    )
-    await record_activity_with_audit(
-        tenant_id=tenant_id,
-        actor_user_id=actor_id or actor_type,
-        actor_email=actor_email or actor_type,
-        module="webstores",
-        action=action,
-        entity_type=entity_type,
-        entity_id=entity_id,
-        summary=summary,
-        metadata={"webstore_id": webstore_id, **(metadata or {})},
-    )
+async def _audit(**fields: Any) -> None:
+    """Same single history writer as the rest of Webstores (webstore_shared_audit._audit)."""
+    from .webstore_shared_audit import _audit as shared_audit
+
+    await shared_audit(**fields)
 
 
 async def _get_store(tenant_id: str, webstore_id: str) -> dict:

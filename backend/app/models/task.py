@@ -28,6 +28,7 @@ class Task(BaseDoc):
     order_id: Optional[str] = None
     order_item_id: Optional[str] = None
     work_order_id: Optional[str] = None
+    webstore_id: Optional[str] = None
     invoice_id: Optional[str] = None
     production_stage_id: Optional[str] = None
 

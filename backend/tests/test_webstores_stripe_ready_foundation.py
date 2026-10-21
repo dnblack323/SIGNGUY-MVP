@@ -287,8 +287,8 @@ async def test_payout_and_dispute_reconciliation_accept_only_typed_events_and_re
     )
     assert first["already_processed"] is False
     assert replay["already_processed"] is True
-    activity = await db.webstore_activity_events.find_one(
-        {"tenant_id": ctx["tenant_id"], "action": "webstore.provider_financial_event_reconciled"},
+    activity = await db.activity_events.find_one(
+        {"tenant_id": ctx["tenant_id"], "module": "webstores", "action": "webstore.provider_financial_event_reconciled"},
         {"_id": 0},
     )
     assert activity["metadata"]["raw_event_snapshot"]["event_type"] == "transfer.created"
