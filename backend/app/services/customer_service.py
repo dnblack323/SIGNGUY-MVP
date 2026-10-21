@@ -200,7 +200,7 @@ def match_reasons(a: dict[str, Any], b: dict[str, Any]) -> list[str]:
 
 
 async def duplicate_candidates(*, tenant_id: str, customer_id: Optional[str] = None, search: Optional[str] = None) -> list[dict[str, Any]]:
-    base_filter: dict[str, Any] = {"tenant_id": tenant_id, "merged_into": {"$exists": False}}
+    base_filter: dict[str, Any] = {"tenant_id": tenant_id, "merged_into": None}
     target: Optional[dict[str, Any]] = None
     if customer_id:
         target = await db.customers.find_one({"tenant_id": tenant_id, "id": customer_id}, {"_id": 0})

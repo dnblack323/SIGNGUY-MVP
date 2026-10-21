@@ -71,9 +71,9 @@ async def list_customers(
     clauses: list[dict] = []
     if status == "active":
         q["archived"] = {"$ne": True}
-        q["merged_into"] = {"$exists": False}
+        q["merged_into"] = None  # null or absent: created customers store merged_into=None
     elif status == "archived":
-        clauses.append({"$or": [{"archived": True}, {"merged_into": {"$exists": True}}]})
+        clauses.append({"$or": [{"archived": True}, {"merged_into": {"$ne": None}}]})
     if search:
         clauses.append({"$or": [
             {"name": {"$regex": search, "$options": "i"}},
