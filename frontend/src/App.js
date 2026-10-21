@@ -55,6 +55,7 @@ import HelpCenterPage from "@/pages/HelpCenterPage";
 import GeneratedAssetsPage from "@/pages/GeneratedAssetsPage";
 import PromptLibraryPage from "@/pages/PromptLibraryPage";
 import DataSecurityPage from "@/pages/DataSecurityPage";
+import SlimImportPage from "@/pages/SlimImportPage";
 import ProductionWorkflowsPage from "@/pages/ProductionWorkflowsPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 import PricingFoundationPage from "@/pages/PricingFoundationPage";
@@ -246,6 +247,7 @@ function AppRoutes() {
           element={<ProductionWorkflowsPage />}
         />
         <Route path="/settings/data-security" element={<DataSecurityPage />} />
+        <Route path="/settings/slim-import" element={<SlimImportPage />} />
         <Route path="/platform-admin" element={<PlatformAdminPage />} />
         <Route path="/platform-admin/tenants/:tenantId" element={<PlatformAdminTenantDetailPage />} />
         <Route path="/platform-admin/broadcast-email" element={<PlatformAdminBroadcastEmailPage />} />
