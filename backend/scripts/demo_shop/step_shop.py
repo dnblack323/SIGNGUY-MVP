@@ -26,7 +26,8 @@ async def platform(ctx) -> None:
 
 
 async def shop_profile(ctx) -> None:
-    await ctx.api.post("/onboarding/company-profile/apply", {"company_profile": data_shop.COMPANY_PROFILE, "branding": data_shop.BRANDING})
+    await ctx.api.put("/settings/company_profile", data_shop.COMPANY_PROFILE)
+    await ctx.api.put("/settings/branding", data_shop.BRANDING)
 
 
 async def customers(ctx) -> None:
