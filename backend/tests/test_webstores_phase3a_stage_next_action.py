@@ -326,3 +326,18 @@ async def test_terminal_owner_view_rename_and_task_source(ctx):
     moved = await update_task(tenant_id=ctx["tenant_id"], task_id=task["id"], actor_user_id="u", actor_email="e",
                               updates={"source_type": "webstore", "source_id": other["id"]})
     assert moved["webstore_id"] == other["id"]
+
+
+async def test_expired_owner_invitation_puts_the_step_back_with_the_shop(ctx):
+    async with await _staff(ctx["user"]) as client:
+        store = await _request(client, ctx["suffix"])
+        await client.post(f"/api/webstores/{store['id']}/information-packet/send", json={})
+        assert (await client.get(f"/api/webstores/{store['id']}/next-action")).json()["next_action"]["key"] == "owner_complete_questionnaire"
+        await db.webstore_invitations.update_many({"tenant_id": ctx["tenant_id"], "webstore_id": store["id"]},
+                                                  {"$set": {"expires_at": "2000-01-01T00:00:00+00:00"}})
+        await client.patch(f"/api/webstores/{store['id']}", json={"description": "touch"})  # any change syncs
+        action = (await client.get(f"/api/webstores/{store['id']}/next-action")).json()["next_action"]
+        listed = [i for i in (await client.get("/api/webstores")).json()["items"] if i["id"] == store["id"]][0]
+    assert action["key"] == "owner_access" and action["actor"] == "shop"
+    assert [t["idempotency_key"] for t in await _open_tasks(ctx["tenant_id"], store["id"])] == [f"webstore:{store['id']}:next:owner_access:"]
+    assert listed["next_action"]["blockers"] == action["blockers"]  # list rows carry the same contract

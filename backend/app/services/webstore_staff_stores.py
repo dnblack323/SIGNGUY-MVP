@@ -179,7 +179,7 @@ async def list_webstores(user: dict, *, status: Optional[str] = None) -> dict:
             and snapshot.get("gates") == await external_gates(safe_item, payment=payment, entitlements=entitlements)
         )
         if fresh:
-            action = {**snapshot, "blockers": []}
+            action = {"blockers": [], **snapshot}
             safe_item["setup_state"] = snapshot.get("setup_state") or safe_item.get("setup_state")
         else:
             safe_item = await with_derived_state(safe_item)

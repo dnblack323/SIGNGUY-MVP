@@ -11,6 +11,7 @@ the action moves on (D3-6).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import Any, Optional
@@ -53,7 +54,33 @@ def _action(key: str, actor: str, staff_text: str, owner_text: str, tab: str, oc
             "occurrence": str(occurrence or ""), "blockers": blockers or []}
 
 
+async def _owner_can_reach_portal(store: dict) -> bool:
+    """An active owner assignment, or an owner invitation that is still open."""
+    tenant_id, webstore_id = store["tenant_id"], store["id"]
+    now = utc_now().isoformat()
+    async for assignment in db.webstore_access_assignments.find(
+        {"tenant_id": tenant_id, "webstore_id": webstore_id, "role": "owner", "status": {"$in": ["active", "invited"]}},
+        {"_id": 0, "status": 1, "invitation_id": 1},
+    ):
+        if assignment.get("status") == "active":
+            return True
+        invite = await db.webstore_invitations.find_one(
+            {"tenant_id": tenant_id, "id": assignment.get("invitation_id")}, {"_id": 0, "status": 1, "expires_at": 1}
+        ) if assignment.get("invitation_id") else None
+        if invite and invite.get("status") not in {"expired", "revoked"} and str(invite.get("expires_at") or "") > now:
+            return True
+    return False
+
+
 async def _journey_action(store: dict) -> Optional[dict[str, Any]]:
+    action = await _journey_step(store)
+    if action and action["actor"] == "owner" and not await _owner_can_reach_portal(store):
+        return _action("owner_access", "shop", "Re-send the owner's portal invitation (it expired or was revoked)",
+                       "The shop is setting up your access.", "setup")
+    return action
+
+
+async def _journey_step(store: dict) -> Optional[dict[str, Any]]:
     """The Phase 2 steps before the launch gates apply."""
     tenant_id, webstore_id = store["tenant_id"], store["id"]
     if not int((store.get("information_packet") or {}).get("sent_count") or 0):
@@ -160,7 +187,7 @@ def task_key(store: dict, action: dict) -> str:
 
 def list_snapshot(action: dict, stage: str, setup_state: str, gates: str) -> dict[str, Any]:
     """The compact next action stored on the Webstore for the list (written by sync only)."""
-    return {k: action[k] for k in ("key", "actor", "staff_text", "tab")} | {"stage": stage, "setup_state": setup_state, "gates": gates}
+    return {k: action[k] for k in ("key", "actor", "staff_text", "tab", "blockers")} | {"stage": stage, "setup_state": setup_state, "gates": gates}
 
 
 async def external_gates(store: dict, *, payment: Optional[dict] = None, entitlements: Optional[dict] = None) -> str:
@@ -241,6 +268,22 @@ async def _sync_once(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any
     return action
 
 
+async def _sync_with_retry(tenant_id: str, webstore_id: str, lock_id: str) -> Optional[dict[str, Any]]:
+    for attempt in range(3):
+        try:
+            action = await _sync_once(tenant_id, webstore_id)
+            await db.webstore_next_action_locks.update_one({"_id": lock_id}, {"$unset": {"failed_at": "", "error": ""}})
+            return action
+        except Exception as exc:  # noqa: BLE001 - transient failures are retried; the last one is recorded
+            if attempt == 2:
+                await db.webstore_next_action_locks.update_one(
+                    {"_id": lock_id}, {"$set": {"failed_at": utc_now().isoformat(), "error": type(exc).__name__}}
+                )
+                raise
+            await asyncio.sleep(0.2 * (attempt + 1))
+    return None
+
+
 async def _acquire(lock_id: str) -> bool:
     now = utc_now()
     try:
@@ -270,7 +313,7 @@ async def sync_next_action_side_effects(tenant_id: str, webstore_id: str) -> Opt
                 if not await _acquire(lock_id):
                     return action  # the holder will see "pending" and run again
             try:
-                action = await _sync_once(tenant_id, webstore_id)
+                action = await _sync_with_retry(tenant_id, webstore_id, lock_id)
             finally:
                 released = await db.webstore_next_action_locks.find_one_and_update(
                     {"_id": lock_id}, {"$set": {"until": ""}},
