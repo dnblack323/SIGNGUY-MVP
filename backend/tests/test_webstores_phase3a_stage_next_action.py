@@ -114,6 +114,8 @@ async def test_one_next_action_drives_one_task_and_reads_never_change_the_store(
         returned = (await client.get(f"/api/webstores/{store['id']}/next-action")).json()
         assert returned["next_action"]["key"] == "owner_update_questionnaire"
         assert returned["stage"]["key"] == "intake_pending"  # stage and next action agree
+        progress = (await client.get(f"/api/webstores/{store['id']}/setup-progress")).json()
+        assert progress["setup_state"] == "changes_requested"
         assert await _open_tasks(ctx["tenant_id"], store["id"]) == []
     async with _portal(token) as portal:
         rev2 = (await portal.post(f"/api/portal/webstores/{store['id']}/questionnaire", json={"answers": complete_answers("event", event_location="Gym")})).json()
