@@ -34,15 +34,18 @@ async def _setup_progress(store: dict, *, staff: bool) -> dict:
     reviewed_count = await db.webstore_questionnaire_submissions.count_documents(
         {"tenant_id": tenant_id, "webstore_id": webstore_id, "status": "reviewed"}
     )
+    returned_count = await db.webstore_questionnaire_submissions.count_documents(
+        {"tenant_id": tenant_id, "webstore_id": webstore_id, "status": "returned_for_changes"}
+    )
     from .webstore_setup_files import count_active_setup_files
 
     file_count = await count_active_setup_files(tenant_id, webstore_id)
-    state = await _derive_setup_state(store, invited_count, active_owner_count, draft_count, submitted_count, reviewed_count, file_count)
+    state = await _derive_setup_state(store, invited_count, active_owner_count, draft_count, submitted_count, reviewed_count, file_count, returned_count)
     type_requirements = evaluate_type_requirements(store)
     steps = [
         {"key": "primary_owner", "label": "Primary Store Owner assigned", "status": "complete" if active_owner_count else "blocked"},
         {"key": "invitations", "label": "Owner and manager invitations", "status": "waiting" if invited_count else "complete"},
-        {"key": "questionnaire", "label": "Owner intake questionnaire", "status": "review" if submitted_count else "complete" if reviewed_count else "in_progress" if draft_count else "not_started"},
+        {"key": "questionnaire", "label": "Owner intake questionnaire", "status": "review" if submitted_count else "complete" if reviewed_count else "changes_requested" if returned_count else "in_progress" if draft_count else "not_started"},
         {"key": "files", "label": "Setup files", "status": "complete" if file_count else "not_started"},
         {"key": "type_requirements", "label": f"{type_requirements['label']} requirements", "status": "complete" if type_requirements["complete"] else "blocked"},
         {"key": "staff_review", "label": "Staff setup review", "status": "complete" if reviewed_count else "not_started"},
@@ -58,18 +61,21 @@ async def _setup_progress(store: dict, *, staff: bool) -> dict:
             "draft_questionnaires": draft_count,
             "submitted_questionnaires": submitted_count,
             "reviewed_questionnaires": reviewed_count,
+            "returned_questionnaires": returned_count,
             "setup_files": file_count,
         }
     return response
 
 
-async def _derive_setup_state(store: dict, invited: int, owners: int, drafts: int, submitted: int, reviewed: int, files: int) -> str:
+async def _derive_setup_state(store: dict, invited: int, owners: int, drafts: int, submitted: int, reviewed: int, files: int, returned: int = 0) -> str:
     if owners <= 0:
         state = "blocked"
     elif invited:
         state = "invitation_pending"
     elif submitted:
         state = "staff_review"
+    elif returned and not reviewed:
+        state = "changes_requested"  # the shop returned the answers; the owner is revising
     elif reviewed and files:
         state = "setup_complete"
     elif reviewed or files:
@@ -77,14 +83,19 @@ async def _derive_setup_state(store: dict, invited: int, owners: int, drafts: in
     elif drafts:
         state = "questionnaire_in_progress"
     else:
-        state = store.get("setup_state") if store.get("setup_state") in WEBSTORE_SETUP_STATES else "not_started"
-    if state != store.get("setup_state"):
-        await db.webstores.update_one({"tenant_id": store["tenant_id"], "id": store["id"]}, {"$set": {"setup_state": state, "updated_at": _now_iso()}})
+        state = "not_started"
     return state
 
 
-async def _refresh_setup_state(tenant_id: str, webstore_id: str) -> None:
-    store = await _get_store(tenant_id, webstore_id)
-    await _setup_progress(store, staff=False)
+async def compute_setup_state(store: dict) -> str:
+    """Setup state is derived on read and never stored (D3-2)."""
+    return (await _setup_progress(store, staff=False))["setup_state"]
 
-__all__ = ['setup_progress_for_staff', 'setup_progress_for_portal', '_setup_progress', '_derive_setup_state', '_refresh_setup_state']
+
+async def _refresh_next_action(tenant_id: str, webstore_id: str) -> None:
+    """Called after setup changes (never on reads): keeps the next-action task in step."""
+    from .webstore_next_action import sync_next_action_side_effects
+
+    await sync_next_action_side_effects(tenant_id, webstore_id)
+
+__all__ = ['setup_progress_for_staff', 'setup_progress_for_portal', '_setup_progress', '_derive_setup_state', 'compute_setup_state', '_refresh_next_action']

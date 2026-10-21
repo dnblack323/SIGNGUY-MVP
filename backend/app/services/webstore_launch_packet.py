@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from .webstore_shared import *
+from .webstore_stage import apply_store_status
 
 async def _included_packet_products(tenant_id: str, webstore_id: str, public_slug: Optional[str]) -> list[dict[str, Any]]:
     products: list[dict[str, Any]] = []
@@ -194,10 +195,13 @@ async def _invalidate_packet_approval_if_needed(
                 "owner_approved_packet_version": None,
                 "owner_approval_invalidated_at": now,
                 "owner_approval_invalidated_reason": reason,
-                "status": "store_packet_generated" if store.get("status") in {"approved", "launch_ready", "scheduled"} else store.get("status"),
                 "updated_at": now,
             }
         },
+    )
+    await apply_store_status(
+        tenant_id=tenant_id, webstore_id=webstore_id, status="store_packet_generated", source="owner_approval_invalidated",
+        reason=reason, validate=False, only_from={"approved", "launch_ready", "scheduled"},
     )
     await _audit(
         tenant_id=tenant_id,
@@ -257,11 +261,15 @@ async def generate_launch_packet(user: dict, webstore_id: str, fields: Optional[
         generated_by_user_id=user.get("id"),
     ).model_dump()
     await db.webstore_launch_packets.insert_one(prepare_for_mongo(packet))
-    await stores_repo.update(
+    await apply_store_status(
         tenant_id=user["tenant_id"],
-        entity_id=webstore_id,
-        updates={
-            "status": "store_packet_generated",
+        webstore_id=webstore_id,
+        status="store_packet_generated",
+        source="launch_packet_generated",
+        actor_id=user.get("id"),
+        actor_email=user.get("email"),
+        validate=False,
+        extra={
             "launch_packet_id": packet["id"],
             "launch_packet_version": version,
             "owner_approval_invalidated_at": None,
@@ -350,7 +358,7 @@ async def send_launch_packet(user: dict, webstore_id: str, packet_id: str) -> di
         existing = await db.webstore_launch_packets.find_one({"tenant_id": user["tenant_id"], "id": packet_id}, {"_id": 0})
         return serialize_doc(existing or {})
     packet = serialize_doc(updated)
-    await stores_repo.update(tenant_id=user["tenant_id"], entity_id=webstore_id, updates={"status": "sent_for_approval"})
+    await apply_store_status(tenant_id=user["tenant_id"], webstore_id=webstore_id, status="sent_for_approval", source="launch_packet_sent", actor_id=user.get("id"), actor_email=user.get("email"), validate=False)
     await _audit(
         tenant_id=user["tenant_id"],
         webstore_id=webstore_id,

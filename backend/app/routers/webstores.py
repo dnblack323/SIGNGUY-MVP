@@ -1,7 +1,9 @@
 """EC14 - staff Webstores manager route composition."""
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from .webstores_common import sync_next_action_after_change
 
 from .webstores_collection import router as webstores_collection_router
 from .webstores_request_routes import router as webstores_request_routes_router
@@ -15,7 +17,7 @@ from .webstores_catalog import router as webstores_catalog_router
 from .webstores_launch_operations import router as webstores_launch_operations_router
 from .webstores_reference import router as webstores_reference_router
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(sync_next_action_after_change)])
 
 for subrouter in (
     webstores_request_routes_router,

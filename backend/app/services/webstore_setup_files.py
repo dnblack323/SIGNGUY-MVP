@@ -7,7 +7,6 @@ from ..models.file import FileRecord
 from ..models.file_link import FileLink
 from .webstore_setup_common import *
 from .webstore_setup_portal_scope import _owner_store
-from .webstore_setup_progress import _refresh_setup_state
 
 
 SETUP_FILE_PARENT = "webstore"
@@ -136,7 +135,6 @@ async def store_setup_file(
             {"tenant_id": tenant_id, "id": replaces_file_id},
             {"$set": {"archived": True, "metadata.status": "replaced", "metadata.replaced_by_file_id": link["id"], "updated_at": _now_iso()}},
         )
-    await _refresh_setup_state(tenant_id, webstore_id)
     await _audit(
         tenant_id=tenant_id,
         webstore_id=webstore_id,
@@ -292,7 +290,6 @@ async def remove_setup_file(user: dict, webstore_id: str, file_id: str, reason: 
         {"tenant_id": user["tenant_id"], "id": file_id},
         {"$set": {"archived": True, "metadata.status": "removed", "metadata.notes": reason, "updated_at": _now_iso()}},
     )
-    await _refresh_setup_state(user["tenant_id"], webstore_id)
     await _audit(
         tenant_id=user["tenant_id"],
         webstore_id=webstore_id,

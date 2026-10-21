@@ -14,7 +14,9 @@ from ..services.webstore_branding import WebstoreBrandingError
 from ..services.webstore_setup import WebstoreSetupError
 from ..services.webstores import WebstoreError
 
-router = APIRouter(prefix="/portal/webstores", tags=["portal-webstores"])
+from .webstores_common import sync_next_action_after_owner_change
+
+router = APIRouter(prefix="/portal/webstores", tags=["portal-webstores"], dependencies=[Depends(sync_next_action_after_owner_change)])
 
 
 def _raise(e: WebstoreError) -> None:
@@ -105,6 +107,17 @@ async def accept_invitation(payload: InvitationAcceptIn) -> dict:
         return await setup_svc.accept_invitation(payload.token)
     except WebstoreSetupError as e:
         _raise_setup(e)
+
+
+@router.get("/{webstore_id}/next-action")
+async def next_action(webstore_id: str, identity: dict = Depends(_webstore_identity)) -> dict:
+    """Owner-safe stage and next step (no staff-only blockers)."""
+    from ..services.webstore_next_action import owner_next_action
+
+    try:
+        return await owner_next_action(identity, webstore_id)
+    except WebstoreError as e:
+        _raise(e)
 
 
 @router.get("/{webstore_id}")

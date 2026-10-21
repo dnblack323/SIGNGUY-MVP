@@ -21,7 +21,7 @@ from .email import public_url, send_logged_email
 from .template_service import PLATFORM_TENANT_ID, _normalize_ec12_body, _template_channels, _template_placeholders, render_channels
 from .webstore_setup_assignment_access import create_assignment, resend_invitation
 from .webstore_setup_common import Perm, _audit, _email, _get_owner, _get_store, _now_iso, _require_staff_perm
-from .webstore_setup_progress import _refresh_setup_state
+from .webstore_stage import apply_store_status
 
 PACKET_PACK_ID = "webstore_starter"
 PACKET_VERSION = 1
@@ -226,10 +226,11 @@ async def send_information_packet(user: dict, webstore_id: str, *, resend: bool 
         },
         "updated_at": now,
     }
-    if store.get("status") in {"draft", "questionnaire_sent", "waiting_on_store_owner"}:
-        updates["status"] = "questionnaire_sent"
-    await db.webstores.update_one({"tenant_id": user["tenant_id"], "id": webstore_id}, {"$set": updates})
-    await _refresh_setup_state(user["tenant_id"], webstore_id)
+    await apply_store_status(
+        tenant_id=user["tenant_id"], webstore_id=webstore_id, status="questionnaire_sent", source="information_packet_sent",
+        actor_id=user.get("id"), actor_email=user.get("email"), validate=False,
+        only_from={"draft", "waiting_on_store_owner"}, extra=updates,
+    )
     await _audit(
         tenant_id=user["tenant_id"], webstore_id=webstore_id, actor_type="staff", actor_id=user.get("id"), actor_email=user.get("email"),
         action="webstore.information_packet_resent" if resend else "webstore.information_packet_sent",

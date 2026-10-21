@@ -107,13 +107,11 @@ async def _seed_setup_file(ctx: dict, webstore_id: str, *, extension: str = "png
 
 
 async def _activity_actions(ctx: dict, webstore_id: str, product_id: str) -> list[dict]:
-    return [
-        doc
-        async for doc in db.webstore_activity_events.find(
-            {"tenant_id": ctx["tenant_id"], "webstore_id": webstore_id, "entity_id": product_id},
-            {"_id": 0},
-        ).sort("created_at", 1)
-    ]
+    # The Webstore history (shared activity, Phase 3) through the app's own projection, oldest first.
+    from app.services.webstore_shared_audit import webstore_activity_feed
+
+    items = await webstore_activity_feed(ctx["tenant_id"], webstore_id, limit=200)
+    return [item for item in reversed(items) if item["entity_id"] == product_id]
 
 
 class _CollectionProxy:
@@ -948,8 +946,8 @@ async def test_stage4a_artwork_mockup_and_cross_scope_denials(stage4a_ctx):
         assert removed.status_code == 200, removed.text
         actions = {
             doc["action"]
-            async for doc in db.webstore_activity_events.find(
-                {"tenant_id": stage4a_ctx["tenant_id"], "webstore_id": store["id"], "entity_id": product["id"]},
+            async for doc in db.activity_events.find(
+                {"tenant_id": stage4a_ctx["tenant_id"], "module": "webstores", "metadata.webstore_id": store["id"], "entity_id": product["id"]},
                 {"_id": 0, "action": 1, "metadata": 1},
             )
         }

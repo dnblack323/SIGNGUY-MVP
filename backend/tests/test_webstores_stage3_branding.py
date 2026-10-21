@@ -76,6 +76,11 @@ async def _seed_store(ctx: dict, *, store_type: str = "general", setup_state: st
         "terms_fee_acknowledged": True,
     }
     await db.webstores.insert_one(store)
+    if setup_state == "setup_complete":
+        # Setup state is derived (Phase 3): an active owner, an applied questionnaire and a setup file.
+        await db.webstore_access_assignments.insert_one({"id": f"assign-{suffix}", "tenant_id": ctx["tenant_id"], "webstore_id": store["id"], "role": "owner", "status": "active"})
+        await db.webstore_questionnaire_submissions.insert_one({"id": f"sub-{suffix}", "tenant_id": ctx["tenant_id"], "webstore_id": store["id"], "owner_id": owner_id, "status": "reviewed", "revision": 1})
+        await db.webstore_setup_files.insert_one({"id": f"file-{suffix}", "tenant_id": ctx["tenant_id"], "webstore_id": store["id"], "status": "active", "category": "logo", "file_name": "logo.png"})
     await db.webstore_products.insert_one(
         {
             "id": f"product-{suffix}",

@@ -26,7 +26,9 @@ async def _publish_readiness_errors(store: dict, branding: dict[str, Any]) -> li
         errors.append("This Webstore cannot publish branding while it is closed or archived.")
     if not store.get("public_slug"):
         errors.append("This Webstore needs a public slug before branding can be published.")
-    if store.get("setup_state") != "setup_complete":
+    from .webstore_setup_progress import compute_setup_state
+
+    if await compute_setup_state(store) != "setup_complete":
         errors.append("Complete Store Setup before publishing branding.")
     active_count = await db.webstore_products.count_documents(
         {"tenant_id": tenant_id, "webstore_id": webstore_id, "status": "active", "public": True, "selling_price_cents": {"$gt": 0}}

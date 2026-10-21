@@ -43,6 +43,7 @@ RELATION_COLLECTIONS = {
     "work_order_id": "work_orders",
     "invoice_id": "invoices",
     "production_stage_id": "production_stage_instances",
+    "webstore_id": "webstores",
 }
 
 SOURCE_TYPE_TO_FIELD = {
@@ -53,6 +54,7 @@ SOURCE_TYPE_TO_FIELD = {
     "work_order": "work_order_id",
     "invoice": "invoice_id",
     "production_stage": "production_stage_id",
+    "webstore": "webstore_id",
     "employee": "assigned_employee_id",
     "user": "assigned_user_id",
 }
@@ -132,6 +134,7 @@ def _linked_record_label(doc: dict) -> Optional[str]:
         ("work_order", "work_order_id"),
         ("invoice", "invoice_id"),
         ("production_stage", "production_stage_id"),
+        ("webstore", "webstore_id"),
     ):
         if doc.get(field):
             return f"{source_type.replace('_', ' ')} {str(doc[field])[:10]}"
@@ -508,7 +511,18 @@ async def update_task(*, tenant_id: str, task_id: str, actor_user_id: str, actor
     data = _normalize_payload({k: v for k, v in updates.items() if k in MUTABLE_FIELDS and v is not None})
     if not data:
         raise TaskError("no_updates", "No allowed task updates provided", 400)
-    merged = {**existing, **data}
+    source_changed = "source_type" in data or "source_id" in data
+    if source_changed:
+        old_field = SOURCE_TYPE_TO_FIELD.get(existing.get("source_type") or "")
+        new_field = SOURCE_TYPE_TO_FIELD.get(data.get("source_type") or existing.get("source_type") or "")
+        if old_field in RELATION_COLLECTIONS and old_field != new_field and old_field not in data:
+            data[old_field] = None  # the previous source's relation no longer applies
+    merged = {**existing, **{k: v for k, v in data.items()}}
+    if source_changed:
+        new_field = SOURCE_TYPE_TO_FIELD.get(merged.get("source_type") or "")
+        if new_field in RELATION_COLLECTIONS:
+            merged[new_field] = merged.get("source_id")
+            data[new_field] = merged["source_id"]
     await validate_linked_records(tenant_id, merged)
     set_doc = {**data, "updated_at": _now(), "version": int(existing.get("version", 1)) + 1}
     await db.tasks.update_one(_query(tenant_id, task_id), {"$set": set_doc})
@@ -578,7 +592,10 @@ async def transition_task(
     reason: Optional[str] = None,
     allow_employee: bool = False,
     allow_reopen: bool = False,
+    system_complete: bool = False,
 ) -> dict:
+    """``system_complete`` lets an automation close a task from any open status
+    (e.g. a Webstore next action that moved on) with the normal audit and notices."""
     if target not in TASK_STATUSES:
         raise TaskError("invalid_status", "Invalid task status", 400)
     existing = await _get_task(tenant_id, task_id)
@@ -589,7 +606,8 @@ async def transition_task(
         return _clean_task(existing) or {}
     if current in {"completed", "canceled"} and target == "in_progress" and not allow_reopen:
         raise TaskError("reopen_action_required", "Completed or canceled tasks must be reopened through the reopen action", 400)
-    if target not in TRANSITIONS.get(current, set()):
+    automated = system_complete and target == "completed" and current not in {"completed", "canceled"}
+    if target not in TRANSITIONS.get(current, set()) and not automated:
         raise TaskError("invalid_transition", f"Cannot transition task from {current} to {target}", 400)
     now = _now()
     set_doc: dict[str, Any] = {"status": target, "updated_at": now, "version": int(existing.get("version", 1)) + 1}

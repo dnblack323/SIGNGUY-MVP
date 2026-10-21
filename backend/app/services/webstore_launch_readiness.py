@@ -5,9 +5,12 @@ from .webstore_shared import *
 from .webstore_launch_packet import _included_packet_products
 from .webstore_launch_state import _open_change_requests, _payment_readiness, _terms_acceptance
 
-async def launch_readiness(user: dict, webstore_id: str) -> dict:
+async def launch_readiness(user: dict, webstore_id: str, *, ensure_slug: bool = True) -> dict:
+    """``ensure_slug=False`` is for read models (next action), which must never write."""
     _require_staff_perm(user, Perm.WEBSTORE_READ)
-    store = await _ensure_public_slug(await _get_store(user["tenant_id"], webstore_id))
+    store = await _get_store(user["tenant_id"], webstore_id)
+    if ensure_slug:
+        store = await _ensure_public_slug(store)
     owner = await owners_repo.get(tenant_id=user["tenant_id"], entity_id=store["owner_id"])
     packet = await packets_repo.get(tenant_id=user["tenant_id"], entity_id=store["launch_packet_id"]) if store.get("launch_packet_id") else None
     included_products = await _included_packet_products(user["tenant_id"], webstore_id, store.get("public_slug"))
@@ -212,11 +215,11 @@ async def launch_readiness(user: dict, webstore_id: str) -> dict:
     }
 
 
-async def _compat_launch_readiness(user: dict, webstore_id: str) -> dict:
+async def _compat_launch_readiness(user: dict, webstore_id: str, *, ensure_slug: bool = True) -> dict:
     import sys
 
     facade = sys.modules.get(__package__ + ".webstores")
     override = getattr(facade, "launch_readiness", None) if facade is not None else None
     if override is not None and override is not launch_readiness:
         return await override(user, webstore_id)
-    return await launch_readiness(user, webstore_id)
+    return await launch_readiness(user, webstore_id, ensure_slug=ensure_slug)

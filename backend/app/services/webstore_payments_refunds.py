@@ -174,10 +174,11 @@ async def reconcile_webstore_refund_event(
     ):
         raise WebstoreError("provider_refund_authority_mismatch", "Provider refund does not match provider authority", 409)
     if status in {"failed", "canceled"}:
-        existing_failure = await db.webstore_activity_events.find_one(
+        existing_failure = await db.activity_events.find_one(
             {
                 "tenant_id": tenant_id,
-                "webstore_id": webstore_id,
+                "module": "webstores",
+                "metadata.webstore_id": webstore_id,
                 "action": "webstore.refund_failed",
                 "entity_id": refund_reference,
             },

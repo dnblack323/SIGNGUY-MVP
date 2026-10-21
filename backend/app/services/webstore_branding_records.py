@@ -74,33 +74,12 @@ async def _audit(
     entity_id: str,
     note: Optional[str] = None,
 ) -> None:
-    now = _now_iso()
-    activity = {
-        "id": f"webstore-branding-activity-{hashlib.sha1(f'{tenant_id}:{webstore_id}:{action}:{entity_id}:{now}'.encode()).hexdigest()}",
-        "tenant_id": tenant_id,
-        "webstore_id": webstore_id,
-        "actor_type": actor["type"],
-        "actor_id": actor.get("id"),
-        "actor_email": actor.get("email"),
-        "action": action,
-        "entity_type": "webstore_branding",
-        "entity_id": entity_id,
-        "summary": summary,
-        "metadata": {"note": note} if note else {},
-        "created_at": now,
-        "updated_at": now,
-    }
-    await db.webstore_activity_events.insert_one(prepare_for_mongo(activity))
-    await record_activity_with_audit(
-        tenant_id=tenant_id,
-        actor_user_id=actor.get("id") or actor["type"],
-        actor_email=actor.get("email") or actor["type"],
-        module="webstores",
-        action=action,
-        entity_type="webstore",
-        entity_id=webstore_id,
-        summary=summary,
-        metadata={"webstore_id": webstore_id, "note": note} if note else {"webstore_id": webstore_id},
+    from .webstore_shared_audit import _audit
+
+    await _audit(
+        tenant_id=tenant_id, webstore_id=webstore_id, actor_type=actor["type"], actor_id=actor.get("id"),
+        actor_email=actor.get("email"), action=action, entity_type="webstore_branding", entity_id=entity_id,
+        summary=summary, metadata={"note": note} if note else {},
     )
 
 
@@ -134,25 +113,15 @@ async def _history(tenant_id: str, webstore_id: str) -> list[dict]:
 
 
 async def _activity(tenant_id: str, webstore_id: str) -> list[dict]:
-    return [
-        serialize_doc(doc)
-        async for doc in db.webstore_activity_events.find(
-            {
-                "tenant_id": tenant_id,
-                "webstore_id": webstore_id,
-                "action": {
-                    "$in": [
+    from .webstore_shared_audit import webstore_activity_feed
+
+    return await webstore_activity_feed(tenant_id, webstore_id, limit=50, actions=[
                         "webstore.branding_draft_saved",
                         "webstore.branding_review_requested",
                         "webstore.branding_changes_requested",
                         "webstore.branding_owner_approved",
                         "webstore.branding_published",
-                    ]
-                },
-            },
-            {"_id": 0},
-        ).sort([("created_at", -1)])
-    ]
+                    ])
 
 
 def _response(store: dict, record: dict, *, role: str) -> dict:

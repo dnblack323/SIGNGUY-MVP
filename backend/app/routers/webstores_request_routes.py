@@ -61,6 +61,17 @@ async def send_information_packet(webstore_id: str, payload: PacketSendIn, user:
         _raise_setup(e)
 
 
+@router.get("/{webstore_id}/next-action")
+async def next_action(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
+    """Stage + the one next action (read only; never changes the store)."""
+    from ..services.webstore_next_action import staff_next_action
+
+    try:
+        return await staff_next_action(user, webstore_id)
+    except WebstoreError as e:
+        _raise(e)
+
+
 @router.get("/{webstore_id}/questionnaire/review")
 async def questionnaire_review(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
     try:

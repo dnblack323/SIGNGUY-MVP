@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from .webstore_setup_common import *
-from .webstore_setup_progress import _refresh_setup_state
 
 
 async def _current_assignment(tenant_id: str, webstore_id: str, email: str, role: str) -> Optional[dict]:
@@ -187,7 +186,6 @@ async def create_assignment(
             {"tenant_id": user["tenant_id"], "id": assignment["id"]},
             {"$set": {"invitation_id": invitation["id"], "updated_at": _now_iso()}},
         )
-    await _refresh_setup_state(user["tenant_id"], webstore_id)
     await _audit(
         tenant_id=user["tenant_id"],
         webstore_id=webstore_id,
@@ -235,7 +233,6 @@ async def resend_invitation(user: dict, webstore_id: str, assignment_id: str, *,
         {"tenant_id": user["tenant_id"], "id": assignment_id},
         {"$set": {"status": "invited", "invitation_id": invite["id"], "invited_at": _now_iso(), "updated_at": _now_iso()}},
     )
-    await _refresh_setup_state(user["tenant_id"], webstore_id)
     await _audit(
         tenant_id=user["tenant_id"],
         webstore_id=webstore_id,
@@ -278,7 +275,6 @@ async def revoke_assignment(user: dict, webstore_id: str, assignment_id: str, re
         summary="Webstore assignment revoked",
         metadata={"reason": reason},
     )
-    await _refresh_setup_state(user["tenant_id"], webstore_id)
     return {"assignment_id": assignment_id, "status": "revoked"}
 
 
@@ -379,7 +375,6 @@ async def accept_invitation(raw_token: str) -> dict:
             {"tenant_id": invitation["tenant_id"], "id": invitation["webstore_id"]},
             {"$set": {"owner_id": assignment["owner_id"], "primary_owner_assignment_id": assignment["id"], "updated_at": now}},
         )
-    await _refresh_setup_state(invitation["tenant_id"], invitation["webstore_id"])
     token = create_portal_token(
         portal_identity_id=identity["id"],
         tenant_id=identity["tenant_id"],
@@ -387,6 +382,9 @@ async def accept_invitation(raw_token: str) -> dict:
         portal_type=identity.get("portal_type"),
         employee_id=identity.get("employee_id"),
     )
+    from .webstore_next_action import sync_next_action_side_effects
+
+    await sync_next_action_side_effects(invitation["tenant_id"], invitation["webstore_id"])
     return {"token": token, "identity": serialize_doc(identity), "webstore_id": invitation["webstore_id"]}
 
 __all__ = ['_current_assignment', '_link_or_create_identity', '_create_invitation', 'create_assignment', 'list_assignments', 'resend_invitation', 'revoke_assignment', 'change_primary_owner', 'accept_invitation']

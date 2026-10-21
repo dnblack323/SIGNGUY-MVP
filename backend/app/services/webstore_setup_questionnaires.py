@@ -8,7 +8,8 @@ from .webstore_questionnaire_content import ACKNOWLEDGEMENT_TEXT, ACKNOWLEDGEMEN
 from .webstore_shop_settings import filter_questionnaire_to_shop, get_fulfillment_settings
 from .webstore_questionnaire_review import consistency_checks
 from .webstore_setup_portal_scope import _owner_safe_store, _owner_store
-from .webstore_setup_progress import _refresh_setup_state
+from .webstore_next_action import with_derived_state
+from .webstore_stage import apply_store_status
 
 
 async def list_questionnaire_templates(user: dict, *, store_type: Optional[str] = None, active_only: bool = False) -> dict:
@@ -57,7 +58,7 @@ async def owner_questionnaire(identity: dict, webstore_id: str) -> dict:
         submission = await db.webstore_questionnaire_submissions.find_one({"tenant_id": identity["tenant_id"], "id": latest["id"]}, {"_id": 0})
     owner = await db.webstore_owners.find_one({"tenant_id": store["tenant_id"], "id": store.get("owner_id")}, {"_id": 0})
     return {
-        "webstore": _owner_safe_store(store),
+        "webstore": _owner_safe_store(await with_derived_state(store)),
         "templates": templates,
         "submission": serialize_doc(submission) if submission else None,
         "latest_revision": serialize_doc(latest) if latest else None,
@@ -109,7 +110,6 @@ async def save_questionnaire_draft(identity: dict, webstore_id: str, fields: dic
             **payload,
         ).model_dump()
         await db.webstore_questionnaire_submissions.insert_one(prepare_for_mongo(doc))
-    await _refresh_setup_state(identity["tenant_id"], webstore_id)
     return serialize_doc(doc or {})
 
 
@@ -169,13 +169,10 @@ async def submit_questionnaire(identity: dict, webstore_id: str, fields: dict[st
     submitted = await db.webstore_questionnaire_submissions.find_one({"tenant_id": identity["tenant_id"], "id": draft["id"]}, {"_id": 0})
     if not result.modified_count:
         return serialize_doc(submitted or {})
-    await db.webstores.update_one(
-        {"tenant_id": identity["tenant_id"], "id": webstore_id},
-        {"$set": {"setup_state": "questionnaire_submitted", "updated_at": now}},
-    )
-    await db.webstores.update_one(
-        {"tenant_id": identity["tenant_id"], "id": webstore_id, "status": {"$in": ["draft", "questionnaire_sent", "waiting_on_store_owner", "changes_requested"]}},
-        {"$set": {"status": "questionnaire_submitted"}},
+    await apply_store_status(
+        tenant_id=identity["tenant_id"], webstore_id=webstore_id, status="questionnaire_submitted", source="questionnaire_submitted",
+        actor_id=identity["id"], actor_email=identity.get("email"), validate=False,
+        only_from={"draft", "questionnaire_sent", "waiting_on_store_owner", "changes_requested"},
     )
     await _audit(
         tenant_id=identity["tenant_id"],
@@ -235,7 +232,10 @@ async def return_questionnaire(user: dict, webstore_id: str, submission_id: str,
         {"tenant_id": user["tenant_id"], "id": submission_id},
         {"$set": {"status": "returned_for_changes", "returned_reason": reason, "returned_at": _now_iso(), "updated_at": _now_iso()}},
     )
-    await _refresh_setup_state(user["tenant_id"], webstore_id)
+    await apply_store_status(
+        tenant_id=user["tenant_id"], webstore_id=webstore_id, status="waiting_on_store_owner", source="questionnaire_returned",
+        actor_id=user["id"], actor_email=user.get("email"), reason=reason, validate=False, only_from={"questionnaire_submitted"},
+    )
     store = await _get_store(user["tenant_id"], webstore_id)
     await notify_tenant_owners(
         tenant_id=user["tenant_id"],

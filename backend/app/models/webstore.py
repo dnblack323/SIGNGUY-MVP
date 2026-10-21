@@ -224,7 +224,10 @@ class Webstore(BaseDoc):
     launched_at: Optional[str] = None
     closed_at: Optional[str] = None
     archived_at: Optional[str] = None
-    setup_state: WebstoreSetupState = "not_started"
+    setup_state: WebstoreSetupState = "not_started"  # no longer written (D3-2); computed on read
+    stage: str = "draft"  # single journey stage (D3-1); written with status by webstore_stage.apply_store_status
+    stage_changed_at: Optional[str] = None
+    assignee_user_id: Optional[str] = None  # D3-7
     setup_profile: dict[str, Any] = Field(default_factory=dict)
     setup_requirements: dict[str, Any] = Field(default_factory=dict)
     store_settings: dict[str, Any] = Field(default_factory=dict)
@@ -687,19 +690,6 @@ class WebstoreLedgerEntry(BaseDoc):
     status: LedgerEntryStatus = "posted"
     reversal_of_ledger_entry_id: Optional[str] = None
     notes: Optional[str] = None
-
-
-class WebstoreActivity(BaseDoc):
-    tenant_id: str
-    webstore_id: str
-    actor_type: str
-    actor_id: Optional[str] = None
-    actor_email: Optional[str] = None
-    action: str
-    entity_type: str
-    entity_id: str
-    summary: str
-    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class WebstoreLifecycleEvent(BaseDoc):

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .webstore_shared import *
 from .webstore_launch import _payment_readiness, _terms_acceptance
+from .webstore_next_action import compute_next_action, owner_view, with_derived_state
 
 async def owner_portal_list(identity: dict) -> dict:
     if identity.get("portal_type") not in {"webstore_owner", "webstore_manager"} or not identity.get("webstore_owner_id"):
@@ -55,6 +56,7 @@ async def owner_portal_detail(identity: dict, webstore_id: str) -> dict:
         ).sort([("created_at", -1)])
     ]
     payment = await _payment_readiness(store)
+    derived = await with_derived_state(store)
     owner_gates = [
         {
             "key": "packet_delivered",
@@ -81,7 +83,8 @@ async def owner_portal_detail(identity: dict, webstore_id: str) -> dict:
 
     owner_report = await webstore_reports.owner_summary(identity["tenant_id"], webstore_id)
     return {
-        "webstore": _portal_store(store),
+        "webstore": _portal_store(derived),
+        "journey": owner_view(derived, await compute_next_action(derived)),
         "products": products,
         "launch_packet": await _portal_launch_packet_with_history(identity["tenant_id"], packet),
         "change_requests": changes,

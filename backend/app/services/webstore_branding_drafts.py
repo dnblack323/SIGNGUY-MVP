@@ -26,7 +26,9 @@ async def get_staff_branding(user: dict, webstore_id: str) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_READ)
     store = await _get_store(user["tenant_id"], webstore_id)
     record = await _record_for_store(store)
-    data = _response(store, record, role="staff")
+    from .webstore_next_action import with_derived_state
+
+    data = _response(await with_derived_state(store), record, role="staff")
     data["history"] = await _history(user["tenant_id"], webstore_id)
     data["activity"] = await _activity(user["tenant_id"], webstore_id)
     return data
@@ -65,7 +67,9 @@ async def save_staff_draft(user: dict, webstore_id: str, content: dict[str, Any]
 async def get_portal_branding(identity: dict, webstore_id: str) -> dict:
     scoped = await _active_assignment(identity, webstore_id)
     record = await _record_for_store(scoped["store"])
-    data = _response(scoped["store"], record, role=scoped["role"])
+    from .webstore_next_action import with_derived_state
+
+    data = _response(await with_derived_state(scoped["store"]), record, role=scoped["role"])
     data["history"] = await _history(identity["tenant_id"], webstore_id)
     data["activity"] = await _activity(identity["tenant_id"], webstore_id)
     return data

@@ -236,7 +236,9 @@ async def test_review_brief_checks_approve_apply_and_revision_comparison(ctx):
     assert settings["fundraiser"]["purpose"] == "New band uniforms" and settings["fundraiser"]["goal_amount_cents"] == 250050
     assert settings["donation"]["enabled"] is True and settings["production"]["personalization_enabled"] is True
     assert applied["deadline_at"] == "2099-03-20" and applied["name"] == "Lincoln Spirit Store"
-    assert applied["setup_state"] in {"setup_in_progress", "setup_complete"}
+    async with await _staff(ctx["user"]) as client:
+        derived = (await client.get(f"/api/webstores/{store['id']}")).json()
+    assert derived["webstore"]["setup_state"] in {"setup_in_progress", "setup_complete"}  # computed on read (Phase 3)
     assert (await db.webstore_questionnaire_submissions.find_one({"id": sub1["id"]}, {"_id": 0}))["submitted_snapshot"]["answers"]["pickup_window_2_date"] == "2099-02-01"
 
 
