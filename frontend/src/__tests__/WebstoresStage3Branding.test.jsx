@@ -1,10 +1,11 @@
 import "@testing-library/jest-dom";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import axios from "axios";
 import { renderWithProviders } from "../test-utils";
 import PublicWebstorePage from "@/pages/PublicWebstorePage";
-import { WebstoreBrandingPreview } from "@/components/webstores/WebstoreBranding";
+import WebstoreBrandingEditor, { WebstoreBrandingPreview } from "@/components/webstores/WebstoreBranding";
 import WebstoreDetailPage from "@/pages/WebstoreDetailPage";
 import WebstoreOwnerPortalPage from "@/pages/WebstoreOwnerPortalPage";
 import {
@@ -227,6 +228,9 @@ test.each([
 });
 
 test("owner portal can approve submitted branding but cannot publish", async () => {
+  localStorage.removeItem("signguy.token");
+  // A staff read would fail for a real owner-only browser session.
+  listWebstoreSetupFiles.mockRejectedValue({ response: { status: 401 } });
   portalApi.get.mockImplementation((url) => {
     if (url.endsWith("/branding")) return Promise.resolve({ data: brandingResponse({
       branding: { status: "waiting_owner_approval", feedback_note: "Use the blue logo" },
@@ -244,6 +248,8 @@ test("owner portal can approve submitted branding but cannot publish", async () 
 
   await userEvent.click(await screen.findByRole("tab", { name: "Store Setup" }));
   const editor = await screen.findByTestId("webstore-branding-editor");
+  await waitFor(() => expect(portalApi.get).toHaveBeenCalledWith("/portal/webstores/ws-1/setup-files"));
+  expect(listWebstoreSetupFiles).not.toHaveBeenCalled();
   expect(within(editor).queryByRole("button", { name: /Publish/ })).not.toBeInTheDocument();
   expect(within(editor).getByTestId("branding-feedback")).toHaveTextContent("Use the blue logo");
   expect(within(editor).getByTestId("branding-activity")).toHaveTextContent("owner@example.com");
@@ -300,4 +306,28 @@ test("owner portal separates packet approval, change requests, and Terms accepta
   expect(screen.getByTestId("portal-terms-version")).toHaveTextContent("webstore_terms_2026_07");
   await userEvent.click(screen.getByTestId("portal-accept-terms"));
   await waitFor(() => expect(portalApi.post).toHaveBeenCalledWith("/portal/webstores/ws-1/terms/accept", { terms_version: "webstore_terms_2026_07" }));
+});
+
+test("switching from staff to owner branding never reuses staff-only setup files", async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  const emptyBranding = brandingResponse({ branding: { draft: {} } });
+  getWebstoreBranding.mockResolvedValue(emptyBranding);
+  listWebstoreSetupFiles.mockResolvedValue({ items: [{
+    id: "staff-file", category: "logo", status: "active", file_name: "internal.png",
+    preview_url: "/api/webstores/ws-1/setup-files/staff-file/preview",
+  }] });
+  portalApi.get.mockImplementation((url) => Promise.resolve({
+    data: url.endsWith("/setup-files") ? { items: [] } : emptyBranding,
+  }));
+  const view = render(<QueryClientProvider client={qc}><WebstoreBrandingEditor webstoreId="ws-1" /></QueryClientProvider>);
+  await waitFor(() => expect(screen.getByTestId("branding-image-primary-logo")).toHaveValue(
+    "/api/webstores/ws-1/setup-files/staff-file/preview",
+  ));
+
+  view.rerender(<QueryClientProvider client={qc}><WebstoreBrandingEditor webstoreId="ws-1" portal /></QueryClientProvider>);
+
+  await waitFor(() => expect(portalApi.get).toHaveBeenCalledWith("/portal/webstores/ws-1/setup-files"));
+  await waitFor(() => expect(screen.getByTestId("branding-image-primary-logo")).toHaveValue(""));
+  expect(listWebstoreSetupFiles).toHaveBeenCalledTimes(1);
+  qc.clear();
 });
