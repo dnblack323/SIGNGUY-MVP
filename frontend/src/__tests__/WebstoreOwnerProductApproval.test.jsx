@@ -148,3 +148,36 @@ test("owner portal shows launch packet preview and submits explicit rejection co
     ),
   );
 });
+
+test.each([
+  ["live", "Live", "shop_working", false, "Your store is live."],
+  ["intake_pending", "Complete your questionnaire", "owner_complete_questionnaire", true, "Complete your store questionnaire."],
+  ["intake_pending", "Complete your questionnaire", "owner_update_questionnaire", true, "The shop asked for changes to your questionnaire."],
+  ["owner_review", "Review and approve your store", "terms_current", true, "Accept the current terms."],
+])("owner guidance follows the canonical %s / %s action", async (stage, label, key, forYou, text) => {
+  portalApi.get.mockImplementation((url) => {
+    if (url.endsWith("/questionnaire")) return Promise.resolve({ data: {
+      templates: [{ id: "intake", name: "Store questionnaire", sections: [] }],
+      welcome: { title: "Welcome packet", body: "Start your questionnaire" },
+    } });
+    if (url.endsWith("/setup-progress")) return Promise.resolve({ data: {
+      setup_state: "staff_review", setup_label: label,
+      steps: [{ key: "next_action", label: "Current update", status: "information", status_label: text }],
+    } });
+    if (url.endsWith("/setup-files")) return Promise.resolve({ data: { items: [] } });
+    return Promise.resolve({ data: {
+      webstore: { id: "ws-1", name: "Team Store", status: stage }, products: [],
+      journey: { stage: { key: stage, label, path: [{ key: stage, label }] }, next_action: { key, for_you: forYou, text } },
+    } });
+  });
+  renderWithProviders(<WebstoreOwnerPortalPage />, { route: "/portal/webstores/ws-1", path: "/portal/webstores/:webstoreId" });
+  await screen.findByTestId("portal-webstore-setup-state");
+  expect(screen.getByTestId("portal-webstore-setup-state")).toHaveTextContent(label);
+  expect(screen.queryByText("staff_review")).not.toBeInTheDocument();
+  if (key === "owner_complete_questionnaire") expect(screen.getByTestId("owner-portal-welcome")).toHaveTextContent("Start your questionnaire");
+  else expect(screen.queryByTestId("owner-portal-welcome")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("tab", { name: "Store Setup" }));
+  const expectedQuestionnaire = ["owner_complete_questionnaire", "owner_update_questionnaire"].includes(key);
+  if (expectedQuestionnaire) expect(screen.getByRole("button", { name: "Submit" })).toBeInTheDocument();
+  else expect(screen.queryByRole("button", { name: "Submit" })).not.toBeInTheDocument();
+});

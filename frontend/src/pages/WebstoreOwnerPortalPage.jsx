@@ -49,6 +49,7 @@ export default function WebstoreOwnerPortalPage() {
 
   const journey = data.journey || {};
   const nextStep = journey.next_action;
+  const questionnaireNeeded = ["owner_complete_questionnaire", "owner_update_questionnaire", "questionnaire_complete"].includes(nextStep?.key);
 
   return (
     <div className="space-y-4" data-testid="webstore-owner-portal-page">
@@ -79,7 +80,7 @@ export default function WebstoreOwnerPortalPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-          <OwnerPortalWelcome welcome={portal.questionnaire?.welcome} />
+          {nextStep?.key === "owner_complete_questionnaire" && <OwnerPortalWelcome welcome={portal.questionnaire?.welcome} />}
           <WorkspaceTimeline
             title="Your store"
             testId="portal-webstore-timeline"
@@ -107,7 +108,7 @@ export default function WebstoreOwnerPortalPage() {
         </TabsContent>
 
         <TabsContent value="setup" className="space-y-4">
-          <OwnerPortalQuestionnaire
+          {questionnaireNeeded && <OwnerPortalQuestionnaire
             questionnaire={portal.questionnaire}
             answers={portal.answers}
             onAnswersChange={portal.setAnswers}
@@ -116,7 +117,7 @@ export default function WebstoreOwnerPortalPage() {
             onFileSelected={portal.uploadQuestionFile}
             saveState={portal.saveState}
             submitting={portal.submitting}
-          />
+          />}
           <BrandingCard webstoreId={webstoreId} products={data.products || []} />
           <OwnerPortalProducts
             products={data.products || []}

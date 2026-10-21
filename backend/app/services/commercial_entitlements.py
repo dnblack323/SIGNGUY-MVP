@@ -203,4 +203,9 @@ async def project_entitlements_for_tenant(*, tenant_id: str, actor_user_id: str 
         )
     cursor = db.feature_entitlements.find({"tenant_id": tenant_id, "granted_by": COMMERCIAL_GRANTED_BY}, {"_id": 0}).sort("feature_key", 1)
     items = [serialize_doc(doc) async for doc in cursor]
+    # Gates change here, outside Webstore routes. Retry even on an unchanged
+    # projection so a previously interrupted synchronization can recover.
+    from .webstore_next_action_recovery import reconcile_after_gate_change
+
+    await reconcile_after_gate_change(tenant_id)
     return {"items": items, "total": len(items)}

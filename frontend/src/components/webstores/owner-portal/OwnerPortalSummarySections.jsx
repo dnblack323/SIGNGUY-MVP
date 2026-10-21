@@ -12,12 +12,12 @@ export function SetupProgressCard({ data, progress }) {
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
         <Badge variant="outline" data-testid="portal-webstore-setup-state">
-          {progress?.setup_state || data.webstore.setup_state || "not_started"}
+          {progress?.setup_label || progress?.setup_state || data.webstore.setup_state || "not_started"}
         </Badge>
         {(progress?.steps || []).map((step) => (
           <div key={step.key} className="flex justify-between gap-3">
             <span>{step.label}</span>
-            <span className="text-muted-foreground">{step.status}</span>
+            <span className="text-muted-foreground">{step.status_label || step.status}</span>
           </div>
         ))}
         {progress?.type_requirements && (

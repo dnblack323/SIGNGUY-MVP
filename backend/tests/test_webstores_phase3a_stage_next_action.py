@@ -153,7 +153,9 @@ async def test_assignee_owns_the_next_action_task(ctx):
     await sync_next_action_side_effects(ctx["tenant_id"], store["id"])
     tasks = await _open_tasks(ctx["tenant_id"], store["id"])
     assert len(tasks) == 1 and tasks[0]["assigned_user_id"] == ctx["teammate"]["id"]
-    assert tasks[0]["status"] == "in_progress" and tasks[0].get("completed_at") is None
+    assert tasks[0]["status"] == "not_started" and tasks[0].get("completed_at") is None
+    assert await db.tasks.count_documents({"tenant_id": ctx["tenant_id"], "webstore_id": store["id"],
+                                          "status": "completed"}) == 1  # prior occurrence remains complete
 
     # An assignee who left the shop never blocks the next task.
     await db.users.update_one({"id": ctx["teammate"]["id"]}, {"$set": {"is_active": False}})

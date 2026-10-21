@@ -19,3 +19,13 @@ async def create_webstore(payload: WebstoreIn, user: dict = Depends(get_current_
         return await svc.create_webstore(user, payload.model_dump(exclude_none=True))
     except WebstoreError as e:
         _raise(e)
+
+
+@router.post("/reconcile-next-actions")
+async def reconcile_next_actions(
+    user: dict = Depends(require_permission(Perm.WEBSTORE_MANAGE)),
+) -> dict:
+    """Repair derived tasks for the authenticated shop; callers cannot select a tenant."""
+    from ..services.webstore_next_action_recovery import reconcile_next_actions as reconcile
+
+    return await reconcile(user["tenant_id"])

@@ -80,7 +80,7 @@ async def _persist_provider_result(tenant_id: str, webstore_id: str, store: dict
     ).model_dump()
     await db.webstore_stripe_connect_records.update_one(
         {"tenant_id": tenant_id, "webstore_id": webstore_id, "record_type": "connected_account"},
-        {"$set": updates, "$setOnInsert": base},
+        {"$set": updates, "$setOnInsert": {key: value for key, value in base.items() if key not in updates}},
         upsert=True,
     )
     await db.webstores.update_one(
@@ -90,13 +90,18 @@ async def _persist_provider_result(tenant_id: str, webstore_id: str, store: dict
                 "payment_provider_mode": updates["provider_mode"],
                 "provider_account_reference": updates.get("connected_account_reference") or (existing or {}).get("connected_account_reference"),
                 "provider_onboarding_state": updates.get("onboarding_state") or (existing or {}).get("onboarding_state") or "not_started",
-                "provider_charges_enabled": bool(updates.get("charges_enabled") or (existing or {}).get("charges_enabled")),
-                "provider_payouts_enabled": bool(updates.get("payouts_enabled") or (existing or {}).get("payouts_enabled")),
-                "provider_requirements_currently_due": updates.get("requirements_currently_due") or (existing or {}).get("requirements_currently_due") or [],
+                "provider_charges_enabled": bool(updates.get("charges_enabled", (existing or {}).get("charges_enabled"))),
+                "provider_payouts_enabled": bool(updates.get("payouts_enabled", (existing or {}).get("payouts_enabled"))),
+                "provider_requirements_currently_due": updates.get("requirements_currently_due", (existing or {}).get("requirements_currently_due") or []),
                 "updated_at": now,
             }
         },
     )
+
+
+    from .webstore_next_action_recovery import reconcile_after_gate_change
+
+    await reconcile_after_gate_change(tenant_id, webstore_id=webstore_id)
 
 
 async def provider_authority_for_webstore(tenant_id: str, webstore_id: str) -> ProviderAuthority:
