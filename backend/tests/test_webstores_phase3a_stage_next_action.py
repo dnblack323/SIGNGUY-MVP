@@ -174,7 +174,7 @@ async def test_concurrent_syncs_keep_exactly_one_open_task(ctx):
     await db.tasks.delete_many({"tenant_id": ctx["tenant_id"], "webstore_id": store["id"]})
     await asyncio.gather(*(sync_next_action_side_effects(ctx["tenant_id"], store["id"]) for _ in range(6)))
     assert len(await _open_tasks(ctx["tenant_id"], store["id"])) == 1
-    lock = await db.webstore_next_action_locks.find_one({"_id": f"{ctx['tenant_id']}:{store['id']}"})
+    lock = await db.webstore_next_action_locks.find_one({"tenant_id": ctx["tenant_id"], "webstore_id": store["id"]})
     assert lock["until"] == ""  # released
 
 
@@ -322,6 +322,12 @@ async def test_terminal_owner_view_rename_and_task_source(ctx):
         task = (await _open_tasks(ctx["tenant_id"], store["id"]))[0]
         await client.patch(f"/api/webstores/{store['id']}", json={"name": "Renamed Store"})
     assert (await db.tasks.find_one({"id": task["id"]}, {"_id": 0}))["title"].startswith("Renamed Store:")
+    # Hand edits to a generated task's source/type are undone by the next sync.
+    await db.tasks.update_one({"id": task["id"]}, {"$set": {"task_type": "general", "source_type": None, "source_id": None, "webstore_id": None}})
+    async with await _staff(ctx["user"]) as client:
+        await client.patch(f"/api/webstores/{store['id']}", json={"description": "sync again"})
+    repaired = await db.tasks.find_one({"id": task["id"]}, {"_id": 0})
+    assert (repaired["task_type"], repaired["source_type"], repaired["webstore_id"]) == (TASK_TYPE, "webstore", store["id"])
 
     other = await _request(await _staff(ctx["user"]), f"{ctx['suffix']}b")
     moved = await update_task(tenant_id=ctx["tenant_id"], task_id=task["id"], actor_user_id="u", actor_email="e",

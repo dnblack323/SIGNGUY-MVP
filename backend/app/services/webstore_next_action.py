@@ -254,9 +254,13 @@ async def _sync_once(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any
             # The same step is pending again: reopen through the task service (clears completion fields).
             task = await transition_task(tenant_id=tenant_id, task_id=task["id"], target="in_progress", actor_user_id="system",
                                          actor_email="system", reason="Webstore next action is pending again", allow_reopen=True)
-        title = f"{store.get('name')}: {action['staff_text']}"
-        if task.get("title") != title:  # e.g. the Webstore was renamed while the step is pending
-            task = await update_task(tenant_id=tenant_id, task_id=task["id"], actor_user_id="system", actor_email="system", updates={"title": title})
+        # A reused task is put back to its generated form (renamed store, or source/type edited by hand).
+        canonical = {"title": f"{store.get('name')}: {action['staff_text']}", "task_type": TASK_TYPE, "source_type": "webstore", "source_id": webstore_id}
+        drift = {k: v for k, v in canonical.items() if task.get(k) != v}
+        if drift:
+            if "source_type" in drift or "source_id" in drift:
+                drift.update(source_type="webstore", source_id=webstore_id)
+            task = await update_task(tenant_id=tenant_id, task_id=task["id"], actor_user_id="system", actor_email="system", updates=drift)
         if task.get("assigned_user_id") != assignee:
             await assign_task(tenant_id=tenant_id, task_id=task["id"], actor_user_id="system", actor_email="system", assigned_user_id=assignee)
     # Close superseded tasks only after the replacement exists, so a failure never leaves none.
@@ -269,27 +273,27 @@ async def _sync_once(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any
     return action
 
 
-async def _sync_with_retry(tenant_id: str, webstore_id: str, lock_id: str) -> Optional[dict[str, Any]]:
+async def _sync_with_retry(tenant_id: str, webstore_id: str, lock: dict) -> Optional[dict[str, Any]]:
     for attempt in range(3):
         try:
             action = await _sync_once(tenant_id, webstore_id)
-            await db.webstore_next_action_locks.update_one({"_id": lock_id}, {"$unset": {"failed_at": "", "error": ""}})
+            await db.webstore_next_action_locks.update_one(lock, {"$unset": {"failed_at": "", "error": ""}})
             return action
         except Exception as exc:  # noqa: BLE001 - transient failures are retried; the last one is recorded
             if attempt == 2:
                 await db.webstore_next_action_locks.update_one(
-                    {"_id": lock_id}, {"$set": {"failed_at": utc_now().isoformat(), "error": type(exc).__name__}}
+                    lock, {"$set": {"failed_at": utc_now().isoformat(), "error": type(exc).__name__}}
                 )
                 raise
             await asyncio.sleep(0.2 * (attempt + 1))
     return None
 
 
-async def _acquire(lock_id: str) -> bool:
+async def _acquire(lock: dict) -> bool:
     now = utc_now()
     try:
         await db.webstore_next_action_locks.update_one(
-            {"_id": lock_id, "until": {"$lt": now.isoformat()}},
+            {**lock, "until": {"$lt": now.isoformat()}},
             {"$set": {"until": (now + SYNC_LEASE).isoformat()}, "$unset": {"pending": ""}},
             upsert=True,
         )
@@ -305,19 +309,20 @@ async def sync_next_action_side_effects(tenant_id: str, webstore_id: str) -> Opt
     the lease taken marks the Webstore pending, and the holder runs once more
     before releasing, so the last change always wins.
     """
-    lock_id = f"{tenant_id}:{webstore_id}"
+    # Tenant-scoped lock: the structured _id cannot collide across tenants, and every query filters by tenant.
+    lock = {"_id": {"tenant_id": tenant_id, "webstore_id": webstore_id}, "tenant_id": tenant_id, "webstore_id": webstore_id}
     action = None
     try:
         for _ in range(5):
-            if not await _acquire(lock_id):
-                await db.webstore_next_action_locks.update_one({"_id": lock_id}, {"$set": {"pending": True}})
-                if not await _acquire(lock_id):
+            if not await _acquire(lock):
+                await db.webstore_next_action_locks.update_one(lock, {"$set": {"pending": True}})
+                if not await _acquire(lock):
                     return action  # the holder will see "pending" and run again
             try:
-                action = await _sync_with_retry(tenant_id, webstore_id, lock_id)
+                action = await _sync_with_retry(tenant_id, webstore_id, lock)
             finally:
                 released = await db.webstore_next_action_locks.find_one_and_update(
-                    {"_id": lock_id}, {"$set": {"until": ""}},
+                    lock, {"$set": {"until": ""}},
                 )
             if not (released or {}).get("pending"):
                 return action
