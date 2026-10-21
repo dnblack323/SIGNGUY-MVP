@@ -34,6 +34,8 @@ const ARTICLES = [
   { id: "a2", slug: "first-order", title: "Creating your first order", category: "customers_sales", summary: "Run a job.", aliases: [], related: [] },
   { id: "a3", slug: "invoices-and-payments", title: "Invoices, deposits and payments", category: "customers_sales", summary: "Money.", aliases: ["invoices"], related: [] },
   { id: "a4", slug: "release-2026-10-21", title: "Webstores: one stage", category: "release_notes", summary: "Stage.", release: "2026.10.21", release_date: "2026-10-21", aliases: [], related: ["invoices-and-payments"], body: "- Item one" },
+  { id: "a6", slug: "legacy-guide", title: "Legacy guide", category: "module_guides", summary: "Old category.", aliases: [], related: [] },
+  { id: "a7", slug: "release-broken", title: "Broken release", category: "release_notes", summary: "No metadata.", aliases: [], related: [], body: "- x" },
   { id: "a5", slug: "release-2026-10-15", title: "Home widgets", category: "release_notes", summary: "Widgets.", release: "2026.10.15", release_date: "2026-10-15", aliases: [], related: [], body: "- Item two" },
 ];
 const CATEGORIES = [
@@ -156,4 +158,12 @@ test("markdown renders safely: no raw HTML and no unsafe link schemes", () => {
   expect(container.querySelector("script")).toBeNull();
   expect(container.querySelector('a[href^="javascript"]')).toBeNull();
   expect(container.querySelector('a[href="https://example.com"]')).toHaveAttribute("rel", expect.stringContaining("noopener"));
+});
+
+test("articles in unlisted categories stay reachable and malformed releases are hidden", async () => {
+  docs("/help/docs");
+  expect(await screen.findByTestId("docs-group-other")).toBeInTheDocument();
+  renderWithProviders(<WhatsNewPage />);
+  expect(await screen.findByTestId("release-2026.10.21")).toBeInTheDocument();
+  expect(screen.queryByText("Broken release")).not.toBeInTheDocument();
 });

@@ -26,7 +26,7 @@ export default function WhatsNewPage() {
     );
   }
 
-  const items = [...(releases.data?.items || [])].sort((a, b) => (b.release_date || "").localeCompare(a.release_date || ""));
+  const items = (releases.data?.items || []).filter((r) => r.release && r.release_date).sort((a, b) => (b.release_date || "").localeCompare(a.release_date || ""));
 
   return (
     <div className="space-y-6" data-testid="whats-new-page">

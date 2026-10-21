@@ -69,8 +69,15 @@ def _is_seed_managed(doc: dict) -> bool:
     return not doc.get("updated_by_user_id")
 
 
+_LIST_SEED_FIELDS = ("links", "related", "aliases")
+_OPTIONAL_SEED_FIELDS = ("release", "release_date")
+
+
 def _seed_extra(item: dict[str, Any]) -> dict[str, Any]:
-    extra = {key: item[key] for key in _SEED_FIELDS if item.get(key) not in (None, [])}
+    """Every seed field is written (lists as ``[]``), so removing one from a packaged article clears it."""
+    extra: dict[str, Any] = {"summary": item.get("summary") or "", "order": item.get("order") or 100}
+    extra.update({key: item.get(key) or [] for key in _LIST_SEED_FIELDS})
+    extra.update({key: item[key] for key in _OPTIONAL_SEED_FIELDS if item.get(key)})
     extra.update(content_source="seed", seed_hash=item["seed_hash"])
     return extra
 
@@ -96,13 +103,21 @@ async def sync_seed_content() -> dict:
             except DuplicateKeyError:
                 continue
             out["inserted"]["help_articles"] += 1
-        elif _is_seed_managed(existing) and existing.get("seed_hash") != item["seed_hash"]:
+        elif _is_seed_managed(existing) and (existing.get("seed_hash") != item["seed_hash"] or existing.get("retired_by_seed")):
             patch = {**core, **_seed_extra(item), "updated_at": now}
-            await db.help_articles.update_one({"slug": item["slug"]}, {"$set": prepare_for_mongo(patch)})
+            update: dict[str, Any] = {"$set": prepare_for_mongo(patch)}
+            unset = {key: "" for key in _OPTIONAL_SEED_FIELDS if not item.get(key)}
+            if existing.get("retired_by_seed"):
+                # Back in the package after being retired by an earlier sync: publish again.
+                patch.update(status="published", archived_at=None, retired_by_seed=False)
+                update = {"$set": prepare_for_mongo(patch)}
+            if unset:
+                update["$unset"] = unset
+            await db.help_articles.update_one({"slug": item["slug"]}, update)
             out["updated"] += 1
     async for doc in db.help_articles.find({"slug": {"$nin": sorted(seen)}, "status": {"$ne": "archived"}}, {"_id": 0}):
         if _is_seed_managed(doc):
-            await db.help_articles.update_one({"slug": doc["slug"]}, {"$set": {"status": "archived", "archived_at": now, "updated_at": now}})
+            await db.help_articles.update_one({"slug": doc["slug"]}, {"$set": {"status": "archived", "archived_at": now, "updated_at": now, "retired_by_seed": True}})
             out["archived"] += 1
     for item in CONTEXTUAL_HELP:
         doc = ContextualHelpDefinition(**item).model_dump()
@@ -112,10 +127,16 @@ async def sync_seed_content() -> dict:
             doc.pop(k, None)
         res = await db.contextual_help_definitions.update_one(
             key,
-            {"$set": prepare_for_mongo({**patch, "status": "published", "updated_at": now}), "$setOnInsert": prepare_for_mongo(doc)},
+            {"$set": prepare_for_mongo({**patch, "status": "published", "content_source": "seed", "updated_at": now}), "$setOnInsert": prepare_for_mongo(doc)},
             upsert=True,
         )
         out["inserted"]["contextual_help"] += int(bool(res.upserted_id))
+    current = [{"surface_key": c["surface_key"], "help_key": c["help_key"]} for c in CONTEXTUAL_HELP]
+    retired = await db.contextual_help_definitions.update_many(
+        {"content_source": "seed", "status": "published", "$nor": current},
+        {"$set": {"status": "archived", "updated_at": now}},
+    )
+    out["archived"] += retired.modified_count
     return out
 
 
@@ -229,12 +250,17 @@ async def upsert_article(user: dict, payload: dict[str, Any]) -> dict:
     status = payload.get("status") or (existing or {}).get("status") or "draft"
     if status not in {"draft", "published", "archived"}:
         raise HelpCenterError("invalid_status", "Invalid help article status", 400)
+    category = payload.get("category") or (existing or {}).get("category") or "general"
+    release = payload.get("release") or (existing or {}).get("release")
+    release_date = payload.get("release_date") or (existing or {}).get("release_date")
+    if category == "release_notes" and status == "published" and not (release and release_date):
+        raise HelpCenterError("release_metadata_required", "Published release notes need a release identifier and release date", 400)
     aliases = [a.strip().lower() for a in (payload.get("aliases") or (existing or {}).get("aliases") or []) if a and a.strip()]
     await _check_slug_and_aliases(slug, aliases)
     patch = {
         "slug": slug,
         "title": (payload.get("title") or (existing or {}).get("title") or slug).strip(),
-        "category": payload.get("category") or (existing or {}).get("category") or "general",
+        "category": category,
         "module": payload.get("module") or (existing or {}).get("module"),
         "body": payload.get("body") or (existing or {}).get("body") or "",
         "status": status,
@@ -251,6 +277,8 @@ async def upsert_article(user: dict, payload: dict[str, Any]) -> dict:
     }
     if payload.get("order") is not None:
         patch["order"] = payload["order"]
+    if release:
+        patch["release"], patch["release_date"] = release, release_date
     if status == "published" and not (existing or {}).get("published_at"):
         patch["published_at"] = _now_iso()
     if status == "archived":
@@ -272,7 +300,7 @@ async def upsert_article(user: dict, payload: dict[str, Any]) -> dict:
             created_by_user_id=user["id"],
             updated_by_user_id=user["id"],
         ).model_dump()
-        doc_to_insert.update({k: patch[k] for k in ("summary", "related", "aliases", "links", "content_source") if k in patch})
+        doc_to_insert.update({k: patch[k] for k in ("summary", "related", "aliases", "links", "content_source", "release", "release_date") if k in patch})
         if "order" in patch:
             doc_to_insert["order"] = patch["order"]
         await db.help_articles.insert_one(prepare_for_mongo(doc_to_insert))

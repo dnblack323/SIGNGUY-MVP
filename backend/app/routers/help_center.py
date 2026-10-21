@@ -28,6 +28,8 @@ class HelpArticleIn(BaseModel):
     audience: list[str] = Field(default_factory=lambda: ["owner", "admin", "staff"])
     search_keywords: list[str] = Field(default_factory=list)
     summary: Optional[str] = None
+    release: Optional[str] = None
+    release_date: Optional[str] = None
     order: Optional[int] = None
     related: list[str] = Field(default_factory=list)
     aliases: list[str] = Field(default_factory=list)

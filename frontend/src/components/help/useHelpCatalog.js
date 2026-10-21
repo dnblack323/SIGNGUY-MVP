@@ -35,9 +35,13 @@ export default function useHelpCatalog(enabled = true) {
       (article.aliases || []).forEach((alias) => byName.set(alias, article));
     });
     const categories = (categoriesQuery.data?.items || []).filter((c) => c.key !== "release_notes");
+    const known = new Set((categoriesQuery.data?.items || []).map((c) => c.key));
     const groups = categories
       .map((category) => ({ ...category, articles: articles.filter((a) => a.category === category.key) }))
       .filter((group) => group.articles.length);
+    // Platform-managed articles may use a category outside the fixed list; keep them reachable.
+    const other = articles.filter((a) => !known.has(a.category));
+    if (other.length) groups.push({ key: "other", label: "Other", description: "Additional articles.", count: other.length, articles: other });
     return { articles, byName, groups, ordered: groups.flatMap((g) => g.articles), categories: categoriesQuery.data?.items || [] };
   }, [articlesQuery.data, categoriesQuery.data]);
 

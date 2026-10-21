@@ -210,3 +210,50 @@ async def test_help_center_has_no_second_support_queue(ctx):
         res = await owner.post("/api/help/support/escalations", json={"subject": "s", "message": "m"})
         assert res.status_code in {404, 405}
     assert await db.support_escalations.count_documents({"tenant_id": ctx["tenant_id"]}) == 0
+
+
+@pytest.mark.asyncio
+async def test_sync_restores_retired_articles_clears_removed_metadata_and_retires_contextual_help(ctx, monkeypatch):
+    base = tuple(load_articles())
+    slug = f"zz-restore-{ctx['suffix']}"
+
+    def synthetic(**extra) -> dict:
+        item = {"slug": slug, "title": slug, "category": "support", "module": "support", "summary": "s", "order": 999, "links": [],
+                "body": "one", "search_keywords": [], "aliases": [], "related": []}
+        item.update(extra)
+        item["seed_hash"] = f"hash-{extra.get('aliases')}-{extra.get('release')}"
+        return item
+
+    monkeypatch.setattr(help_center, "load_articles", lambda: base + (synthetic(aliases=[f"old-{ctx['suffix']}"], release="2026.01.01", release_date="2026-01-01"),))
+    await help_center.sync_seed_content()
+    assert (await db.help_articles.find_one({"slug": slug}))["aliases"] == [f"old-{ctx['suffix']}"]
+
+    monkeypatch.setattr(help_center, "load_articles", lambda: base + (synthetic(),))
+    await help_center.sync_seed_content()
+    row = await db.help_articles.find_one({"slug": slug})
+    assert row["aliases"] == [] and "release" not in row and "release_date" not in row
+
+    monkeypatch.setattr(help_center, "load_articles", lambda: base)
+    await help_center.sync_seed_content()
+    assert (await db.help_articles.find_one({"slug": slug}))["status"] == "archived"
+
+    monkeypatch.setattr(help_center, "load_articles", lambda: base + (synthetic(),))
+    await help_center.sync_seed_content()
+    restored = await db.help_articles.find_one({"slug": slug})
+    assert restored["status"] == "published" and not restored.get("archived_at")
+
+    await db.contextual_help_definitions.insert_one({
+        "id": f"ctx-{ctx['suffix']}", "surface_key": f"gone.{ctx['suffix']}", "help_key": "x", "module": "m", "title": "t", "body": "b",
+        "status": "published", "content_source": "seed",
+    })
+    await help_center.sync_seed_content()
+    assert (await db.contextual_help_definitions.find_one({"id": f"ctx-{ctx['suffix']}"}))["status"] == "archived"
+
+
+@pytest.mark.asyncio
+async def test_published_release_notes_require_release_metadata(ctx):
+    async with await _as(ctx["platform"]) as platform:
+        body = {"slug": f"rel-{ctx['suffix']}", "title": "R", "category": "release_notes", "body": "x", "status": "published"}
+        assert (await platform.post("/api/help/platform/articles", json=body)).status_code == 400
+        ok = await platform.post("/api/help/platform/articles", json={**body, "release": "2026.10.22", "release_date": "2026-10-22"})
+        assert ok.status_code == 201 and ok.json()["release"] == "2026.10.22"
