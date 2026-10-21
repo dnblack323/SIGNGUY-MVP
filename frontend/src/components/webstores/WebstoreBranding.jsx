@@ -39,8 +39,14 @@ export default function WebstoreBrandingEditor({ webstoreId, portal = false, pro
     enabled: !!webstoreId,
   });
   const setupFiles = useQuery({
-    queryKey: ["webstore-branding-setup-files", webstoreId],
-    queryFn: () => listWebstoreSetupFiles(webstoreId),
+    queryKey: [portal ? "portal-webstore-branding-setup-files" : "webstore-branding-setup-files", webstoreId],
+    queryFn: async () => {
+      if (portal) {
+        const r = await portalApi.get(`/portal/webstores/${webstoreId}/setup-files`);
+        return r.data;
+      }
+      return listWebstoreSetupFiles(webstoreId);
+    },
     enabled: !!webstoreId,
   });
   const [draftOverride, setDraftOverride] = useState(null);

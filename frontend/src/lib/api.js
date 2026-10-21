@@ -20,9 +20,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (r) => r,
   (err) => {
+    const path = window.location.pathname;
+    const inPortal = path === "/portal" || path.startsWith("/portal/");
     if (err?.response?.status === 401) {
-      const path = window.location.pathname;
-      if (!path.startsWith("/login") && !path.startsWith("/register") && !path.startsWith("/forgot-password") && !path.startsWith("/reset-password")) {
+      // Portal authentication has its own client, token and sign-in page. A
+      // failed staff request must not navigate away from an owner's session.
+      if (!inPortal && !path.startsWith("/login") && !path.startsWith("/register") && !path.startsWith("/forgot-password") && !path.startsWith("/reset-password")) {
         localStorage.removeItem("signguy.token");
         window.location.href = "/login";
       }
@@ -35,7 +38,7 @@ api.interceptors.response.use(
     if (accessCode === "subscription_inactive" || accessCode === "feature_not_entitled") {
       window.dispatchEvent(new CustomEvent(ACCESS_CHANGED_EVENT, { detail: { code: accessCode } }));
     }
-    if (err?.response?.status === 403 && err?.response?.data?.detail?.code === "tenant_suspended") {
+    if (!inPortal && err?.response?.status === 403 && err?.response?.data?.detail?.code === "tenant_suspended") {
       const detail = err.response.data.detail;
       sessionStorage.setItem("signguy.suspended", JSON.stringify(detail));
       localStorage.removeItem("signguy.token");
