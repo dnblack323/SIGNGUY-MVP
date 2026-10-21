@@ -39,9 +39,8 @@ RETIRED_STATUSES = frozenset({"ai_setup_ready", "ai_product_suggestions_ready", 
 
 
 def stage_of(store: dict) -> str:
-    stage = store.get("stage")
-    if stage in STAGE_LABELS:
-        return stage
+    # Always the mapping of the compatibility status: the stored ``stage`` is a
+    # queryable copy written alongside it, so the two can never disagree.
     return INTERNAL_STATUS_TO_PHASE6.get(store.get("status") or "draft", "draft")
 
 
