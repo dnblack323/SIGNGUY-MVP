@@ -208,16 +208,21 @@ async def test_old_records_derive_stage_and_retired_statuses_are_refused(ctx):
     async with await _staff(ctx["user"]) as client:
         view = (await client.get(f"/api/webstores/{store_id}/next-action")).json()
     assert view["stage"]["key"] == "owner_review"
+    assert view["next_action"]["key"] != "send_information_packet"  # Phase 2 journey steps end before owner review
     raw = await db.webstores.find_one({"id": store_id}, {"_id": 0})
     assert "stage" not in raw and "updated_at" not in raw  # derived on read, not migrated
     async with await _staff(ctx["user"]) as client:
         assert (await client.get("/api/webstores")).status_code == 200
         assert (await client.get(f"/api/webstores/{store_id}")).status_code == 200
     assert await db.webstores.find_one({"id": store_id}, {"_id": 0}) == raw  # no slug allocated, nothing written
-    # A status written outside the stage service (old data) still yields the matching stage.
-    await db.webstores.update_one({"id": store_id}, {"$set": {"stage": "draft", "status": "live"}})
+    # A status written outside the stage service (old data) still yields the matching stage,
+    # and the list ignores a snapshot taken in another stage.
+    await db.webstores.update_one({"id": store_id}, {"$set": {"stage": "draft", "status": "live", "next_action_snapshot": {
+        "key": "send_information_packet", "actor": "shop", "staff_text": "Send the information packet", "tab": "setup", "stage": "draft"}}})
     async with await _staff(ctx["user"]) as client:
         assert (await client.get(f"/api/webstores/{store_id}/next-action")).json()["stage"]["key"] == "live"
+        listed = [i for i in (await client.get("/api/webstores")).json()["items"] if i["id"] == store_id]
+    assert listed[0]["next_action"]["key"] == "monitor_orders"
     with pytest.raises(WebstoreError):
         await apply_store_status(tenant_id=ctx["tenant_id"], webstore_id=store_id, status="mockups_generated", source="test")
     async with await _staff(ctx["outsider"]) as other:

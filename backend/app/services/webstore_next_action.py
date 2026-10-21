@@ -43,6 +43,8 @@ GATE_ACTIONS: dict[str, tuple[str, str, str]] = {
     "payment_ready": ("shop", "review-launch", "Finish payment setup before publishing"),
 }
 GATE_ORDER = list(GATE_ACTIONS)
+# The Phase 2 journey (packet, questionnaire, review) only applies before the owner reviews the store.
+JOURNEY_STAGES = frozenset({"draft", "intake_pending", "setup_in_progress"})
 OWNER_IDLE_TEXT = "Nothing is needed from you right now — the shop is working on your store."
 
 
@@ -81,7 +83,7 @@ async def compute_next_action(store: dict, readiness: Optional[dict] = None) -> 
         return _action("resume_store", "shop", "Store is paused — resume or close it", "Your store is paused.", "review-launch")
     if stage == "live":
         return _action("monitor_orders", "shop", "Store is live — watch orders and production", "Your store is live.", "overview")
-    journey = await _journey_action(store)
+    journey = await _journey_action(store) if stage in JOURNEY_STAGES else None
     if journey:
         return journey
     if readiness is None:
@@ -154,9 +156,9 @@ def task_key(store: dict, action: dict) -> str:
     return f"webstore:{store['id']}:next:{action['key']}:{action['occurrence']}"
 
 
-def list_snapshot(action: dict) -> dict[str, Any]:
+def list_snapshot(action: dict, stage: str) -> dict[str, Any]:
     """The compact next action stored on the Webstore for the list (written by sync only)."""
-    return {k: action[k] for k in ("key", "actor", "staff_text", "tab")}
+    return {k: action[k] for k in ("key", "actor", "staff_text", "tab")} | {"stage": stage}
 
 
 async def _active_assignee(tenant_id: str, store: dict) -> Optional[str]:
@@ -183,7 +185,7 @@ async def _sync_once(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any
         return None
     store = serialize_doc(store)
     action = await compute_next_action(store)
-    await db.webstores.update_one({"tenant_id": tenant_id, "id": webstore_id}, {"$set": {"next_action_snapshot": list_snapshot(action)}})
+    await db.webstores.update_one({"tenant_id": tenant_id, "id": webstore_id}, {"$set": {"next_action_snapshot": list_snapshot(action, stage_of(store))}})
     wanted = task_key(store, action) if action["actor"] == "shop" and action["key"] != "none" else None
     now = utc_now().isoformat()
     if wanted:

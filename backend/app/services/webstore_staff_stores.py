@@ -170,8 +170,9 @@ async def list_webstores(user: dict, *, status: Optional[str] = None) -> dict:
         }
         safe_item["stage"] = stage_of(safe_item)
         snapshot = safe_item.pop("next_action_snapshot", None)
-        # The sync keeps a snapshot on every change; only records never synced are computed here.
-        action = {**snapshot, "blockers": []} if snapshot else await compute_next_action(safe_item)
+        # The sync keeps a snapshot on every change; a missing or other-stage snapshot is computed here.
+        fresh = snapshot and snapshot.get("stage") == safe_item["stage"]
+        action = {**snapshot, "blockers": []} if fresh else await compute_next_action(safe_item)
         journey = staff_view(safe_item, action)
         safe_item.update(journey)
         # Kept for current list UI; the same text as next_action (one producer).
