@@ -836,6 +836,11 @@ async def test_stage4a_portal_owner_manager_read_only_and_redacted(stage4a_ctx):
         )
         assert product_resp.status_code == 201, product_resp.text
         product = product_resp.json()
+        submitted = await client.post(
+            f"/api/webstores/{store['id']}/products/{product['id']}/submit-approval",
+            json={"expected_revision": product["revision"]},
+        )
+        assert submitted.status_code == 200, submitted.text
         owner_identity = await create_portal_identity(
             tenant_id=stage4a_ctx["tenant_id"],
             portal_type="webstore_owner",

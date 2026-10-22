@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { centsToDollarsString } from "@/lib/format";
+import { DecisionRoomMedia } from "@/components/decisionRoom/DecisionRoomMedia";
 
 export default function OwnerPortalProducts({
   products,
@@ -23,7 +24,14 @@ export default function OwnerPortalProducts({
             className="p-3 grid gap-3 md:grid-cols-[96px_1fr_auto] text-sm"
           >
             <div className="aspect-square overflow-hidden rounded border bg-slate-50">
-              {p.images?.[0]?.url ? (
+              {p.images?.[0]?.owner_review_media ? (
+                <DecisionRoomMedia
+                  src={p.images[0].url}
+                  authToken={localStorage.getItem("sg_portal_token")}
+                  alt={p.images[0].alt_text || p.name}
+                  testId={`owner-product-image-${p.id}`}
+                />
+              ) : p.images?.[0]?.url ? (
                 <img
                   src={p.images[0].url}
                   alt={p.images[0].alt_text || p.name}
@@ -52,6 +60,9 @@ export default function OwnerPortalProducts({
               <div className="text-xs text-muted-foreground">
                 {p.description || p.product_type}
               </div>
+              {p.review_notice && (
+                <p className="mt-2 text-xs text-amber-800" role="status">{p.review_notice}</p>
+              )}
               {(p.mockups || []).length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {p.mockups.map((mockup) => (
