@@ -175,7 +175,9 @@ async def list_webstores(user: dict, *, status: Optional[str] = None) -> dict:
         # another stage, or taken before an entitlement/payment change made outside Webstore routes.
         fresh = (
             snapshot
+            and snapshot.get("version") == 2
             and snapshot.get("stage") == safe_item["stage"]
+            and snapshot.get("source_updated_at") == str(safe_item.get("updated_at") or "")
             and snapshot.get("gates") == await external_gates(safe_item, payment=payment, entitlements=entitlements)
         )
         if fresh:

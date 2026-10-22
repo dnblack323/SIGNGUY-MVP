@@ -16,7 +16,7 @@ return (
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   <Badge variant="outline" data-testid="webstore-setup-state">
-                    {setupProgress.data?.setup_state ||
+                    {setupProgress.data?.setup_label || setupProgress.data?.setup_state ||
                       store.setup_state ||
                       "not_started"}
                   </Badge>
@@ -31,7 +31,7 @@ return (
                           step.status === "complete" ? "secondary" : "outline"
                         }
                       >
-                        {step.status}
+                        {step.status_label || step.status}
                       </Badge>
                     </div>
                   ))}

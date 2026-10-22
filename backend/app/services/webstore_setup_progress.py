@@ -8,12 +8,35 @@ from .webstore_setup_portal_scope import _owner_store
 async def setup_progress_for_staff(user: dict, webstore_id: str) -> dict:
     _require_staff_perm(user, Perm.WEBSTORE_READ)
     store = await _get_store(user["tenant_id"], webstore_id)
-    return await _setup_progress(store, staff=True)
+    response = await _setup_progress(store, staff=True)
+    from .webstore_next_action import compute_next_action
+    from .webstore_stage import stage_view
+
+    action = await compute_next_action(store)
+    stage = stage_view(store)
+    # Detailed intake evidence remains available during setup. Later stages
+    # must not be described as "not started" or "deferred" by old placeholders.
+    if stage["key"] not in {"draft", "intake_pending", "setup_in_progress"}:
+        response["setup_label"] = stage["staff_label"]
+        response["steps"] = [{"key": "next_action", "label": "Current update",
+                              "status": "information", "status_label": action["staff_text"]}]
+    return response
 
 
 async def setup_progress_for_portal(identity: dict, webstore_id: str) -> dict:
     store = await _owner_store(identity, webstore_id)
-    return await _setup_progress(store, staff=False)
+    response = await _setup_progress(store, staff=False)
+    from .webstore_next_action import compute_next_action, owner_view
+
+    journey = owner_view(store, await compute_next_action(store))
+    next_step = journey["next_action"]
+    # The owner sees the same stage/next instruction as their timeline, rather
+    # than staff setup placeholders that can still say "deferred" on a live store.
+    return {**response, "setup_label": journey["stage"]["label"], "steps": [{
+        "key": "next_action", "label": "Your next step" if next_step["for_you"] else "Current update",
+        "status": "action_required" if next_step["for_you"] else "information",
+        "status_label": next_step["text"],
+    }]}
 
 
 async def _setup_progress(store: dict, *, staff: bool) -> dict:

@@ -7,6 +7,7 @@ import PublicWebstorePage from "@/pages/PublicWebstorePage";
 import WebstoreDetailPage from "@/pages/WebstoreDetailPage";
 import WebstoresPage from "@/pages/WebstoresPage";
 import axios from "axios";
+import api from "@/lib/api";
 import {
   createWebstore,
   createWebstoreAssignment,
@@ -136,7 +137,7 @@ jest.mock("@/auth/AuthContext", () => ({
 
 jest.mock("@/lib/api", () => ({
   __esModule: true,
-  default: { get: jest.fn(() => Promise.resolve({ data: [] })) },
+  default: { get: jest.fn(() => Promise.resolve({ data: [] })), post: jest.fn() },
   extractError: (error) => error?.response?.data?.detail || error?.message || "Request failed",
 }));
 
@@ -172,6 +173,7 @@ const PACKET = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  api.post.mockResolvedValue({ data: { recovered: 0, failed: 0, pending: 0 } });
   global.crypto = { randomUUID: jest.fn(() => "intent-key-1") };
   window.HTMLElement.prototype.hasPointerCapture = window.HTMLElement.prototype.hasPointerCapture || (() => false);
   window.HTMLElement.prototype.setPointerCapture = window.HTMLElement.prototype.setPointerCapture || (() => {});
@@ -399,6 +401,31 @@ test("Webstore request warns about an existing customer before creating a duplic
   await user.click(screen.getByRole("button", { name: "Use this customer" }));
   await user.click(screen.getByTestId("webstore-request-submit"));
   await waitFor(() => expect(createWebstoreRequest).toHaveBeenCalledWith(expect.objectContaining({ customer_id: "cust-1", new_customer: undefined })));
+});
+
+test("staff list recovers interrupted tasks, reports failures and retries with Refresh", async () => {
+  api.post.mockResolvedValueOnce({ data: { failed: 1, pending: 0 } })
+    .mockResolvedValue({ data: { failed: 0, pending: 0, recovered: 1 } });
+  renderWithProviders(<WebstoresPage />);
+  expect(await screen.findByTestId("webstore-recovery-warning")).toHaveTextContent("Select Refresh to retry");
+  expect(api.post).toHaveBeenCalledWith("/webstores/reconcile-next-actions");
+  await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  await waitFor(() => expect(screen.queryByTestId("webstore-recovery-warning")).not.toBeInTheDocument());
+  expect(api.post).toHaveBeenCalledTimes(2);
+});
+
+test("Needs me excludes informational monitoring and owner actions", async () => {
+  listWebstores.mockResolvedValue({ items: [
+    { id: "live", name: "Live Store", stage: stageOf("live", "Live"), next_action: { key: "monitor_orders", actor: "shop", staff_text: "Store is live", requires_staff_task: false } },
+    { id: "owner", name: "Owner Review Store", stage: stageOf("owner_review", "Owner approval"), next_action: { key: "terms_current", actor: "owner", staff_text: "Waiting for owner", requires_staff_task: false } },
+    { id: "action", name: "Action Store", stage: stageOf("draft", "Request received"), next_action: { key: "send_information_packet", actor: "shop", staff_text: "Send packet", requires_staff_task: true } },
+  ] });
+  renderWithProviders(<WebstoresPage />);
+  await screen.findByText("Live Store");
+  await userEvent.click(screen.getByTestId("webstores-needs-me"));
+  expect(screen.getByText("Action Store")).toBeInTheDocument();
+  expect(screen.queryByText("Live Store")).not.toBeInTheDocument();
+  expect(screen.queryByText("Owner Review Store")).not.toBeInTheDocument();
 });
 
 test("information packet preview sends once from the Webstore page", async () => {

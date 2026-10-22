@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Clock3, Plus, RotateCcw, Store, Truck, Users } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import api from "@/lib/api";
+import api, { extractError } from "@/lib/api";
 import { listWebstores } from "@/lib/webstores";
 import { useAuth } from "@/auth/AuthContext";
 import WebstoreFulfillmentSettingsDialog from "@/components/webstores/WebstoreFulfillmentSettingsDialog";
@@ -48,6 +48,14 @@ export default function WebstoresPage() {
   const canRead = hasPerm("webstore:read");
   const canManage = hasPerm("webstore:manage");
   const stores = useQuery({ queryKey: ["webstores"], queryFn: () => listWebstores(), enabled: canRead });
+  const { mutate: recoverTasks, isPending: recovering, data: recovery, error: recoveryError } = useMutation({
+    mutationFn: async () => (await api.post("/webstores/reconcile-next-actions")).data,
+    onSettled: async () => {
+      await qc.invalidateQueries({ queryKey: ["webstores"] });
+      await qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+  useEffect(() => { if (canManage) recoverTasks(); }, [canManage, recoverTasks]);
   const users = useQuery({ queryKey: ["users"], queryFn: async () => (await api.get("/users")).data, enabled: canRead });
   const userItems = Array.isArray(users.data) ? users.data : users.data?.items || [];
   const userName = (userId) => {
@@ -61,7 +69,7 @@ export default function WebstoresPage() {
   const checkoutBlockedCount = storeItems.filter((store) => store.next_action?.key === "payment_ready").length;
   const stageOptions = [...new Map(storeItems.filter((store) => store.stage).map((store) => [store.stage.key, store.stage.staff_label])).entries()];
   const needsMeStore = (store) =>
-    store.next_action?.actor === "shop" && (!store.assignee_user_id || store.assignee_user_id === user?.id);
+    store.next_action?.actor === "shop" && store.next_action?.requires_staff_task !== false && (!store.assignee_user_id || store.assignee_user_id === user?.id);
   const visibleStores = storeItems.filter(
     (store) => (stageFilter === ALL || store.stage?.key === stageFilter) && (!needsMe || needsMeStore(store)),
   );
@@ -75,7 +83,8 @@ export default function WebstoresPage() {
 
   return (
     <div className="space-y-4" data-testid="webstores-page">
-      <PageHeader title="Webstores" subtitle="Create and manage customer Webstores from intake through launch." actions={<div className="flex flex-wrap gap-2">{canManage && <Button onClick={() => setCreateOpen(true)} data-testid="new-webstore-button"><Plus className="size-4 mr-2" />New Webstore request</Button>}{canManage && <Button variant="outline" size="sm" onClick={() => setFulfillmentOpen(true)} data-testid="webstore-fulfillment-settings-button"><Truck className="size-4 mr-2" />Fulfillment settings</Button>}<Button variant="outline" size="sm" onClick={() => stores.refetch()}><RotateCcw className="size-4 mr-2" />Refresh</Button></div>} />
+      <PageHeader title="Webstores" subtitle="Create and manage customer Webstores from intake through launch." actions={<div className="flex flex-wrap gap-2">{canManage && <Button onClick={() => setCreateOpen(true)} data-testid="new-webstore-button"><Plus className="size-4 mr-2" />New Webstore request</Button>}{canManage && <Button variant="outline" size="sm" onClick={() => setFulfillmentOpen(true)} data-testid="webstore-fulfillment-settings-button"><Truck className="size-4 mr-2" />Fulfillment settings</Button>}<Button variant="outline" size="sm" disabled={recovering} onClick={() => canManage ? recoverTasks() : stores.refetch()}><RotateCcw className="size-4 mr-2" />Refresh</Button></div>} />
+      {(recoveryError || recovery?.failed || recovery?.pending) ? <Alert data-testid="webstore-recovery-warning"><AlertCircle className="size-4" /><AlertTitle>Some Webstore tasks still need to refresh</AlertTitle><AlertDescription>{recoveryError ? extractError(recoveryError) : "A task update is pending or could not finish. Select Refresh to retry."}</AlertDescription></Alert> : null}
       <WebstoreRequestDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={handleCreated} />
       <WebstoreFulfillmentSettingsDialog open={fulfillmentOpen} onOpenChange={setFulfillmentOpen} />
 
