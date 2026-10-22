@@ -195,6 +195,20 @@ def requires_staff_task(action: dict) -> bool:
     return action["actor"] == "shop" and action["key"] not in INFORMATIONAL_ACTIONS
 
 
+def generated_task_query(tenant_id: str, webstore_id: str) -> dict:
+    # The generated key survives a manual source/type edit. Keep the legacy
+    # relation match as well so obsolete rows still close through task_service.
+    return {"tenant_id": tenant_id, "$or": [
+        {"idempotency_key": {"$regex": "^webstore:" + re.escape(webstore_id) + ":next:"}},
+        {"webstore_id": webstore_id, "task_type": TASK_TYPE},
+    ]}
+
+
+def canonical_task_metadata(store: dict, action: dict) -> dict:
+    return {"title": f"{store.get('name')}: {action['staff_text']}", "task_type": TASK_TYPE,
+            "source_type": "webstore", "source_id": store["id"], "webstore_id": store["id"], "visibility": "staff"}
+
+
 def list_snapshot(action: dict, stage: str, setup_state: str, gates: str) -> dict[str, Any]:
     """The compact next action stored on the Webstore for the list (written by sync only)."""
     return {k: action[k] for k in ("key", "actor", "staff_text", "tab", "blockers", "occurrence")} | {
@@ -240,7 +254,7 @@ async def _auto_complete(tenant_id: str, task: dict, now: str) -> None:
                           reason="Webstore next action moved on", system_complete=True)
 
 
-async def _sync_once(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any]]:
+async def _sync_once(tenant_id: str, webstore_id: str, lock: dict) -> Optional[dict[str, Any]]:
     store = await db.webstores.find_one({"tenant_id": tenant_id, "id": webstore_id}, {"_id": 0})
     if not store:
         return None
@@ -263,6 +277,7 @@ async def _sync_once(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any
             wanted = previous["idempotency_key"]
             if previous.get("status") in {"completed", "canceled"}:
                 wanted += ":after:" + previous["id"]
+        await _renew_lease(lock)
         task = await create_task(tenant_id=tenant_id, actor_user_id="system", actor_email="system", payload={
             "title": f"{store.get('name')}: {action['staff_text']}",
             "description": "Created from the Webstore's next action. It closes automatically when the step is done.",
@@ -275,31 +290,37 @@ async def _sync_once(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any
         })
         if task.get("archived_at"):
             # Archived by hand while the step is still pending: bring it back (one visible task).
+            await _renew_lease(lock)
             task = await restore_task(tenant_id=tenant_id, task_id=task["id"], actor_user_id="system", actor_email="system")
         # A reused task is put back to its generated form (renamed store, or source/type edited by hand).
-        canonical = {"title": f"{store.get('name')}: {action['staff_text']}", "task_type": TASK_TYPE, "source_type": "webstore", "source_id": webstore_id}
+        canonical = canonical_task_metadata(store, action)
         drift = {k: v for k, v in canonical.items() if task.get(k) != v}
         if drift:
-            if "source_type" in drift or "source_id" in drift:
+            if {"source_type", "source_id", "webstore_id"} & drift.keys():
                 drift.update(source_type="webstore", source_id=webstore_id)
+            await _renew_lease(lock)
             task = await update_task(tenant_id=tenant_id, task_id=task["id"], actor_user_id="system", actor_email="system", updates=drift)
-        if task.get("assigned_user_id") != assignee:
+        if task.get("assigned_user_id") != assignee or task.get("assigned_employee_id"):
+            await _renew_lease(lock)
             await assign_task(tenant_id=tenant_id, task_id=task["id"], actor_user_id="system", actor_email="system", assigned_user_id=assignee)
     # Close superseded tasks only after the replacement exists, so a failure never leaves none.
     async for task in db.tasks.find(
-        {"tenant_id": tenant_id, "webstore_id": webstore_id, "task_type": TASK_TYPE, "status": {"$nin": ["completed", "canceled"]},
+        {**generated_task_query(tenant_id, webstore_id), "status": {"$nin": ["completed", "canceled"]},
          "idempotency_key": {"$ne": wanted}},
         {"_id": 0, "id": 1, "status": 1, "version": 1, "archived_at": 1},
     ):
         if task.get("archived_at"):
             from .task_service import restore_task
+            await _renew_lease(lock)
             await restore_task(tenant_id=tenant_id, task_id=task["id"], actor_user_id="system", actor_email="system")
+        await _renew_lease(lock)
         await _auto_complete(tenant_id, task, now)
     # Only a completed synchronization is a reusable success snapshot. A crash
     # before this point leaves the prior snapshot for the recovery path to detect.
     snapshot = await sync_snapshot(store, action)
     if snapshot["gates"] != gates_before:
         raise RuntimeError("Webstore gates changed during synchronization; retry")
+    await _renew_lease(lock)
     await db.webstores.update_one({"tenant_id": tenant_id, "id": webstore_id}, {"$set": {"next_action_snapshot": snapshot}})
     return action
 
@@ -307,9 +328,12 @@ async def _sync_once(tenant_id: str, webstore_id: str) -> Optional[dict[str, Any
 async def _sync_with_retry(tenant_id: str, webstore_id: str, lock: dict) -> Optional[dict[str, Any]]:
     for attempt in range(3):
         try:
-            action = await _sync_once(tenant_id, webstore_id)
+            await _renew_lease(lock)
+            action = await _sync_once(tenant_id, webstore_id, lock)
             await db.webstore_next_action_locks.update_one(lock, {"$unset": {"failed_at": "", "error": ""}})
             return action
+        except _LeaseLost:
+            raise  # a superseded holder must never retry writes
         except Exception as exc:  # noqa: BLE001 - transient failures are retried; the last one is recorded
             if attempt == 2:
                 await db.webstore_next_action_locks.update_one(
@@ -318,6 +342,41 @@ async def _sync_with_retry(tenant_id: str, webstore_id: str, lock: dict) -> Opti
                 raise
             await asyncio.sleep(0.2 * (attempt + 1))
     return None
+
+
+class _LeaseLost(RuntimeError):
+    pass
+
+
+async def _renew_lease(lock: dict) -> None:
+    now = utc_now()
+    renewed = await db.webstore_next_action_locks.update_one(
+        {**lock, "until": {"$gt": now.isoformat()}},
+        {"$set": {"until": (now + SYNC_LEASE).isoformat()}},
+    )
+    if not renewed.matched_count:
+        raise _LeaseLost("Webstore synchronization lease expired or changed owner")
+
+
+async def _sync_with_lease(tenant_id: str, webstore_id: str, lock: dict) -> Optional[dict[str, Any]]:
+    async def keep_lease():
+        while True:
+            await asyncio.sleep(SYNC_LEASE.total_seconds() / 3)
+            await _renew_lease(lock)
+
+    # Keep ownership while task auditing/notifications await I/O. Losing it
+    # cancels outstanding work; every subsequent mutation also renews/checks it.
+    work = asyncio.create_task(_sync_with_retry(tenant_id, webstore_id, lock))
+    renewal = asyncio.create_task(keep_lease())
+    try:
+        done, _ = await asyncio.wait({work, renewal}, return_when=asyncio.FIRST_COMPLETED)
+        if renewal in done:
+            renewal.result()
+        return work.result()
+    finally:
+        work.cancel()
+        renewal.cancel()
+        await asyncio.gather(work, renewal, return_exceptions=True)
 
 
 async def _acquire(lock: dict, owner: str) -> bool:
@@ -352,7 +411,7 @@ async def sync_next_action_side_effects(tenant_id: str, webstore_id: str) -> Opt
                 if not await _acquire(lock, owner):
                     return action  # the holder will see "pending" and run again
             try:
-                action = await _sync_with_retry(tenant_id, webstore_id, owned_lock)
+                action = await _sync_with_lease(tenant_id, webstore_id, owned_lock)
             finally:
                 released = await db.webstore_next_action_locks.find_one_and_update(
                     owned_lock, {"$set": {"until": ""}},

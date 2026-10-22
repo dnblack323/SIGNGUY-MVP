@@ -195,15 +195,157 @@ async def test_provider_update_recovers_tasks_outside_webstore_routes(ctx):
 
     async with await _staff(ctx["user"]) as client:
         store = await _request(client, ctx["suffix"])
-    await db.webstores.update_one({"tenant_id": ctx["tenant_id"], "id": store["id"]}, {"$set": {"status": "live"}})
     await _persist_provider_result(ctx["tenant_id"], store["id"], store, {
         "provider_mode": "test", "charges_enabled": True, "payouts_enabled": True, "requirements_currently_due": ["fixture"],
     })
     await _persist_provider_result(ctx["tenant_id"], store["id"], store, {
         "provider_mode": "test", "charges_enabled": False, "payouts_enabled": False, "requirements_currently_due": [],
     })
-    assert await _open_tasks(ctx["tenant_id"], store["id"]) == []
+    assert len(await _open_tasks(ctx["tenant_id"], store["id"])) == 1
     updated = await db.webstores.find_one({"tenant_id": ctx["tenant_id"], "id": store["id"]})
-    assert updated["next_action_snapshot"]["key"] == "monitor_orders"
+    assert updated["next_action_snapshot"]["key"] == "send_information_packet"
     assert updated["provider_charges_enabled"] is False and updated["provider_payouts_enabled"] is False
     assert updated["provider_requirements_currently_due"] == []
+
+
+async def test_slow_sync_renews_lease_and_prevents_takeover(ctx, monkeypatch):
+    from datetime import timedelta
+    from app.core.time_utils import utc_now
+    from app.services import webstore_next_action as sync
+
+    async with await _staff(ctx["user"]) as client:
+        store = await _request(client, ctx["suffix"])
+    original = task_service.create_task
+    started, release = asyncio.Event(), asyncio.Event()
+    calls = 0
+
+    async def slow_first(**kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            started.set()
+            await release.wait()
+        return await original(**kwargs)
+
+    monkeypatch.setattr(sync, "SYNC_LEASE", timedelta(seconds=0.6))
+    monkeypatch.setattr(task_service, "create_task", slow_first)
+    worker = asyncio.create_task(sync_next_action_side_effects(ctx["tenant_id"], store["id"]))
+    try:
+        await asyncio.wait_for(started.wait(), 3)
+        await asyncio.sleep(1.3)  # more than twice the original lease
+        assert await sync_next_action_side_effects(ctx["tenant_id"], store["id"]) is None
+        lock = await db.webstore_next_action_locks.find_one({"tenant_id": ctx["tenant_id"], "webstore_id": store["id"]})
+        assert lock["until"] > utc_now().isoformat()
+    finally:
+        release.set()
+        await asyncio.wait_for(worker, 3)
+    assert len(await _open_tasks(ctx["tenant_id"], store["id"])) == 1
+    assert calls >= 2  # holder consumed the concurrent caller's pending rerun
+
+
+async def test_replaced_lease_cancels_stale_worker_before_snapshot_or_task_writes(ctx, monkeypatch):
+    from datetime import timedelta
+    from app.services import webstore_next_action as sync
+
+    async with await _staff(ctx["user"]) as client:
+        store = await _request(client, ctx["suffix"])
+    started, canceled = asyncio.Event(), asyncio.Event()
+    original = task_service.create_task
+    first = True
+
+    async def blocked_first(**kwargs):
+        nonlocal first
+        if first:
+            first = False
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                canceled.set()
+        return await original(**kwargs)
+
+    monkeypatch.setattr(sync, "SYNC_LEASE", timedelta(seconds=0.6))
+    monkeypatch.setattr(task_service, "create_task", blocked_first)
+    worker = asyncio.create_task(sync_next_action_side_effects(ctx["tenant_id"], store["id"]))
+    try:
+        await asyncio.wait_for(started.wait(), 3)
+        await db.webstore_next_action_locks.update_one({"tenant_id": ctx["tenant_id"], "webstore_id": store["id"]},
+                                                      {"$set": {"until": "2000-01-01"}})
+        await db.webstores.update_one({"tenant_id": ctx["tenant_id"], "id": store["id"]}, {"$set": {"name": "New owner result"}})
+        assert await sync_next_action_side_effects(ctx["tenant_id"], store["id"])
+        assert await asyncio.wait_for(worker, 3) is None
+        assert canceled.is_set()
+        tasks = await _open_tasks(ctx["tenant_id"], store["id"])
+        assert len(tasks) == 1 and tasks[0]["title"].startswith("New owner result:")
+        updated = await db.webstores.find_one({"tenant_id": ctx["tenant_id"], "id": store["id"]})
+        assert updated["next_action_snapshot"]["store_name"] == "New owner result"
+    finally:
+        worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
+
+
+async def test_recovery_repairs_edited_task_metadata_and_source_with_current_snapshot(ctx):
+    async with await _staff(ctx["user"]) as client:
+        store = await _request(client, ctx["suffix"])
+        other = await _request(client, ctx["suffix"] + "-other")
+    await db.webstores.update_one({"tenant_id": ctx["tenant_id"], "id": store["id"]},
+                                 {"$set": {"assignee_user_id": ctx["user"]["id"]}})
+    await sync_next_action_side_effects(ctx["tenant_id"], store["id"])
+    task = (await _open_tasks(ctx["tenant_id"], store["id"]))[0]
+    await task_service.update_task(tenant_id=ctx["tenant_id"], task_id=task["id"], actor_user_id="system", actor_email="system",
+                                  updates={"title": "Edited by hand", "task_type": "manual", "visibility": "internal",
+                                           "source_type": "webstore", "source_id": other["id"]})
+    await task_service.assign_task(tenant_id=ctx["tenant_id"], task_id=task["id"], actor_user_id="system", actor_email="system")
+    result = await reconcile_next_actions(ctx["tenant_id"])
+    assert result["recovered"] == 1 and result["failed"] == 0
+    repaired = (await _open_tasks(ctx["tenant_id"], store["id"]))[0]
+    assert repaired["id"] == task["id"] and repaired["title"] == task["title"]
+    assert repaired["source_id"] == repaired["webstore_id"] == store["id"]
+    assert repaired["source_type"] == "webstore" and repaired["task_type"] == "webstore_next_action"
+    assert repaired["assigned_user_id"] == ctx["user"]["id"] and repaired["visibility"] == "staff"
+    assert len(await _open_tasks(ctx["tenant_id"], other["id"])) == 1
+    assert (await reconcile_next_actions(ctx["tenant_id"]))["recovered"] == 0
+
+
+async def test_entitlement_projection_bounds_slow_recovery_and_retains_staff_retry(ctx, monkeypatch):
+    from app.services import webstore_next_action_recovery as recovery
+
+    async with await _staff(ctx["user"]) as client:
+        store = await _request(client, ctx["suffix"])
+    before = await db.webstores.find_one({"tenant_id": ctx["tenant_id"], "id": store["id"]})
+    entered, canceled = asyncio.Event(), asyncio.Event()
+
+    async def slow_action(store):
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            canceled.set()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(recovery, "GATE_RECOVERY_TIMEOUT_SECONDS", 0.02)
+        patch.setattr(recovery, "compute_next_action", slow_action)
+        result = await asyncio.wait_for(project_entitlements_for_tenant(tenant_id=ctx["tenant_id"]), 1)
+    assert "items" in result and entered.is_set() and canceled.is_set()
+    assert await db.webstores.find_one({"tenant_id": ctx["tenant_id"], "id": store["id"]}) == before
+    await db.webstores.update_one({"tenant_id": ctx["tenant_id"], "id": store["id"]}, {"$set": {"name": "Retry from staff"}})
+    assert (await reconcile_next_actions(ctx["tenant_id"]))["recovered"] == 1
+
+
+async def test_gate_recovery_limits_prelaunch_work_and_leaves_history_to_staff(ctx, monkeypatch):
+    from app.services import webstore_next_action_recovery as recovery
+
+    async with await _staff(ctx["user"]) as client:
+        history = await _request(client, ctx["suffix"] + "-history")
+        first = await _request(client, ctx["suffix"] + "-first")
+        second = await _request(client, ctx["suffix"] + "-second")
+    await db.webstores.update_one({"tenant_id": ctx["tenant_id"], "id": history["id"]}, {"$set": {"status": "archived"}})
+    for store in (first, second):
+        await db.webstores.update_one({"tenant_id": ctx["tenant_id"], "id": store["id"]}, {"$set": {"name": "Needs recovery"}})
+    monkeypatch.setattr(recovery, "GATE_RECOVERY_MAX_STORES", 1)
+    result = await recovery.reconcile_next_actions(ctx["tenant_id"], gate_change=True)
+    assert result == {"checked": 1, "recovered": 1, "pending": 0, "failed": 0}
+    assert len(await _open_tasks(ctx["tenant_id"], history["id"])) == 1  # not scanned on a billing callback
+    full = await recovery.reconcile_next_actions(ctx["tenant_id"])
+    assert full["checked"] == 3 and full["recovered"] == 2
+    assert await _open_tasks(ctx["tenant_id"], history["id"]) == []
