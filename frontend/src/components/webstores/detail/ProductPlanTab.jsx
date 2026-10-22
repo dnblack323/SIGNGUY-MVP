@@ -1,12 +1,7 @@
 import {
   PackagePlus,
-  Sparkles,
 } from "lucide-react";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
+import ProductRecommendations from "./ProductRecommendations";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -145,46 +140,7 @@ return (
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Sparkles className="size-4" />
-                    AI Product Suggestions
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Alert>
-                    <AlertTitle>No generated suggestions yet</AlertTitle>
-                    <AlertDescription>
-                      AI product recommendations, mockups, pricing suggestions,
-                      owner-share estimates, and regeneration actions are
-                      planned for a later Webstores stage and are not active
-                      here.
-                    </AlertDescription>
-                  </Alert>
-                  <div className="rounded-md border bg-slate-50 p-4 text-sm text-muted-foreground">
-                    Suggestions will appear here as selectable product cards
-                    after the AI product-planning workflow is implemented.
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" disabled>
-                      Include Product
-                    </Button>
-                    <Button type="button" variant="outline" disabled>
-                      Skip
-                    </Button>
-                    <Button type="button" variant="outline" disabled>
-                      Edit Suggestion
-                    </Button>
-                    <Button type="button" variant="outline" disabled>
-                      Regenerate Description
-                    </Button>
-                    <Button type="button" variant="outline" disabled>
-                      Request Different Mockup
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <ProductRecommendations model={model} />
             </div>
 
             <Card>
@@ -223,14 +179,6 @@ return (
                 >
                   <PackagePlus className="size-4 mr-2" />
                   Create Custom Product
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled
-                  className="lg:col-start-3"
-                >
-                  Ask AI for Another Suggestion
                 </Button>
               </CardContent>
             </Card>
