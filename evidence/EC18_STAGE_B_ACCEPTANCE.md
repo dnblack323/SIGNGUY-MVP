@@ -1,5 +1,7 @@
 # Business Assistant Stage B final acceptance evidence
 
+**Subsequent owner acceptance:** Stage B explicitly accepted October 21, 2026 for its approved scope, with the limitations below. Commit 7fa5e8a / draft PR #63 passed hosted CI: 1,457 backend tests, 237 frontend tests and production build. Historical pending-acceptance statements below are superseded; commercial readiness, live provider compatibility and merge remain unapproved.
+
 October 21, 2026. Owner approved the intended functional scope and authorized this focused acceptance check, commit, draft PR and CI. Full Stage B acceptance is still pending. No Stage C implementation, live OpenAI call, paid evaluation, merge or release was authorized or performed.
 
 ## Webstore comparison and diagnosis

@@ -1,5 +1,7 @@
 # SignGuy AI — Owner Specification Hold Register
 
+**Current Business Assistant authorization, October 21, 2026:** Owner explicitly accepted Stage B and authorized Stage C voice selection, prerecorded preview and interface/microphone readiness in the existing worktree. The original C/D split is restored; full Realtime remains D. Paid provider calls, D–F, merge and deployment remain held. H7 commercial activation is not waived.
+
 **Purpose:** Every explicit "do not proceed without owner authorization" hold currently in force, in one place, so no hold is silently forgotten or silently cleared. Created 2026-02 during the SignGuy AI Checkpoint Specification Pack intake.
 
 **Rule:** No checkpoint below begins — no code, no models, no routers, no pages — until its hold is explicitly lifted by the owner. Completing this documentation-only intake and delivering the Intake Report does **not** lift any hold.

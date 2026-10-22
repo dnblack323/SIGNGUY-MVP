@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getAssistantPreferences, saveAssistantPreferences } from "@/lib/businessAssistant";
 import { Button } from "@/components/ui/button";
 import { AssistantBoundary, useAssistantSession } from "./AssistantSession";
+import VoicePreview from "./VoicePreview";
 
 function Settings() {
   const session = useAssistantSession();
@@ -30,7 +31,11 @@ function Settings() {
       </fieldset>
       <label className="block">Business timezone <input className="ml-2 rounded border p-2" aria-label="Business timezone" defaultValue={data.preferences.timezone} key={data.preferences.timezone} onBlur={(event) => { if (event.target.value !== data.preferences.timezone) save({ timezone: event.target.value }); }} disabled={busy} /></label>
       <label className="block">Response length <select className="ml-2 rounded border p-2" value={data.preferences.response_length} disabled={busy} onChange={(event) => save({ response_length: event.target.value })}><option value="concise">Concise</option><option value="detailed">Detailed</option></select></label>
-      <p className="text-sm">Saved voice: {data.preferences.voice || "Not selected"}. Voice selection and preview are a later stage.</p>
+      <fieldset><legend className="font-medium">Voice</legend>
+        <p className="text-sm">Saved voice: {data.preferences.voice || "Not selected"}. Voice and personality are independent. A voice change does not delete conversations or memory.</p>
+        {data.preferences.voice && data.voices && !data.voices.some((voice) => voice.key === data.preferences.voice) && <p role="status">Your previously saved voice is unavailable in this list. Choose a supported voice below; your personality and history are preserved.</p>}
+        <VoicePreview voices={data.voices} selected={data.effective_voice} onSelect={(voice) => save({ voice })} disabled={busy} />
+      </fieldset>
       <Button variant="outline" onClick={() => save({})} disabled={busy}>{busy ? "Saving…" : "Refresh saved preferences"}</Button>
     </>}
   </section>;

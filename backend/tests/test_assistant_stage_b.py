@@ -370,7 +370,7 @@ async def test_each_personality_applied_and_preferences_survive_login(
             "/api/assistant/preferences",
             json={
                 "personality_key": personality,
-                "voice": "independent-unverified-voice",
+                "voice": "ash",
             },
         )
         assert saved.status_code == 200, saved.text
@@ -391,7 +391,7 @@ async def test_each_personality_applied_and_preferences_survive_login(
         current = (await client.get("/api/assistant/preferences")).json()["preferences"]
         assert (
             current["personality_key"] == personality
-            and current["voice"] == "independent-unverified-voice"
+            and current["voice"] == "ash"
         )
     assert (await svc.get_conversation(ctx["user"], conversation["id"]))[
         "conversation"

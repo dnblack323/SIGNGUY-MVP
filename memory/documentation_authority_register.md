@@ -1,5 +1,7 @@
 # SignGuy AI — Documentation Authority Register
 
+**Latest owner decision, October 21, 2026:** Business Assistant Stage B is accepted for its approved scope. Stage C selection/preview/interface readiness is authorized; full Realtime remains Stage D. This overrides earlier B-pending/plan-only or combined-C/D wording below. No paid calls, D–F, merge or deployment. See docs/BUSINESS_ASSISTANT_V1_STAGE_C_REVIEW.md and evidence/EC18_STAGE_C_EVIDENCE.md.
+
 **Purpose:** Single register naming every planning document in the repository and its exact authority ranking, so no two documents wear the same crown. Created 2026-02 during the SignGuy AI Checkpoint Specification Pack intake.
 
 ## Authority order (highest wins on conflict)

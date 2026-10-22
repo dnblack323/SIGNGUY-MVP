@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { AssistantBoundary, useAssistantSession } from "./AssistantSession";
+import VoiceReadiness from "./VoiceReadiness";
 import { Bot, Check, ExternalLink, Mic, MicOff, Pause, Send, Square, Volume2, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -294,6 +295,7 @@ function AssistantPanelContent({ compact = false }) {
   };
 
   const connectVoice = async () => {
+    if (!voiceConfig?.interactions_available) return;
     setError("");
     setVoiceState("connecting");
     try {
@@ -556,8 +558,9 @@ function AssistantPanelContent({ compact = false }) {
 
       <aside className="space-y-4">
         <Card data-testid="assistant-voice">
-          <CardHeader><CardTitle className="flex items-center justify-between text-base"><span className="flex items-center gap-2"><Mic className="size-5" />Voice</span><Badge>{VOICE_STATES[voiceState]}</Badge></CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center justify-between text-base"><span className="flex items-center gap-2"><Mic className="size-5" />Voice</span><Badge>{voiceConfig?.interactions_available ? VOICE_STATES[voiceState] : "Setup"}</Badge></CardTitle></CardHeader>
           <CardContent className="space-y-4">
+            {!voiceConfig?.interactions_available ? <VoiceReadiness key={session.identity} preferences={session.preferences} onUseText={() => document.querySelector('[data-testid="assistant-message-input"]')?.focus()} /> : <>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <Button variant={pushToTalk ? "default" : "outline"} onClick={() => { setPushToTalk(true); setVadEnabled(false); setAudioTracksEnabled(false); updateRealtimeTurnDetection(false); }}><Mic className="mr-2 size-4" />Push</Button>
               <Button variant={vadEnabled ? "default" : "outline"} onClick={() => { setVadEnabled(true); setPushToTalk(false); setAudioTracksEnabled(true); updateRealtimeTurnDetection(true); }}><Volume2 className="mr-2 size-4" />VAD</Button>
@@ -591,6 +594,7 @@ function AssistantPanelContent({ compact = false }) {
             )}
             <Textarea readOnly rows={6} value={voiceTranscript} placeholder="Voice transcript" data-testid="assistant-voice-transcript" />
             <Button size="sm" variant="link" onClick={() => setVoiceState("idle")} data-testid="assistant-text-fallback">Use text instead</Button>
+            </>}
           </CardContent>
         </Card>
 

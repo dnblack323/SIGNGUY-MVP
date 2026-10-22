@@ -2,15 +2,17 @@
 
 ```yaml
 task: Implement Stage B useful private text assistant
-status: review
+status: done
 priority: 7
 dep: ["work/001-business-assistant-v1/003-stage-b-review.md"]
-assignee: codex
+assignee: ""
 requiresHumanReview: true
 expiresAt: null
 ```
 
 <!-- DESCRIPTION -->
+
+Owner explicitly accepted Stage B as complete for its approved scope on October 21, 2026. Prior pending-acceptance statements below are historical. Commit 7fa5e8a and draft PR #63 remain unmerged; hosted CI passed (1,457 backend, 237 frontend, production build). Live provider behavior and commercial readiness are not accepted by this decision.
 
 Owner authorized Stage B implementation after a final compliance check of the existing report. Reuse canonical MVP infrastructure for real bounded text, private context/history, accurate read tools, shared frontend state, five personalities and Gateway accounting. No paid evaluations, voice implementation, Câ€“F, unrelated work or merge.
 

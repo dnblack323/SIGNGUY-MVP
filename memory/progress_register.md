@@ -1,5 +1,9 @@
 # SignGuy AI — Progress Register
 
+## Business Assistant Stage C — October 21, 2026
+
+Owner accepted Stage B (7fa5e8a / draft PR #63) and authorized only Stage C selection/preview/interface readiness. Original C/D boundary restored; full Realtime remains D. Six independently saved voice choices, bundled prerecorded samples and local microphone readiness are implemented for review. Existing private context/personality/tools and Gateway remain canonical. No paid calls, merge, deployment or D–F implementation. Evidence: evidence/EC18_STAGE_C_EVIDENCE.md.
+
 **Authority:** `/app/SIGNGUY_AI_FINAL_CONSOLIDATED_MASTER_BUILD_PLAN.md` for EC0–EC8 (owner-approved, COMPLETE/CLOSED). **For EC9 onward, authority is the owner-approved SignGuy AI Checkpoint Specification Pack** (`/app/specs_pack/extracted/*.docx`) — see `/app/memory/checkpoint_reference_table.md` and `/app/memory/documentation_authority_register.md`.
 **Register scope:** Execution checkpoints (EC0-EC8 original numbering; EC9-EC22 new numbering) and Program checkpoints (PC1-PC9, EC0-EC8 range only — the new pack does not use PC groupings).
 **Status values (per plan Part 25.1):** NOT STARTED / PREFLIGHT IN PROGRESS / OWNER DECISION BLOCKED / READY TO BUILD / IN PROGRESS / TESTING / CORRECTIONS REQUIRED / COMPLETE / COMMERCIAL GATE BLOCKED / **SUPERSEDED (added 2026-02)**.

@@ -1,5 +1,7 @@
 # SignGuy AI MVP — Commercial V1 Launch Plan
 
+**Current owner decision, October 21, 2026:** Stage B is ACCEPTED for its approved scope. Stage C voice selection, prerecorded preview and microphone/interface readiness is authorized and implemented for review. The original C/D split applies; complete Realtime remains D. This supersedes historical B-pending/C-unstarted or combined-C/D statements below. No paid evaluation, D–F implementation, merge or deployment is authorized. See [Stage C report](../evidence/EC18_STAGE_C_EVIDENCE.md). Unrelated features, including postponed onboarding/Help Center, remain outside this work.
+
 **Prepared:** 2026-10-14 from the completed audits (no new general audit was performed).
 **Revised:** 2026-10-21 — Business Assistant V1 required for initial release; Stage A APPROVED; Stage B implemented with mocks, awaiting owner acceptance. The October 14 tracks and unrelated work are preserved: **Track 1** independent MVP features; **Track 2** pricing integration when its gate opens; **Track 3** launch completion. BA1 is required before launch; C–F remains held.
 **Status:** APPROVED by the owner 2026-10-14 (three-track strategy and order). Each feature and each stage still needs separate owner authorization and its own PR. Business decisions in §B remain open.

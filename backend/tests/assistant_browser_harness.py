@@ -141,6 +141,7 @@ async def serve():
     openai_assistant_provider.respond = respond
     build = Path(__file__).resolve().parents[2] / "frontend" / "build"
     app.mount("/static", StaticFiles(directory=build / "static"), name="smoke-static")
+    app.mount("/assistant-voice-samples", StaticFiles(directory=build / "assistant-voice-samples"), name="smoke-voice-samples")
 
     @app.get("/{frontend_path:path}", include_in_schema=False)
     async def frontend(frontend_path: str):

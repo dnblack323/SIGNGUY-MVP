@@ -12,6 +12,7 @@ from typing import Any, Optional
 import httpx
 from pymongo.errors import DuplicateKeyError
 
+from ..core.assistant_voices import VOICE_KEYS, voice_options, voice_policy
 from ..core.config import get_settings
 from ..core.db import db
 from ..core.permissions import Perm, permissions_for_role
@@ -135,11 +136,15 @@ async def get_preferences(user: dict) -> dict:
     except ValueError:
         # Legacy unknown preferences are preserved in storage, not trusted as instructions.
         preferences = AssistantPreferences().model_dump()
-    return {"preferences": preferences, "options": assistant_personality.options(), "source": "user" if saved else "system"}
+    return {"preferences": preferences, "options": assistant_personality.options(), "source": "user" if saved else "system",
+            "voices": voice_options(), "effective_voice": preferences.get("voice") if preferences.get("voice") in VOICE_KEYS else "alloy",
+            "voice_policy": voice_policy()}
 
 
 async def update_preferences(user: dict, updates: dict) -> dict:
     await _require_assistant_access(user)
+    if "voice" in updates and updates["voice"] is not None and updates["voice"] not in VOICE_KEYS:
+        raise BusinessAssistantError("invalid_assistant_voice", "Select an available assistant voice", 422)
     current = (await get_preferences(user))["preferences"]
     AssistantPreferences.model_validate({**current, **updates})
     if updates:
@@ -1090,6 +1095,8 @@ async def dismiss_insight(user: dict[str, Any], insight_id: str) -> dict[str, An
 def voice_config() -> dict[str, Any]:
     settings = get_settings()
     return {
+        **voice_policy(),
+        "voices": voice_options(),
         "provider": "openai",
         "architecture": "realtime_webrtc",
         "enabled": bool(settings.openai_realtime_enabled),
@@ -1105,6 +1112,8 @@ def voice_config() -> dict[str, Any]:
 
 async def create_realtime_session(user: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]:
     await _require_assistant_access(user)
+    if not voice_policy()["interactions_available"]:
+        raise BusinessAssistantError("voice_stage_not_available", voice_policy()["message"], 503)
     settings = get_settings()
     mode = _mode_key(fields.get("mode"))
     convo = await _conversation(user, fields.get("conversation_id"), mode=mode)

@@ -241,9 +241,8 @@ async def test_voice_unconfigured_returns_safe_unavailable_without_fake_session(
         config = await client.get("/api/assistant/voice/config")
         assert config.status_code == 200
         response = await client.post("/api/assistant/voice/sessions", json={})
-        assert response.status_code == 201, response.text
+        assert response.status_code == 503, response.text
     body = response.json()
-    assert body["configured"] is False
-    assert body["status"] == "unavailable"
-    assert "OpenAI Voice is not configured" in body["message"]
+    assert "Live voice conversations are not available yet" in body["detail"]
+    assert config.json()["interactions_available"] is False
     assert "api_key" not in str(body).lower()

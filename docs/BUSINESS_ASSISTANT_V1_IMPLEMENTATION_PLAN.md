@@ -1,6 +1,6 @@
 # Business Assistant V1 — implementation plan and personality selection
 
-**Owner acceptance follow-up:** Stage B functional scope is approved, with final evidence and draft PR/CI authorized; full acceptance remains pending. The latest owner-defined Stage C scope includes voice selection/preview, Realtime, natural spoken conversation, shared context/personality and usage controls. This supersedes the historical C-preview/D-Realtime allocation below; no C implementation is authorized by this note. See [acceptance evidence](../evidence/EC18_STAGE_B_ACCEPTANCE.md).
+**Current owner decision:** Stage B is ACCEPTED for its approved scope. Stage C is authorized for independent voice selection, prerecorded preview and microphone/interface readiness. **The original C/D split applies: complete Realtime is Stage D, not C.** This supersedes the earlier combined-scope note. See [Stage C boundary/review](BUSINESS_ASSISTANT_V1_STAGE_C_REVIEW.md). No paid calls, D–F, merge or deployment are authorized. Prior pending-acceptance wording below is historical.
 
 **Updated:** October 21, 2026. **Status: STAGE A APPROVED; STAGE B IMPLEMENTED, OWNER ACCEPTANCE PENDING. C–F NOT STARTED.** The owner approved Stage B implementation and completion with mocked provider testing. See the [Stage B implementation evidence](BUSINESS_ASSISTANT_V1_STAGE_B_REVIEW.md#stage-b-implementation-and-final-verification) for tests, browser checks and remaining limits. No paid live evaluation, provider activation, merge or deployment occurred.
 

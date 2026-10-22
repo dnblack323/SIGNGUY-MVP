@@ -83,6 +83,9 @@ beforeEach(() => {
     ],
   });
   getVoiceConfig.mockResolvedValue({
+    // Keep coverage of the parked pre-C transport. Production Stage C config
+    // disables interaction; dedicated Stage C tests assert that boundary.
+    interactions_available: true,
     provider: "openai",
     configured: false,
     enabled: false,
@@ -140,7 +143,7 @@ test("renders Business Assistant workspace with modes, text chat, sources, and v
   expect(screen.getByTestId("assistant-history")).toHaveTextContent("Latest invoice: 1201");
   expect(screen.getByTestId("assistant-sources")).toHaveTextContent("Invoice 1201");
 
-  await user.click(screen.getByTestId("assistant-voice-connect"));
+  await user.click(await screen.findByTestId("assistant-voice-connect"));
   await waitFor(() => expect(createVoiceSession).toHaveBeenCalled());
   expect(screen.getByTestId("assistant-voice-transcript")).toHaveValue("OpenAI Voice is not configured");
   expect(screen.getByTestId("assistant-push-to-talk")).toBeInTheDocument();
@@ -173,6 +176,7 @@ test("connects mocked WebRTC voice with push-to-talk, transcript, and usage mete
     connectionState: "connected",
   }));
   getVoiceConfig.mockResolvedValue({
+    interactions_available: true,
     provider: "openai",
     configured: true,
     enabled: true,
@@ -190,7 +194,7 @@ test("connects mocked WebRTC voice with push-to-talk, transcript, and usage mete
 
   renderWithProviders(<BusinessAssistantPage />, { route: "/studio/assistant" });
   await screen.findByTestId("assistant-voice");
-  await user.click(screen.getByTestId("assistant-voice-connect"));
+  await user.click(await screen.findByTestId("assistant-voice-connect"));
   await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("/v1/realtime/calls"), expect.any(Object)));
   expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({ audio: true });
   expect(addTrack).toHaveBeenCalled();
@@ -207,4 +211,17 @@ test("connects mocked WebRTC voice with push-to-talk, transcript, and usage mete
   });
   expect(await screen.findByDisplayValue(/You: hello/)).toBeInTheDocument();
   await waitFor(() => expect(recordVoiceUsage).toHaveBeenCalledWith("voice-1", expect.objectContaining({ provider_event_id: "resp-1" })));
+});
+
+test("Stage C exposes local readiness and text while configured paid voice remains disabled", async () => {
+  const user = userEvent.setup();
+  getVoiceConfig.mockResolvedValue({ configured: true, interactions_available: false });
+  renderWithProviders(<BusinessAssistantPage />, { route: "/studio/assistant" });
+  expect(await screen.findByTestId("assistant-voice-readiness")).toBeInTheDocument();
+  expect(screen.queryByTestId("assistant-voice-connect")).not.toBeInTheDocument();
+  expect(createVoiceSession).not.toHaveBeenCalled();
+  await user.type(screen.getByTestId("assistant-message-input"), "What is the latest invoice?");
+  await user.click(screen.getByTestId("assistant-send"));
+  expect(await screen.findByText("Latest invoice: 1201 for $425.00.")).toBeInTheDocument();
+  expect(createVoiceSession).not.toHaveBeenCalled();
 });

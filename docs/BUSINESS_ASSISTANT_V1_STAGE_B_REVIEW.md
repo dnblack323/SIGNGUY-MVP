@@ -1,5 +1,7 @@
 # Business Assistant V1 — Stage B Phase Review Report
 
+**Owner acceptance:** Stage B accepted October 21, 2026 for the approved scope, with documented limitations. Commit 7fa5e8a / draft PR #63 has passing hosted CI (1,457 backend, 237 frontend, production build). This supersedes pending-acceptance statements below; it does not approve commercial readiness, live provider behavior or merge. Stage C only is now authorized, with full Realtime retained in D.
+
 **Final acceptance follow-up (October 21):** owner approved the intended Stage B scope and authorized focused baseline/dependency/safety checks, commit, draft PR and GitHub CI. [Acceptance evidence](../evidence/EC18_STAGE_B_ACCEPTANCE.md) diagnoses the pre-existing intermittent Webstore failure on unchanged main, tracks Webstore #61 and dependency #62, classifies all 89 unique advisories, and records 61 backend / 74 frontend acceptance tests. The previous run's no-commit/no-PR statements below are historical. Full owner acceptance remains pending; C implementation, paid evaluations, merge and deployment remain excluded.
 
 **October 21, 2026 — STAGE B IMPLEMENTED; OWNER ACCEPTANCE PENDING.** Stage A and the Stage B implementation scope are approved. The owner authorized finishing B with mocked provider testing. Implementation and verification evidence is recorded below. Sections 1–7 preserve the approved pre-implementation review as historical design context. Stages C–F, paid live evaluations, provider activation, PR publication, merge and deployment remain unauthorized.

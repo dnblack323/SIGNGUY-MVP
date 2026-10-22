@@ -8,6 +8,8 @@ assignee: codex
 
 <!-- DESCRIPTION -->
 
+Current owner authorization: Stage B ACCEPTED; Stage C selection/preview/interface readiness is authorized. Complete Realtime remains Stage D and is not authorized. Work continues on the same branch with a distinct Stage C diff after 7fa5e8a. Prior scope notes below are historical.
+
 One canonical Business Assistant required for the initial MVP release, with real AI, bounded conversational memory, permitted shop context, approved actions, independent voice and five selectable personalities. Owner approved Stage A launch scope/architecture and user-private conversations/memory on October 21, 2026. Stage B implementation is delivered for owner acceptance, with mocked backend/browser evidence. C–F remains unstarted and no paid evaluation is authorized.
 
 <!-- CONTEXT -->

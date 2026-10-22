@@ -56,6 +56,10 @@ async def voice_ctx():
 
 @pytest.mark.asyncio
 async def test_configured_realtime_session_uses_backend_key_ephemeral_secret_and_safety_id(monkeypatch, voice_ctx):
+    # Preserve coverage of the parked pre-C transport; production policy stays
+    # disabled. Stage C separately asserts keys/config cannot bypass that gate.
+    policy = assistant_svc.voice_policy
+    monkeypatch.setattr(assistant_svc, "voice_policy", lambda: {**policy(), "interactions_available": True})
     get_settings.cache_clear()
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-never-return")
     monkeypatch.setenv("OPENAI_REALTIME_ENABLED", "true")
