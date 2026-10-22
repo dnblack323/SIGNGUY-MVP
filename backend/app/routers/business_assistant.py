@@ -10,6 +10,7 @@ from ..models.user import AssistantPreferences
 from ..deps import get_current_user
 from ..services import business_assistant as svc
 from ..services.business_assistant import BusinessAssistantError
+from ..services.assistant_tools import ToolError
 
 router = APIRouter(prefix="/assistant", tags=["business-assistant"])
 
@@ -116,8 +117,12 @@ class StudioDelegationIn(BaseModel):
 
 
 class VoiceSessionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     conversation_id: Optional[str] = None
     mode: str = "owner"
+    offer_sdp: str = Field(min_length=1, max_length=64000)
+    idempotency_key: str = Field(min_length=1, max_length=160)
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
 class VoiceUsageIn(BaseModel):
@@ -337,8 +342,41 @@ async def get_voice_config(user: dict = Depends(get_current_user)) -> dict:
 async def create_voice_session(payload: VoiceSessionIn, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.create_realtime_session(user, payload.model_dump(exclude_none=True))
+    except (BusinessAssistantError, svc.ai_gateway.AIGatewayError, ToolError) as exc:
+        if isinstance(exc, ToolError):
+            raise HTTPException(status_code=409, detail=str(exc))
+        _raise(exc)
+
+
+@router.get("/voice/sessions/{voice_session_id}")
+async def voice_session_status(voice_session_id: str, user: dict = Depends(get_current_user)) -> dict:
+    from ..services import assistant_realtime
+    try:
+        return await assistant_realtime.status(user, voice_session_id)
     except BusinessAssistantError as exc:
         _raise(exc)
+    except ToolError:
+        raise HTTPException(status_code=403, detail="Voice access changed; session is ending")
+
+
+async def _control_voice(user: dict, voice_session_id: str, operation: str) -> dict:
+    from ..services import assistant_realtime
+    try:
+        return await assistant_realtime.control(user, voice_session_id, operation)
+    except BusinessAssistantError as exc:
+        _raise(exc)
+    except ToolError:
+        raise HTTPException(status_code=403, detail="Voice access changed; session is ending")
+
+
+@router.post("/voice/sessions/{voice_session_id}/stop")
+async def stop_voice_session(voice_session_id: str, user: dict = Depends(get_current_user)) -> dict:
+    return await _control_voice(user, voice_session_id, "stop")
+
+
+@router.post("/voice/sessions/{voice_session_id}/interrupt")
+async def interrupt_voice_session(voice_session_id: str, user: dict = Depends(get_current_user)) -> dict:
+    return await _control_voice(user, voice_session_id, "interrupt")
 
 
 @router.post("/voice/sessions/{voice_session_id}/usage", status_code=201)

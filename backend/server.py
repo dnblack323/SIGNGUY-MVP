@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request
+from fastapi import FastAPI, APIRouter, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -455,4 +455,12 @@ app.add_middleware(
 async def _startup():
     await ensure_indexes()
     init_storage()
+    from app.services import assistant_realtime
+    await assistant_realtime.start_recovery()
     logger.info("SignGuy AI backend started")
+
+
+@app.on_event("shutdown")
+async def _assistant_shutdown():
+    from app.services import assistant_realtime
+    await assistant_realtime.shutdown()

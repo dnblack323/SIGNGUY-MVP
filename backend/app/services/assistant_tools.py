@@ -28,6 +28,8 @@ class ReadArgs(BaseModel):
     record_id: str | None = Field(default=None, max_length=160)
     day: Literal["today", "tomorrow"] = "today"
     invoice_filter: Literal["unpaid", "overdue", "latest"] = "unpaid"
+    due_day: Literal["today", "tomorrow"] | None = None
+    schedule_window: Literal["day", "next_30_days"] = "day"
 
 
 PERMISSIONS = {
@@ -43,12 +45,12 @@ PERMISSIONS = {
 DESCRIPTIONS = {
     "find_customers": "Find customers by name, company, email or partial name; clarify multiple matches.",
     "customer_history": "Customer identity and recent Orders. Supply customer record_id; use quote_followups separately for Quotes.",
-    "recent_orders": "Recent Orders, or one Order by record_id/name/number query. No writes.",
+    "recent_orders": "Recent Orders, one Order by record_id/name/number query, or Orders due today/tomorrow using due_day. Bounded results; no writes.",
     "work_order_status": "Work Orders and their actual production stages, recorded blockers and due dates.",
     "invoices": "Canonical current unpaid/overdue invoice balances, latest invoice or a specific invoice. Overdue is before today in the selected timezone.",
     "quote_followups": "Open sent/viewed Quotes that can be reviewed for follow-up; no assumed last-contact date or sending.",
     "tasks": "Permitted open tasks due today or tomorrow in the selected timezone.",
-    "shop_schedule": "Shop Schedule calendar and permitted projected work for today/tomorrow; not just employee shifts.",
+    "shop_schedule": "Shop Schedule and permitted projected work for today/tomorrow, or upcoming 30 days using schedule_window=next_30_days. Query matches event titles, e.g. installation. Bounded results, not proof nothing exists later.",
 }
 TARGETS = {
     "customer": ("customers", Perm.CUSTOMER_READ.value, "/customers/"),
@@ -192,6 +194,12 @@ async def execute(
             refs.append(reference("customer", row))
     elif name in {"customer_history", "recent_orders"}:
         filt = _filter(user, args)
+        if name == "recent_orders" and args.due_day:
+            selected = today + timedelta(days=args.due_day == "tomorrow")
+            filt["due_date"] = {
+                "$gte": (selected - timedelta(days=1)).isoformat(),
+                "$lt": (selected + timedelta(days=2)).isoformat(),
+            }
         if name == "customer_history":
             customer = await db.customers.find_one(
                 {"tenant_id": tenant, "id": args.record_id}, {"_id": 0}
@@ -200,13 +208,20 @@ async def execute(
                 raise ToolError("Customer not found; choose a permitted customer")
             refs.append(reference("customer", customer))
             filt = {"tenant_id": tenant, "customer_id": customer["id"]}
+        bound = 101 if args.due_day else 26
         rows = [
             r
             async for r in db.orders.find(filt, {"_id": 0})
             .sort("created_at", -1)
-            .limit(26)
+            .limit(bound)
         ]
-        complete = len(rows) <= 25
+        complete = len(rows) < bound
+        rows = [
+            r
+            for r in rows
+            if not args.due_day or _local_date(r.get("due_date"), zone) == selected
+        ]
+        complete = complete and len(rows) <= 25
         for row in rows[:25]:
             items.append(
                 project(row, "number", "title", "status", "due_date", "created_at")
@@ -331,7 +346,13 @@ async def execute(
                 refs.append(reference("task", row))
     else:
         start = datetime.combine(selected, time.min, zone)
-        end = datetime.combine(selected + timedelta(days=1), time.min, zone)
+        if args.schedule_window == "next_30_days":
+            start = utc_now().astimezone(zone)
+        end = (
+            start + timedelta(days=30)
+            if args.schedule_window == "next_30_days"
+            else datetime.combine(selected + timedelta(days=1), time.min, zone)
+        )
         result = await calendar_service.list_events(
             tenant_id=tenant,
             start_at=start.isoformat(),
@@ -343,6 +364,11 @@ async def execute(
         rows = result.get("items", [])
         complete = len(rows) < 100 and result.get("total", len(rows)) <= len(rows)
         for row in rows:
+            if (
+                args.query
+                and args.query.casefold() not in str(row.get("title", "")).casefold()
+            ):
+                continue
             source = row.get("source_type")
             if source == "task" and not has_perm(user, Perm.TASK_READ.value):
                 continue

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { AssistantBoundary, useAssistantSession } from "./AssistantSession";
-import VoiceReadiness from "./VoiceReadiness";
-import { Bot, Check, ExternalLink, Mic, MicOff, Pause, Send, Square, Volume2, X } from "lucide-react";
+import VoiceConversation from "./VoiceConversation";
+import { Bot, Check, ExternalLink, Mic, Send, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,6 @@ import {
   confirmAssistantProposal,
   createAssistantRoutine,
   createStudioDelegation,
-  createVoiceSession,
   deleteAssistantMemory,
   deleteAssistantRoutine,
   disableAssistantRoutine,
@@ -31,23 +30,11 @@ import {
   listAssistantQuickActions,
   listAssistantRoutines,
   proposeAssistantAction,
-  recordVoiceUsage,
   saveAssistantMemory,
   updateAssistantRoutine,
 } from "@/lib/businessAssistant";
 
-const VOICE_STATES = {
-  idle: "Idle",
-  connecting: "Connecting",
-  listening: "Listening",
-  thinking: "Thinking",
-  speaking: "Speaking",
-  interrupted: "Interrupted",
-  reconnecting: "Reconnecting",
-  unavailable: "Unavailable",
-  microphone_denied: "Microphone denied",
-  error: "Error",
-};
+
 
 function SourceList({ sources = [] }) {
   if (!sources.length) return null;
@@ -141,14 +128,6 @@ function AssistantPanelContent({ compact = false }) {
   const [routineDraft, setRoutineDraft] = useState("");
   const [insights, setInsights] = useState([]);
   const [error, setError] = useState("");
-  const [voiceState, setVoiceState] = useState("idle");
-  const [voiceTranscript, setVoiceTranscript] = useState("");
-  const [voiceSessionId, setVoiceSessionId] = useState(null);
-  const [pushToTalk, setPushToTalk] = useState(true);
-  const [vadEnabled, setVadEnabled] = useState(false);
-  const [reconnectCount, setReconnectCount] = useState(0);
-  const rtcRef = useRef({ pc: null, stream: null, dc: null, reconnecting: false, voiceSessionId: null });
-
   const context = useMemo(() => {
     const contextType = searchParams.get("context_type");
     const contextId = searchParams.get("context_id");
@@ -164,8 +143,6 @@ function AssistantPanelContent({ compact = false }) {
       if (!active) return;
       setCatalog(cat);
       setVoiceConfig(voice);
-      setPushToTalk(!!voice.push_to_talk_default);
-      setVadEnabled(!voice.push_to_talk_default);
     }).catch((err) => setError(extractError(err, "Unable to load Business Assistant")));
     return () => { active = false; };
   }, []);
@@ -203,210 +180,6 @@ function AssistantPanelContent({ compact = false }) {
     } catch (err) {
       setError(extractError(err, "Unable to ask the assistant"));
     }
-  };
-
-  const appendVoiceTranscript = (speaker, text) => {
-    if (!text) return;
-    setVoiceTranscript((prev) => `${prev ? `${prev}\n` : ""}${speaker}: ${text}`.trim());
-  };
-
-  const setAudioTracksEnabled = (enabled) => {
-    rtcRef.current.stream?.getAudioTracks?.().forEach((track) => {
-      track.enabled = enabled;
-    });
-  };
-
-  const sendRealtimeEvent = (event) => {
-    const dc = rtcRef.current.dc;
-    if (dc?.readyState === "open") {
-      dc.send(JSON.stringify(event));
-    }
-  };
-
-  const updateRealtimeTurnDetection = (useVad) => {
-    sendRealtimeEvent({
-      type: "session.update",
-      session: {
-        turn_detection: useVad ? { type: voiceConfig?.turn_detection || "server_vad" } : null,
-      },
-    });
-  };
-
-  const proposeActionFromRealtime = async (args, callId) => {
-    const payload = {
-      action_type: args.action_type || "internal_task",
-      title: args.title || "Assistant proposed action",
-      summary: args.summary || "Review before anything changes.",
-      body: args.body,
-      route: args.route,
-      target_refs: args.target_refs || [],
-      mode,
-      conversation_id: conversationId || undefined,
-      idempotency_key: `voice-tool-${voiceSessionId || "pending"}-${callId || Date.now()}`,
-      metering_idempotency_key: `voice-tool-meter-${voiceSessionId || "pending"}-${callId || Date.now()}`,
-    };
-    const proposal = await proposeAssistantAction(payload);
-    setProposals((prev) => [proposal, ...prev.filter((item) => item.id !== proposal.id)]);
-    sendRealtimeEvent({
-      type: "conversation.item.create",
-      item: {
-        type: "function_call_output",
-        call_id: callId,
-        output: JSON.stringify({ proposal_id: proposal.id, status: proposal.status, message: "Proposal created and visible to the user. Explicit confirmation is required before execution." }),
-      },
-    });
-    sendRealtimeEvent({ type: "response.create" });
-  };
-
-  const handleRealtimeEvent = async (data) => {
-    if (data.type === "conversation.item.input_audio_transcription.completed") {
-      appendVoiceTranscript("You", data.transcript);
-      setVoiceState("thinking");
-    }
-    if (data.type === "response.audio_transcript.delta") {
-      appendVoiceTranscript("Assistant", data.delta);
-      setVoiceState("speaking");
-    }
-    if (data.type === "response.audio_transcript.done") {
-      appendVoiceTranscript("Assistant", data.transcript);
-    }
-    if (data.type === "response.audio.delta") setVoiceState("speaking");
-    if (data.type === "input_audio_buffer.speech_started") setVoiceState("listening");
-    if (data.type === "response.done") {
-      setVoiceState(pushToTalk ? "idle" : "listening");
-      const usage = data.response?.usage;
-      const activeVoiceSessionId = voiceSessionId || rtcRef.current.voiceSessionId;
-      if (activeVoiceSessionId && data.response?.id) {
-        recordVoiceUsage(activeVoiceSessionId, {
-          provider_event_id: data.response.id,
-          input_audio_seconds: Math.max(0, Math.round((usage?.input_token_details?.audio_tokens || 0) / 50)),
-          output_audio_seconds: Math.max(0, Math.round((usage?.output_token_details?.audio_tokens || 0) / 50)),
-        }).catch(() => {});
-      }
-    }
-    const functionCall = data.item?.type === "function_call" ? data.item : data.response?.output?.find?.((item) => item.type === "function_call");
-    if (functionCall?.name === "propose_assistant_action" && functionCall.arguments) {
-      try {
-        await proposeActionFromRealtime(JSON.parse(functionCall.arguments), functionCall.call_id);
-      } catch (err) {
-        setError(extractError(err, "Unable to create assistant proposal from voice"));
-      }
-    }
-  };
-
-  const connectVoice = async () => {
-    if (!voiceConfig?.interactions_available) return;
-    setError("");
-    setVoiceState("connecting");
-    try {
-      const result = await createVoiceSession({ conversation_id: conversationId || undefined, mode });
-      if (!result.configured) {
-        setVoiceState("unavailable");
-        setVoiceTranscript(result.message || "OpenAI Voice is not configured");
-        return;
-      }
-      const nextVoiceSessionId = result.voice_session?.id || null;
-      setVoiceSessionId(nextVoiceSessionId);
-      const clientSecret = result.realtime?.value || result.realtime?.client_secret?.value || result.realtime?.client_secret;
-      if (!clientSecret) {
-        setVoiceState("error");
-        setError("Realtime credential response did not include a short-lived client secret.");
-        return;
-      }
-      if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === "undefined") {
-        setVoiceState("unavailable");
-        setVoiceTranscript("Voice requires browser microphone and WebRTC support.");
-        return;
-      }
-      let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      } catch (err) {
-        if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError") {
-          setVoiceState("microphone_denied");
-          setVoiceTranscript("Microphone permission was denied. Text assistant remains available.");
-          return;
-        }
-        throw err;
-      }
-      const pc = new RTCPeerConnection();
-      const dc = pc.createDataChannel("oai-events");
-      stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
-      if (pushToTalk) {
-        stream.getAudioTracks().forEach((track) => {
-          track.enabled = false;
-        });
-      }
-      pc.ontrack = (event) => {
-        const audio = new Audio();
-        audio.autoplay = true;
-        audio.srcObject = event.streams[0];
-      };
-      dc.onopen = () => {
-        updateRealtimeTurnDetection(vadEnabled);
-        setVoiceState(pushToTalk ? "idle" : "listening");
-      };
-      dc.onmessage = async (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          await handleRealtimeEvent(data);
-        } catch {
-          appendVoiceTranscript("Event", event.data);
-        }
-      };
-      pc.onconnectionstatechange = () => {
-        if (["failed", "disconnected"].includes(pc.connectionState)) {
-          setVoiceState("reconnecting");
-          setReconnectCount((count) => count + 1);
-        }
-        if (pc.connectionState === "connected") {
-          setVoiceState(pushToTalk ? "idle" : "listening");
-        }
-      };
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      const sdp = await fetch(`https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(result.model)}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${clientSecret}`, "Content-Type": "application/sdp" },
-        body: offer.sdp,
-      });
-      if (!sdp.ok) throw new Error("Realtime WebRTC answer failed");
-      await pc.setRemoteDescription({ type: "answer", sdp: await sdp.text() });
-      rtcRef.current = { pc, stream, dc, reconnecting: false, voiceSessionId: nextVoiceSessionId };
-      setVoiceState(pushToTalk ? "idle" : "listening");
-    } catch (err) {
-      setVoiceState("error");
-      setError(err.message || "Unable to connect voice");
-    }
-  };
-
-  const disconnectVoice = () => {
-    rtcRef.current.dc?.close?.();
-    rtcRef.current.pc?.close?.();
-    rtcRef.current.stream?.getTracks?.().forEach((track) => track.stop());
-    rtcRef.current = { pc: null, stream: null, dc: null, reconnecting: false, voiceSessionId: null };
-    setVoiceState("idle");
-  };
-
-  const interruptVoice = () => {
-    try {
-      rtcRef.current.dc?.send?.(JSON.stringify({ type: "response.cancel" }));
-    } catch { /* best effort */ }
-    setVoiceState("interrupted");
-  };
-
-  const startPushToTalk = () => {
-    if (!pushToTalk) return;
-    setAudioTracksEnabled(true);
-    setVoiceState("listening");
-  };
-
-  const stopPushToTalk = () => {
-    if (!pushToTalk) return;
-    setAudioTracksEnabled(false);
-    sendRealtimeEvent({ type: "input_audio_buffer.commit" });
-    sendRealtimeEvent({ type: "response.create" });
-    setVoiceState("thinking");
   };
 
   const saveMemory = async () => {
@@ -539,7 +312,7 @@ function AssistantPanelContent({ compact = false }) {
                 <div className="text-sm text-muted-foreground">Ask about invoices, production blockers, workers today, quote follow-ups, or reports.</div>
               ) : messages.map((item) => (
                 <div key={item.id} className={item.role === "user" ? "ml-auto max-w-[86%] rounded bg-primary p-3 text-sm text-primary-foreground" : "max-w-[92%] rounded border bg-background p-3 text-sm"}>
-                  {item.content_text}
+                          {item.metadata?.interrupted && !item.content_text?.startsWith("[Interrupted") && <span className="block text-xs">Interrupted; generated transcript may include unplayed speech.</span>}{item.content_text}
                 </div>
               ))}
             </div>
@@ -558,44 +331,8 @@ function AssistantPanelContent({ compact = false }) {
 
       <aside className="space-y-4">
         <Card data-testid="assistant-voice">
-          <CardHeader><CardTitle className="flex items-center justify-between text-base"><span className="flex items-center gap-2"><Mic className="size-5" />Voice</span><Badge>{voiceConfig?.interactions_available ? VOICE_STATES[voiceState] : "Setup"}</Badge></CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            {!voiceConfig?.interactions_available ? <VoiceReadiness key={session.identity} preferences={session.preferences} onUseText={() => document.querySelector('[data-testid="assistant-message-input"]')?.focus()} /> : <>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <Button variant={pushToTalk ? "default" : "outline"} onClick={() => { setPushToTalk(true); setVadEnabled(false); setAudioTracksEnabled(false); updateRealtimeTurnDetection(false); }}><Mic className="mr-2 size-4" />Push</Button>
-              <Button variant={vadEnabled ? "default" : "outline"} onClick={() => { setVadEnabled(true); setPushToTalk(false); setAudioTracksEnabled(true); updateRealtimeTurnDetection(true); }}><Volume2 className="mr-2 size-4" />VAD</Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={connectVoice} disabled={voiceState === "connecting" || voiceState === "listening"} data-testid="assistant-voice-connect"><Mic className="mr-2 size-4" />Start</Button>
-              {pushToTalk && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onPointerDown={startPushToTalk}
-                  onPointerUp={stopPushToTalk}
-                  onPointerLeave={stopPushToTalk}
-                  onKeyDown={(event) => { if (event.key === " " || event.key === "Enter") startPushToTalk(); }}
-                  onKeyUp={(event) => { if (event.key === " " || event.key === "Enter") stopPushToTalk(); }}
-                  data-testid="assistant-push-to-talk"
-                >
-                  <Mic className="mr-2 size-4" />Hold
-                </Button>
-              )}
-              <Button size="sm" variant="outline" onClick={interruptVoice} disabled={!["listening", "speaking", "thinking"].includes(voiceState)}><Pause className="mr-2 size-4" />Interrupt</Button>
-              {voiceState === "reconnecting" && <Button size="sm" variant="outline" onClick={connectVoice}>Retry {reconnectCount ? `(${reconnectCount})` : ""}</Button>}
-              <Button size="sm" variant="outline" onClick={disconnectVoice}><Square className="mr-2 size-4" />End</Button>
-            </div>
-            {!voiceConfig?.configured && (
-              <Alert data-testid="assistant-voice-unconfigured">
-                <MicOff className="size-4" />
-                <AlertTitle>OpenAI Voice is not configured</AlertTitle>
-                <AlertDescription>Text assistant remains available.</AlertDescription>
-              </Alert>
-            )}
-            <Textarea readOnly rows={6} value={voiceTranscript} placeholder="Voice transcript" data-testid="assistant-voice-transcript" />
-            <Button size="sm" variant="link" onClick={() => setVoiceState("idle")} data-testid="assistant-text-fallback">Use text instead</Button>
-            </>}
-          </CardContent>
+          <CardHeader><CardTitle className="flex items-center justify-between text-base"><span className="flex items-center gap-2"><Mic className="size-5" />Voice</span><Badge>{voiceConfig?.interactions_available ? session.voice.state : "Setup"}</Badge></CardTitle></CardHeader>
+          <CardContent className="space-y-4"><VoiceConversation config={voiceConfig} context={context} /></CardContent>
         </Card>
 
         <Card data-testid="assistant-memory">

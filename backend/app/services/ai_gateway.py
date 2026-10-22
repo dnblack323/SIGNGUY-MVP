@@ -618,14 +618,14 @@ async def _active_policies(tenant_id: str, capability_key: str, model_profile_id
     return policies
 
 
-async def _enforce_governance(tenant_id: str, capability_key: str, model_profile_id: Optional[str], requested_credits: int, requested_cost_micros: int) -> None:
+async def _enforce_governance(tenant_id: str, capability_key: str, model_profile_id: Optional[str], requested_credits: int, requested_cost_micros: int, *, existing_request: bool = False) -> None:
     day_start = _day_start_iso()
     for policy in await _active_policies(tenant_id, capability_key, model_profile_id):
         if capability_key in set(policy.get("disabled_capability_keys") or []):
             await _open_alert(tenant_id, "rate_limit", "AI capability disabled by governance policy", capability_key=capability_key)
             raise AIGatewayError("capability_disabled_by_policy", "AI capability is disabled by governance policy", 403)
         max_requests = policy.get("max_requests_per_day")
-        if max_requests is not None:
+        if max_requests is not None and not existing_request:
             count = await db.ai_action_requests.count_documents({"tenant_id": tenant_id, "capability_key": capability_key, "created_at": {"$gte": day_start}})
             if count >= max_requests:
                 await _open_alert(tenant_id, "rate_limit", "AI request blocked by daily request limit", observed=count, threshold=max_requests, capability_key=capability_key)
@@ -646,7 +646,10 @@ async def _enforce_governance(tenant_id: str, capability_key: str, model_profile
         max_cost = policy.get("max_cost_micros_per_day")
         if max_cost is not None:
             pipeline = [
-                {"$match": {"tenant_id": tenant_id, "created_at": {"$gte": day_start}}},
+                {"$match": {"tenant_id": tenant_id, "$or": [
+                    {"created_at": {"$gte": day_start}},
+                    {"reconciliation_status": {"$in": ["reserved_maximum", "incomplete_reserved_maximum"]}}
+                ]}},
                 {"$group": {"_id": None, "cost": {"$sum": {"$ifNull": ["$actual_cost_micros", "$estimated_cost_micros"]}}}},
             ]
             used_cost = 0

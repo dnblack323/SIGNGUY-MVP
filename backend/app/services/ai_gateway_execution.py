@@ -1,6 +1,7 @@
 """Real-provider lifecycle extension of EC16; uses its canonical ledgers and credits."""
 
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
+from datetime import timedelta
 import uuid
 
 from pymongo import ReturnDocument
@@ -44,6 +45,86 @@ def estimate(profile: dict, input_tokens: int, output_tokens: int) -> int:
     )
 
 
+def realtime_rates(profile: dict) -> dict[str, Decimal]:
+    try:
+        metadata = profile["metadata"]
+        raw = metadata["realtime_pricing"]
+        keys = (
+            "input_text",
+            "input_audio",
+            "cached_text",
+            "cached_audio",
+            "output_text",
+            "output_audio",
+            "transcription_usd_per_minute",
+        )
+        values = {k: Decimal(str(raw[k])) for k in keys}
+        if (
+            not metadata.get("pricing_source")
+            or any(not v.is_finite() or v < 0 for v in values.values())
+            or any(
+                values[k] <= 0
+                for k in (
+                    "input_text",
+                    "input_audio",
+                    "output_text",
+                    "output_audio",
+                    "transcription_usd_per_minute",
+                )
+            )
+        ):
+            raise ValueError()
+        return values
+    except (KeyError, TypeError, InvalidOperation, ValueError):
+        raise gateway.AIGatewayError(
+            "voice_rates_missing",
+            "Configure sourced text/audio/cache and transcription rates before voice",
+            409,
+        )
+
+
+def realtime_cost(profile: dict, usage: dict) -> int:
+    """Estimate money from observed modality counts; never label it actual billing."""
+    rates_map = realtime_rates(profile)
+    if usage.get("type") == "duration":
+        seconds = Decimal(str(usage["seconds"]))
+        if not seconds.is_finite() or seconds < 0:
+            raise ValueError("Invalid transcription duration")
+        cost = seconds * rates_map["transcription_usd_per_minute"] * 1000000 / 60
+    else:
+        incoming = usage["input_token_details"]
+        outgoing = usage["output_token_details"]
+        cached = incoming.get("cached_tokens_details") or {}
+        if any(
+            type(part.get(k)) is not int or part[k] < 0
+            for part in (incoming, outgoing)
+            for k in ("text_tokens", "audio_tokens")
+        ):
+            raise ValueError("Missing modality usage")
+        if (
+            incoming["text_tokens"] + incoming["audio_tokens"] != usage["input_tokens"]
+            or outgoing["text_tokens"] + outgoing["audio_tokens"]
+            != usage["output_tokens"]
+        ):
+            raise ValueError("Incomplete modality usage")
+        if incoming.get("cached_tokens", 0) != sum(
+            cached.get(k, 0) for k in ("text_tokens", "audio_tokens")
+        ):
+            raise ValueError("Incomplete cached usage")
+        cost = Decimal(0)
+        for name in ("text", "audio"):
+            c = cached.get(f"{name}_tokens", 0)
+            n = incoming[f"{name}_tokens"]
+            if type(c) is not int or not 0 <= c <= n:
+                raise ValueError("Invalid cached usage")
+            cost += (
+                (n - c) * rates_map[f"input_{name}"]
+                + c * rates_map[f"cached_{name}"]
+                + outgoing[f"{name}_tokens"] * rates_map[f"output_{name}"]
+            )
+    return int(cost.to_integral_value(rounding=ROUND_CEILING))
+
+
 async def begin(
     user: dict,
     *,
@@ -54,6 +135,8 @@ async def begin(
     max_input: int,
     max_output: int,
     max_calls: int,
+    capability_key: str = "assistant.chat",
+    voice_seconds: int = 0,
 ) -> tuple[dict, dict, bool]:
     scope = {"tenant_id": user["tenant_id"], "user_id": user["id"]}
     ledger_key = f"assistant:{user['id']}:{key}"
@@ -69,13 +152,44 @@ async def begin(
             )
         return existing, {}, False
     capability = await db.ai_capabilities.find_one(
-        {"capability_key": "assistant.chat", "status": "active"}, {"_id": 0}
+        {"capability_key": capability_key, "status": "active"}, {"_id": 0}
     )
     if not capability:
         raise gateway.AIGatewayError(
             "capability_not_available", "Assistant capability is not active", 409
         )
     profile = await gateway._select_model_profile(capability, profile_id)
+    voice_reserve = 0
+    if capability_key == "assistant.voice_reply":
+        pricing = realtime_rates(profile)
+        profile = {
+            **profile,
+            "metadata": {
+                **profile["metadata"],
+                "input_usd_per_million_tokens": str(
+                    max(
+                        pricing[k]
+                        for k in (
+                            "input_text",
+                            "input_audio",
+                            "cached_text",
+                            "cached_audio",
+                        )
+                    )
+                ),
+                "output_usd_per_million_tokens": str(
+                    max(pricing["output_text"], pricing["output_audio"])
+                ),
+            },
+        }
+        voice_reserve = int(
+            (
+                pricing["transcription_usd_per_minute"]
+                * (voice_seconds + max_calls + 1)
+                * 1000000
+                / 60
+            ).to_integral_value(rounding=ROUND_CEILING)
+        )
     if profile.get("provider_key") != "openai":
         raise gateway.AIGatewayError(
             "assistant_provider_not_allowed",
@@ -83,9 +197,11 @@ async def begin(
             409,
         )
     charge = gateway._capability_credit_charge(capability)
-    worst = estimate(profile, max_input * max_calls, max_output * max_calls)
+    worst = (
+        estimate(profile, max_input * max_calls, max_output * max_calls) + voice_reserve
+    )
     policies = await gateway._active_policies(
-        scope["tenant_id"], "assistant.chat", profile_id
+        scope["tenant_id"], capability_key, profile_id
     )
     if not any(p.get("max_cost_micros_per_day") is not None for p in policies):
         raise gateway.AIGatewayError(
@@ -125,13 +241,36 @@ async def begin(
                 )
             return existing, {}, False
         await gateway._enforce_governance(
-            scope["tenant_id"], "assistant.chat", profile_id, charge, worst
+            scope["tenant_id"], capability_key, profile_id, charge, worst
         )
+        if capability_key == "assistant.voice_reply":
+            from ..core.config import get_settings
+
+            settings = get_settings()
+            since = (
+                utc_now()
+                - timedelta(
+                    seconds=max(1, settings.openai_realtime_rate_limit_window_seconds)
+                )
+            ).isoformat()
+            recent = await db.ai_action_requests.count_documents(
+                {
+                    "tenant_id": scope["tenant_id"],
+                    "capability_key": capability_key,
+                    "created_at": {"$gte": since},
+                }
+            )
+            if recent >= max(1, settings.openai_realtime_rate_limit_sessions):
+                raise gateway.AIGatewayError(
+                    "voice_rate_limit",
+                    "Voice session start limit reached; continue in text or try later",
+                    429,
+                )
         action = AIActionRequest(
             **scope,
-            capability_key="assistant.chat",
+            capability_key=capability_key,
             feature_key="business_assistant",
-            action_key="chat",
+            action_key="voice" if capability_key == "assistant.voice_reply" else "chat",
             provider_key="openai",
             model_key=profile["model_key"],
             model_profile_id=profile_id,
@@ -169,6 +308,10 @@ async def begin(
                 "pricing_source",
             )
         }
+        if capability_key == "assistant.voice_reply":
+            cost["pricing_snapshot"]["realtime_pricing"] = profile["metadata"][
+                "realtime_pricing"
+            ]
         await db.ai_provider_cost_ledger_entries.insert_one(prepare_for_mongo(cost))
         action.update(
             status="executing",
@@ -210,7 +353,14 @@ async def begin(
         )
 
 
-async def observe(user: dict, action: dict, response: dict) -> None:
+async def observe(
+    user: dict,
+    action: dict,
+    response: dict,
+    *,
+    estimated_cost_micros: int | None = None,
+    usage_detail: dict | None = None,
+) -> None:
     usage = response.get("usage") or {}
     if not isinstance(usage, dict):
         usage = {}
@@ -225,6 +375,10 @@ async def observe(user: dict, action: dict, response: dict) -> None:
         "output_tokens": usage.get("output_tokens") if valid else None,
         "usage_observed": valid,
     }
+    if estimated_cost_micros is not None:
+        attempt["estimated_cost_micros"] = estimated_cost_micros
+    if usage_detail is not None:
+        attempt["usage_detail"] = usage_detail
     if event and any(
         a.get("provider_event_id") == event for a in action["provider_attempts"]
     ):
@@ -270,9 +424,9 @@ async def finish(
         tenant_id=user["tenant_id"],
         user_id=user["id"],
         action_request_id=action["id"],
-        capability_key="assistant.chat",
+        capability_key=action["capability_key"],
         feature_key="business_assistant",
-        action_key="chat",
+        action_key=action.get("action_key", "chat"),
         provider_key="openai",
         model_key=profile["model_key"],
         input_units=incoming,
@@ -306,7 +460,13 @@ async def finish(
             ),
         }
         if complete:
-            cost_update["estimated_cost_micros"] = estimate(profile, incoming, outgoing)
+            cost_update["estimated_cost_micros"] = (
+                sum(a["estimated_cost_micros"] for a in action["provider_attempts"])
+                if all(
+                    "estimated_cost_micros" in a for a in action["provider_attempts"]
+                )
+                else estimate(profile, incoming, outgoing)
+            )
         elif no_dispatch:
             cost_update.update(
                 estimated_cost_micros=0, reconciliation_status="no_dispatch"

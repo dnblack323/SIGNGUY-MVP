@@ -1,5 +1,7 @@
 # SignGuy AI — Owner Specification Hold Register
 
+**Current owner authorization, October 22, 2026:** Stage B is accepted. Stage C engineering is accepted as the foundation for authorized Stage D real voice conversations; final C acceptance still requires our own commercially cleared previews. Stage D implementation/mock verification is in the existing Business Assistant worktree for owner review. See docs/BUSINESS_ASSISTANT_V1_STAGE_D_REVIEW.md (relative to the repository root). Earlier C-only or D-prohibited statements below are historical and superseded only for this authorized scope. No paid calls, preview generation, Stage E/F, merge or deployment are authorized. Unrelated feature holds remain unchanged.
+
 **Current Business Assistant authorization, October 21, 2026:** Owner explicitly accepted Stage B and authorized Stage C voice selection, prerecorded preview and interface/microphone readiness in the existing worktree. The original C/D split is restored; full Realtime remains D. Paid provider calls, D–F, merge and deployment remain held. H7 commercial activation is not waived.
 
 **Purpose:** Every explicit "do not proceed without owner authorization" hold currently in force, in one place, so no hold is silently forgotten or silently cleared. Created 2026-02 during the SignGuy AI Checkpoint Specification Pack intake.

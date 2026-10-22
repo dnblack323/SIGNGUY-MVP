@@ -70,8 +70,18 @@ export async function createVoiceSession(payload) {
   return data;
 }
 
-export async function recordVoiceUsage(voiceSessionId, payload) {
-  const { data } = await api.post(`/assistant/voice/sessions/${voiceSessionId}/usage`, payload);
+export async function getVoiceSession(sessionId) {
+  const { data } = await api.get(`/assistant/voice/sessions/${sessionId}`);
+  return data;
+}
+
+export async function stopVoiceSession(sessionId) {
+  const { data } = await api.post(`/assistant/voice/sessions/${sessionId}/stop`);
+  return data;
+}
+
+export async function interruptVoiceSession(sessionId) {
+  const { data } = await api.post(`/assistant/voice/sessions/${sessionId}/interrupt`);
   return data;
 }
 

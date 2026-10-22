@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { createAssistantConversation, getAssistantConversation, getAssistantPreferences, listAssistantConversations, sendAssistantMessage } from "@/lib/businessAssistant";
+import useAssistantVoice from "./useAssistantVoice";
 
 const Context = createContext(null);
 const blank = (identity) => ({ identity, mode: "owner", message: "", conversationId: null, messages: [], sources: [], proposals: [], conversations: [], preferences: null, loading: false, ready: false });
@@ -15,6 +16,7 @@ export function AssistantProvider({ children }) {
   const busy = useRef(false);
   const retry = useRef(null);
   const active = useRef(identity);
+  const creating = useRef(null);
   const storageKey = `signguy.assistant.active:${user?.tenant_id}:${user?.id}`;
   const state = session.identity === identity ? session : blank(identity);
 
@@ -23,11 +25,34 @@ export function AssistantProvider({ children }) {
     epoch.current += 1;
     busy.current = false;
     retry.current = null;
+    creating.current = null;
     setSession(blank(identity));
     return () => { epoch.current += 1; busy.current = false; };
   }, [identity]);
 
   const patch = useCallback((values) => setSession((old) => old.identity === identity ? { ...old, ...values } : old), [identity]);
+  const ensureConversation = async () => {
+    if (state.conversationId) return state.conversationId;
+    if (!creating.current) {
+      creating.current = createAssistantConversation({ mode: state.mode }).then((convo) => {
+        if (active.current !== identity) throw new Error("Assistant identity changed");
+        patch({ conversationId: convo.id, conversations: [convo, ...state.conversations] });
+        localStorage.setItem(storageKey, convo.id);
+        return convo.id;
+      }).finally(() => { if (active.current === identity) creating.current = null; });
+    }
+    return creating.current;
+  };
+  const refresh = async () => {
+    if (!state.conversationId) return;
+    let result;
+    try { result = await getAssistantConversation(state.conversationId); }
+    catch (err) { if (active.current === identity) patch({ messages: [], sources: [] }); throw err; }
+    if (active.current !== identity) return;
+    const latest = [...(result.messages || [])].reverse().find((m) => m.role === "assistant");
+    patch({ messages: result.messages || [], sources: (latest?.metadata?.sources || []).filter((ref) => ref.route) });
+  };
+  const voice = useAssistantVoice(identity, { ensureConversation, refresh, clear: () => patch({ messages: [], sources: [] }) });
   const activate = useCallback(() => setEnabled(true), []);
   const selectConversation = useCallback(async (id) => {
     if (busy.current) return;
@@ -61,27 +86,28 @@ export function AssistantProvider({ children }) {
     const generation = epoch.current;
     const valid = () => generation === epoch.current && identity === active.current;
     try {
-      let id = state.conversationId;
-      if (!id) {
-        const convo = await createAssistantConversation({ mode: state.mode });
+      let baseline = state.messages;
+      if (voice.hasSession()) {
+        await voice.end();
         if (!valid()) return;
-        id = convo.id;
-        patch({ conversationId: id, conversations: [convo, ...state.conversations] });
-        localStorage.setItem(storageKey, id);
+        baseline = (await getAssistantConversation(state.conversationId)).messages || [];
       }
+      const id = await ensureConversation();
+      if (!valid()) return;
       const fields = { message: state.message, mode: state.mode, conversation_id: id, context };
       const signature = JSON.stringify(fields);
       if (retry.current?.signature !== signature) retry.current = { signature, key: requestKey() };
       const result = await sendAssistantMessage({ ...fields, idempotency_key: retry.current.key });
       if (!valid()) return;
-      patch({ messages: [...state.messages.filter((m) => ![result.user_message.id, result.assistant_message.id].includes(m.id)), result.user_message, result.assistant_message], sources: result.sources || [], message: "" });
+      patch({ messages: [...baseline.filter((m) => ![result.user_message.id, result.assistant_message.id].includes(m.id)), result.user_message, result.assistant_message], sources: result.sources || [], message: "" });
       retry.current = null;
     } finally {
       if (valid()) { busy.current = false; patch({ loading: false }); }
     }
   };
   const setter = (key) => (value) => setSession((old) => old.identity !== identity ? old : { ...old, [key]: typeof value === "function" ? value(old[key]) : value });
-  return <Context.Provider value={{ ...state, activate, send, selectConversation, patch,
+  const changeConversation = async (id) => { if (voice.hasSession()) await voice.end(); return selectConversation(id); };
+  return <Context.Provider value={{ ...state, voice, activate, send, selectConversation: changeConversation, patch,
     setMode: setter("mode"), setMessage: setter("message"), setConversationId: setter("conversationId"),
     setMessages: setter("messages"), setSources: setter("sources"), setProposals: setter("proposals"), setLoading: setter("loading") }}>{children}</Context.Provider>;
 }

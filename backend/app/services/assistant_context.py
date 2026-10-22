@@ -72,4 +72,42 @@ async def history(user: dict, conversation_id: str, limit: int) -> list[dict]:
         .sort([("created_at", -1), ("id", -1)])
         .limit(limit)
     ]
-    return [row for row in reversed(rows) if await visible(user, row)]
+    return [
+        row
+        for row in reversed(rows)
+        if not row.get("metadata", {}).get("interrupted") and await visible(user, row)
+    ]
+
+
+async def inputs(
+    user: dict, conversation_id: str, limit: int, context: dict | None = None
+) -> tuple[list[dict], list[dict], dict]:
+    """One permitted history/memory/provenance composition for text and voice."""
+    previous = await history(user, conversation_id, limit)
+    memory = await memories(user)
+    dependencies = {}
+    for old in previous:
+        for ref in old.get("metadata", {}).get("sources", []):
+            dependencies[(ref["source_type"], ref["source_id"])] = ref
+    for entry in memory:
+        if entry.get("source_type") and entry.get("source_id"):
+            ref = {"source_type": entry["source_type"], "source_id": entry["source_id"]}
+            dependencies[(ref["source_type"], ref["source_id"])] = ref
+    for ref in (context or {}).get("source_links", []):
+        dependencies[(ref["source_type"], ref["source_id"])] = ref
+    if len(dependencies) > 100:
+        raise assistant_tools.ToolError(
+            "Source context limit reached; start a new conversation"
+        )
+    messages = [
+        {"role": m["role"], "content": m["content_text"]}
+        for m in previous
+        if m["role"] in {"user", "assistant"}
+    ]
+    data = {
+        "page_reference": (context or {}).get("source_links", []),
+        "approved_preference_data": [
+            {"key": m["memory_key"], "text": m["content_text"][:500]} for m in memory
+        ],
+    }
+    return messages, list(dependencies.values()), data

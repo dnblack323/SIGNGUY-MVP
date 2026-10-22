@@ -114,8 +114,8 @@ async def ask(user: dict, fields: dict) -> dict:
                 "This request is already recorded; it will not be dispatched or charged again.",
                 409,
             )
-        previous = await assistant_context.history(
-            user, convo["id"], settings.assistant_max_history_messages
+        inputs, refs, prompt_data = await assistant_context.inputs(
+            user, convo["id"], settings.assistant_max_history_messages, context
         )
         if context:
             await db.assistant_conversations.update_one(
@@ -129,38 +129,8 @@ async def ask(user: dict, fields: dict) -> dict:
                     }
                 },
             )
-        inputs = [
-            {"role": m["role"], "content": m["content_text"]}
-            for m in previous
-            if m["role"] in {"user", "assistant"}
-        ]
-        memory = await assistant_context.memories(user)
-        dependencies = {}
-        for old in previous:
-            for ref in old.get("metadata", {}).get("sources", []):
-                dependencies[(ref["source_type"], ref["source_id"])] = ref
-        for entry in memory:
-            if entry.get("source_type") and entry.get("source_id"):
-                ref = {
-                    "source_type": entry["source_type"],
-                    "source_id": entry["source_id"],
-                }
-                dependencies[(ref["source_type"], ref["source_id"])] = ref
-        for ref in context.get("source_links", []) if context else []:
-            dependencies[(ref["source_type"], ref["source_id"])] = ref
-        if len(dependencies) > 100:
-            raise assistant_tools.ToolError(
-                "Source context limit reached; start a new conversation"
-            )
-        # Free-form memory is user-approved data, not authority to retrieve records.
-        preferences_data = [
-            {"key": m["memory_key"], "text": m["content_text"][:500]} for m in memory
-        ]
-        prompt_data = {
-            "user_message": prompt,
-            "page_reference": context.get("source_links") if context else [],
-            "approved_preference_data": preferences_data,
-        }
+        dependencies = {(ref["source_type"], ref["source_id"]): ref for ref in refs}
+        prompt_data["user_message"] = prompt
         inputs.append({"role": "user", "content": json.dumps(prompt_data)})
         user_msg = await svc._insert_message(
             user,

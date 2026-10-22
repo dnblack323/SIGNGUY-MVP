@@ -1,5 +1,7 @@
 # SignGuy AI MVP — Commercial V1 Launch Plan
 
+**Current owner authorization, October 22, 2026:** Stage B is accepted. Stage C engineering is accepted as the foundation for authorized Stage D real voice conversations; final C acceptance still requires our own commercially cleared previews. Stage D implementation/mock verification is in the existing Business Assistant worktree for owner review. See docs/BUSINESS_ASSISTANT_V1_STAGE_D_REVIEW.md (relative to the repository root). Earlier C-only or D-prohibited statements below are historical and superseded only for this authorized scope. No paid calls, preview generation, Stage E/F, merge or deployment are authorized. Unrelated feature holds remain unchanged.
+
 **Current owner decision, October 21, 2026:** Stage B is ACCEPTED for its approved scope. Stage C voice selection, prerecorded preview and microphone/interface readiness is authorized and implemented for review. The original C/D split applies; complete Realtime remains D. This supersedes historical B-pending/C-unstarted or combined-C/D statements below. No paid evaluation, D–F implementation, merge or deployment is authorized. See [Stage C report](../evidence/EC18_STAGE_C_EVIDENCE.md). Unrelated features, including postponed onboarding/Help Center, remain outside this work.
 
 **Prepared:** 2026-10-14 from the completed audits (no new general audit was performed).

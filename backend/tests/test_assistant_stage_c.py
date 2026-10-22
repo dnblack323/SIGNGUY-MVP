@@ -90,13 +90,14 @@ async def test_paid_voice_is_blocked_even_with_provider_configuration(ctx, monke
     async def forbidden(**kwargs):
         raise AssertionError("Stage C must not create paid sessions")
 
-    monkeypatch.setattr(svc, "_request_openai_realtime_client_secret", forbidden)
+    from app.services import openai_realtime_provider
+    monkeypatch.setattr(openai_realtime_provider, "create_call", forbidden)
     before = await db.assistant_voice_sessions.count_documents(
         {"tenant_id": ctx["tenant"]}
     )
     with pytest.raises(svc.BusinessAssistantError) as error:
         await svc.create_realtime_session(ctx["user"], {})
-    assert error.value.code == "voice_stage_not_available"
+    assert error.value.code == "voice_not_configured"
     assert (
         await db.assistant_voice_sessions.count_documents({"tenant_id": ctx["tenant"]})
         == before

@@ -26,7 +26,7 @@ async def serve():
     from app.services import business_assistant
     from app.core.assistant_voices import voice_options
     from app.services.entitlements import _upsert_entitlement_for_tests
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, HTMLResponse
     from fastapi.staticfiles import StaticFiles
     from server import app
     import uvicorn
@@ -141,17 +141,36 @@ async def serve():
         }
 
     openai_assistant_provider.respond = respond
+    voice_script = ""
+    if os.environ.get("ASSISTANT_LOCAL_VOICE_MOCK") == "1":
+        from tests.assistant_voice_browser import configure, SCRIPT
+
+        await configure(settings, db)
+        voice_script = SCRIPT
     build = Path(__file__).resolve().parents[2] / "frontend" / "build"
     app.mount("/static", StaticFiles(directory=build / "static"), name="smoke-static")
     # Optional owner-local review only. Unlicensed public documentation clips
     # are never in public/, a production image or an enabled production catalog.
     local_samples = build.parents[1] / ".cache/stage-c/voice-preview-recordings"
-    if os.environ.get("ASSISTANT_LOCAL_PREVIEW_REVIEW") == "1" and local_samples.is_dir():
+    if (
+        os.environ.get("ASSISTANT_LOCAL_PREVIEW_REVIEW") == "1"
+        and local_samples.is_dir()
+    ):
         business_assistant.voice_options = lambda: voice_options(local_preview=True)
-        app.mount("/assistant-voice-samples", StaticFiles(directory=local_samples), name="smoke-voice-samples")
+        app.mount(
+            "/assistant-voice-samples",
+            StaticFiles(directory=local_samples),
+            name="smoke-voice-samples",
+        )
 
     @app.get("/{frontend_path:path}", include_in_schema=False)
     async def frontend(frontend_path: str):
+        if voice_script:
+            return HTMLResponse(
+                (build / "index.html")
+                .read_text(encoding="utf-8")
+                .replace("<head>", "<head>" + voice_script)
+            )
         return FileResponse(build / "index.html")
 
     with socket.socket() as sock:

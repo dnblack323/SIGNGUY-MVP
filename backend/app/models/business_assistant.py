@@ -14,7 +14,7 @@ ActionStatus = Literal["proposed", "edited", "confirmed", "canceled", "expired",
 MemoryStatus = Literal["active", "archived", "deleted"]
 RoutineStatus = Literal["active", "paused", "archived"]
 InsightStatus = Literal["new", "dismissed", "archived"]
-VoiceSessionStatus = Literal["created", "connecting", "active", "ended", "failed", "unavailable"]
+VoiceSessionStatus = Literal["created", "connecting", "active", "ended", "failed", "unavailable", "termination_pending", "recovery_required"]
 
 
 class AssistantSourceCitation(BaseDoc):

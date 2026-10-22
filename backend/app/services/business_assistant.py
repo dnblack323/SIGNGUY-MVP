@@ -6,10 +6,8 @@ deterministic BI contracts. AI governance and metering remain owned by EC16.
 from __future__ import annotations
 
 from datetime import timedelta
-import hashlib
 from typing import Any, Optional
 
-import httpx
 from pymongo.errors import DuplicateKeyError
 
 from ..core.assistant_voices import VOICE_KEYS, voice_options, voice_policy
@@ -31,7 +29,6 @@ from ..models.business_assistant import (
     AssistantMessage,
     AssistantRoutine,
     AssistantSourceCitation,
-    AssistantVoiceSession,
 )
 from . import ai_gateway, communication_service, task_service
 from .activity import record_activity_with_audit
@@ -1093,9 +1090,16 @@ async def dismiss_insight(user: dict[str, Any], insight_id: str) -> dict[str, An
 
 
 def voice_config() -> dict[str, Any]:
+    from . import assistant_realtime
     settings = get_settings()
     return {
         **voice_policy(),
+        "stage": "realtime",
+        "interactions_available": assistant_realtime.configured(),
+        "max_seconds": settings.assistant_voice_max_seconds,
+        "idle_seconds": settings.assistant_voice_idle_seconds,
+        "max_responses": settings.assistant_voice_max_responses,
+        "message": "Voice is available when an authorized compatible model, credits and server budget are configured. Text remains available.",
         "voices": voice_options(),
         "provider": "openai",
         "architecture": "realtime_webrtc",
@@ -1110,168 +1114,19 @@ def voice_config() -> dict[str, Any]:
     }
 
 
-async def create_realtime_session(user: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]:
+async def create_realtime_session(user: dict, fields: dict) -> dict:
+    from . import assistant_realtime
+    return await assistant_realtime.start(user, fields)
+
+
+
+
+
+
+
+
+
+
+async def record_voice_usage(user: dict, voice_session_id: str, fields: dict) -> dict:
     await _require_assistant_access(user)
-    if not voice_policy()["interactions_available"]:
-        raise BusinessAssistantError("voice_stage_not_available", voice_policy()["message"], 503)
-    settings = get_settings()
-    mode = _mode_key(fields.get("mode"))
-    convo = await _conversation(user, fields.get("conversation_id"), mode=mode)
-    config = voice_config()
-    if not config["configured"]:
-        voice_doc = AssistantVoiceSession(
-            tenant_id=user["tenant_id"],
-            user_id=user["id"],
-            conversation_id=convo["id"],
-            status="unavailable",
-            model_key=settings.openai_realtime_model,
-            voice=settings.openai_realtime_voice,
-            unavailable_reason="OpenAI Voice is not configured",
-        ).model_dump()
-        await db.assistant_voice_sessions.insert_one(prepare_for_mongo(voice_doc))
-        return {"configured": False, "status": "unavailable", "message": "OpenAI Voice is not configured", "voice_session": serialize_doc(voice_doc)}
-    await _require_voice_credit_authorized(user)
-    await _voice_rate_limit(user)
-    safety_id = _safety_identifier(user)
-    payload = {
-        "session": {
-            "type": "realtime",
-            "model": settings.openai_realtime_model,
-            "audio": {
-                "output": {"voice": settings.openai_realtime_voice},
-            },
-            "turn_detection": {"type": settings.openai_realtime_turn_detection} if settings.openai_realtime_turn_detection else None,
-            "instructions": "You are SignGuy AI Business Assistant. Use tool calls only to request backend proposals; never claim external actions succeeded without backend confirmation.",
-            "tools": [
-                {
-                    "type": "function",
-                    "name": "propose_assistant_action",
-                    "description": "Create a visible SignGuy Business Assistant action proposal. The user must preview and explicitly confirm before any canonical service execution.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "action_type": {"type": "string", "enum": sorted(ACTION_PERMISSIONS.keys())},
-                            "title": {"type": "string"},
-                            "summary": {"type": "string"},
-                            "body": {"type": "string"},
-                            "route": {"type": "string"},
-                            "target_refs": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {"type": {"type": "string"}, "id": {"type": "string"}, "source_updated_at": {"type": "string"}},
-                                    "required": ["type", "id"],
-                                },
-                            },
-                        },
-                        "required": ["action_type", "title"],
-                    },
-                }
-            ],
-        }
-    }
-    payload["session"] = {k: v for k, v in payload["session"].items() if v is not None}
-    try:
-        secret = await _request_openai_realtime_client_secret(settings=settings, safety_id=safety_id, payload=payload)
-    except httpx.HTTPError as exc:
-        voice_doc = AssistantVoiceSession(
-            tenant_id=user["tenant_id"],
-            user_id=user["id"],
-            conversation_id=convo["id"],
-            status="failed",
-            model_key=settings.openai_realtime_model,
-            voice=settings.openai_realtime_voice,
-            unavailable_reason="OpenAI Realtime session creation failed",
-            metadata={"error_type": exc.__class__.__name__},
-        ).model_dump()
-        await db.assistant_voice_sessions.insert_one(prepare_for_mongo(voice_doc))
-        await _audit(user, "assistant.voice_session_failed", "assistant_voice_session", voice_doc["id"], "OpenAI Realtime session creation failed")
-        raise BusinessAssistantError("voice_session_failed", "OpenAI Realtime session creation failed", 502)
-    provider_session_id = secret.get("id") or secret.get("session", {}).get("id")
-    voice_doc = AssistantVoiceSession(
-        tenant_id=user["tenant_id"],
-        user_id=user["id"],
-        conversation_id=convo["id"],
-        status="created",
-        model_key=settings.openai_realtime_model,
-        voice=settings.openai_realtime_voice,
-        provider_session_id=provider_session_id,
-        metadata={"ephemeral_credential_issued": True, "raw_audio_stored": False},
-    ).model_dump()
-    await db.assistant_voice_sessions.insert_one(prepare_for_mongo(voice_doc))
-    await _audit(user, "assistant.voice_session_created", "assistant_voice_session", voice_doc["id"], "OpenAI Realtime voice session credential created")
-    return {
-        "configured": True,
-        "voice_session": serialize_doc(voice_doc),
-        "realtime": secret,
-        "model": settings.openai_realtime_model,
-        "voice": settings.openai_realtime_voice,
-    }
-
-
-async def _request_openai_realtime_client_secret(*, settings: Any, safety_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    async with httpx.AsyncClient(timeout=settings.openai_realtime_timeout_seconds) as client:
-        response = await client.post(
-            "https://api.openai.com/v1/realtime/client_secrets",
-            headers={
-                "Authorization": f"Bearer {settings.openai_api_key}",
-                "Content-Type": "application/json",
-                "OpenAI-Safety-Identifier": safety_id,
-            },
-            json=payload,
-        )
-        response.raise_for_status()
-        return response.json()
-
-
-def _safety_identifier(user: dict[str, Any]) -> str:
-    raw = f"{user['tenant_id']}:{user['id']}".encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()
-
-
-async def _voice_rate_limit(user: dict[str, Any]) -> None:
-    settings = get_settings()
-    window_start = (utc_now() - timedelta(seconds=settings.openai_realtime_rate_limit_window_seconds)).isoformat()
-    count = await db.assistant_voice_sessions.count_documents({"tenant_id": user["tenant_id"], "user_id": user["id"], "created_at": {"$gte": window_start}})
-    if count >= settings.openai_realtime_rate_limit_sessions:
-        raise BusinessAssistantError("voice_rate_limit", "Too many voice sessions. Try again shortly.", 429)
-
-
-async def _require_voice_credit_authorized(user: dict[str, Any]) -> None:
-    capability = await db.ai_capabilities.find_one({"capability_key": "assistant.voice_reply", "status": "active"}, {"_id": 0})
-    if not capability:
-        raise BusinessAssistantError("assistant_capability_not_bootstrapped", "Platform AI admin must bootstrap EC18 assistant capabilities before voice activation", 409)
-    try:
-        account = await ai_gateway.get_credit_account(user["tenant_id"])
-    except ai_gateway.AIGatewayError as exc:
-        raise BusinessAssistantError(exc.code, exc.detail, exc.status_code)
-    if account.get("status") != "active" or int(account.get("available_credits") or 0) <= 0:
-        raise BusinessAssistantError("insufficient_ai_credits", "Insufficient AI credits", 402)
-
-
-async def record_voice_usage(user: dict[str, Any], voice_session_id: str, fields: dict[str, Any]) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    voice = await db.assistant_voice_sessions.find_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "id": voice_session_id}, {"_id": 0})
-    if not voice:
-        raise BusinessAssistantError("voice_session_not_found", "Voice session not found", 404)
-    provider_event_id = fields.get("provider_event_id")
-    if not provider_event_id:
-        raise BusinessAssistantError("provider_event_required", "Provider usage event id is required", 400)
-    action = await _meter_assistant(
-        user,
-        capability_key="assistant.voice_reply",
-        conversation_id=voice.get("conversation_id") or voice_session_id,
-        prompt="voice usage event",
-        idempotency_key=f"voice:{voice_session_id}:{provider_event_id}",
-    )
-    updates = {
-        "input_audio_seconds": int(fields.get("input_audio_seconds") or 0),
-        "output_audio_seconds": int(fields.get("output_audio_seconds") or 0),
-        "usage_event_ids": list(set((voice.get("usage_event_ids") or []) + [action["id"]])),
-        "updated_at": _now_iso(),
-    }
-    await db.assistant_voice_sessions.update_one({"tenant_id": user["tenant_id"], "id": voice_session_id}, {"$set": updates})
-    return {
-        "voice_session": serialize_doc(await db.assistant_voice_sessions.find_one({"tenant_id": user["tenant_id"], "id": voice_session_id}, {"_id": 0})),
-        "action_request": action,
-    }
+    raise BusinessAssistantError("client_voice_usage_rejected", "Voice usage is observed by the backend; browser billing events are not accepted", 403)

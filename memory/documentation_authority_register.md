@@ -1,5 +1,7 @@
 # SignGuy AI — Documentation Authority Register
 
+**Current owner authorization, October 22, 2026:** Stage B is accepted. Stage C engineering is accepted as the foundation for authorized Stage D real voice conversations; final C acceptance still requires our own commercially cleared previews. Stage D implementation/mock verification is in the existing Business Assistant worktree for owner review. See docs/BUSINESS_ASSISTANT_V1_STAGE_D_REVIEW.md (relative to the repository root). Earlier C-only or D-prohibited statements below are historical and superseded only for this authorized scope. No paid calls, preview generation, Stage E/F, merge or deployment are authorized. Unrelated feature holds remain unchanged.
+
 **Latest owner decision, October 21, 2026:** Business Assistant Stage B is accepted for its approved scope. Stage C selection/preview/interface readiness is authorized; full Realtime remains Stage D. This overrides earlier B-pending/plan-only or combined-C/D wording below. No paid calls, D–F, merge or deployment. See docs/BUSINESS_ASSISTANT_V1_STAGE_C_REVIEW.md and evidence/EC18_STAGE_C_EVIDENCE.md.
 
 **Purpose:** Single register naming every planning document in the repository and its exact authority ranking, so no two documents wear the same crown. Created 2026-02 during the SignGuy AI Checkpoint Specification Pack intake.

@@ -240,9 +240,9 @@ async def test_voice_unconfigured_returns_safe_unavailable_without_fake_session(
     async with await _client_as(ctx["owner"]) as client:
         config = await client.get("/api/assistant/voice/config")
         assert config.status_code == 200
-        response = await client.post("/api/assistant/voice/sessions", json={})
+        response = await client.post("/api/assistant/voice/sessions", json={"offer_sdp": "v=0\nm=audio 9 UDP/TLS/RTP/SAVPF 111", "idempotency_key": "unconfigured"})
         assert response.status_code == 503, response.text
     body = response.json()
-    assert "Live voice conversations are not available yet" in body["detail"]
+    assert "Voice is not enabled" in body["detail"]
     assert config.json()["interactions_available"] is False
     assert "api_key" not in str(body).lower()

@@ -1,5 +1,7 @@
 # SignGuy AI — Progress Register
 
+**Current owner authorization, October 22, 2026:** Stage B is accepted. Stage C engineering is accepted as the foundation for authorized Stage D real voice conversations; final C acceptance still requires our own commercially cleared previews. Stage D implementation/mock verification is in the existing Business Assistant worktree for owner review. See docs/BUSINESS_ASSISTANT_V1_STAGE_D_REVIEW.md (relative to the repository root). Earlier C-only or D-prohibited statements below are historical and superseded only for this authorized scope. No paid calls, preview generation, Stage E/F, merge or deployment are authorized. Unrelated feature holds remain unchanged.
+
 ## Business Assistant Stage C — October 21, 2026
 
 Owner accepted Stage B (7fa5e8a / draft PR #63) and authorized only Stage C selection/preview/interface readiness. Original C/D boundary restored; full Realtime remains D. Six independently saved voice choices, bundled prerecorded samples and local microphone readiness are implemented for review. Existing private context/personality/tools and Gateway remain canonical. No paid calls, merge, deployment or D–F implementation. Evidence: evidence/EC18_STAGE_C_EVIDENCE.md.
