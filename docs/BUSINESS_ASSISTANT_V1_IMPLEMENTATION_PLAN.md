@@ -1,5 +1,7 @@
 # Business Assistant V1 — implementation plan and personality selection
 
+**Stage C closeout finding, October 22:** Voice settings/readiness and playback code are implemented, but commercial rights to the public documentation recordings are unverified. Those clips are excluded from production and previews remain visibly unavailable there until cleared recordings exist. See the existing Stage C review; this does not authorize paid generation or Stage D.
+
 **Current owner decision:** Stage B is ACCEPTED for its approved scope. Stage C is authorized for independent voice selection, prerecorded preview and microphone/interface readiness. **The original C/D split applies: complete Realtime is Stage D, not C.** This supersedes the earlier combined-scope note. See [Stage C boundary/review](BUSINESS_ASSISTANT_V1_STAGE_C_REVIEW.md). No paid calls, D–F, merge or deployment are authorized. Prior pending-acceptance wording below is historical.
 
 **Updated:** October 21, 2026. **Status: STAGE A APPROVED; STAGE B IMPLEMENTED, OWNER ACCEPTANCE PENDING. C–F NOT STARTED.** The owner approved Stage B implementation and completion with mocked provider testing. See the [Stage B implementation evidence](BUSINESS_ASSISTANT_V1_STAGE_B_REVIEW.md#stage-b-implementation-and-final-verification) for tests, browser checks and remaining limits. No paid live evaluation, provider activation, merge or deployment occurred.

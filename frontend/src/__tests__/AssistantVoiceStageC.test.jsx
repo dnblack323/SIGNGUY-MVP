@@ -10,7 +10,7 @@ import * as api from "@/lib/businessAssistant";
 let mockUser = { id: "u1", tenant_id: "t1", role: "owner" };
 jest.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ user: mockUser, permissions: ["ai_assistant:use"] }) }));
 jest.mock("@/lib/businessAssistant", () => ({ getAssistantPreferences: jest.fn(), saveAssistantPreferences: jest.fn() }));
-const voices = ["alloy", "ash", "coral", "echo", "sage", "shimmer"].map((key) => ({ key, name: key[0].toUpperCase() + key.slice(1), preview_path: `/assistant-voice-samples/${key}.wav` }));
+const voices = ["alloy", "ash", "coral", "echo", "sage", "shimmer"].map((key) => ({ key, name: key[0].toUpperCase() + key.slice(1), preview_path: `/assistant-voice-samples/${key}.wav`, preview_available: true }));
 const originalAudio = global.Audio;
 const originalDevices = navigator.mediaDevices;
 let players;
@@ -43,6 +43,19 @@ test("every bundled voice previews on click without selecting, generating or ove
   await user.click(screen.getByRole("radio", { name: "Ash" }));
   expect(select).toHaveBeenCalledWith("ash");
   view.unmount(); expect(players.at(-1).pause).toHaveBeenCalledTimes(1);
+});
+
+test("uncleared production recordings cannot play or trigger generated previews", async () => {
+  const user = userEvent.setup(); const select = jest.fn();
+  renderWithProviders(<VoicePreview voices={voices.map((v) => ({ ...v, preview_path: null, preview_available: false }))} selected="alloy" onSelect={select} />);
+  expect(screen.getByText(/cleared for commercial use/)).toBeInTheDocument();
+  for (const voice of voices) {
+    const preview = screen.getByRole("button", { name: `Preview ${voice.name}` });
+    expect(preview).toBeDisabled(); await user.click(preview);
+  }
+  expect(global.Audio).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("radio", { name: "Ash" }));
+  expect(select).toHaveBeenCalledWith("ash");
 });
 
 test("stop and media failure leave a retryable preview", async () => {

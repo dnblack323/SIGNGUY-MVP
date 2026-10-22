@@ -46,10 +46,10 @@ export default function VoiceReadiness({ preferences, onUseText }) {
   };
   return <div className="space-y-3" data-testid="assistant-voice-readiness">
     <p role="status">Connection: not connected. {state}.</p>
-    <p className="text-sm">Live voice conversations are not available yet. You can choose a voice, compare samples and check microphone access. This check does not listen to or send speech.</p>
+    <p className="text-sm">Live voice conversations are not available yet. You can choose a voice and check microphone access. This check does not listen to or send speech.</p>
     {error && <p role="alert">{error}</p>}
     <VoicePreview key={preferences?.preferences?.voice || "default"} voices={preferences?.voices || []} selected={preferences?.effective_voice || "alloy"} compact />
-    <Link className="underline text-sm" to="/settings/assistant">Choose and compare voices</Link>
+    <Link className="underline text-sm" to="/settings/assistant">Voice settings</Link>
     <div className="flex flex-wrap gap-2">
       <Button size="sm" onClick={start} disabled={state.startsWith("Waiting") || !!stream.current}>Test microphone</Button>
       <Button size="sm" variant="outline" onClick={end}>End microphone check</Button>

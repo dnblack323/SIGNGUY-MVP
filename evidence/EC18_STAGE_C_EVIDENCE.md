@@ -1,5 +1,9 @@
 # Business Assistant V1 — Stage C evidence
 
+**October 22 closeout correction:** Commercial redistribution of the six public documentation recordings is **not verified**. They are preserved only in ignored local cache, removed from public assets and production context. Production voice selection works, but audible preview buttons are disabled with an explicit explanation; no paid substitute is generated. The playback implementation remains available for cleared assets and owner-local review. The licensing finding and restrictions are recorded in the existing [Stage C review](../docs/BUSINESS_ASSISTANT_V1_STAGE_C_REVIEW.md#final-closeout--october-22-2026). Historical initial-preview results below do not imply permission to ship recordings.
+
+Final local results after this correction: **51 backend tests, 21 frontend tests, production build and focused quality checks passed**. Build inspection found no audio/test/cache/browser artifacts. Current-head hosted CI is recorded in draft PR #63 after publication. Exact recording sources and hashes: [preview provenance](EC18_STAGE_C_PREVIEW_SOURCES.json). Production preview clearance remains a commercial blocker to that capability; no other blocking Stage C code defect identified. No paid API calls, D–F or merge.
+
 October 21, 2026. Stage B accepted by owner. Stage C implemented for owner review in the existing worktree/branch, as a distinct change after Stage B commit `7fa5e8a`. No Stage D–F implementation, paid API calls, merge or deployment.
 
 ## Reconciled boundary
@@ -10,7 +14,7 @@ Original roadmap split restored: C covers voice choice, prerecorded preview and 
 
 - Six voices: Alloy, Ash, Coral, Echo, Sage and Shimmer. One backend catalog; existing per-user preferences, settings route and authenticated shared Assistant state. Every voice works with all five personality selections. Voice changes do not delete conversations/memory or alter personality, permissions or prompt rules.
 - Explicit voice saves are allowlisted. Foreign user/tenant targets and invalid voices are rejected. Existing unsupported saved strings remain stored and disclosed as unavailable; they cannot become provider voices or sample URLs. Effective default is Alloy.
-- Each voice has a bundled public OpenAI documentation WAV recording, downloaded without credentials or generation. Click Preview to compare without selecting; click again to stop. One player per comparison list, cleanup on unmount/logout, errors with retry, and protection against late play failures replacing current state. No autoplay, synthesis fallback or AI credit charge. WAV PCM is unchanged; streamed file headers were normalized to actual lengths. Exact source/bundled hashes and 6.96–11.625 second lengths are in [sources.json](../frontend/public/assistant-voice-samples/sources.json).
+- Initial owner-local verification used public OpenAI documentation WAV recordings, downloaded without credentials or generation. Playback/stop, one player per comparison list, cleanup on unmount/logout, retry and stale-failure protection were verified. These recordings are now quarantined locally and **not distributed in production**. No autoplay, synthesis fallback or AI credit charge. WAV PCM was unchanged; headers were normalized. Source/bundled hashes and 6.96–11.625 second lengths remain in [preview provenance](EC18_STAGE_C_PREVIEW_SOURCES.json).
 - Full-page/floating panels retain existing text functionality and add microphone readiness: start/end, connection/microphone state, permission/device/support errors and text focus fallback. Tracks are muted; no audio is recorded, echoed or uploaded. Stop after 30 seconds, on explicit end/text fallback, or on unmount. Cancelling pending permission cannot reactivate a late stream.
 - Paid voice-session creation fails closed on the backend before creating a session or contacting a provider, even with API key/Realtime flags set. The existing parked Realtime implementation is retained for D, with its old mocked contract test explicitly bypassing policy in test scope only. There is no production opt-in switch in C that bypasses this boundary.
 - Existing Gateway ledgers, private conversation/context/memory/tool services and shared personality builder remain canonical. No second assistant, generated-preview endpoint, memory system or cost ledger was added.
@@ -20,7 +24,7 @@ Original roadmap split restored: C covers voice choice, prerecorded preview and 
 | Check | Result |
 |---|---|
 | Relevant backend: C, B and existing EC18 foundation/intelligence/voice | **51 passed**, 6 existing warnings, disposable MongoDB |
-| Affected frontend: voice C, shared session/settings and full-page Assistant | **20 passed**, 3 suites |
+| Affected frontend: voice C, shared session/settings and full-page Assistant | **21 passed**, 3 suites, including production preview exclusion |
 | Personality/voice combinations | All **30** tested; 6 real auth logout/login paths; other employee/shop unchanged; credits/history/memory preserved |
 | Production build | **Passed**, CI mode, `/api`, source maps off; existing bundle-size/Node notices |
 | Focused quality | ESLint 0 errors/warnings; Flake8 correctness/unused checks; Black check on new Python files; git diff --check passed |

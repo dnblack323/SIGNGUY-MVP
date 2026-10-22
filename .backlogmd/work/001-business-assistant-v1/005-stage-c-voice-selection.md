@@ -17,9 +17,11 @@ Owner accepted Stage B and authorized Stage C. Restore original C/D split per do
 <!-- ACCEPTANCE -->
 
 - [x] Compatible voice selection persists per user independently of every personality.
-- [x] Prerecorded sample comparison works on demand without paid requests.
+- [ ] Production audible previews require cleared recordings. Playback is implemented and locally verified; downloaded documentation clips are not cleared for commercial redistribution and are excluded from production.
 - [x] Microphone readiness has start/end, clear state/errors, cleanup and text fallback.
 - [x] Paid session creation fails closed during Stage C; Gateway architecture is preserved.
 - [x] Focused backend/frontend tests, browser smoke, build and quality checks pass; live limits are documented.
 
 Evidence: evidence/EC18_STAGE_C_EVIDENCE.md. 51 backend / 20 frontend passed; build/quality passed. All six bundled samples played in the real browser; physical microphone capture and live provider quality/latency remain unverified. Stage D–F, paid calls and merge remain held. Owner review required.
+
+October 22 closeout: Stage C commit dd1e508 follows B; final correction excludes uncleared clips/caches/test artifacts from production. 51 backend / 21 frontend plus build/quality pass. Production preview clearance remains unresolved; source/license finding is in the existing Stage C review. Prior initial playback evidence is historical, not a redistribution grant. No paid calls, D–F or merge.

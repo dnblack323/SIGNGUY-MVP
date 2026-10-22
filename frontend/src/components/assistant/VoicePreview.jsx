@@ -43,12 +43,13 @@ export default function VoicePreview({ voices = [], selected, onSelect, disabled
   };
   const items = compact ? voices.filter((voice) => voice.key === selected) : voices;
   return <div className="space-y-2" data-testid="assistant-voice-choices">
-    <p className="text-sm">Prerecorded AI voice samples. Previewing does not select a voice or use AI credits. Personality does not change these recordings.</p>
+    <p className="text-sm">Voice and personality are independent. Previews do not change your selection or use AI credits.</p>
+    {voices.some((voice) => !voice.preview_available) && <p role="status">Voice previews are unavailable until recordings are cleared for commercial use. No paid preview is generated.</p>}
     {error && <p role="alert">{error}</p>}
     <div className={compact ? "space-y-2" : "grid gap-2 sm:grid-cols-2"}>
       {items.map((voice) => <div key={voice.key} className="flex items-center justify-between gap-2 rounded border p-2">
         {onSelect ? <label className="flex items-center gap-2"><input type="radio" name="assistant-voice" value={voice.key} checked={selected === voice.key} disabled={disabled} onChange={() => onSelect(voice.key)} />{voice.name}</label> : <span>{voice.name}</span>}
-        <Button variant="outline" size="sm" aria-label={`${playing === voice.key ? "Stop" : "Preview"} ${voice.name}`} onClick={() => preview(voice)}>{playing === voice.key ? "Stop sample" : "Preview"}</Button>
+        <Button variant="outline" size="sm" disabled={!voice.preview_available} aria-label={`${playing === voice.key ? "Stop" : "Preview"} ${voice.name}`} onClick={() => preview(voice)}>{playing === voice.key ? "Stop sample" : "Preview"}</Button>
       </div>)}
     </div>
     <span role="status" className="text-sm">{playing ? `Playing ${voices.find((v) => v.key === playing)?.name || playing}` : "Preview stopped"}</span>

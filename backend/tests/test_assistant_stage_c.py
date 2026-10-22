@@ -1,9 +1,7 @@
 """Stage C private settings and static preview/readiness; no paid calls."""
 
-import hashlib
 import json
 from pathlib import Path
-import wave
 
 import httpx
 import pytest
@@ -110,27 +108,41 @@ async def test_paid_voice_is_blocked_even_with_provider_configuration(ctx, monke
     assert "mock-not-a-live-key" not in json.dumps(config)
 
 
-def test_every_selectable_voice_has_a_valid_bounded_attributed_sample():
-    root = (
-        Path(__file__).resolve().parents[2] / "frontend/public/assistant-voice-samples"
-    )
+def test_uncleared_samples_and_development_artifacts_are_excluded_from_production():
+    root = Path(__file__).resolve().parents[2]
     manifest = {
-        row["voice"]: row for row in json.loads((root / "sources.json").read_text())
+        row["voice"]: row
+        for row in json.loads(
+            (root / "evidence/EC18_STAGE_C_PREVIEW_SOURCES.json").read_text()
+        )
     }
     assert set(manifest) == set(VOICE_KEYS)
     for option in voice_options():
         name = option["key"]
-        path = root / (name + ".wav")
-        assert option["preview_path"] == f"/assistant-voice-samples/{name}.wav"
-        assert hashlib.sha256(path.read_bytes()).hexdigest() == manifest[name]["sha256"]
+        assert option["preview_path"] is None
+        assert option["preview_available"] is False
+        assert not (
+            root / "frontend/public/assistant-voice-samples" / (name + ".wav")
+        ).exists()
+        assert len(manifest[name]["sha256"]) == 64
         assert (
             manifest[name]["source"]
             == f"https://cdn.openai.com/API/docs/audio/{name}.wav"
         )
-        with wave.open(str(path)) as audio:
-            duration = audio.getnframes() / audio.getframerate()
-            assert 0 < duration < 30
-            assert (
-                len(audio.readframes(audio.getnframes()))
-                == audio.getnframes() * audio.getnchannels() * audio.getsampwidth()
-            )
+    exclusions = (root / ".dockerignore").read_text().splitlines()
+    for item in (
+        ".cache",
+        "**/.cache",
+        "evidence",
+        "backend/tests",
+        "frontend/src/__tests__",
+        "frontend/public/assistant-voice-samples",
+    ):
+        assert item in exclusions
+    assert "COPY backend/ ./" in (root / "backend/Dockerfile").read_text()
+    assert (
+        "COPY --from=build /app/frontend/build /usr/share/nginx/html"
+        in (root / "frontend/Dockerfile").read_text()
+    )
+    for option in voice_options(local_preview=True):
+        assert option["preview_kind"] == "local_review_only"
