@@ -69,6 +69,13 @@ async def test_hat_submission_edits_return_and_resubmission_keep_last_shared_con
         assert response.status_code == 200, response.text
         history = response.json()['approval_history']
         assert history
+    # Legitimate timestamp digits must not be mistaken for the private price.
+    collision_timestamp = '2026-10-23T04:40:34.599000+00:00'
+    await db.approvals.update_one(
+        {'tenant_id': ctx['tenant_id'], 'parent_type': 'webstore_product',
+         'parent_id': hat['id'], 'id': history[0]['id']},
+        {'$set': {'created_at': collision_timestamp}},
+    )
     async with await _client_as(ctx['staff']) as client:
         edit = await client.patch(f"/api/webstores/{store['id']}/products/{hat['id']}", json={
             'expected_revision': hat['revision'], 'name': 'PRIVATE unfinished edit',
@@ -80,8 +87,13 @@ async def test_hat_submission_edits_return_and_resubmission_keep_last_shared_con
     detail = await _owner_read(token, store)
     old = next(p for p in detail['products'] if p['id'] == hat['id'])
     assert old['name'] == 'Submitted Hat' and old['selling_price_cents'] == 3200
-    assert 'PRIVATE' not in str(detail) and '9900' not in str(detail)
+    assert old['description'] == 'Navy cap'
+    assert old['images'] == shared['images']
+    assert all(p['selling_price_cents'] != 9900 for p in detail['products'])
+    assert 'PRIVATE' not in str(detail)
+    assert 'private-unsubmitted.png' not in str(detail)
     assert old['approval_history'] and old['review_notice']
+    assert any(row['created_at'] == collision_timestamp for row in old['approval_history'])
     assert next(p for p in detail['products'] if p['id'] == original['id']) == original
     async with await _portal_client(token) as portal:
         image = await portal.get(image_path)
