@@ -1,0 +1,71 @@
+# Webstores Phase 4: existing product configuration completion
+
+Base: PR #65 merged at `4bc7bd666d707c5e7e2a641dbe90c165e311458b`. This completes the owner's October 23 configuration attachment within the existing nine-phase roadmap. Phase 4 remains incomplete. One draft PR; owner acceptance required. No merge, deployment, paid provider call, pricing migration or subsequent increment.
+
+## Existing functionality retained
+
+Canonical products already supported variants, sizes/colors/SKUs, manual cents prices, status/availability, personalization types/required/choices/placeholder/max_length, normal product validation and revision guards. PR #64 supplied submitted snapshots and last-submitted owner visibility; PR #65 connected canonical artwork/private files/manual mockups, staff review and protected owner images. These services, records and approval history remain authoritative.
+
+## Completed controls and connected consumers
+
+- Existing Options and Personalization tab now exposes variant active/inactive/archived status and explicitly manual availability. Text states that this is not verified supplier inventory. Existing size, color, SKU and cents-price controls are retained.
+- Existing personalization rows now expose required/optional, select choices (one per line, existing 20-choice limit), placeholder, and maximum characters for text/textarea. Input sends an integer maximum to the existing backend contract. An empty choice list has an inline hint and the existing backend rejects it. Existing duplicate-key/variant-combination and other server validations remain authoritative. Prompt keys no longer cause remounts on each keystroke.
+- No `min_length` exists in the current contract; no speculative field was added. Required means nonempty, and optional text can remain blank. Blank maximum retains the existing default server limit.
+- Owner review describes the submitted variants' status/manual availability/SKU and personalization required/type/choices/maximum. It consumes only the existing safe submitted projection; it adds no editable configuration or duplicate approval controls.
+- Two actual downstream gaps were corrected: public personalization renders canonical select/textarea/number/text inputs, and cart validation now checks canonical `choices` rather than only the older `options` field. Legacy string/dictionary options remain readable, while explicit canonical choices take precedence. Unavailable/inactive options are disabled, the first available variant is selected, entirely unavailable products cannot be added from the detail view, and explicitly disabled personalization stays off. Backend availability, approval/publication and totals remain authoritative; no pricing calculation changed.
+
+## Focused verification
+
+- Backend: **28 distinct tests passed** across configuration (14), retained owner visibility (6), manual mockup review (3), and public storefront/cart (5). The initial combined run passed 27 and exposed an overly strict new history assertion: editing correctly supersedes the previous approval status while retaining its decision/revision/hash. The corrected configuration workflow then passed. A further fixture assertion supplied the required expected revision before testing cross-tenant denial. No application change was needed for either assertion correction.
+- Frontend: **30 distinct tests passed** across product foundation (8), owner approval/review (11), recommendations (4), mockup preparation (4), public storefront/cart (3). Changed foundation/public tests were rerun after their final changes. The established foundation mock still logs its unrelated undefined webstore-messages query warning; assertions pass.
+- Configuration cases: School Hoodie with Navy/M active and available, Navy/L active but manually unavailable, White/M inactive; optional Player Name max20; required Graduation Year choices 2026/2027/2028. Valid boundary length20, invalid length21, missing required value, invalid select choice, unknown field, empty configured choices, duplicate variant combination and nonpositive maximum are checked. Legacy select values and canonical precedence are covered. Public cart rejects inactive/unavailable selections; owner cannot mutate staff configuration and foreign staff cannot mutate another tenant's product.
+- Existing regression cases retain tenant/assignment/revoked-owner authorization, protected image bytes, anonymous image denial, approval history, returned-for-changes/resubmission and public eligibility. No new file/storage/auth implementation was needed.
+- Actual browser: reused the disposable harness with private MongoDB/run-owned files, normal staff and owner password login, dev bypass disabled, provider credentials blank. Created a School Hoodie through the existing custom-product control; saved three variants and two personalization fields with a staff-entered sample $42. Verified missing-choice validation and required image-alt validation. The saved draft was absent from owner branding/product list. Explicit submission exposed the exact options/choices/limit; owner approval succeeded. A saved private edit changed Navy to PRIVATE RED, max20 to max10 and years to2029; owner retained Navy, max20, 2026/2027/2028, original image, approval decision and last-submitted notice. Existing approved tee remained visible.
+- Normal CI: unchanged repository push + pull_request jobs (backend tests, frontend tests, production build on each event). Exact-head six-check receipt belongs in the PR checks and local nine-phase checklist after completion; no redundant local full suite or manual CI rerun.
+
+## Actual browser captures
+
+These are actual application screenshots, not generated UI mockups. The Lincoln Boosters image is original demonstration artwork, not a generated Hoodie or a supplier/capability claim. The known staff thumbnail issue is still deferred. Full-page staff captures include the existing workspace and recommendation panel; owner detail is a direct browser crop of the retained submitted product card.
+
+- `screenshots/phase4-config-staff-controls.jpg`: saved private Hoodie, all three variants and both personalization controls.
+- `screenshots/phase4-config-owner-private-hidden.jpg`: owner branding/list omit the saved, unsubmitted Hoodie.
+- `screenshots/phase4-config-owner-review.jpg`: submitted configuration and existing approval controls.
+- `screenshots/phase4-config-owner-approved.jpg`: successful owner decision/history.
+- `screenshots/phase4-config-staff-private-revision.jpg`: staff sees unsubmitted PRIVATE RED/max10/year2029 changes.
+- `screenshots/phase4-config-owner-retained.jpg` and `phase4-config-owner-retained-detail.jpg`: owner retains submitted Navy/max20/years2026-2028 and approval history/update notice.
+
+## Bounded EC16 compatibility review (source verified; no paid execution)
+
+| Requirement | Existing implementation / precise limit |
+| --- | --- |
+| Configurable per-capability credits | `ai_gateway._capability_credit_charge` uses registry `billable`/`default_credit_charge`; request clients cannot substitute their own charge. Webstore preview reads the capability and execution requires exact displayed-credit confirmation. No Webstore wallet or hardcoded new charge added. |
+| Included and purchased balances | `AICreditAccount` has separate balances, reservations and billing-cycle timestamps. `_commit_credits` consumes included first, then purchased. Platform-admin `grant_credits`/`adjust_credits` and existing management UI are reused. **Automatic monthly replenishment is not demonstrated:** bounded source search found no runtime updater for the billing-cycle fields. Do not claim a working subscription refill/credit-pack settlement into EC16 merely from model fields. |
+| Reserve, success commit, failure release | `create_gateway_request` calls `_reserve_credits`, `_commit_credits`, `_release_credits`; atomic balance conditions prevent overspend. Current execution/failure are simulated; there is no real image-provider call in that path. |
+| Refunds | Ledger schema permits `refund` and there is a reasoned platform-admin adjustment service. **No dedicated automated AI refund operation was found** in the Gateway service/routes; do not equate an enum with a completed provider refund/reconciliation workflow. Extend the canonical service when separately approved, if required. |
+| Usage and provider cost | Existing action, usage and provider-cost ledgers, micros/cents, provider event and reconciliation fields. Current simulated path records supplied/estimated costs; actual provider response/reconciliation must be connected before production image generation. |
+| Permissions, entitlements, limits | Webstores write + AI tool permission, Webstores/AI Studio entitlements, capability/model/provider active/allowlist checks; global/tenant/capability/model governance with daily requests, credits and provider-cost caps. No controls relaxed. |
+| Retry/idempotency | Tenant-scoped action, reserve/commit/release, usage/cost ledger keys and unique indexes; AI Studio retrieves existing results by tenant/idempotency. Real provider retries must preserve one logical action/key and reconcile ambiguous success; current simulated-success plumbing does not prove crash recovery around paid execution/storage. |
+
+Source boundaries: `backend/app/services/ai_gateway.py` (account/grant/adjust 264-382, reserve/commit/release 385-511, governance/request 618-731, usage/cost 759-806), `backend/app/models/ai_gateway.py` (accounts/ledgers), `backend/app/core/db.py` (tenant/idempotency indexes 1350-1395), `backend/app/services/ai_studio.py` (local capability 429-458, local execution 488-530), `backend/app/services/webstore_staff_ai.py` (preview and execution).
+
+### Separate focused follow-up: commercial mock-credit blocker
+
+Confirmed source chain: `_ensure_local_capability` creates `billable=True/default_credit_charge=1`; `run_tool` invokes Gateway with `simulate_result='success'`; Gateway reserves and commits the tenant account despite `external_provider_calls=0`. This is real credit accounting for fake execution, not real image generation. No production customer ledger was accessed in this review.
+
+Smallest proposed backend correction: classify execution from trusted server provider/model/capability configuration, reject local/mock/simulation execution in commercial production **before reservation**, and make explicitly isolated development/demo execution nonbillable through the existing Gateway. Do not trust a client demo/free flag; do not waive real-provider capability charging. Cover preexisting billable local registry entries as well as newly bootstrapped entries; updating bootstrap alone is insufficient. Tests must prove unchanged included/purchased/reserved balances, no debit on denied/free mock actions, normal real-capability charges, permissions/tenant isolation and idempotency. Audit refunds/reconciliation of any historical demo debits separately before changing live records. **Not implemented in this configuration PR and remains a commercial-release blocker.**
+
+## Connecting real AI mockups later
+
+Real image generation is a first-release priority under the latest owner decision, independent of P1/P2. Earlier report language suggesting it can simply be postponed is superseded by that priority. This increment performs compatibility review only.
+
+Reuse existing EC16 capability/provider/model registry, AI Studio action/context/provenance, canonical private FileRecord/FileLink storage, Webstore artwork/mockup associations, staff review and submitted product snapshots. Missing pieces are a real provider executor, authorized artwork byte input, image output validation/storage, provider response cost reconciliation, and durable failure/retry settlement. Current Webstore mockup action sends text context and returns local text/JSON; it does not ingest artwork pixels or store a generated product image.
+
+For branding accuracy, retain the original artwork as the source of truth. Prefer generating/preparing the unbranded product/background presentation, then deterministically apply the original logo/text with explicit placement, scale, clipping/perspective and alpha handling. A provider can propose presentation/placement, but do not rely on it to redraw customer logos or regenerate exact text. Staff must verify product/color, placement and original-artwork fidelity before approving use. Unsupported artwork formats must be reported; do not weaken SVG security or invent supplier decoration capabilities.
+
+Resolve artwork through existing tenant/store/product authorization; read bytes server-side without publishing permanent private URLs. Save validated output through existing file storage and a new canonical unreviewed mockup association, initially private. Staff reviews and attaches/saves it; explicit product/mockup submission then exposes only the submitted snapshot. Never publish generation output automatically. Persist provider request/action/asset linkage for retries; avoid duplicate paid calls/charges after timeouts, settle release/refund via EC16 according to confirmed provider outcome, and reconcile provider success followed by storage failure. Retain an existing manually prepared mockup if generation fails.
+
+Provider/model, quality/cost settings and credit economics still require owner approval and H7/provider gates; no new provider research, evaluation or paid call occurred here. Previous provider research is context, not proof of logo accuracy or approved commercial cost. Do not build another AI system or make speculative promises.
+
+## Remaining dependencies and stop
+
+Next recommended increment: the separate backend mock/demo-credit correction, then an explicitly authorized real image-provider/artwork-storage integration using EC16 and exact artwork application. SVG compatibility remains a separate important follow-up. Canonical saved-item/configuration/package-to-offer linkage awaits its approved contract; Engine-backed pricing waits for Price Lab stability and separately authorized P1/P2. No replacement formulas, speculative saved contracts, batch/MOQ/fulfillment policy or supplier integration was introduced. Staff thumbnail and duplicate Create Custom Product buttons remain owner-deferred. Stop at draft PR/owner acceptance.

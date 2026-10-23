@@ -17,7 +17,6 @@ export default function ProductOptionsTab({ model }) {
   const {
     addPersonalizationField,
     addVariant,
-    id,
     productDraft,
     removePersonalizationField,
     removeVariant,
@@ -45,10 +44,11 @@ return (
                                 (variant, index) => (
                                   <div
                                     key={variant.id || index}
-                                    className="grid gap-2 rounded border p-2 md:grid-cols-[1fr_1fr_1fr_120px_auto]"
+                                    className="grid gap-2 rounded border p-2 md:grid-cols-3"
                                   >
                                     <Input
                                       placeholder="Size"
+                                      aria-label={`Variant ${index + 1} size`}
                                       value={variant.size || ""}
                                       onChange={(e) =>
                                         setVariantField(
@@ -61,6 +61,7 @@ return (
                                     />
                                     <Input
                                       placeholder="Color"
+                                      aria-label={`Variant ${index + 1} color`}
                                       value={variant.color || ""}
                                       onChange={(e) =>
                                         setVariantField(
@@ -73,6 +74,7 @@ return (
                                     />
                                     <Input
                                       placeholder="SKU"
+                                      aria-label={`Variant ${index + 1} SKU`}
                                       value={variant.sku || ""}
                                       onChange={(e) =>
                                         setVariantField(
@@ -87,6 +89,7 @@ return (
                                       type="number"
                                       min="0"
                                       placeholder="Price cents"
+                                      aria-label={`Variant ${index + 1} price cents`}
                                       value={variant.selling_price_cents ?? ""}
                                       onChange={(e) =>
                                         setVariantField(
@@ -97,6 +100,18 @@ return (
                                       }
                                       data-testid={`webstore-variant-price-${index}`}
                                     />
+                                    <Select value={variant.status || "active"} onValueChange={(value) => setVariantField(index, "status", value)}>
+                                      <SelectTrigger aria-label={`Variant ${index + 1} status`}><SelectValue /></SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="active">Active</SelectItem>
+                                        <SelectItem value="inactive">Inactive</SelectItem>
+                                        <SelectItem value="archived">Archived</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    <label className="flex items-center gap-2 text-sm">
+                                      <Checkbox checked={variant.available !== false} onCheckedChange={(checked) => setVariantField(index, "available", Boolean(checked))} aria-label={`Variant ${index + 1} manually available`} />
+                                      Manually available
+                                    </label>
                                     <Button
                                       type="button"
                                       size="sm"
@@ -115,6 +130,7 @@ return (
                                 </div>
                               )}
                             </div>
+                            <p className="text-xs text-muted-foreground">Availability is set by staff; it does not confirm supplier stock. Inactive or unavailable variants cannot be ordered.</p>
                           </div>
                           <div className="grid gap-3 md:grid-cols-2">
                             <div className="grid gap-1.5">
@@ -192,11 +208,12 @@ return (
                               {(productDraft.personalization_fields || []).map(
                                 (field, index) => (
                                   <div
-                                    key={field.key || index}
-                                    className="grid gap-2 rounded border p-2 md:grid-cols-[1fr_1fr_120px_auto]"
+                                    key={index}
+                                    className="grid gap-2 rounded border p-3 md:grid-cols-2"
                                   >
                                     <Input
                                       placeholder="Key"
+                                      aria-label={`Prompt ${index + 1} key`}
                                       value={field.key || ""}
                                       onChange={(e) =>
                                         setPersonalizationField(
@@ -208,6 +225,8 @@ return (
                                     />
                                     <Input
                                       placeholder="Prompt label"
+                                      aria-label={`Prompt ${index + 1} name`}
+                                      maxLength={120}
                                       value={field.label || ""}
                                       onChange={(e) =>
                                         setPersonalizationField(
@@ -228,7 +247,7 @@ return (
                                         )
                                       }
                                     >
-                                      <SelectTrigger>
+                                      <SelectTrigger aria-label={`Prompt ${index + 1} type`}>
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
@@ -246,6 +265,29 @@ return (
                                         </SelectItem>
                                       </SelectContent>
                                     </Select>
+                                    <label className="flex items-center gap-2 text-sm">
+                                      <Checkbox checked={Boolean(field.required)} onCheckedChange={(checked) => setPersonalizationField(index, "required", Boolean(checked))} aria-label={`Prompt ${index + 1} required`} />
+                                      Required
+                                    </label>
+                                    {field.type === "select" ? (
+                                      <div className="grid gap-1.5 md:col-span-2">
+                                        <Label htmlFor={`personalization-choices-${index}`}>Choices (one per line, up to 20)</Label>
+                                        <Textarea id={`personalization-choices-${index}`} rows={3} value={(field.choices || []).join("\n")} onChange={(e) => setPersonalizationField(index, "choices", e.target.value.split("\n"))} />
+                                        {!(field.choices || []).some((choice) => String(choice).trim()) && <p className="text-xs text-amber-800">Add at least one choice before saving.</p>}
+                                      </div>
+                                    ) : (
+                                      <div className="grid gap-1.5">
+                                        <Label htmlFor={`personalization-placeholder-${index}`}>Placeholder</Label>
+                                        <Input id={`personalization-placeholder-${index}`} maxLength={120} value={field.placeholder || ""} onChange={(e) => setPersonalizationField(index, "placeholder", e.target.value)} />
+                                      </div>
+                                    )}
+                                    {(!field.type || ["text", "textarea"].includes(field.type)) && (
+                                      <div className="grid gap-1.5">
+                                        <Label htmlFor={`personalization-max-${index}`}>Maximum characters</Label>
+                                        <Input id={`personalization-max-${index}`} type="number" min="1" step="1" placeholder="Default limit" value={field.max_length ?? ""} onChange={(e) => setPersonalizationField(index, "max_length", e.target.value === "" ? "" : Number(e.target.value))} />
+                                        <p className="text-xs text-muted-foreground">Leave blank for the existing default limit.</p>
+                                      </div>
+                                    )}
                                     <Button
                                       type="button"
                                       size="sm"
