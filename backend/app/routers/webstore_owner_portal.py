@@ -13,6 +13,7 @@ from ..services import webstores as svc
 from ..services.webstore_branding import WebstoreBrandingError
 from ..services.webstore_setup import WebstoreSetupError
 from ..services.webstores import WebstoreError
+from ..services.webstore_owner_portal_service import owner_product_image
 
 from .webstores_common import sync_next_action_after_owner_change
 
@@ -38,6 +39,15 @@ async def _webstore_identity(identity: dict = Depends(get_current_portal_identit
     if not ({"portal:webstore_owner_admin", "portal:webstore_manager_ops"} & perms):
         raise HTTPException(status_code=403, detail="Missing portal permission: portal:webstore_owner_admin")
     return identity
+
+
+@router.get("/{webstore_id}/products/{product_id}/images/{slot}")
+async def submitted_product_image(webstore_id: str, product_id: str, slot: str, identity: dict = Depends(_webstore_identity)) -> Response:
+    try:
+        _, data, content_type = await owner_product_image(identity, webstore_id, product_id, slot)
+        return Response(content=data, media_type=content_type, headers={"Cache-Control": "private, no-store"})
+    except WebstoreError as exc:
+        _raise(exc)
 
 
 class QuestionnaireIn(BaseModel):

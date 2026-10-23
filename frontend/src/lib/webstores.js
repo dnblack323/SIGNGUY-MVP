@@ -147,6 +147,10 @@ export async function listProductTemplates() {
   return r.data.items || [];
 }
 
+export async function getWebstoreProductRecommendations(webstoreId) {
+  return (await api.get(`/webstores/${webstoreId}/product-recommendations`)).data;
+}
+
 export async function createProductTemplate(payload) {
   const r = await api.post("/webstores/product-templates", payload);
   return r.data;

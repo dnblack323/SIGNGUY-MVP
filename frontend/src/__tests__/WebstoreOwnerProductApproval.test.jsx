@@ -14,7 +14,12 @@ jest.mock("@/portal/portalApi", () => ({
   portalExtractError: (error) => error?.response?.data?.detail || error?.message || "Request failed",
 }));
 
-jest.mock("@/components/webstores/WebstoreBranding", () => () => <div data-testid="portal-branding" />);
+jest.mock("@/components/webstores/WebstoreBranding", () => ({ products }) => (
+  <div data-testid="portal-branding" data-product-ids={(products || []).map((p) => p.id).join(",")} />
+));
+jest.mock("@/components/decisionRoom/DecisionRoomMedia", () => ({
+  DecisionRoomMedia: ({ src, authToken, alt }) => <img src={src} alt={alt} data-testid="authenticated-product-media" data-has-token={Boolean(authToken)} />,
+}));
 
 jest.mock("sonner", () => ({
   toast: {
@@ -90,6 +95,47 @@ test("owner portal records product and mockup approval decisions separately from
     ),
   );
   expect(portalApi.post).not.toHaveBeenCalledWith(expect.stringContaining("launch-packets"), expect.anything());
+});
+
+test.each([false, true])("owner product list and branding consume the same submitted projection: visible=%s", async (visible) => {
+  const notice = "Showing the last submitted version. The shop is preparing an update.";
+  const products = visible ? [{ id: "shared-hat", name: "Submitted Hat", selling_price_cents: 3200,
+    approval_status: "superseded", review_notice: notice, approval_history: [{ id: "a1", action: "approve" }] }] : [];
+  portalApi.get.mockImplementation((url) => {
+    if (url.endsWith("/questionnaire")) return Promise.resolve({ data: { templates: [] } });
+    if (url.endsWith("/setup-progress")) return Promise.resolve({ data: { steps: [] } });
+    if (url.endsWith("/setup-files")) return Promise.resolve({ data: { items: [] } });
+    return Promise.resolve({ data: { webstore: { id: "ws-1", name: "Team Store", status: "draft" }, products } });
+  });
+  renderWithProviders(<WebstoreOwnerPortalPage />, { route: "/portal/webstores/ws-1", path: "/portal/webstores/:webstoreId" });
+  await userEvent.click(await screen.findByRole("tab", { name: "Store Setup" }));
+  expect(await screen.findByTestId("portal-branding")).toHaveAttribute("data-product-ids", visible ? "shared-hat" : "");
+  if (visible) {
+    expect(screen.getByText("Submitted Hat")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(notice);
+    expect(screen.getByText(/approve - No comment/)).toBeInTheDocument();
+  } else {
+    expect(screen.getByText("No product previews are available yet.")).toBeInTheDocument();
+  }
+  expect(screen.queryByRole("button", { name: "Approve Product" })).not.toBeInTheDocument();
+});
+
+test.each([false, true])("only protected submitted media uses the authenticated renderer: managed=%s", async (managed) => {
+  localStorage.setItem("sg_portal_token", "test-owner-token");
+  portalApi.get.mockImplementation((url) => {
+    if (url.endsWith("/questionnaire")) return Promise.resolve({ data: { templates: [] } });
+    if (url.endsWith("/setup-progress")) return Promise.resolve({ data: { steps: [] } });
+    if (url.endsWith("/setup-files")) return Promise.resolve({ data: { items: [] } });
+    return Promise.resolve({ data: { webstore: { id: "ws-1", name: "Team Store" }, products: [{
+      id: "shared-hat", name: "Submitted Hat", approval_status: "approved", selling_price_cents: 3200,
+      images: [{ url: managed ? "/api/portal/webstores/ws-1/products/shared-hat/images/primary?revision=2" : "https://example.com/shared.png", owner_review_media: managed }],
+    }] } });
+  });
+  renderWithProviders(<WebstoreOwnerPortalPage />, { route: "/portal/webstores/ws-1", path: "/portal/webstores/:webstoreId" });
+  await userEvent.click(await screen.findByRole("tab", { name: "Store Setup" }));
+  if (managed) expect(screen.getByTestId("authenticated-product-media")).toHaveAttribute("data-has-token", "true");
+  else expect(screen.queryByTestId("authenticated-product-media")).not.toBeInTheDocument();
+  localStorage.removeItem("sg_portal_token");
 });
 
 test("owner portal shows launch packet preview and submits explicit rejection comment", async () => {

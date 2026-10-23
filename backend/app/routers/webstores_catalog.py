@@ -5,6 +5,16 @@ from .webstores_common import *
 
 router = APIRouter(prefix="/webstores", tags=["webstores"])
 
+
+@router.get("/{webstore_id}/product-recommendations")
+async def product_recommendations(webstore_id: str, user: dict = Depends(get_current_user)) -> dict:
+    from ..services.webstore_product_recommendations import product_recommendations as recommend
+
+    try:
+        return await recommend(user, webstore_id)
+    except WebstoreError as e:
+        _raise(e)
+
 @router.post("/{webstore_id}/products", status_code=201)
 async def create_product(webstore_id: str, payload: ProductIn, user: dict = Depends(get_current_user)) -> dict:
     try:

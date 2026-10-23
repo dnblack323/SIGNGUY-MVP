@@ -106,6 +106,7 @@ export function useWebstoreDetailQueries(id) {
       qc.invalidateQueries({ queryKey: ["webstore-setup-files", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-product-categories", id] }),
       qc.invalidateQueries({ queryKey: ["webstore-product-templates"] }),
+      qc.invalidateQueries({ queryKey: ["webstore-product-recommendations", id] }),
     ]);
   };
 

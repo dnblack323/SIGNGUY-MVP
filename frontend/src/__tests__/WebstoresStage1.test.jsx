@@ -15,6 +15,7 @@ import {
   createProductFromTemplate,
   getWebstoreQuestionnaire,
   getWebstoreQuestionnaireResponse,
+  getWebstoreProductRecommendations,
   generateLaunchPacket,
   getLaunchReadiness,
   getWebstorePaymentProviderStatus,
@@ -73,6 +74,7 @@ jest.mock("axios", () => ({
 }));
 
 jest.mock("@/lib/webstores", () => ({
+  getWebstoreProductRecommendations: jest.fn(() => Promise.resolve({ items: [], context: [], unmatched_requests: [] })),
   listWebstoreMessages: jest.fn(() => Promise.resolve({ items: [] })),
   sendWebstoreMessage: jest.fn(),
   createWebstore: jest.fn(),
@@ -173,6 +175,7 @@ const PACKET = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  getWebstoreProductRecommendations.mockResolvedValue({ items: [], context: [], unmatched_requests: [] });
   api.post.mockResolvedValue({ data: { recovered: 0, failed: 0, pending: 0 } });
   global.crypto = { randomUUID: jest.fn(() => "intent-key-1") };
   window.HTMLElement.prototype.hasPointerCapture = window.HTMLElement.prototype.hasPointerCapture || (() => false);

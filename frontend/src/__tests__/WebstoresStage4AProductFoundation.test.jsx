@@ -20,6 +20,7 @@ import {
   getWebstoreBranding,
   getWebstoreQuestionnaire,
   getWebstoreQuestionnaireResponse,
+  getWebstoreProductRecommendations,
   getWebstoreReports,
   getWebstoreOrders,
   handoffWebstoreOrderToProduction,
@@ -72,6 +73,7 @@ jest.mock("@/lib/webstores", () => ({
   getWebstoreBranding: jest.fn(),
   getWebstoreQuestionnaire: jest.fn(),
   getWebstoreQuestionnaireResponse: jest.fn(),
+  getWebstoreProductRecommendations: jest.fn(),
   getWebstoreReports: jest.fn(),
   getWebstoreOrders: jest.fn(),
   handoffWebstoreOrderToProduction: jest.fn(),
@@ -212,6 +214,7 @@ beforeEach(() => {
   ]);
   getWebstoreQuestionnaire.mockResolvedValue({ templates: [] });
   getWebstoreQuestionnaireResponse.mockResolvedValue({ submission: null });
+  getWebstoreProductRecommendations.mockResolvedValue({ items: [], context: [], unmatched_requests: [] });
   previewWebstoreAnswerApplication.mockResolvedValue({ proposed_changes: [], rejected_changes: [] });
   applyWebstoreAnswers.mockResolvedValue({});
   reverseWebstoreAnswerApplication.mockResolvedValue({});
@@ -623,9 +626,8 @@ test("staff product builder separates planning from focused product setup", asyn
   await user.click(screen.getByRole("tab", { name: "Products" }));
   const plan = screen.getByTestId("webstore-product-plan");
   expect(plan).toHaveTextContent("Questionnaire Summary");
-  expect(plan).toHaveTextContent("AI Product Suggestions");
-  expect(plan).toHaveTextContent("No generated suggestions yet");
-  expect(within(plan).getByRole("button", { name: "Ask AI for Another Suggestion" })).toBeDisabled();
+  expect(plan).toHaveTextContent("Recommended starting products");
+  expect(within(plan).queryByRole("button", { name: "Ask AI for Another Suggestion" })).not.toBeInTheDocument();
   expect(within(plan).getByRole("button", { name: "Create Custom Product" })).toBeInTheDocument();
   expect(screen.queryByText(/Create Blank Product/i)).not.toBeInTheDocument();
   expect(screen.queryByTestId("webstore-create-template")).not.toBeInTheDocument();
@@ -703,6 +705,21 @@ test("staff product builder separates planning from focused product setup", asyn
   await waitFor(() => expect(archiveWebstoreProduct).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({ expected_revision: 3 })));
   await user.click(within(screen.getByTestId("webstore-product-card-prod-archived")).getByRole("button", { name: "Restore" }));
   await waitFor(() => expect(restoreWebstoreProduct).toHaveBeenCalledWith("ws-1", "prod-archived", expect.objectContaining({ expected_revision: 5 })));
+});
+
+test("recommended template selection uses the existing private draft creation controls", async () => {
+  const user = userEvent.setup();
+  getWebstoreProductRecommendations.mockResolvedValue({
+    submission_id: "reviewed-1", context: [], unmatched_requests: [],
+    items: [{ template_id: "tpl-platform", name: "Starter Shirt", reasons: ["Requested in questionnaire: T-shirts."], already_selected: false }],
+  });
+  renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
+  await user.click(await screen.findByRole("tab", { name: "Products" }));
+  await user.click(await screen.findByTestId("webstore-recommend-template-tpl-platform"));
+  expect(screen.getByTestId("webstore-stage4-template-select")).toHaveTextContent("Starter Shirt");
+  expect(createProductFromTemplate).not.toHaveBeenCalled();
+  await user.click(screen.getByTestId("webstore-add-template-draft"));
+  await waitFor(() => expect(createProductFromTemplate).toHaveBeenCalledWith("ws-1", expect.objectContaining({ source_template_id: "tpl-platform" })));
 });
 
 test("stale product saves keep the editor open and offer a reload action", async () => {

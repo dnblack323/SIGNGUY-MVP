@@ -43,6 +43,7 @@ jest.mock("@/portal/portalApi", () => ({
 }));
 
 jest.mock("@/lib/webstores", () => ({
+  getWebstoreProductRecommendations: jest.fn(() => Promise.resolve({ items: [], context: [], unmatched_requests: [] })),
   listWebstoreMessages: jest.fn(() => Promise.resolve({ items: [] })),
   sendWebstoreMessage: jest.fn(),
   getLaunchReadiness: jest.fn(),

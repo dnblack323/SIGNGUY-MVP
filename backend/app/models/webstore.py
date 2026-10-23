@@ -310,6 +310,8 @@ class WebstoreProduct(BaseDoc):
     approval_status: str = "not_submitted"
     approval_revision: Optional[StrictInt] = Field(default=None, ge=1)
     approval_snapshot_hash: Optional[str] = None
+    approval_snapshot: Optional[dict[str, Any]] = None
+    approval_image_refs: dict[str, Any] = Field(default_factory=dict)
     approval_decision_at: Optional[str] = None
     approval_decision_by_portal_identity_id: Optional[str] = None
     approval_invalidated_at: Optional[str] = None

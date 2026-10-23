@@ -4,6 +4,7 @@ from __future__ import annotations
 from .webstore_shared import *
 from .webstore_launch import _payment_readiness, _terms_acceptance
 from .webstore_next_action import compute_next_action, owner_view, with_derived_state
+from .webstore_owner_products import owner_product_view, submitted_product_snapshot
 
 async def owner_portal_list(identity: dict) -> dict:
     if identity.get("portal_type") not in {"webstore_owner", "webstore_manager"} or not identity.get("webstore_owner_id"):
@@ -39,10 +40,9 @@ async def owner_portal_detail(identity: dict, webstore_id: str) -> dict:
     store = await _owner_portal_store(identity, webstore_id)
     products = []
     async for doc in db.webstore_products.find({"tenant_id": identity["tenant_id"], "webstore_id": webstore_id}, {"_id": 0}).sort([("display_order", 1), ("name", 1)]):
-        item = _portal_product(doc, public_slug=store.get("public_slug"))
-        item["mockups"] = await _current_mockups_for_product(identity["tenant_id"], webstore_id, doc)
-        item["approval_history"] = await _approval_history(identity["tenant_id"], "webstore_product", doc["id"])
-        products.append(item)
+        item = await owner_product_view(identity["tenant_id"], store, doc)
+        if item is not None:
+            products.append(item)
     packet = None
     if store.get("launch_packet_id"):
         packet = await packets_repo.get(tenant_id=identity["tenant_id"], entity_id=store["launch_packet_id"])
@@ -161,9 +161,34 @@ async def owner_decide_product_approval(identity: dict, webstore_id: str, produc
         summary=f"Webstore product approval decision: {status.replace('_', ' ')}",
         metadata={"approval_id": approval["id"], "product_revision": expected_revision},
     )
-    result = _portal_product(updated or product, public_slug=store.get("public_slug"))
-    result["approval_history"] = await _approval_history(identity["tenant_id"], "webstore_product", product_id)
-    return result
+    return await owner_product_view(identity["tenant_id"], store, updated or product)
+
+
+async def owner_product_image(identity: dict, webstore_id: str, product_id: str, slot: str) -> tuple[dict, bytes, str]:
+    """Serve only the last submitted image through existing managed storage."""
+    store = await _owner_portal_store(identity, webstore_id)
+    product = await _get_product(identity["tenant_id"], product_id, webstore_id)
+    snapshot = await submitted_product_snapshot(identity["tenant_id"], store, product)
+    if not snapshot or slot not in CUSTOMER_IMAGE_SLOTS:
+        raise WebstoreError("product_image_not_found", "Product image was not found", 404)
+    refs = product.get("approval_image_refs") or {}
+    if not refs and int(product.get("revision") or 1) == snapshot["revision"]:
+        refs = _product_image_map(product)
+    file_id = (refs.get(slot) or {}).get("file_id")
+    if not file_id:
+        raise WebstoreError("product_image_not_found", "Product image was not found", 404)
+    from .webstore_setup_files import find_webstore_setup_file
+    doc = await find_webstore_setup_file(identity["tenant_id"], webstore_id, file_id)
+    if (not doc or not doc.get("safe_preview_available") or not doc.get("inline_preview_allowed")
+            or doc.get("private_download_only") or doc.get("extension") not in PRODUCT_IMAGE_EXTENSIONS):
+        raise WebstoreError("product_image_not_found", "Product image was not found", 404)
+    if doc.get("extension") == "svg" and not doc.get("svg_sanitized"):
+        raise WebstoreError("product_image_not_found", "Product image was not found", 404)
+    try:
+        data, content_type = storage.get_bytes(doc["storage_key"])
+    except FileNotFoundError:
+        raise WebstoreError("product_image_not_found", "Product image was not found", 404)
+    return doc, data, doc.get("detected_content_type") or content_type
 
 
 async def owner_decide_mockup_approval(identity: dict, webstore_id: str, mockup_id: str, fields: dict[str, Any]) -> dict:
@@ -178,6 +203,10 @@ async def owner_decide_mockup_approval(identity: dict, webstore_id: str, mockup_
     if mockup.get("approval_status") != "pending_owner_approval":
         raise WebstoreError("mockup_not_pending_approval", "This mockup is not waiting for owner approval", 409)
     product = await _get_product(identity["tenant_id"], mockup["product_id"], webstore_id) if mockup.get("product_id") else None
+    if product:
+        visible_product = await owner_product_view(identity["tenant_id"], store, product)
+        if not visible_product or visible_product.get("review_notice"):
+            raise WebstoreError("product_not_pending_approval", "The shop must submit the current product before mockup review", 409)
     snapshot = _mockup_approval_snapshot(mockup, product, public_slug=store.get("public_slug"))
     snapshot_hash = _json_hash(snapshot)
     if snapshot_hash != mockup.get("approval_snapshot_hash"):
@@ -224,7 +253,8 @@ async def owner_decide_mockup_approval(identity: dict, webstore_id: str, mockup_
         summary=f"Webstore mockup approval decision: {status.replace('_', ' ')}",
         metadata={"approval_id": approval["id"]},
     )
-    result = serialize_doc(updated or mockup)
+    result = _owner_safe_mockup_snapshot(updated or mockup)
+    result["owner_approved"] = bool((updated or mockup).get("owner_approved"))
     result["approval_history"] = await _approval_history(identity["tenant_id"], "webstore_mockup", mockup_id)
     return result
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .webstore_shared import *
 from .webstore_launch import _invalidate_packet_approval_if_needed
+from .webstore_owner_products import submitted_product_snapshot
 
 
 async def update_product(user: dict, webstore_id: str, product_id: str, fields: dict[str, Any], *, allow_system_transition: bool = False) -> dict:
@@ -116,6 +117,12 @@ async def update_product(user: dict, webstore_id: str, product_id: str, fields: 
     updates["revision"] = expected_revision + 1
     updates["updated_by_user_id"] = user.get("id")
     updates["updated_at"] = _now_iso()
+    if not product.get("approval_snapshot"):
+        submitted = await submitted_product_snapshot(user["tenant_id"], store, product)
+        if submitted:
+            updates["approval_snapshot"] = submitted
+            if int(product.get("revision") or 1) == submitted["revision"]:
+                updates["approval_image_refs"] = _product_image_map(product)
     updated = await db.webstore_products.find_one_and_update(
         {"tenant_id": user["tenant_id"], "webstore_id": webstore_id, "id": product_id, "revision": expected_revision},
         {"$set": updates},
