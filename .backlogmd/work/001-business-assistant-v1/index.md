@@ -8,6 +8,8 @@ assignee: codex
 
 <!-- DESCRIPTION -->
 
+Current authorization: Stage D engineering/mock verification accepted; Stage E controlled tasks, Customer/Order notes, professional saved drafts and private approved memory improvements are authorized in task 007. Earlier E-prohibited wording is historical. No paid calls, preview generation, Stage F, merge or deploy.
+
 Latest owner authorization: Stage D real voice conversations may proceed using C as the accepted engineering foundation. Final C preview clearance remains open and must not delay D. Task 006 records this explicit dependency exception; E/F, paid calls, merge and deploy remain held.
 
 Current owner authorization: Stage B ACCEPTED; Stage C selection/preview/interface readiness is authorized. Complete Realtime remains Stage D and is not authorized. Work continues on the same branch with a distinct Stage C diff after 7fa5e8a. Prior scope notes below are historical.
@@ -17,3 +19,5 @@ One canonical Business Assistant required for the initial MVP release, with real
 <!-- CONTEXT -->
 
 Read [the Stage B report](../../../docs/BUSINESS_ASSISTANT_V1_STAGE_B_REVIEW.md), [Stage A approval](../../../docs/BUSINESS_ASSISTANT_V1_STAGE_A_REVIEW.md), [integrated plan](../../../docs/BUSINESS_ASSISTANT_V1_IMPLEMENTATION_PLAN.md), root AGENTS.md, permanent rules and playbook §6A. The owner authorized Stage B implementation and completion after the approved review. Task 004 is in `review`; only the owner may accept it. Other product stages remain unauthorized. All five personalities belong to first release, with core usefulness ahead of UI polish. Preserve existing stores/services and separately owned work. No paid provider calls without explicit spending-cap approval; no merge/deployment authorization.
+
+Stage E completion: controlled task/Customer-or-Order note/unsent draft tools and explicitly approved private memory are implemented and locally verified. Task 007 is in review; required CI and exact commit evidence are on draft PR #63. No Stage F, merge, deployment or paid activation.

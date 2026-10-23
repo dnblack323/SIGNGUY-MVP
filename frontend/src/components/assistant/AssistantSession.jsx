@@ -50,7 +50,7 @@ export function AssistantProvider({ children }) {
     catch (err) { if (active.current === identity) patch({ messages: [], sources: [] }); throw err; }
     if (active.current !== identity) return;
     const latest = [...(result.messages || [])].reverse().find((m) => m.role === "assistant");
-    patch({ messages: result.messages || [], sources: (latest?.metadata?.sources || []).filter((ref) => ref.route) });
+    patch({ messages: result.messages || [], sources: (latest?.metadata?.sources || []).filter((ref) => ref.route), proposals: result.proposals || [] });
   };
   const voice = useAssistantVoice(identity, { ensureConversation, refresh, clear: () => patch({ messages: [], sources: [] }) });
   const activate = useCallback(() => setEnabled(true), []);
@@ -61,7 +61,7 @@ export function AssistantProvider({ children }) {
     if (current !== epoch.current || active.current !== identity) return;
     retry.current = null;
     const latestAnswer = [...(result.messages || [])].reverse().find((item) => item.role === "assistant");
-    patch({ conversationId: id, messages: result.messages || [], sources: latestAnswer?.metadata?.sources || [], proposals: [] });
+    patch({ conversationId: id, messages: result.messages || [], sources: latestAnswer?.metadata?.sources || [], proposals: result.proposals || [] });
     if (id) localStorage.setItem(storageKey, id); else localStorage.removeItem(storageKey);
   }, [identity, patch, storageKey]);
 
@@ -99,7 +99,7 @@ export function AssistantProvider({ children }) {
       if (retry.current?.signature !== signature) retry.current = { signature, key: requestKey() };
       const result = await sendAssistantMessage({ ...fields, idempotency_key: retry.current.key });
       if (!valid()) return;
-      patch({ messages: [...baseline.filter((m) => ![result.user_message.id, result.assistant_message.id].includes(m.id)), result.user_message, result.assistant_message], sources: result.sources || [], message: "" });
+      patch({ messages: [...baseline.filter((m) => ![result.user_message.id, result.assistant_message.id].includes(m.id)), result.user_message, result.assistant_message], sources: result.sources || [], proposals: result.proposals || [], message: "" });
       retry.current = null;
     } finally {
       if (valid()) { busy.current = false; patch({ loading: false }); }
@@ -107,7 +107,7 @@ export function AssistantProvider({ children }) {
   };
   const setter = (key) => (value) => setSession((old) => old.identity !== identity ? old : { ...old, [key]: typeof value === "function" ? value(old[key]) : value });
   const changeConversation = async (id) => { if (voice.hasSession()) await voice.end(); return selectConversation(id); };
-  return <Context.Provider value={{ ...state, voice, activate, send, selectConversation: changeConversation, patch,
+  return <Context.Provider value={{ ...state, voice, activate, send, refresh, selectConversation: changeConversation, patch,
     setMode: setter("mode"), setMessage: setter("message"), setConversationId: setter("conversationId"),
     setMessages: setter("messages"), setSources: setter("sources"), setProposals: setter("proposals"), setLoading: setter("loading") }}>{children}</Context.Provider>;
 }

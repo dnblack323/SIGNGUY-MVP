@@ -779,9 +779,28 @@ async def archive_generated_asset(user: dict[str, Any], asset_id: str) -> dict[s
     return await get_generated_asset(user, asset_id)
 
 
+async def _assistant_draft_visible(user: dict[str, Any], draft: dict[str, Any]) -> bool:
+    if draft.get("tool_key") != "business_assistant":
+        return True
+    if draft.get("creator_user_id") != user["id"]:
+        return False
+    from . import assistant_actions
+    from .business_assistant import BusinessAssistantError
+    try:
+        await assistant_actions.get(user, draft.get("content_json", {}).get("assistant_proposal_id"))
+        return True
+    except BusinessAssistantError:
+        return False
+
+
 async def list_editable_drafts(user: dict[str, Any], *, limit: int = 100) -> dict[str, Any]:
     _require_perm(user, Perm.AI_HISTORY_READ.value)
-    items = [serialize_doc(d) async for d in db.ai_studio_editable_drafts.find({"tenant_id": user["tenant_id"]}, {"_id": 0}).sort("created_at", -1).limit(limit)]
+    # Assistant-origin drafts retain the approved private-conversation boundary.
+    # Other existing Studio drafts keep their established tenant policy.
+    items = []
+    async for d in db.ai_studio_editable_drafts.find({"tenant_id": user["tenant_id"], "$or": [{"tool_key": {"$ne": "business_assistant"}}, {"creator_user_id": user["id"]}]}, {"_id": 0}).sort("created_at", -1).limit(limit):
+        if await _assistant_draft_visible(user, d):
+            items.append(serialize_doc(d))
     return {"items": items, "total": len(items)}
 
 
@@ -951,7 +970,7 @@ async def list_activity(user: dict[str, Any], *, tool_key: Optional[str] = None,
     if mode_key:
         filt["mode_key"] = mode_key
     assets = [serialize_doc(d) | {"record_type": "generated_asset"} async for d in db.ai_generated_assets.find(filt, {"_id": 0}).sort("created_at", -1).limit(limit)]
-    drafts = [serialize_doc(d) | {"record_type": "editable_draft"} async for d in db.ai_studio_editable_drafts.find(filt, {"_id": 0}).sort("created_at", -1).limit(limit)]
+    drafts = [serialize_doc(d) | {"record_type": "editable_draft"} async for d in db.ai_studio_editable_drafts.find(filt, {"_id": 0}).sort("created_at", -1).limit(limit) if await _assistant_draft_visible(user, d)]
     items = sorted(assets + drafts, key=lambda item: item.get("created_at", ""), reverse=True)[:limit]
     return {"items": items, "total": len(items), "hidden_internal_fields": ["provider_payload", "hidden_prompt", "raw_exception", "other_tenant_data"]}
 

@@ -72,17 +72,69 @@ def has_perm(user: dict, permission: str) -> bool:
 def tool_definitions(user: dict) -> list[dict]:
     schema = ReadArgs.model_json_schema()
     schema["required"] = list(schema["properties"])
-    return [
-        {
-            "type": "function",
-            "name": name,
-            "description": DESCRIPTIONS[name],
-            "parameters": schema,
-            "strict": True,
-        }
-        for name, permissions in PERMISSIONS.items()
-        if all(has_perm(user, p) for p in permissions)
-    ]
+    from .assistant_action_tool import definition
+
+    return (
+        [
+            {
+                "type": "function",
+                "name": name,
+                "description": DESCRIPTIONS[name],
+                "parameters": schema,
+                "strict": True,
+            }
+            for name, permissions in PERMISSIONS.items()
+            if all(has_perm(user, p) for p in permissions)
+        ]
+        + definition(user)
+        + [
+            {
+                "type": "function",
+                "name": "propose_memory",
+                "description": "When explicitly asked to remember or correct private background/preferences, prepare an editable memory suggestion only. Never saves or approves it. Reuse the existing topic for corrections. Link shop-specific information to an exact accessible source. Never propose passwords or current balances/statuses as durable truth. User must approve the exact text in the interface.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "memory_key": {"type": "string", "maxLength": 80},
+                        "content_text": {"type": "string", "maxLength": 1000},
+                        "source_type": {
+                            "type": ["string", "null"],
+                            "enum": [
+                                "customer",
+                                "order",
+                                "quote",
+                                "invoice",
+                                "work_order",
+                                "task",
+                                None,
+                            ],
+                        },
+                        "source_id": {"type": ["string", "null"], "maxLength": 160},
+                    },
+                    "required": [
+                        "memory_key",
+                        "content_text",
+                        "source_type",
+                        "source_id",
+                    ],
+                    "additionalProperties": False,
+                },
+                "strict": True,
+            },
+            {
+                "type": "function",
+                "name": "recall_memory",
+                "description": "Read relevant explicitly approved private preferences/background across conversations. Historical memory never replaces live balances, statuses or schedules. Never saves anything.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string", "maxLength": 160}},
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
+                "strict": True,
+            },
+        ]
+    )
 
 
 def reference(kind: str, row: dict) -> dict:
@@ -106,6 +158,24 @@ def project(row: dict, *keys: str) -> dict:
 
 
 async def reference_allowed(user: dict, ref: dict) -> bool:
+    if ref.get("source_type") == "assistant_memory":
+        row = await db.assistant_memory_entries.find_one(
+            {
+                "tenant_id": user["tenant_id"],
+                "user_id": user["id"],
+                "id": ref.get("source_id"),
+                "status": "active",
+            },
+            {"_id": 0},
+        )
+        if not row or str(row.get("updated_at") or "") != ref.get("source_updated_at"):
+            return False
+        if row.get("source_type"):
+            return await reference_allowed(
+                user,
+                {"source_type": row["source_type"], "source_id": row.get("source_id")},
+            )
+        return True
     target = TARGETS.get(ref.get("source_type"))
     if not target or not has_perm(user, target[1]):
         return False
@@ -157,8 +227,64 @@ def _local_date(value, zone: ZoneInfo):
 
 
 async def execute(
-    user: dict, name: str, raw_args: dict, *, timezone_name: str = "UTC"
+    user: dict,
+    name: str,
+    raw_args: dict,
+    *,
+    timezone_name: str = "UTC",
+    conversation_id: str | None = None,
+    request_key: str | None = None,
+    mode: str = "owner"
 ) -> dict:
+    if name == "propose_memory":
+        from .assistant_memory import suggestion
+
+        return await suggestion(user, raw_args)
+    if name == "recall_memory":
+        from . import assistant_context
+
+        if (
+            set(raw_args) != {"query"}
+            or not isinstance(raw_args["query"], str)
+            or len(raw_args["query"]) > 160
+        ):
+            raise ToolError("Use one bounded memory query")
+        rows = await assistant_context.memories(user, limit=5, query=raw_args["query"])
+        return {
+            "items": [
+                {
+                    "key": r["memory_key"],
+                    "text": r["content_text"],
+                    "source_type": r.get("source_type"),
+                    "source_id": r.get("source_id"),
+                }
+                for r in rows
+            ],
+            "sources": [
+                {
+                    "source_type": "assistant_memory",
+                    "source_id": r["id"],
+                    "source_label": "Approved private context",
+                    "source_updated_at": str(r.get("updated_at") or ""),
+                }
+                for r in rows
+            ],
+            "notice": "Approved historical context only. Fetch current business facts from application tools.",
+        }
+    if name == "propose_action":
+        from .assistant_action_tool import execute as propose
+        from .business_assistant import BusinessAssistantError
+
+        try:
+            return await propose(
+                user,
+                raw_args,
+                conversation_id=conversation_id,
+                request_key=request_key,
+                mode=mode,
+            )
+        except BusinessAssistantError as exc:
+            raise ToolError(exc.detail) from exc
     if name not in PERMISSIONS or not all(has_perm(user, p) for p in PERMISSIONS[name]):
         raise ToolError("This tool is not permitted")
     args = ReadArgs.model_validate(raw_args)

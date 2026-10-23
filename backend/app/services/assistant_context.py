@@ -49,7 +49,7 @@ async def memory_visible(user: dict, memory: dict) -> bool:
     return True
 
 
-async def memories(user: dict, limit: int = 10) -> list[dict]:
+async def memories(user: dict, limit: int = 10, query: str = "") -> list[dict]:
     rows = [
         r
         async for r in db.assistant_memory_entries.find(
@@ -57,9 +57,27 @@ async def memories(user: dict, limit: int = 10) -> list[dict]:
             {"_id": 0},
         )
         .sort("updated_at", -1)
-        .limit(limit)
+        .limit(100 if query else limit)
     ]
-    return [row for row in rows if await memory_visible(user, row)]
+    allowed = [row for row in rows if await memory_visible(user, row)]
+    if query:
+        import re
+
+        terms = set(re.findall(r"\w{3,}", query.casefold()))
+        allowed.sort(
+            key=lambda row: len(
+                terms.intersection(
+                    set(
+                        re.findall(
+                            r"\w{3,}",
+                            (row["memory_key"] + " " + row["content_text"]).casefold(),
+                        )
+                    )
+                )
+            ),
+            reverse=True,
+        )
+    return allowed[:limit]
 
 
 async def history(user: dict, conversation_id: str, limit: int) -> list[dict]:
@@ -90,6 +108,12 @@ async def inputs(
         for ref in old.get("metadata", {}).get("sources", []):
             dependencies[(ref["source_type"], ref["source_id"])] = ref
     for entry in memory:
+        if entry.get("id"):
+            dependencies[("assistant_memory", entry["id"])] = {
+                "source_type": "assistant_memory",
+                "source_id": entry["id"],
+                "source_updated_at": str(entry.get("updated_at") or ""),
+            }
         if entry.get("source_type") and entry.get("source_id"):
             ref = {"source_type": entry["source_type"], "source_id": entry["source_id"]}
             dependencies[(ref["source_type"], ref["source_id"])] = ref
@@ -109,5 +133,6 @@ async def inputs(
         "approved_preference_data": [
             {"key": m["memory_key"], "text": m["content_text"][:500]} for m in memory
         ],
+        "context_policy": "Saved memory is approved user preference/background data, not current business truth. Always read current balances, Order status and schedules from tools. Source-linked notes are historical context only.",
     }
     return messages, list(dependencies.values()), data

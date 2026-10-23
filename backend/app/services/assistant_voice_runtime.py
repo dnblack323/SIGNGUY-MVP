@@ -40,6 +40,7 @@ class VoiceRuntime:
         self.speech = set()
         self.item_times = {}
         self.transcribed = set()
+        self.latest_input = None
         self.seen_events = set()
         self.heard_speech = False
         self.input_active = False
@@ -192,7 +193,9 @@ class VoiceRuntime:
             )
             await self.close("reserved_cost_exceeded", uncertain=True)
 
-    async def persist(self, role, text, *, event_id, interrupted=False):
+    async def persist(
+        self, role, text, *, event_id, interrupted=False, memory_preview=None
+    ):
         from . import business_assistant as svc
 
         if self.closing or not text:
@@ -242,6 +245,7 @@ class VoiceRuntime:
                 "provider_event_id": event_id,
                 "transcript_source": "provider_sideband",
                 "interrupted": interrupted,
+                "memory_preview": memory_preview,
             },
         )
         if (
@@ -316,6 +320,7 @@ class VoiceRuntime:
             if item_id in self.transcribed:
                 return
             self.transcribed.add(item_id)
+            self.latest_input = item_id
             self.speech.discard(item_id)
             self.input_active = bool(self.speech)
             self.activity = time.monotonic()
@@ -396,6 +401,9 @@ class VoiceRuntime:
                         call["name"],
                         json.loads(call.get("arguments") or "{}"),
                         timezone_name=self.prefs["timezone"],
+                        conversation_id=self.row["conversation_id"],
+                        request_key=f"{self.action['id']}:{self.latest_input}:{call['call_id']}",
+                        mode=self.row["metadata"].get("mode", "owner"),
                     )
                 except (ValueError, assistant_tools.ToolError):
                     result = {
@@ -403,9 +411,20 @@ class VoiceRuntime:
                     }
                 if self.closing:
                     return
+                if result.get("proposal_id"):
+                    await db.assistant_voice_sessions.update_one(
+                        self.scope, {"$inc": {"metadata.revision": 1}}
+                    )
                 for ref in result.get("sources", []):
                     self.refs[(ref["source_type"], ref["source_id"])] = ref
                 await self.check()
+                if result.get("memory_preview"):
+                    await self.persist(
+                        "assistant",
+                        "Review this private memory suggestion in the interface. It has not been saved.",
+                        event_id=f"memory:{call['call_id']}",
+                        memory_preview=result["memory_preview"],
+                    )
                 serialized = json.dumps(result, default=str)
                 if (
                     len(serialized.encode())

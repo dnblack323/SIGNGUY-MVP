@@ -826,6 +826,7 @@ async def test_source_memory_is_rechecked_after_permission_loss(ctx):
         }
     )
     restricted = {**ctx["user"], "role": "staff", "permissions": ["ai_assistant:use"]}
+    await db.users.update_one({"id": ctx["user"]["id"], "tenant_id": ctx["tenant"]}, {"$set": {"role": "staff", "permissions": ["ai_assistant:use"]}})
     assert (await svc.list_memory(restricted))["items"] == []
     assert await assistant_context.memories(restricted) == []
 

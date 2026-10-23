@@ -2,7 +2,7 @@
 
 ```yaml
 task: Stage D shared server-controlled Realtime conversations
-status: review
+status: done
 priority: 9
 dep: ["work/001-business-assistant-v1/004-stage-b-implementation.md"]
 assignee: ""
@@ -11,6 +11,8 @@ expiresAt: null
 ```
 
 <!-- DESCRIPTION -->
+
+Owner accepted Stage D engineering implementation and mocked verification in the Stage E authorization, October 22. Live compatibility and commercial readiness are not accepted by this decision.
 
 Owner explicitly accepts C as D's engineering foundation while retaining preview clearance as a V1 release requirement. D may proceed without marking task 005 fully accepted. Extend existing conversations/context/tools/personality and Gateway; media-only WebRTC plus backend sideband, canonical transcripts, interrupt/recovery and server budgets. No paid calls, E/F, merge or deploy. Preview procedure/cost research only.
 

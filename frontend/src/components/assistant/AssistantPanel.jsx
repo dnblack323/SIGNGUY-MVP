@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useLayoutEffect, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { AssistantBoundary, useAssistantSession } from "./AssistantSession";
+import ActionProposal from "./ActionProposal";
+import SavedActionRecord from "./SavedActionRecord";
+import MemoryManager from "./MemoryManager";
 import VoiceConversation from "./VoiceConversation";
-import { Bot, Check, ExternalLink, Mic, Send, X } from "lucide-react";
+import { Bot, ExternalLink, Mic, Send } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,16 +16,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { extractError } from "@/lib/api";
 import {
-  cancelAssistantProposal,
-  confirmAssistantProposal,
   createAssistantRoutine,
   createStudioDelegation,
-  deleteAssistantMemory,
   deleteAssistantRoutine,
   disableAssistantRoutine,
   dismissAssistantInsight,
   enableAssistantRoutine,
-  executeAssistantProposal,
   getAssistantCatalog,
   getVoiceConfig,
   listAssistantInsights,
@@ -30,7 +29,6 @@ import {
   listAssistantQuickActions,
   listAssistantRoutines,
   proposeAssistantAction,
-  saveAssistantMemory,
   updateAssistantRoutine,
 } from "@/lib/businessAssistant";
 
@@ -59,58 +57,6 @@ function SourceList({ sources = [] }) {
   );
 }
 
-function ProposalCard({ proposal, onUpdated }) {
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-
-  const act = async (kind) => {
-    setBusy(kind);
-    setError("");
-    try {
-      const next = kind === "confirm"
-        ? await confirmAssistantProposal(proposal.id)
-        : kind === "cancel"
-          ? await cancelAssistantProposal(proposal.id)
-          : await executeAssistantProposal(proposal.id, `assistant-exec-${proposal.id}`);
-      onUpdated?.(next);
-    } catch (err) {
-      setError(extractError(err, "Unable to update proposal"));
-    } finally {
-      setBusy("");
-    }
-  };
-
-  return (
-    <Card className="border-amber-200 bg-amber-50/60" data-testid="assistant-action-proposal">
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center justify-between gap-2 text-base">
-          <span>{proposal.title}</span>
-          <Badge variant="outline">{proposal.status}</Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm">
-        <p className="text-muted-foreground">{proposal.summary}</p>
-        <div className="rounded border bg-background p-3">
-          <pre className="whitespace-pre-wrap break-words text-xs">{JSON.stringify(proposal.preview || proposal.editable_payload || {}, null, 2)}</pre>
-        </div>
-        {(proposal.warnings || []).map((warning) => <div key={warning} className="text-amber-800">{warning}</div>)}
-        {error && <div className="text-destructive">{error}</div>}
-        <div className="flex flex-wrap gap-2">
-          {["proposed", "edited"].includes(proposal.status) && (
-            <Button size="sm" onClick={() => act("confirm")} disabled={!!busy}><Check className="mr-2 size-4" />Confirm</Button>
-          )}
-          {proposal.status === "confirmed" && (
-            <Button size="sm" onClick={() => act("execute")} disabled={!!busy}><Check className="mr-2 size-4" />Execute</Button>
-          )}
-          {!["succeeded", "failed", "canceled"].includes(proposal.status) && (
-            <Button size="sm" variant="outline" onClick={() => act("cancel")} disabled={!!busy}><X className="mr-2 size-4" />Cancel</Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 function AssistantPanelContent({ compact = false }) {
   const [searchParams] = useSearchParams();
   const location = useLocation();
@@ -123,7 +69,10 @@ function AssistantPanelContent({ compact = false }) {
   const [quickActions, setQuickActions] = useState([]);
   const [delegation, setDelegation] = useState(null);
   const [memoryItems, setMemoryItems] = useState([]);
-  const [memoryDraft, setMemoryDraft] = useState("");
+  const [memorySuggestion, setMemorySuggestion] = useState(null);
+  const sideIdentity = useRef(session.identity);
+  const [loadedIdentity, setLoadedIdentity] = useState(session.identity);
+  useLayoutEffect(() => { sideIdentity.current = session.identity; setMemoryItems([]); setMemorySuggestion(null); setRoutines([]); setInsights([]); setLoadedIdentity(session.identity); }, [session.identity]);
   const [routines, setRoutines] = useState([]);
   const [routineDraft, setRoutineDraft] = useState("");
   const [insights, setInsights] = useState([]);
@@ -163,10 +112,11 @@ function AssistantPanelContent({ compact = false }) {
       listAssistantRoutines().catch(() => []),
       listAssistantInsights({ generate: true }).catch(() => []),
     ]);
+    if (sideIdentity.current !== session.identity) return;
     setMemoryItems(mem);
     setRoutines(routineList);
     setInsights(insightList);
-  }, []);
+  }, [session.identity]);
 
   useEffect(() => {
     refreshAssistantSideData();
@@ -179,17 +129,6 @@ function AssistantPanelContent({ compact = false }) {
       await session.send(context);
     } catch (err) {
       setError(extractError(err, "Unable to ask the assistant"));
-    }
-  };
-
-  const saveMemory = async () => {
-    if (!memoryDraft.trim()) return;
-    try {
-      await saveAssistantMemory({ memory_key: `note-${Date.now()}`, content_text: memoryDraft });
-      setMemoryDraft("");
-      await refreshAssistantSideData();
-    } catch (err) {
-      setError(extractError(err, "Unable to save memory"));
     }
   };
 
@@ -216,6 +155,7 @@ function AssistantPanelContent({ compact = false }) {
 
   const handleQuickAction = async (action) => {
     setDelegation(null);
+    if (["internal_task", "internal_note", "email_draft"].includes(action.action_type)) { setMode(action.mode || mode); setMessage(action.prompt); return; }
     if (action.action_type === "studio_delegation") {
       setLoading(true);
       setError("");
@@ -266,6 +206,7 @@ function AssistantPanelContent({ compact = false }) {
   return (
     <div className={compact ? "space-y-4" : "grid gap-4 xl:grid-cols-[1fr_360px]"} data-testid="business-assistant-panel">
       <section className="space-y-4">
+        {searchParams.get("record_proposal") && <SavedActionRecord identity={session.identity} proposalId={searchParams.get("record_proposal")} />}
         {error && <Alert variant="destructive" data-testid="assistant-error"><AlertTitle>Business Assistant</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
         <div className="flex flex-wrap items-center gap-3">
           <label>Conversation <select aria-label="Conversation" value={conversationId || ""} disabled={loading} onChange={(event) => session.selectConversation(event.target.value || null).catch(() => setError("Unable to load conversation"))}>
@@ -313,6 +254,7 @@ function AssistantPanelContent({ compact = false }) {
               ) : messages.map((item) => (
                 <div key={item.id} className={item.role === "user" ? "ml-auto max-w-[86%] rounded bg-primary p-3 text-sm text-primary-foreground" : "max-w-[92%] rounded border bg-background p-3 text-sm"}>
                           {item.metadata?.interrupted && !item.content_text?.startsWith("[Interrupted") && <span className="block text-xs">Interrupted; generated transcript may include unplayed speech.</span>}{item.content_text}
+                          {item.metadata?.memory_preview && <Button variant="outline" onClick={() => setMemorySuggestion({ ...item.metadata.memory_preview })}>Review memory suggestion</Button>}
                 </div>
               ))}
             </div>
@@ -325,7 +267,7 @@ function AssistantPanelContent({ compact = false }) {
         </Card>
 
         {proposals.map((proposal) => (
-          <ProposalCard key={proposal.id} proposal={proposal} onUpdated={(next) => setProposals((prev) => prev.map((item) => (item.id === next.id || item.id === next.proposal_id ? { ...item, ...next } : item)))} />
+          <ActionProposal key={proposal.id} proposal={proposal} onUpdated={async (next) => { setProposals((prev) => prev.map((item) => item.id === proposal.id ? next : item)); if (next.status === "succeeded") await session.refresh(); }} />
         ))}
       </section>
 
@@ -335,22 +277,11 @@ function AssistantPanelContent({ compact = false }) {
           <CardContent className="space-y-4"><VoiceConversation config={voiceConfig} context={context} /></CardContent>
         </Card>
 
-        <Card data-testid="assistant-memory">
+        <Card data-testid="assistant-memory-card">
           <CardHeader><CardTitle className="text-base">Memory</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex gap-2">
-              <Input value={memoryDraft} onChange={(event) => setMemoryDraft(event.target.value)} placeholder="Retain a preference" data-testid="assistant-memory-input" />
-              <Button size="sm" onClick={saveMemory}>Save</Button>
-            </div>
-            <div className="space-y-2">
-              {memoryItems.length === 0 ? <div className="text-sm text-muted-foreground">No retained memory.</div> : memoryItems.map((item) => (
-                <div key={item.id} className="flex items-center justify-between gap-2 rounded border p-2 text-sm">
-                  <span>{item.content_text}</span>
-                  <Button size="sm" variant="ghost" onClick={async () => { await deleteAssistantMemory(item.id); await refreshAssistantSideData(); }}><X className="size-4" /></Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
+            <MemoryManager key={session.identity} suggestion={loadedIdentity === session.identity ? memorySuggestion : null} items={loadedIdentity === session.identity ? memoryItems : []} context={context} onChanged={refreshAssistantSideData} />
+            </CardContent>
         </Card>
 
         <Card data-testid="assistant-routines">

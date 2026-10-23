@@ -145,6 +145,7 @@ async def ask(user: dict, fields: dict) -> dict:
         )
         sources = []
         missing = []
+        memory_preview = None
         answer = ""
         for _ in range(settings.assistant_max_provider_calls):
             current = await assistant_context.fresh_actor(user)
@@ -218,7 +219,13 @@ async def ask(user: dict, fields: dict) -> dict:
                 try:
                     args = json.loads(call.get("arguments") or "{}")
                     result = await assistant_tools.execute(
-                        current, call["name"], args, timezone_name=prefs["timezone"]
+                        current,
+                        call["name"],
+                        args,
+                        timezone_name=prefs["timezone"],
+                        conversation_id=convo["id"],
+                        request_key=f"{action['id']}:{call['call_id']}",
+                        mode=mode,
                     )
                 except (ValueError, assistant_tools.ToolError):
                     result = {
@@ -228,6 +235,8 @@ async def ask(user: dict, fields: dict) -> dict:
                     if ref not in sources:
                         sources.append(ref)
                     dependencies[(ref["source_type"], ref["source_id"])] = ref
+                if result.get("memory_preview"):
+                    memory_preview = result["memory_preview"]
                 if len(dependencies) > 100:
                     raise assistant_tools.ToolError(
                         "Source context limit reached; narrow the question"
@@ -276,6 +285,7 @@ async def ask(user: dict, fields: dict) -> dict:
                 "personality_key": prefs["personality_key"],
                 "personality_version": assistant_personality.VERSION,
                 "missing_data": list(dict.fromkeys(missing)),
+                "memory_preview": memory_preview,
             },
         )
         result = {
@@ -287,6 +297,9 @@ async def ask(user: dict, fields: dict) -> dict:
             "missing_data": list(dict.fromkeys(missing)),
             "action_request": {"id": action["id"], "capability_key": "assistant.chat"},
             "credit_display": svc.CREDIT_DISPLAY,
+            "proposals": (await svc.get_conversation(current, convo["id"]))[
+                "proposals"
+            ],
         }
         # Persist result before finalization: incomplete accounting can never cause redispatch.
         await db.ai_action_requests.update_one(

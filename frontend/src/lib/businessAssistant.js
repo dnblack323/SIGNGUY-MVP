@@ -45,8 +45,13 @@ export async function editAssistantProposal(proposalId, payload) {
   return data;
 }
 
-export async function confirmAssistantProposal(proposalId) {
-  const { data } = await api.post(`/assistant/actions/proposals/${proposalId}/confirm`);
+export async function getAssistantSavedRecord(proposalId) {
+  const { data } = await api.get(`/assistant/actions/proposals/${proposalId}/record`);
+  return data;
+}
+
+export async function confirmAssistantProposal(proposalId, revision) {
+  const { data } = await api.post(`/assistant/actions/proposals/${proposalId}/confirm`, { revision });
   return data;
 }
 
@@ -107,6 +112,11 @@ export async function saveAssistantMemory(payload) {
 
 export async function deleteAssistantMemory(memoryId) {
   const { data } = await api.delete(`/assistant/memory/${memoryId}`);
+  return data;
+}
+
+export async function editAssistantMemory(memoryId, payload) {
+  const { data } = await api.patch(`/assistant/memory/${memoryId}`, payload);
   return data;
 }
 

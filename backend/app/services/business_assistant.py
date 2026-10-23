@@ -6,6 +6,7 @@ deterministic BI contracts. AI governance and metering remain owned by EC16.
 from __future__ import annotations
 
 from datetime import timedelta
+import uuid
 from typing import Any, Optional
 
 from pymongo.errors import DuplicateKeyError
@@ -20,12 +21,10 @@ from ..models.ai_studio import AIStudioEditableDraft
 from ..models.user import AssistantPreferences
 from . import assistant_context, assistant_personality
 from ..models.business_assistant import (
-    AssistantActionExecution,
     AssistantActionProposal,
     AssistantContextSnapshot,
     AssistantConversation,
     AssistantInsight,
-    AssistantMemoryEntry,
     AssistantMessage,
     AssistantRoutine,
     AssistantSourceCitation,
@@ -351,6 +350,8 @@ async def list_conversations(user: dict[str, Any], *, limit: int = 50) -> dict[s
 
 
 async def get_conversation(user: dict[str, Any], conversation_id: str) -> dict[str, Any]:
+    from .assistant_actions import actor, list_for_conversation
+    user = await actor(user)
     await _require_assistant_access(user)
     convo = await _conversation(user, conversation_id)
     messages = [
@@ -366,7 +367,7 @@ async def get_conversation(user: dict[str, Any], conversation_id: str) -> dict[s
             message["parts"] = []
             message["context_snapshot_id"] = None
             message["action_proposal_ids"] = []
-    return {"conversation": {k: v for k, v in convo.items() if k != "active_turn"}, "messages": messages[-100:]}
+    return {"conversation": {k: v for k, v in convo.items() if k != "active_turn"}, "messages": messages[-100:], "proposals": await list_for_conversation(user, conversation_id)}
 
 
 async def _insert_message(user: dict[str, Any], *, conversation_id: str, role: str, content_text: str, mode: str, context_snapshot_id: Optional[str] = None, action_request_id: Optional[str] = None, citation_ids: Optional[list[str]] = None, proposal_ids: Optional[list[str]] = None, voice_session_id: Optional[str] = None, metadata: Optional[dict[str, Any]] = None) -> dict[str, Any]:
@@ -446,61 +447,14 @@ async def _create_citation(tenant_id: str, *, conversation_id: str, source_type:
     return serialize_doc(cite)
 
 
-async def _meter_assistant(user: dict[str, Any], *, capability_key: str, conversation_id: str, prompt: str, source_links: Optional[list[dict[str, Any]]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
-    capability = await db.ai_capabilities.find_one({"capability_key": capability_key, "status": "active"}, {"_id": 0})
-    if not capability:
-        raise BusinessAssistantError("assistant_capability_not_bootstrapped", "Platform AI admin must bootstrap EC18 assistant capabilities before execution", 409)
-    prompt_doc = await db.ai_prompt_versions.find_one({"capability_key": capability_key, "status": "published"}, {"_id": 0}, sort=[("published_at", -1)])
-    try:
-        return await ai_gateway.create_gateway_request(
-            user,
-            {
-                "capability_key": capability_key,
-                "prompt_version_id": prompt_doc.get("id") if prompt_doc else None,
-                "session_id": conversation_id,
-                "idempotency_key": f"assistant-local:{user['id']}:{idempotency_key}" if idempotency_key else None,
-                "input_units": max(1, len(prompt) // 4),
-                "output_units": 1,
-                "estimated_cost_micros": 0,
-                "duration_ms": 0,
-                "source_links": source_links or [],
-                "simulate_result": "success",
-            },
-        )
-    except ai_gateway.AIGatewayError as exc:
-        raise BusinessAssistantError(exc.code, exc.detail, exc.status_code)
-
-
 async def ask_assistant(user: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]:
     from .assistant_conversation import ask
     return await ask(user, fields)
 
 
-async def propose_action(user: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    mode = _mode_key(fields.get("mode"))
-    convo = await _conversation(user, fields.get("conversation_id"), mode=mode)
-    action_type = str(fields.get("action_type") or "").strip()
-    if not action_type:
-        raise BusinessAssistantError("action_type_required", "Action type is required", 400)
-    if action_type not in ACTION_PERMISSIONS:
-        proposal = await _save_proposal(user, convo["id"], mode, fields, status="unsupported", warnings=["Unsupported action. No app data was changed."], required_permissions=[])
-        await _audit(user, "assistant.action_unsupported", "assistant_action_proposal", proposal["id"], "Unsupported assistant action rejected")
-        return proposal
-    required = ACTION_PERMISSIONS[action_type]
-    for perm in required:
-        _require_perm(user, perm)
-    target_refs = fields.get("target_refs") or []
-    source_links = []
-    for ref in target_refs:
-        snap = await _validate_context(user, {"source_entity_type": ref.get("type"), "source_entity_id": ref.get("id")}, conversation_id=convo["id"], mode=mode)
-        if snap:
-            source_links.extend(snap.get("source_links") or [])
-    await _meter_assistant(user, capability_key="assistant.action_parse", conversation_id=convo["id"], prompt=str(fields), source_links=source_links, idempotency_key=fields.get("metering_idempotency_key"))
-    proposal = await _save_proposal(user, convo["id"], mode, fields, status="proposed", warnings=_proposal_warnings(action_type, target_refs), required_permissions=required)
-    await _insert_message(user, conversation_id=convo["id"], role="assistant", content_text=f"Action proposal ready: {proposal['title']}", mode=mode, proposal_ids=[proposal["id"]])
-    await _audit(user, "assistant.action_proposed", "assistant_action_proposal", proposal["id"], "Assistant action proposal created")
-    return proposal
+async def propose_action(user: dict, fields: dict) -> dict:
+    from .assistant_actions import propose
+    return await propose(user, fields)
 
 
 async def _save_proposal(user: dict[str, Any], conversation_id: str, mode: str, fields: dict[str, Any], *, status: str, warnings: list[str], required_permissions: list[str]) -> dict[str, Any]:
@@ -522,13 +476,17 @@ async def _save_proposal(user: dict[str, Any], conversation_id: str, mode: str, 
         editable_payload=fields.get("editable_payload") or preview,
         warnings=warnings,
         idempotency_key=fields.get("idempotency_key"),
-        expires_at=(utc_now() + timedelta(hours=24)).isoformat(),
+        expires_at=fields.get("expires_at") or (utc_now() + timedelta(hours=24)).isoformat(),
+        input_fingerprint=fields.get("input_fingerprint"),
+        permission_signature=fields.get("permission_signature"),
     ).model_dump()
     try:
         await db.assistant_action_proposals.insert_one(prepare_for_mongo(proposal))
     except DuplicateKeyError:
         existing = await db.assistant_action_proposals.find_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "idempotency_key": fields.get("idempotency_key")}, {"_id": 0})
         if existing:
+            if fields.get("input_fingerprint") and existing.get("input_fingerprint") != fields["input_fingerprint"]:
+                raise BusinessAssistantError("proposal_key_conflict", "This proposal key belongs to different content", 409)
             return serialize_doc(existing)
         raise BusinessAssistantError("proposal_key_conflict", "This proposal request key is already in use", 409)
     return serialize_doc(proposal)
@@ -635,85 +593,24 @@ def _note_link_payload(ref: dict[str, Any]) -> dict[str, Any]:
     return {field: ref_id} if field and ref_id else {}
 
 
-async def edit_proposal(user: dict[str, Any], proposal_id: str, fields: dict[str, Any]) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    proposal = await _proposal(user, proposal_id)
-    if proposal["status"] not in {"proposed", "edited"}:
-        raise BusinessAssistantError("proposal_not_editable", "Only proposed or edited actions can be changed", 409)
-    updates = {"editable_payload": fields.get("editable_payload") or proposal.get("editable_payload") or {}, "status": "edited", "updated_at": _now_iso()}
-    if fields.get("title"):
-        updates["title"] = str(fields["title"])[:160]
-    if fields.get("summary"):
-        updates["summary"] = str(fields["summary"])[:1000]
-    await db.assistant_action_proposals.update_one({"tenant_id": user["tenant_id"], "id": proposal_id}, {"$set": prepare_for_mongo(updates)})
-    await _audit(user, "assistant.action_edited", "assistant_action_proposal", proposal_id, "Assistant action proposal edited")
-    return await _proposal(user, proposal_id)
+async def edit_proposal(user: dict, proposal_id: str, fields: dict) -> dict:
+    from .assistant_actions import edit
+    return await edit(user, proposal_id, fields)
 
 
-async def confirm_proposal(user: dict[str, Any], proposal_id: str) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    proposal = await _proposal(user, proposal_id)
-    if proposal["status"] not in {"proposed", "edited"}:
-        raise BusinessAssistantError("proposal_not_confirmable", "Only proposed or edited actions can be confirmed", 409)
-    for perm in proposal.get("required_permissions") or []:
-        _require_perm(user, perm)
-    await _check_stale_targets(user, proposal)
-    await db.assistant_action_proposals.update_one(
-        {"tenant_id": user["tenant_id"], "id": proposal_id},
-        {"$set": {"status": "confirmed", "confirmed_by_user_id": user["id"], "confirmed_at": _now_iso(), "updated_at": _now_iso()}},
-    )
-    await _audit(user, "assistant.action_confirmed", "assistant_action_proposal", proposal_id, "Assistant action proposal confirmed")
-    return await _proposal(user, proposal_id)
+async def confirm_proposal(user: dict, proposal_id: str, revision=None) -> dict:
+    from .assistant_actions import confirm
+    return await confirm(user, proposal_id, revision)
 
 
-async def cancel_proposal(user: dict[str, Any], proposal_id: str) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    proposal = await _proposal(user, proposal_id)
-    if proposal["status"] in {"succeeded", "failed", "canceled"}:
-        return proposal
-    await db.assistant_action_proposals.update_one(
-        {"tenant_id": user["tenant_id"], "id": proposal_id},
-        {"$set": {"status": "canceled", "canceled_by_user_id": user["id"], "canceled_at": _now_iso(), "updated_at": _now_iso()}},
-    )
-    await _audit(user, "assistant.action_canceled", "assistant_action_proposal", proposal_id, "Assistant action proposal canceled")
-    return await _proposal(user, proposal_id)
+async def cancel_proposal(user: dict, proposal_id: str) -> dict:
+    from .assistant_actions import cancel
+    return await cancel(user, proposal_id)
 
 
-async def execute_proposal(user: dict[str, Any], proposal_id: str, *, idempotency_key: Optional[str] = None) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    proposal = await _proposal(user, proposal_id)
-    if proposal["status"] != "confirmed":
-        raise BusinessAssistantError("proposal_confirmation_required", "Action must be confirmed before execution", 409)
-    for perm in proposal.get("required_permissions") or []:
-        _require_perm(user, perm)
-    await _check_stale_targets(user, proposal)
-    if idempotency_key:
-        existing = await db.assistant_action_executions.find_one({"tenant_id": user["tenant_id"], "idempotency_key": idempotency_key}, {"_id": 0})
-        if existing:
-            return serialize_doc(existing)
-    await db.assistant_action_proposals.update_one({"tenant_id": user["tenant_id"], "id": proposal_id}, {"$set": {"status": "executing", "updated_at": _now_iso()}})
-    action = await _meter_assistant(user, capability_key=proposal.get("capability_key") or "assistant.action_parse", conversation_id=proposal["conversation_id"], prompt=str(proposal.get("editable_payload") or proposal.get("preview") or {}), idempotency_key=idempotency_key)
-    result = await _execute_safe_canonical_action(user, proposal)
-    execution = AssistantActionExecution(
-        tenant_id=user["tenant_id"],
-        proposal_id=proposal_id,
-        conversation_id=proposal["conversation_id"],
-        user_id=user["id"],
-        status=result["status"],  # type: ignore[arg-type]
-        idempotency_key=idempotency_key,
-        canonical_service=result["canonical_service"],
-        canonical_result=result,
-        action_request_id=action["id"],
-        executed_at=_now_iso(),
-    ).model_dump()
-    await db.assistant_action_executions.insert_one(prepare_for_mongo(execution))
-    await db.assistant_action_proposals.update_one(
-        {"tenant_id": user["tenant_id"], "id": proposal_id},
-        {"$set": {"status": result["status"], "updated_at": _now_iso()}},
-    )
-    await _insert_message(user, conversation_id=proposal["conversation_id"], role="assistant", content_text=result["assistant_summary"], mode=proposal.get("mode", "owner"), action_request_id=action["id"])
-    await _audit(user, f"assistant.action_{result['status']}", "assistant_action_proposal", proposal_id, result["assistant_summary"])
-    return serialize_doc(execution)
+async def execute_proposal(user: dict, proposal_id: str, *, idempotency_key=None) -> dict:
+    from .assistant_actions import execute
+    return await execute(user, proposal_id, idempotency_key)
 
 
 async def _proposal(user: dict[str, Any], proposal_id: str) -> dict[str, Any]:
@@ -723,29 +620,13 @@ async def _proposal(user: dict[str, Any], proposal_id: str) -> dict[str, Any]:
     return serialize_doc(doc)
 
 
-async def _check_stale_targets(user: dict[str, Any], proposal: dict[str, Any]) -> None:
-    for ref in proposal.get("target_refs") or []:
-        ref_type = ref.get("type")
-        ref_id = ref.get("id")
-        if ref_type not in CONTEXT_TARGETS or not ref_id:
-            continue
-        target = CONTEXT_TARGETS[ref_type]
-        coll = getattr(db, target["collection"])
-        doc = await coll.find_one({"tenant_id": user["tenant_id"], "id": ref_id}, {"_id": 0, "updated_at": 1})
-        if not doc:
-            await db.assistant_action_proposals.update_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "id": proposal["id"]}, {"$set": {"status": "stale", "stale_reason": "target_missing", "updated_at": _now_iso()}})
-            raise BusinessAssistantError("proposal_stale", "Action target changed or disappeared; reconfirmation is required", 409)
-        previous = ref.get("source_updated_at")
-        if previous and str(doc.get("updated_at")) != str(previous):
-            await db.assistant_action_proposals.update_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "id": proposal["id"]}, {"$set": {"status": "stale", "stale_reason": "target_updated", "updated_at": _now_iso()}})
-            raise BusinessAssistantError("proposal_stale", "Action target changed; reconfirmation is required", 409)
-
-
 async def _execute_safe_canonical_action(user: dict[str, Any], proposal: dict[str, Any]) -> dict[str, Any]:
     action_type = proposal.get("action_type")
     payload = proposal.get("editable_payload") or {}
     if action_type == "email_draft":
+        draft_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"assistant-draft:{user['tenant_id']}:{proposal['id']}"))
         draft = AIStudioEditableDraft(
+            id=draft_id,
             tenant_id=user["tenant_id"],
             creator_user_id=user["id"],
             tool_key="business_assistant",
@@ -759,8 +640,8 @@ async def _execute_safe_canonical_action(user: dict[str, Any], proposal: dict[st
             content_json={"subject": payload.get("subject") or "", "recipients": payload.get("recipients") or [], "assistant_proposal_id": proposal["id"]},
             warnings=["Draft only. No email was sent."],
         ).model_dump()
-        await db.ai_studio_editable_drafts.insert_one(prepare_for_mongo(draft))
-        return {"status": "succeeded", "canonical_service": "ai_studio_editable_drafts", "draft_id": draft["id"], "sent": False, "assistant_summary": "Email draft created. No email was sent."}
+        await db.ai_studio_editable_drafts.update_one({"tenant_id": user["tenant_id"], "id": draft_id}, {"$setOnInsert": prepare_for_mongo(draft)}, upsert=True)
+        return {"status": "succeeded", "canonical_service": "ai_studio_editable_drafts", "draft_id": draft["id"], "route": f"/studio/generated-assets?draft={draft_id}", "sent": False, "assistant_summary": "Email draft saved. No email was sent."}
     if action_type == "document_draft":
         draft = AIStudioEditableDraft(
             tenant_id=user["tenant_id"],
@@ -809,6 +690,7 @@ async def _execute_safe_canonical_action(user: dict[str, Any], proposal: dict[st
             "task_type": payload.get("task_type") or "assistant_followup",
             "due_at": payload.get("due_at"),
             "visibility": "staff",
+            "assigned_user_id": user["id"],
             "internal_only": True,
             "employee_visible": False,
             "idempotency_key": f"assistant-task:{proposal['id']}",
@@ -846,6 +728,7 @@ async def _execute_safe_canonical_action(user: dict[str, Any], proposal: dict[st
                 actor_user_id=user["id"],
                 actor_email=user.get("email") or "assistant",
                 payload={k: v for k, v in note_payload.items() if v is not None},
+                record_id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"assistant-note:{user['tenant_id']}:{proposal['id']}")),
             )
         except communication_service.CommunicationError as exc:
             raise BusinessAssistantError(exc.code, exc.detail, exc.status_code) from exc
@@ -853,7 +736,7 @@ async def _execute_safe_canonical_action(user: dict[str, Any], proposal: dict[st
             "status": "succeeded",
             "canonical_service": "internal_notes",
             "note_id": note["id"],
-            "route": "/team/notes",
+            "route": f"/team/notes?note={note['id']}",
             "mutated": True,
             "assistant_summary": "Internal note created after confirmation.",
         }
@@ -893,31 +776,22 @@ async def _execute_safe_canonical_action(user: dict[str, Any], proposal: dict[st
 
 
 async def list_memory(user: dict[str, Any]) -> dict[str, Any]:
+    from .assistant_actions import actor
+    user = await actor(user)
     await _require_assistant_access(user)
     cursor = db.assistant_memory_entries.find({"tenant_id": user["tenant_id"], "user_id": user["id"], "status": "active"}, {"_id": 0}).sort("updated_at", -1)
     items = [serialize_doc(d) async for d in cursor if await assistant_context.memory_visible(user, d)]
     return {"items": items, "total": len(items)}
 
 
-async def upsert_memory(user: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    key = str(fields.get("memory_key") or "").strip().lower()
-    content = str(fields.get("content_text") or "").strip()
-    if not key or not content:
-        raise BusinessAssistantError("memory_required", "Memory key and content are required", 400)
-    if "api key" in content.lower() or "password" in content.lower() or "secret" in content.lower():
-        raise BusinessAssistantError("secret_memory_rejected", "Secrets and credentials cannot be saved as assistant memory", 400)
-    existing = await db.assistant_memory_entries.find_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "memory_key": key, "status": "active"}, {"_id": 0})
-    if existing:
-        await db.assistant_memory_entries.update_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "id": existing["id"]}, {"$set": {"content_text": content, "updated_at": _now_iso()}})
-        return serialize_doc(await db.assistant_memory_entries.find_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "id": existing["id"]}, {"_id": 0}))
-    doc = AssistantMemoryEntry(tenant_id=user["tenant_id"], user_id=user["id"], memory_key=key, content_text=content).model_dump()
-    await db.assistant_memory_entries.insert_one(prepare_for_mongo(doc))
-    await _audit(user, "assistant.memory_saved", "assistant_memory_entry", doc["id"], "Assistant memory saved")
-    return serialize_doc(doc)
+async def upsert_memory(user: dict, fields: dict) -> dict:
+    from .assistant_memory import save
+    return await save(user, fields)
 
 
 async def delete_memory(user: dict[str, Any], memory_id: str) -> dict[str, Any]:
+    from .assistant_actions import actor
+    user = await actor(user)
     await _require_assistant_access(user)
     doc = await db.assistant_memory_entries.find_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "id": memory_id}, {"_id": 0})
     if not doc:

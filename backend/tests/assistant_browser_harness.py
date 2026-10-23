@@ -104,6 +104,36 @@ async def serve():
             "created_at": utc_now().isoformat(),
         }
     )
+    await db.customers.insert_one(
+        {
+            "id": "browser-customer",
+            "tenant_id": tenant,
+            "name": "Smith Construction",
+            "email": "smith@example.test",
+            "updated_at": utc_now().isoformat(),
+        }
+    )
+    await db.orders.insert_one(
+        {
+            "id": "browser-order",
+            "tenant_id": tenant,
+            "number": "O-B-1001",
+            "title": "Smith truck lettering",
+            "customer_id": "browser-customer",
+            "status": "confirmed",
+            "created_at": utc_now().isoformat(),
+        }
+    )
+    await db.quotes.insert_one(
+        {
+            "id": "browser-quote",
+            "tenant_id": tenant,
+            "number": "Q-B-1001",
+            "customer_id": "browser-customer",
+            "status": "sent",
+            "updated_at": utc_now().isoformat(),
+        }
+    )
     settings = get_settings()
     settings.assistant_text_enabled = True
     settings.assistant_text_model_profile_id = "browser-profile"
@@ -111,6 +141,19 @@ async def serve():
 
     async def respond(payload):
         output = payload["input"][-1]
+        prompt = ""
+        for item in reversed(payload["input"]):
+            if item.get("role") == "user":
+                try:
+                    prompt = (
+                        json.loads(item.get("content", "{}"))
+                        .get("user_message", "")
+                        .casefold()
+                    )
+                except (TypeError, ValueError):
+                    pass
+                if prompt:
+                    break
         if output.get("type") != "function_call_output":
             content = [
                 {
@@ -120,6 +163,78 @@ async def serve():
                     "call_id": uuid.uuid4().hex,
                 }
             ]
+            kind = (
+                "internal_task"
+                if "create a task" in prompt
+                else (
+                    "internal_note"
+                    if "add a note" in prompt
+                    else "email_draft" if "follow-up email" in prompt else None
+                )
+            )
+            if kind:
+                content = [
+                    {
+                        "type": "function_call",
+                        "name": "propose_action",
+                        "arguments": json.dumps(
+                            {
+                                "action_type": kind,
+                                "title": (
+                                    "Call Smith Construction"
+                                    if kind == "internal_task"
+                                    else (
+                                        "Reflective vinyl request"
+                                        if kind == "internal_note"
+                                        else "Quote follow-up"
+                                    )
+                                ),
+                                "body": (
+                                    "Call about truck lettering"
+                                    if kind == "internal_task"
+                                    else "Requested reflective vinyl for their next truck"
+                                ),
+                                "due_when": (
+                                    "tomorrow" if kind == "internal_task" else None
+                                ),
+                                "target_type": (
+                                    "quote" if kind == "email_draft" else "customer"
+                                ),
+                                "target_id": (
+                                    "browser-quote"
+                                    if kind == "email_draft"
+                                    else "browser-customer"
+                                ),
+                            }
+                        ),
+                        "call_id": uuid.uuid4().hex,
+                    }
+                ]
+            if "remember" in prompt:
+                content = [
+                    {
+                        "type": "function_call",
+                        "name": "propose_memory",
+                        "arguments": json.dumps(
+                            {
+                                "memory_key": "updates",
+                                "content_text": "Prefer concise morning updates",
+                                "source_type": None,
+                                "source_id": None,
+                            }
+                        ),
+                        "call_id": uuid.uuid4().hex,
+                    }
+                ]
+            elif "smith" in prompt and not kind:
+                content = [
+                    {
+                        "type": "function_call",
+                        "name": "find_customers",
+                        "arguments": json.dumps({"query": "Smith"}),
+                        "call_id": uuid.uuid4().hex,
+                    }
+                ]
         else:
             content = [
                 {
@@ -133,6 +248,20 @@ async def serve():
                     ],
                 }
             ]
+            if '"proposal_id"' in output.get("output", ""):
+                content[0]["content"][0][
+                    "text"
+                ] = "Review the exact action preview and destination below. No business record has been created and no email sent. Confirm through the interface when ready."
+            if '"memory_preview"' in output.get("output", ""):
+                content[0]["content"][0][
+                    "text"
+                ] = "Review the memory suggestion in the memory editor and approve its exact wording. It has not been saved."
+            elif '"Smith Construction"' in output.get(
+                "output", ""
+            ) and '"proposal_id"' not in output.get("output", ""):
+                content[0]["content"][0][
+                    "text"
+                ] = "Smith Construction is the Customer in the linked application record."
         return {
             "id": uuid.uuid4().hex,
             "status": "completed",
@@ -197,6 +326,22 @@ async def serve():
         await server.serve()
     finally:
         stop_task.cancel()
+        print(
+            "DISPOSABLE RECORD COUNTS "
+            + json.dumps(
+                {
+                    name: await db[name].count_documents({"tenant_id": tenant})
+                    for name in (
+                        "tasks",
+                        "internal_notes",
+                        "ai_studio_editable_drafts",
+                        "assistant_memory_entries",
+                        "email_logs",
+                    )
+                }
+            ),
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

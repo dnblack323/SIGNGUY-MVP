@@ -82,14 +82,25 @@ class ActionProposalIn(BaseModel):
 
 
 class ProposalEditIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision: Optional[int] = Field(default=None, ge=1)
     title: Optional[str] = None
     summary: Optional[str] = None
     editable_payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class MemoryIn(BaseModel):
-    memory_key: str
-    content_text: str
+    model_config = ConfigDict(extra="forbid")
+    memory_key: str = Field(min_length=1, max_length=80)
+    content_text: str = Field(min_length=1, max_length=1000)
+    source_type: Optional[str] = None
+    source_id: Optional[str] = Field(default=None, max_length=160)
+    expected_updated_at: Optional[str] = None
+
+
+class ConfirmationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision: Optional[int] = Field(default=None, ge=1)
 
 
 class RoutineIn(BaseModel):
@@ -196,10 +207,19 @@ async def edit_proposal(proposal_id: str, payload: ProposalEditIn, user: dict = 
         _raise(exc)
 
 
-@router.post("/actions/proposals/{proposal_id}/confirm")
-async def confirm_proposal(proposal_id: str, user: dict = Depends(get_current_user)) -> dict:
+@router.get("/actions/proposals/{proposal_id}/record")
+async def saved_action_record(proposal_id: str, user: dict = Depends(get_current_user)) -> dict:
+    from ..services.assistant_actions import saved_record
     try:
-        return await svc.confirm_proposal(user, proposal_id)
+        return await saved_record(user, proposal_id)
+    except BusinessAssistantError as exc:
+        _raise(exc)
+
+
+@router.post("/actions/proposals/{proposal_id}/confirm")
+async def confirm_proposal(proposal_id: str, payload: ConfirmationIn = ConfirmationIn(), user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.confirm_proposal(user, proposal_id, payload.revision)
     except BusinessAssistantError as exc:
         _raise(exc)
 
@@ -235,7 +255,7 @@ async def list_memory(user: dict = Depends(get_current_user)) -> dict:
 @router.post("/memory", status_code=201)
 async def upsert_memory(payload: MemoryIn, user: dict = Depends(get_current_user)) -> dict:
     try:
-        return await svc.upsert_memory(user, payload.model_dump())
+        return await svc.upsert_memory(user, payload.model_dump(exclude_unset=True))
     except BusinessAssistantError as exc:
         _raise(exc)
 
@@ -244,6 +264,15 @@ async def upsert_memory(payload: MemoryIn, user: dict = Depends(get_current_user
 async def delete_memory(memory_id: str, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.delete_memory(user, memory_id)
+    except BusinessAssistantError as exc:
+        _raise(exc)
+
+
+@router.patch("/memory/{memory_id}")
+async def edit_memory(memory_id: str, payload: MemoryIn, user: dict = Depends(get_current_user)) -> dict:
+    from ..services.assistant_memory import save
+    try:
+        return await save(user, payload.model_dump(exclude_unset=True), memory_id=memory_id)
     except BusinessAssistantError as exc:
         _raise(exc)
 

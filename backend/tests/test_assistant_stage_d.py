@@ -211,6 +211,9 @@ async def test_shared_transcripts_context_private_history_and_duplicate_accounti
         "quote_followups",
         "tasks",
         "shop_schedule",
+        "propose_action",
+        "recall_memory",
+        "propose_memory",
     }
     await utterance(runtime)
     await answer(runtime)

@@ -101,6 +101,11 @@ class AssistantActionProposal(BaseDoc):
     canceled_by_user_id: Optional[str] = None
     canceled_at: Optional[str] = None
     stale_reason: Optional[str] = None
+    revision: int = 1
+    input_fingerprint: Optional[str] = None
+    permission_signature: Optional[str] = None
+    confirmation_expires_at: Optional[str] = None
+    confirmed_payload_hash: Optional[str] = None
 
 
 class AssistantActionExecution(BaseDoc):

@@ -175,7 +175,7 @@ async def test_action_proposal_requires_confirm_and_creates_draft_only(ctx):
         blocked = await client.post(f"/api/assistant/actions/proposals/{proposal_id}/execute", headers={"Idempotency-Key": f"exec-{ctx['suffix']}"})
         assert blocked.status_code == 409
 
-        confirmed = await client.post(f"/api/assistant/actions/proposals/{proposal_id}/confirm")
+        confirmed = await client.post(f"/api/assistant/actions/proposals/{proposal_id}/confirm", json={"revision": 1})
         assert confirmed.status_code == 200, confirmed.text
         executed = await client.post(f"/api/assistant/actions/proposals/{proposal_id}/execute", headers={"Idempotency-Key": f"exec-{ctx['suffix']}"})
         assert executed.status_code == 200, executed.text
@@ -202,7 +202,7 @@ async def test_confirmed_safe_canonical_task_and_note_execution(ctx):
             },
         )
         assert task_proposal.status_code == 201, task_proposal.text
-        await client.post(f"/api/assistant/actions/proposals/{task_proposal.json()['id']}/confirm")
+        await client.post(f"/api/assistant/actions/proposals/{task_proposal.json()['id']}/confirm", json={"revision": 1})
         task_executed = await client.post(f"/api/assistant/actions/proposals/{task_proposal.json()['id']}/execute", headers={"Idempotency-Key": f"task-exec-{ctx['suffix']}"})
         assert task_executed.status_code == 200, task_executed.text
 
@@ -218,7 +218,7 @@ async def test_confirmed_safe_canonical_task_and_note_execution(ctx):
             },
         )
         assert note_proposal.status_code == 201, note_proposal.text
-        await client.post(f"/api/assistant/actions/proposals/{note_proposal.json()['id']}/confirm")
+        await client.post(f"/api/assistant/actions/proposals/{note_proposal.json()['id']}/confirm", json={"revision": 1})
         note_executed = await client.post(f"/api/assistant/actions/proposals/{note_proposal.json()['id']}/execute", headers={"Idempotency-Key": f"note-exec-{ctx['suffix']}"})
         assert note_executed.status_code == 200, note_executed.text
 
