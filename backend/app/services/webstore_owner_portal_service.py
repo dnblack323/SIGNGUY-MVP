@@ -116,7 +116,9 @@ async def owner_decide_product_approval(identity: dict, webstore_id: str, produc
     expected_revision = int(product.get("approval_revision") or 0)
     if expected_revision != int(product.get("revision") or 1):
         raise WebstoreError("approval_revision_superseded", "This product changed after it was sent for approval", 409)
-    snapshot = await _product_approval_snapshot(identity["tenant_id"], webstore_id, product, public_slug=store.get("public_slug"))
+    snapshot = await submitted_product_snapshot(identity["tenant_id"], store, product)
+    if not snapshot or product.get("approval_invalidated_at"):
+        raise WebstoreError("approval_snapshot_superseded", "This product review snapshot is no longer current", 409)
     snapshot_hash = _json_hash(snapshot)
     if snapshot_hash != product.get("approval_snapshot_hash"):
         raise WebstoreError("approval_snapshot_superseded", "This product review snapshot is no longer current", 409)
@@ -175,10 +177,27 @@ async def owner_product_image(identity: dict, webstore_id: str, product_id: str,
     if not refs and int(product.get("revision") or 1) == snapshot["revision"]:
         refs = _product_image_map(product)
     file_id = (refs.get(slot) or {}).get("file_id")
+    return await _owner_review_image_file(identity["tenant_id"], webstore_id, file_id)
+
+
+async def owner_product_mockup_image(identity: dict, webstore_id: str, product_id: str, mockup_id: str) -> tuple[dict, bytes, str]:
+    """A submitted mockup's immutable file, never a new private association."""
+    store = await _owner_portal_store(identity, webstore_id)
+    product = await _get_product(identity["tenant_id"], product_id, webstore_id)
+    snapshot = await submitted_product_snapshot(identity["tenant_id"], store, product)
+    if not snapshot or mockup_id not in {row.get("id") for row in snapshot.get("mockups") or []}:
+        raise WebstoreError("product_image_not_found", "Product image was not found", 404)
+    mockup = await _get_mockup(identity["tenant_id"], mockup_id, webstore_id)
+    if not mockup.get("shop_approved") or mockup.get("product_id") not in (None, "", product_id):
+        raise WebstoreError("product_image_not_found", "Product image was not found", 404)
+    return await _owner_review_image_file(identity["tenant_id"], webstore_id, mockup.get("mockup_file_id"))
+
+
+async def _owner_review_image_file(tenant_id: str, webstore_id: str, file_id: str | None) -> tuple[dict, bytes, str]:
     if not file_id:
         raise WebstoreError("product_image_not_found", "Product image was not found", 404)
     from .webstore_setup_files import find_webstore_setup_file
-    doc = await find_webstore_setup_file(identity["tenant_id"], webstore_id, file_id)
+    doc = await find_webstore_setup_file(tenant_id, webstore_id, file_id, include_replaced=True)
     if (not doc or not doc.get("safe_preview_available") or not doc.get("inline_preview_allowed")
             or doc.get("private_download_only") or doc.get("extension") not in PRODUCT_IMAGE_EXTENSIONS):
         raise WebstoreError("product_image_not_found", "Product image was not found", 404)
@@ -205,8 +224,11 @@ async def owner_decide_mockup_approval(identity: dict, webstore_id: str, mockup_
     product = await _get_product(identity["tenant_id"], mockup["product_id"], webstore_id) if mockup.get("product_id") else None
     if product:
         visible_product = await owner_product_view(identity["tenant_id"], store, product)
-        if not visible_product or visible_product.get("review_notice"):
+        if (not visible_product or visible_product.get("review_notice")
+                or mockup_id not in {row.get("id") for row in visible_product.get("mockups") or []}):
             raise WebstoreError("product_not_pending_approval", "The shop must submit the current product before mockup review", 409)
+    else:
+        raise WebstoreError("product_not_pending_approval", "The shop must submit a product before mockup review", 409)
     snapshot = _mockup_approval_snapshot(mockup, product, public_slug=store.get("public_slug"))
     snapshot_hash = _json_hash(snapshot)
     if snapshot_hash != mockup.get("approval_snapshot_hash"):

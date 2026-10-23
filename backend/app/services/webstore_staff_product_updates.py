@@ -41,6 +41,7 @@ async def update_product(user: dict, webstore_id: str, product_id: str, fields: 
         updates["artwork_associations"] = await _normalize_artwork_associations(user, webstore_id, product_id, fields.get("artwork_associations"))
     if "mockup_associations" in fields:
         updates["mockup_associations"] = await _normalize_mockup_associations(user, webstore_id, product_id, fields.get("mockup_associations"))
+        updates["mockup_associations_managed"] = True
     if "sku" in fields:
         updates["sku"] = _clean_optional_text(fields.get("sku"), limit=120)
     selling_price_cents = int(product.get("selling_price_cents") or 0)

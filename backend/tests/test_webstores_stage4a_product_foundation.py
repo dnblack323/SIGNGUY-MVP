@@ -1011,7 +1011,7 @@ async def test_stage4_product_duplicate_reorder_and_owner_approval_snapshots(sta
 
         mockup_resp = await client.post(
             f"/api/webstores/{store['id']}/mockups",
-            json={"product_id": product["id"], "mockup_file_id": image["id"], "purpose": "owner preview", "alt_text": "Approval mockup"},
+            json={"product_id": product["id"], "mockup_file_id": image["id"], "purpose": "owner preview", "alt_text": "Approval mockup", "shop_approved": True},
         )
         assert mockup_resp.status_code == 201, mockup_resp.text
         mockup = mockup_resp.json()

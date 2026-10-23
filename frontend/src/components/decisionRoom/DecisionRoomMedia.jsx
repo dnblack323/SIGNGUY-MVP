@@ -12,7 +12,7 @@ import { ImageOff, FileText } from "lucide-react";
  * response (e.g. a PDF) safely fall back to a "View file" link instead of
  * a broken-image icon, without needing to know the mime type up front.
  */
-export function DecisionRoomMedia({ src, authToken, alt, testId }) {
+export function DecisionRoomMedia({ src, authToken, alt, testId, imageClassName = "h-28 w-full rounded border object-cover" }) {
   const [state, setState] = useState({ status: src ? "loading" : "unavailable", blobUrl: null });
 
   useEffect(() => {
@@ -46,5 +46,5 @@ export function DecisionRoomMedia({ src, authToken, alt, testId }) {
       </a>
     );
   }
-  return <img src={state.blobUrl} alt={alt} className="h-28 w-full rounded border object-cover" data-testid={testId} onError={() => setState({ status: "unavailable", blobUrl: null })} />;
+  return <img src={state.blobUrl} alt={alt} className={imageClassName} data-testid={testId} onError={() => setState({ status: "unavailable", blobUrl: null })} />;
 }

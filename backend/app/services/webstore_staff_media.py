@@ -30,7 +30,7 @@ async def list_mockups(user: dict, webstore_id: str, *, product_id: Optional[str
     items = [
         {
             key: doc.get(key)
-            for key in ("id", "product_id", "artwork_id", "purpose", "alt_text", "status", "shop_approved", "owner_visible", "owner_approved", "approval_status", "approval_snapshot_hash", "approval_decision_at")
+            for key in ("id", "product_id", "artwork_id", "mockup_file_id", "purpose", "alt_text", "status", "shop_approved", "owner_visible", "owner_approved", "approval_status", "approval_snapshot_hash", "approval_decision_at")
             if doc.get(key) not in (None, "")
         }
         async for doc in db.webstore_mockups.find(query, {"_id": 0}).sort([("created_at", -1)])
@@ -89,6 +89,12 @@ async def create_mockup(user: dict, webstore_id: str, fields: dict[str, Any]) ->
     file_id = fields.get("mockup_file_id")
     if file_id:
         await _setup_file_for_product_reference(user["tenant_id"], webstore_id, file_id)
+    if fields.get("artwork_id"):
+        artwork = await db.webstore_artwork_files.find_one({
+            "tenant_id": user["tenant_id"], "webstore_id": webstore_id, "id": fields["artwork_id"],
+        })
+        if not artwork or artwork.get("product_id") not in (None, "", product_id):
+            raise WebstoreError("artwork_not_found", "Selected artwork was not found for this product", 404)
     mockup = WebstoreMockup(
         tenant_id=user["tenant_id"],
         webstore_id=webstore_id,
@@ -125,7 +131,15 @@ async def submit_mockup_for_approval(user: dict, webstore_id: str, mockup_id: st
     mockup = await _get_mockup(user["tenant_id"], mockup_id, webstore_id)
     if mockup.get("status") == "archived":
         raise WebstoreError("mockup_archived", "Archived mockups cannot be sent for approval", 409)
+    if not mockup.get("shop_approved"):
+        raise WebstoreError("mockup_staff_review_required", "Staff must review the mockup before sending it to the owner", 409)
     product = await _get_product(user["tenant_id"], mockup["product_id"], webstore_id) if mockup.get("product_id") else None
+    from .webstore_owner_products import submitted_product_snapshot
+    submitted = await submitted_product_snapshot(user["tenant_id"], store, product) if product else None
+    if (not submitted or product.get("approval_invalidated_at")
+            or int(product.get("revision") or 1) != submitted["revision"]
+            or mockup_id not in {row.get("id") for row in submitted.get("mockups") or []}):
+        raise WebstoreError("product_submission_required", "Save and submit the product with this mockup before sending mockup approval", 409)
     snapshot = _mockup_approval_snapshot(mockup, product, public_slug=store.get("public_slug"))
     snapshot_hash = _json_hash(snapshot)
     now = _now_iso()

@@ -162,7 +162,7 @@ async def test_visibility_respects_tenant_assignment_and_blocks_draft_mockup_res
         built = await _create_ready_store(client, ctx)
         store = built['store']
         token = await _owner_token(ctx, built['owner'])
-        assert (await client.post(f"/api/webstores/{store['id']}/mockups/{built['mockup']['id']}/submit-approval", json={})).status_code == 200
+        assert (await client.post(f"/api/webstores/{store['id']}/mockups/{built['mockup']['id']}/submit-approval", json={})).status_code == 409
     async with await _portal_client(token) as portal:
         assert (await portal.get(f"/api/portal/webstores/{store['id']}")).json()['products'] == []
         denied = await portal.post(f"/api/portal/webstores/{store['id']}/mockups/{built['mockup']['id']}/approval", json={'decision': 'approve'})

@@ -60,16 +60,22 @@ export default function OwnerPortalProducts({
               <div className="text-xs text-muted-foreground">
                 {p.description || p.product_type}
               </div>
+              {(p.variants || []).length > 0 && <div className="mt-2 text-xs">Product options: {p.variants.map((variant) => [variant.color, variant.size].filter(Boolean).join(" / ")).filter(Boolean).join(", ")}</div>}
+              {p.personalization_enabled && <div className="mt-1 text-xs">Personalization: {(p.personalization_fields || []).map((field) => field.label).filter(Boolean).join(", ") || "Available"}</div>}
               {p.review_notice && (
                 <p className="mt-2 text-xs text-amber-800" role="status">{p.review_notice}</p>
               )}
               {(p.mockups || []).length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {p.mockups.map((mockup) => (
-                    <div key={mockup.id} className="flex items-center gap-1">
+                    <div key={mockup.id} className="w-full max-w-lg space-y-2 rounded border p-2">
+                      {mockup.image_url && (
+                        <DecisionRoomMedia src={mockup.image_url} authToken={localStorage.getItem("sg_portal_token")} alt={mockup.alt_text || "Submitted product mockup"} testId={`owner-mockup-image-${mockup.id}`} imageClassName="h-auto max-h-[480px] w-full rounded border object-contain" />
+                      )}
                       <Badge variant="outline">
                         {mockup.alt_text || mockup.purpose || "Mockup"}
                       </Badge>
+                      <div className="text-xs text-muted-foreground">{String(mockup.approval_status || "not_submitted").replace(/_/g, " ")}</div>
                       {mockup.approval_status === "pending_owner_approval" && (
                         <>
                           <Button
@@ -96,7 +102,7 @@ export default function OwnerPortalProducts({
                   ))}
                 </div>
               )}
-              {p.approval_status === "pending_owner_approval" && (
+              {(p.approval_status === "pending_owner_approval" || (p.mockups || []).some((mockup) => mockup.approval_status === "pending_owner_approval")) && (
                 <div className="mt-3 space-y-2">
                   <Textarea
                     rows={2}
@@ -110,7 +116,7 @@ export default function OwnerPortalProducts({
                     placeholder="Optional approval note, or required reason for changes."
                     data-testid={`portal-product-approval-comment-${p.id}`}
                   />
-                  <div className="flex flex-wrap gap-2">
+                  {p.approval_status === "pending_owner_approval" && <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
                       onClick={() => onDecideProduct(p.id, "approve")}
@@ -132,7 +138,7 @@ export default function OwnerPortalProducts({
                     >
                       Reject
                     </Button>
-                  </div>
+                  </div>}
                 </div>
               )}
               {(p.approval_history || []).length > 0 && (

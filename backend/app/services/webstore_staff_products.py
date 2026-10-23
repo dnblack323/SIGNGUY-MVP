@@ -136,6 +136,7 @@ async def create_product(user: dict, webstore_id: str, fields: dict[str, Any]) -
         product["artwork_associations"] = deepcopy(template.get("default_artwork_associations") or [])
     if "mockup_associations" in fields:
         product["mockup_associations"] = await _normalize_mockup_associations(user, webstore_id, product["id"], fields.get("mockup_associations"))
+        product["mockup_associations_managed"] = True
     elif template:
         product["mockup_associations"] = deepcopy(template.get("default_mockup_associations") or [])
     if idempotency_key:
@@ -325,6 +326,10 @@ async def submit_product_for_approval(user: dict, webstore_id: str, product_id: 
     if product.get("status") == "archived":
         raise WebstoreError("product_archived", "Archived products cannot be sent for approval", 409)
     snapshot = await _product_approval_snapshot(user["tenant_id"], webstore_id, product, public_slug=store.get("public_slug"))
+    for mockup in snapshot.get("mockups") or []:
+        record = await _get_mockup(user["tenant_id"], mockup["id"], webstore_id)
+        if not record.get("shop_approved"):
+            raise WebstoreError("mockup_staff_review_required", "Staff must review associated mockups before submitting the product", 409)
     snapshot_hash = _json_hash(snapshot)
     now = _now_iso()
     updated = await db.webstore_products.find_one_and_update(

@@ -234,6 +234,7 @@ export function useWebstoreProductWorkspace({
     mutationFn: (mockupId) => submitWebstoreMockupApproval(id, mockupId),
     onSuccess: async () => {
       toast.success("Mockup sent for owner approval");
+      await qc.invalidateQueries({ queryKey: ["webstore-mockups", id] });
       await refresh();
     },
     onError: (err) => toast.error(extractError(err)),

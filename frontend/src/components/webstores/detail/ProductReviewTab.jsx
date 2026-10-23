@@ -4,9 +4,7 @@ import {
   Clock,
   RotateCcw,
   Save,
-  Send,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -21,25 +19,16 @@ import { TabsContent } from "@/components/ui/tabs";
 
 export default function ProductReviewTab({ model }) {
   const {
-    addAssociation,
     addBundleItem,
     archiveProduct,
-    artworkOptions,
     detail,
-    formatLabel,
     getProductSetupItems,
-    id,
-    launch,
-    mockupOptions,
-    packet,
     productDraft,
-    removeAssociation,
     removeBundleItem,
     restoreProduct,
     saveProduct,
     selectedProduct,
     setProductField,
-    submitMockupApproval,
   } = model;
 
 return (
@@ -171,159 +160,7 @@ return (
                               ))}
                             </div>
                           </div>
-                          <div className="grid gap-3 md:grid-cols-2">
-                            <div className="grid gap-1.5">
-                              <Label>Private artwork</Label>
-                              <Select
-                                value="none"
-                                onValueChange={(value) =>
-                                  addAssociation(
-                                    "artwork_associations",
-                                    "artwork_id",
-                                    value,
-                                  )
-                                }
-                              >
-                                <SelectTrigger data-testid="webstore-product-artwork-associations">
-                                  <SelectValue placeholder="Associate artwork" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="none">
-                                    Choose artwork
-                                  </SelectItem>
-                                  {(artworkOptions.data || []).map(
-                                    (artwork) => (
-                                      <SelectItem
-                                        key={artwork.id}
-                                        value={artwork.id}
-                                      >
-                                        {artwork.file_name ||
-                                          artwork.purpose ||
-                                          artwork.id}
-                                      </SelectItem>
-                                    ),
-                                  )}
-                                </SelectContent>
-                              </Select>
-                              <div className="flex flex-wrap gap-2">
-                                {(productDraft.artwork_associations || []).map(
-                                  (item) => (
-                                    <Button
-                                      key={item.artwork_id}
-                                      type="button"
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        removeAssociation(
-                                          "artwork_associations",
-                                          "artwork_id",
-                                          item.artwork_id,
-                                        )
-                                      }
-                                    >
-                                      Associated artwork remove
-                                    </Button>
-                                  ),
-                                )}
-                              </div>
-                              <p className="text-xs text-muted-foreground">
-                                Artwork stays private to Staff and production
-                                workflows.
-                              </p>
-                            </div>
-                            <div className="grid gap-1.5">
-                              <Label>Mockups</Label>
-                              <Select
-                                value="none"
-                                onValueChange={(value) =>
-                                  addAssociation(
-                                    "mockup_associations",
-                                    "mockup_id",
-                                    value,
-                                  )
-                                }
-                              >
-                                <SelectTrigger data-testid="webstore-product-mockup-associations">
-                                  <SelectValue placeholder="Associate mockup" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="none">
-                                    Choose mockup
-                                  </SelectItem>
-                                  {(mockupOptions.data || []).map((mockup) => (
-                                    <SelectItem
-                                      key={mockup.id}
-                                      value={mockup.id}
-                                    >
-                                      {mockup.alt_text ||
-                                        mockup.purpose ||
-                                        mockup.id}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <div className="flex flex-wrap gap-2">
-                                {(productDraft.mockup_associations || []).map(
-                                  (item) => {
-                                    const mockup = (mockupOptions.data || []).find(
-                                      (row) => row.id === item.mockup_id,
-                                    );
-                                    return (
-                                      <div
-                                        key={item.mockup_id}
-                                        className="flex flex-wrap items-center gap-2 rounded border px-2 py-1"
-                                      >
-                                        <span className="text-xs">
-                                          {mockup?.alt_text ||
-                                            mockup?.purpose ||
-                                            item.mockup_id}
-                                        </span>
-                                        <Badge variant="outline">
-                                          {formatLabel(
-                                            mockup?.approval_status ||
-                                              "not_submitted",
-                                          )}
-                                        </Badge>
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() =>
-                                            submitMockupApproval.mutate(
-                                              item.mockup_id,
-                                            )
-                                          }
-                                          disabled={
-                                            submitMockupApproval.isPending
-                                          }
-                                        >
-                                          Send Mockup Approval
-                                        </Button>
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() =>
-                                            removeAssociation(
-                                              "mockup_associations",
-                                              "mockup_id",
-                                              item.mockup_id,
-                                            )
-                                          }
-                                        >
-                                          Remove
-                                        </Button>
-                                      </div>
-                                    );
-                                  },
-                                )}
-                              </div>
-                              <p className="text-xs text-muted-foreground">
-                                Mockup approval is separate from final launch
-                                approval.
-                              </p>
-                            </div>
-                          </div>
+                          <p className="text-xs text-muted-foreground">Prepare artwork and reviewed mockups in Images and Mockups before saving and submitting this product.</p>
                           <div className="flex flex-wrap gap-2">
                             <Button
                               onClick={() => saveProduct.mutate()}

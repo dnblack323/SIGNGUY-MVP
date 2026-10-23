@@ -13,7 +13,7 @@ from ..services import webstores as svc
 from ..services.webstore_branding import WebstoreBrandingError
 from ..services.webstore_setup import WebstoreSetupError
 from ..services.webstores import WebstoreError
-from ..services.webstore_owner_portal_service import owner_product_image
+from ..services.webstore_owner_portal_service import owner_product_image, owner_product_mockup_image
 
 from .webstores_common import sync_next_action_after_owner_change
 
@@ -45,6 +45,15 @@ async def _webstore_identity(identity: dict = Depends(get_current_portal_identit
 async def submitted_product_image(webstore_id: str, product_id: str, slot: str, identity: dict = Depends(_webstore_identity)) -> Response:
     try:
         _, data, content_type = await owner_product_image(identity, webstore_id, product_id, slot)
+        return Response(content=data, media_type=content_type, headers={"Cache-Control": "private, no-store"})
+    except WebstoreError as exc:
+        _raise(exc)
+
+
+@router.get("/{webstore_id}/products/{product_id}/mockups/{mockup_id}/image")
+async def submitted_mockup_image(webstore_id: str, product_id: str, mockup_id: str, identity: dict = Depends(_webstore_identity)) -> Response:
+    try:
+        _, data, content_type = await owner_product_mockup_image(identity, webstore_id, product_id, mockup_id)
         return Response(content=data, media_type=content_type, headers={"Cache-Control": "private, no-store"})
     except WebstoreError as exc:
         _raise(exc)
@@ -274,7 +283,7 @@ async def upload_setup_file(
 async def download_setup_file(webstore_id: str, file_id: str, identity: dict = Depends(_webstore_identity)) -> Response:
     try:
         await setup_svc.setup_progress_for_portal(identity, webstore_id)
-        doc, data, content_type = await setup_svc.download_setup_file(identity["tenant_id"], webstore_id, file_id)
+        doc, data, content_type = await setup_svc.download_setup_file(identity["tenant_id"], webstore_id, file_id, portal=True)
         return Response(
             content=data,
             media_type=content_type,

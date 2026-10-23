@@ -299,8 +299,9 @@ def _mockup_approval_snapshot(mockup: dict, product: Optional[dict] = None, *, p
 async def _current_mockups_for_product(tenant_id: str, webstore_id: str, product: dict) -> list[dict[str, Any]]:
     mockup_ids = _association_ids(product.get("mockup_associations") or [], "mockup_id")
     query: dict[str, Any] = {"tenant_id": tenant_id, "webstore_id": webstore_id, "status": {"$ne": "archived"}}
-    if mockup_ids:
-        query["$or"] = [{"id": {"$in": sorted(mockup_ids)}}, {"product_id": product["id"], "owner_visible": True}]
+    if mockup_ids or product.get("mockup_associations_managed"):
+        # Explicit selection/removal wins over historical owner_visible flags.
+        query["id"] = {"$in": sorted(mockup_ids)}
     else:
         query["product_id"] = product["id"]
         query["owner_visible"] = True

@@ -113,9 +113,10 @@ async def store_setup_file(
     # Canonical storage: one FileRecord in `files` + a FileLink to the Webstore (P2-9).
     key = storage.build_key(tenant_id, filename)
     storage.put_bytes(key, data, detected)
+    staff_private = actor_type == "staff" and category.strip().lower() in {"artwork", "mockup"}
     record = FileRecord(
         tenant_id=tenant_id, storage_key=key, original_filename=filename, mime_type=detected,
-        size_bytes=len(data), uploaded_by=actor_id or actor_type, visibility="customer_visible",
+        size_bytes=len(data), uploaded_by=actor_id or actor_type, visibility="internal" if staff_private else "customer_visible",
         sha256=hashlib.sha256(data).hexdigest(),
     ).model_dump()
     await db.files.insert_one(prepare_for_mongo(record))
@@ -162,6 +163,7 @@ def _link_view(link: dict, record: dict) -> dict:
         "detected_content_type": record.get("mime_type"),
         "size_bytes": record.get("size_bytes"),
         "storage_key": record.get("storage_key"),
+        "visibility": record.get("visibility"),
         "uploaded_by_id": link.get("created_by"),
         "status": meta.get("status") or ("removed" if link.get("archived") else "active"),
         "created_at": link.get("created_at"),
@@ -250,12 +252,12 @@ async def list_setup_files(user: dict, webstore_id: str) -> dict:
 async def portal_list_setup_files(identity: dict, webstore_id: str) -> dict:
     await _owner_store(identity, webstore_id)
     docs = await _setup_file_docs(identity["tenant_id"], webstore_id, include_inactive=False)
-    return {"items": [_safe_file_record(d, staff=False) for d in docs]}
+    return {"items": [_safe_file_record(d, staff=False) for d in docs if d.get("visibility") != "internal"]}
 
 
-async def download_setup_file(tenant_id: str, webstore_id: str, file_id: str) -> tuple[dict, bytes, str]:
+async def download_setup_file(tenant_id: str, webstore_id: str, file_id: str, *, portal: bool = False) -> tuple[dict, bytes, str]:
     doc = await _find_setup_file(tenant_id, webstore_id, file_id)
-    if not doc:
+    if not doc or (portal and doc.get("visibility") == "internal"):
         raise WebstoreSetupError("setup_file_not_found", "Setup file not found", 404)
     data, content_type = storage.get_bytes(doc["storage_key"])
     return doc, data, doc.get("detected_content_type") or content_type

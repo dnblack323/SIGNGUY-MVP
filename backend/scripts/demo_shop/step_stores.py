@@ -100,7 +100,7 @@ async def _products(ctx, wid: str, kind: str, art_file_id: str, *, approve: bool
         art = await api.post(f"/webstores/{wid}/artwork", {"file_id": art_file_id, "product_id": prod["id"], "purpose": "front_print",
                                                             "file_name": "logo.png", "file_type": "image/png", "notes": "Customer-supplied logo"})
         mock = await api.post(f"/webstores/{wid}/mockups", {"product_id": prod["id"], "artwork_id": art["id"], "mockup_file_id": art_file_id,
-                              "generation_source": "manual", "purpose": "storefront", "alt_text": f"{name} mockup", "status": "draft"})
+                              "generation_source": "manual", "purpose": "storefront", "alt_text": f"{name} mockup", "status": "draft", "shop_approved": approve})
         if not approve:
             continue
         prod = await api.call("PATCH", f"/webstores/{wid}/products/{prod['id']}", json={
