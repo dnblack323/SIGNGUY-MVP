@@ -231,6 +231,14 @@ export async function listWebstoreMockups(webstoreId, params = {}) {
   return r.data.items || [];
 }
 
+export async function createWebstoreArtwork(webstoreId, payload) {
+  return (await api.post(`/webstores/${webstoreId}/artwork`, payload)).data;
+}
+
+export async function createWebstoreMockup(webstoreId, payload) {
+  return (await api.post(`/webstores/${webstoreId}/mockups`, payload)).data;
+}
+
 export async function createWebstoreProductCategory(webstoreId, payload) {
   const r = await api.post(`/webstores/${webstoreId}/product-categories`, payload);
   return r.data;

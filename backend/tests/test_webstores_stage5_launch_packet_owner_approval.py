@@ -159,7 +159,7 @@ async def _create_stage5_store(client: AsyncClient, ctx: dict) -> dict:
     product = product_resp.json()
     mockup_resp = await client.post(
         f"/api/webstores/{store['id']}/mockups",
-        json={"product_id": product["id"], "mockup_file_id": image["id"], "purpose": "Front proof", "alt_text": "Front proof", "owner_visible": True},
+        json={"product_id": product["id"], "mockup_file_id": image["id"], "purpose": "Front proof", "alt_text": "Front proof", "owner_visible": True, "shop_approved": True},
     )
     assert mockup_resp.status_code == 201, mockup_resp.text
     owner_token = await _owner_token(ctx, owner)

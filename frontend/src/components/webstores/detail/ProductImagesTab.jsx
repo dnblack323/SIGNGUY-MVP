@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import ProductMockupPreparation from "./ProductMockupPreparation";
 import {
   Select,
   SelectContent,
@@ -96,6 +97,7 @@ return (
                               </div>
                             ))}
                           </div>
+                          <ProductMockupPreparation key={productDraft.id} model={model} />
                         </TabsContent>
   );
 }

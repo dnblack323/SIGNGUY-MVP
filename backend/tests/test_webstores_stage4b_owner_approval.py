@@ -155,7 +155,7 @@ async def _create_ready_store(client: AsyncClient, ctx: dict) -> dict:
             "mockup_file_id": image["id"],
             "purpose": "Front proof",
             "alt_text": "Front shirt mockup",
-            "owner_visible": True,
+            "owner_visible": True, "shop_approved": True,
         },
     )
     assert mockup_resp.status_code == 201, mockup_resp.text

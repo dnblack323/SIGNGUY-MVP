@@ -19,6 +19,7 @@ return (
                             </div>
                             <div className="mt-1 text-xs text-muted-foreground">
                               Outputs are saved for review only and are not applied to product fields or mockups.
+                              {" "}Image generation is not connected yet. Upload a prepared mockup below for staff review.
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
@@ -46,6 +47,9 @@ return (
                         </div>
                         {productAiPreview && (
                           <div className="mt-3 space-y-3" data-testid="webstore-ai-preview">
+                            {productAiPreview.h7_local_mock && (
+                              <p className="text-xs text-amber-800">Local demonstration output only; this action does not generate an image. The displayed credit charge still applies if confirmed.</p>
+                            )}
                             <div className="flex flex-wrap items-center gap-2">
                               <Badge variant="outline">{productAiPreview.label}</Badge>
                               <Badge variant={productAiPreview.insufficient_credits ? "destructive" : "secondary"} data-testid="webstore-ai-credit-display">

@@ -5,7 +5,7 @@ from copy import deepcopy
 
 from .webstore_context import db
 from .webstore_shared_catalog import (
-    _approval_history, _current_mockups_for_product, _product_approval_snapshot, _product_image_map,
+    _approval_history, _owner_safe_mockup_snapshot, _product_approval_snapshot, _product_image_map,
 )
 from .webstore_shared_contracts import _json_hash
 
@@ -78,9 +78,22 @@ async def owner_product_view(tenant_id: str, store: dict, product: dict) -> dict
         item["review_notice"] = "Showing the last submitted version. The shop is preparing an update."
     # Mockup decisions may follow product submission. Refresh only decision
     # metadata for the same frozen mockup content, never add unsubmitted media.
-    live_mockups = {row["id"]: row for row in await _current_mockups_for_product(tenant_id, store["id"], product)}
+    frozen_ids = [row["id"] for row in item.get("mockups") or []]
+    live_mockups = {
+        row["id"]: {**_owner_safe_mockup_snapshot(row),
+                    "_has_review_image": bool(row.get("mockup_file_id") and row.get("shop_approved"))}
+        async for row in db.webstore_mockups.find({
+            "tenant_id": tenant_id, "webstore_id": store["id"], "id": {"$in": frozen_ids},
+        }, {"_id": 0})
+    }
     for mockup in item.get("mockups") or []:
+        # Mockup records have immutable file associations: replacements create a
+        # new canonical mockup and require a new product submission. Resolve
+        # images only for IDs already frozen in this submitted product.
         live = live_mockups.get(mockup.get("id"))
+        if live and live.get("_has_review_image"):
+            mockup["image_url"] = (f"/api/portal/webstores/{store['id']}/products/{product['id']}"
+                                   f"/mockups/{mockup['id']}/image?revision={snapshot['revision']}")
         content_keys = {"id", "webstore_id", "product_id", "artwork_id", "generation_source", "purpose", "alt_text"}
         if live and all(mockup.get(key) == live.get(key) for key in content_keys):
             for key in ("approval_status", "approval_decision_at", "status"):

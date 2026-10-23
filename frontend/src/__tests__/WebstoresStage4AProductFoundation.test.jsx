@@ -340,7 +340,7 @@ test("staff product image picker previews selected files before save", async () 
 
   const primary = screen.getByTestId("webstore-product-image-primary");
   await user.click(within(primary).getByTestId("webstore-product-image-primary-file"));
-  await user.click(await screen.findByText("front-new.png"));
+  await user.click(await within(screen.getByRole("listbox")).findByText("front-new.png"));
   await waitFor(() => {
     const image = within(primary).getByRole("img", { name: "Shirt front" });
     expect(image).toHaveAttribute("src", "/api/webstores/ws-1/setup-files/file-2/preview");
@@ -348,7 +348,7 @@ test("staff product image picker previews selected files before save", async () 
 
   const secondary = screen.getByTestId("webstore-product-image-secondary");
   await user.click(within(secondary).getByTestId("webstore-product-image-secondary-file"));
-  await user.click(await screen.findByText("detail.png"));
+  await user.click(await within(screen.getByRole("listbox")).findByText("detail.png"));
   await waitFor(() => expect(secondary.querySelector("img")).toHaveAttribute("src", "/api/webstores/ws-1/setup-files/file-3/preview"));
   await user.click(within(secondary).getByRole("button", { name: "Remove" }));
   expect(within(secondary).queryByRole("img")).not.toBeInTheDocument();
@@ -588,7 +588,7 @@ test("staff persisted product images prefer authenticated previews over public U
   expect(within(secondary).getByDisplayValue("Persisted secondary")).toBeInTheDocument();
 
   await user.click(within(primary).getByTestId("webstore-product-image-primary-file"));
-  await user.click(await screen.findByText("front-new.png"));
+  await user.click(await within(screen.getByRole("listbox")).findByText("front-new.png"));
   expect(within(primary).getByRole("img", { name: "Persisted primary" })).toHaveAttribute("src", "/api/webstores/ws-1/setup-files/file-2/preview");
   expect(within(secondary).getByRole("img", { name: "Persisted secondary" })).toHaveAttribute("src", "/api/webstores/ws-1/setup-files/file-3/preview");
 
@@ -671,14 +671,13 @@ test("staff product builder separates planning from focused product setup", asyn
   await user.click(screen.getByRole("tab", { name: "Review Status" }));
   await user.click(screen.getByTestId("webstore-product-packet-eligible"));
   await user.click(screen.getByTestId("webstore-product-packet-include"));
-  await user.click(screen.getByTestId("webstore-product-artwork-associations"));
-  await user.click(await screen.findByText("artwork.png"));
-  await user.click(screen.getByTestId("webstore-product-artwork-associations"));
-  await user.click(await screen.findByText("artwork-2.png"));
-  await user.click(screen.getByTestId("webstore-product-mockup-associations"));
-  await user.click(await screen.findByText("Mockup preview"));
-  await user.click(screen.getByRole("button", { name: "Send Mockup Approval" }));
-  await waitFor(() => expect(submitWebstoreMockupApproval).toHaveBeenCalledWith("ws-1", "mock-1"));
+  await user.click(screen.getByRole("tab", { name: "Images and Mockups" }));
+  fireEvent.change(screen.getByTestId("webstore-product-artwork-associations"), { target: { value: "art-1" } });
+  fireEvent.change(screen.getByTestId("webstore-product-artwork-associations"), { target: { value: "art-2" } });
+  fireEvent.change(screen.getByTestId("webstore-product-mockup-associations"), { target: { value: "mock-1" } });
+  expect(screen.getByRole("button", { name: "Send Mockup Approval" })).toBeDisabled();
+  expect(submitWebstoreMockupApproval).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("tab", { name: "Review Status" }));
   await user.click(screen.getByTestId("webstore-save-product"));
   await waitFor(() => expect(updateWebstoreProduct).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({
     expected_revision: 3,
