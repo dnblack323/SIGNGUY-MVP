@@ -29,6 +29,8 @@ function Probe() {
     <button onClick={() => state.send({}).catch(() => {})} disabled={!state.ready}>Send probe</button>
     <button onClick={() => state.selectConversation(null)}>New probe</button>
     <p data-testid="probe-history">{state.messages.map((m) => m.content_text).join("\n")}</p>
+    <p data-testid="probe-proposals">{JSON.stringify(state.proposals)}</p>
+    <p data-testid="probe-access">{String(state.accessInvalidated)}</p>
   </div>;
 }
 
@@ -77,6 +79,22 @@ test("duplicate submits and retries retain a stable request key", async () => {
   await user.click(screen.getByText("Send probe"));
   await waitFor(() => expect(api.sendAssistantMessage).toHaveBeenCalledTimes(2));
   expect(api.sendAssistantMessage.mock.calls[0][0].idempotency_key).toEqual(api.sendAssistantMessage.mock.calls[1][0].idempotency_key);
+});
+
+test("permission failure clears cached proposals as well as history and blocks further text", async () => {
+  api.listAssistantConversations.mockResolvedValue([{ id: "c1" }]);
+  api.getAssistantConversation.mockResolvedValue({ messages: [result.assistant_message], proposals: [{ id: "p1", editable_payload: { body: "Private Customer note" } }] });
+  const user = userEvent.setup();
+  renderWithProviders(<AssistantProvider><Probe /></AssistantProvider>);
+  await screen.findByText(/Persisted useful answer/);
+  expect(screen.getByTestId("probe-proposals")).toHaveTextContent("Private Customer note");
+  api.sendAssistantMessage.mockRejectedValue({ response: { status: 403 } });
+  await user.type(screen.getByLabelText("Question"), "Continue"); await user.click(screen.getByText("Send probe"));
+  await waitFor(() => expect(screen.getByTestId("probe-access")).toHaveTextContent("true"));
+  expect(screen.getByTestId("probe-proposals")).toHaveTextContent("[]");
+  expect(screen.getByTestId("probe-history")).not.toHaveTextContent("Persisted useful answer");
+  await user.type(screen.getByLabelText("Question"), "Another question"); await user.click(screen.getByText("Send probe"));
+  expect(api.sendAssistantMessage).toHaveBeenCalledTimes(1);
 });
 
 test("an identity change drops old history and ignores an old in-flight response", async () => {

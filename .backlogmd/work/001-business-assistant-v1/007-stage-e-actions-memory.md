@@ -2,10 +2,10 @@
 
 ```yaml
 task: Stage E controlled actions and approved private memory
-status: review
+status: done
 priority: 10
 dep: ["work/001-business-assistant-v1/006-stage-d-realtime.md"]
-assignee: codex
+assignee: null
 requiresHumanReview: true
 expiresAt: null
 ```
@@ -23,4 +23,4 @@ Owner explicitly accepted Stage D engineering/mock verification and authorized S
 - [x] Disposable mocked records, backend/frontend/browser/build/security checks and required CI.
 - [x] Separate live evaluation proposal, limitations and Stage F readiness reported; no paid activation.
 
-Implementation and local verification complete; owner acceptance remains required. Exact-head required CI results are recorded on draft PR #63 and in the final owner completion report. Stage F is not started.
+Owner accepted Stage E implementation and verification on October 23, 2026. Exact-head CI results are recorded on draft PR #63 at 9eadb667435374bbf0134eaa9386c59d6987095b. Stage F is authorized in task 008; paid activation, previews, merge and deployment remain held.

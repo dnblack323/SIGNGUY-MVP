@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import uuid
 
 
@@ -57,9 +58,12 @@ async def configure(settings, db):
             self.queue = asyncio.Queue()
             self.responses = 0
             self.seeded = False
+            self.history = []
 
         async def send(self, raw):
             event = json.loads(raw)
+            if event["type"] == "conversation.item.create":
+                self.history.append(event["item"])
             if event["type"] == "response.create":
                 self.responses += 1
                 response_id = uuid.uuid4().hex
@@ -69,7 +73,17 @@ async def configure(settings, db):
                             "type": "function_call",
                             "name": "invoices",
                             "call_id": "browser-tool",
-                            "arguments": '{"invoice_filter":"overdue"}',
+                            "arguments": json.dumps(
+                                {
+                                    "invoice_filter": "overdue",
+                                    **(
+                                        {"customer_id": "browser-customer"}
+                                        if os.environ.get("ASSISTANT_STAGE_F_MOCK")
+                                        == "1"
+                                        else {}
+                                    ),
+                                }
+                            ),
                         }
                     ]
                     if self.responses == 1
@@ -106,12 +120,19 @@ async def configure(settings, db):
         async def __anext__(self):
             if not self.seeded:
                 self.seeded = True
+                if os.environ.get("ASSISTANT_STAGE_F_MOCK") == "1":
+                    assert "Prefer concise morning updates" in json.dumps(self.history)
+                    assert "O-B-1001" in json.dumps(self.history)
                 await asyncio.sleep(1)
                 return json.dumps(
                     {
                         "type": "conversation.item.input_audio_transcription.completed",
                         "item_id": "browser-utterance",
-                        "transcript": "Which invoices are overdue?",
+                        "transcript": (
+                            "Continue our discussion: which Smith invoices are overdue?"
+                            if os.environ.get("ASSISTANT_STAGE_F_MOCK") == "1"
+                            else "Which invoices are overdue?"
+                        ),
                         "usage": {"type": "duration", "seconds": 2},
                     }
                 )

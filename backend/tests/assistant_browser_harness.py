@@ -276,6 +276,10 @@ async def serve():
 
         await configure(settings, db)
         voice_script = SCRIPT
+    if os.environ.get("ASSISTANT_STAGE_F_MOCK") == "1":
+        from tests.assistant_stage_f_browser import configure as configure_stage_f
+
+        await configure_stage_f(settings, db)
     build = Path(__file__).resolve().parents[2] / "frontend" / "build"
     app.mount("/static", StaticFiles(directory=build / "static"), name="smoke-static")
     # Optional owner-local review only. Unlicensed public documentation clips

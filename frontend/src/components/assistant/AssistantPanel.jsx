@@ -203,6 +203,8 @@ function AssistantPanelContent({ compact = false }) {
   const contextLabel = context.source_entity_type ? `${context.source_entity_type.replace("_", " ")} ${context.source_entity_id}` : "No record context";
   const modes = catalog?.modes || [];
 
+  if (session.accessInvalidated) return <Alert variant="destructive"><AlertTitle>Assistant access changed</AlertTitle><AlertDescription>Private conversation, action and memory views have been cleared. Refresh your sign-in before continuing.</AlertDescription></Alert>;
+
   return (
     <div className={compact ? "space-y-4" : "grid gap-4 xl:grid-cols-[1fr_360px]"} data-testid="business-assistant-panel">
       <section className="space-y-4">
@@ -260,7 +262,7 @@ function AssistantPanelContent({ compact = false }) {
             </div>
             <SourceList sources={sources} />
             <div className="grid gap-2 md:grid-cols-[1fr_auto]">
-              <Textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ask the Business Assistant..." rows={3} data-testid="assistant-message-input" />
+              <Textarea aria-label="Message Business Assistant" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ask the Business Assistant..." rows={3} data-testid="assistant-message-input" />
               <Button onClick={submit} disabled={loading || !session.ready || !message.trim()} data-testid="assistant-send"><Send className="mr-2 size-4" />Send</Button>
             </div>
           </CardContent>

@@ -102,6 +102,13 @@ export default function useAssistantVoice(identity, callbacks) {
           if (!valid()) return;
           if (snapshot.revision !== revision) { revision = snapshot.revision; await handlers.current.refresh(); }
           if (!valid()) return;
+          if (snapshot.status === "termination_pending") {
+            // A failed remote hangup must never keep capturing/sending audio.
+            // Keep the session ID so text/reconnect cannot bypass pending cleanup.
+            cleanup();
+            setView({ ...empty, state: "error", error: "Microphone and speaker stopped. Provider termination is still pending; the server retains its spending reserve. End voice again after cleanup, or contact your shop administrator." });
+            return;
+          }
           if (terminal.includes(snapshot.status)) {
             cleanup(); r.sessionId = null;
             setView({ ...empty, state: "ended", error: snapshot.reason === "user_ended" ? "" : `${endReasons[snapshot.reason] || "Voice ended safely. Reconnect explicitly to try again."} Text remains available.` });
@@ -110,7 +117,7 @@ export default function useAssistantVoice(identity, callbacks) {
           setView((old) => ({ ...old, active: true, state: snapshot.state || "listening" }));
           r.timer = setTimeout(poll, 1000);
         } catch (err) {
-          if ([401, 403].includes(err?.response?.status)) handlers.current.clear?.();
+          if ([401, 402, 403].includes(err?.response?.status)) handlers.current.clear?.();
           await fail("Voice status is unavailable. The server will end the session safely; text remains available after cleanup.", epoch);
         }
       };

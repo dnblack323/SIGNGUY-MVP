@@ -59,6 +59,17 @@ test("denied microphone preserves text fallback without a paid dispatch", async 
   expect(api.createVoiceSession).not.toHaveBeenCalled();
 });
 
+test("pending remote termination immediately stops local media and prevents another dispatch", async () => {
+  api.getVoiceSession.mockResolvedValue({ status: "termination_pending", state: "ending", revision: 1 });
+  render(<Probe />); fireEvent.click(screen.getByText("Start"));
+  await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("Microphone and speaker stopped"));
+  expect(track.stop).toHaveBeenCalled(); expect(pc.close).toHaveBeenCalled();
+  expect(voice.active).toBe(false); expect(voice.hasSession()).toBe(true);
+  api.stopVoiceSession.mockResolvedValue({ status: "ending" });
+  await act(async () => { await expect(voice.start({}, "owner")).rejects.toThrow("still ending safely"); });
+  expect(api.createVoiceSession).toHaveBeenCalledTimes(1);
+});
+
 test("identity change stops the owned session and clears prior state", async () => {
   const { rerender } = render(<Probe />); fireEvent.click(screen.getByText("Start"));
   await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("listening"));

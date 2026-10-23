@@ -4,7 +4,7 @@ import { createAssistantConversation, getAssistantConversation, getAssistantPref
 import useAssistantVoice from "./useAssistantVoice";
 
 const Context = createContext(null);
-const blank = (identity) => ({ identity, mode: "owner", message: "", conversationId: null, messages: [], sources: [], proposals: [], conversations: [], preferences: null, loading: false, ready: false });
+const blank = (identity) => ({ identity, mode: "owner", message: "", conversationId: null, messages: [], sources: [], proposals: [], conversations: [], preferences: null, loading: false, ready: false, accessInvalidated: false });
 const requestKey = () => window.crypto?.randomUUID?.() || `turn-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export function AssistantProvider({ children }) {
@@ -31,6 +31,7 @@ export function AssistantProvider({ children }) {
   }, [identity]);
 
   const patch = useCallback((values) => setSession((old) => old.identity === identity ? { ...old, ...values } : old), [identity]);
+  const clearAccess = useCallback(() => patch({ messages: [], sources: [], proposals: [], message: "", accessInvalidated: true }), [patch]);
   const ensureConversation = async () => {
     if (state.conversationId) return state.conversationId;
     if (!creating.current) {
@@ -47,23 +48,25 @@ export function AssistantProvider({ children }) {
     if (!state.conversationId) return;
     let result;
     try { result = await getAssistantConversation(state.conversationId); }
-    catch (err) { if (active.current === identity) patch({ messages: [], sources: [] }); throw err; }
+    catch (err) { if (active.current === identity) { patch({ messages: [], sources: [], proposals: [] }); if ([401, 402, 403].includes(err?.response?.status)) clearAccess(); } throw err; }
     if (active.current !== identity) return;
     const latest = [...(result.messages || [])].reverse().find((m) => m.role === "assistant");
     patch({ messages: result.messages || [], sources: (latest?.metadata?.sources || []).filter((ref) => ref.route), proposals: result.proposals || [] });
   };
-  const voice = useAssistantVoice(identity, { ensureConversation, refresh, clear: () => patch({ messages: [], sources: [] }) });
+  const voice = useAssistantVoice(identity, { ensureConversation, refresh, clear: clearAccess });
   const activate = useCallback(() => setEnabled(true), []);
   const selectConversation = useCallback(async (id) => {
     if (busy.current) return;
     const current = ++epoch.current;
-    const result = id ? await getAssistantConversation(id) : { messages: [] };
+    let result;
+    try { result = id ? await getAssistantConversation(id) : { messages: [] }; }
+    catch (err) { if (active.current === identity && [401, 402, 403].includes(err?.response?.status)) clearAccess(); throw err; }
     if (current !== epoch.current || active.current !== identity) return;
     retry.current = null;
     const latestAnswer = [...(result.messages || [])].reverse().find((item) => item.role === "assistant");
     patch({ conversationId: id, messages: result.messages || [], sources: latestAnswer?.metadata?.sources || [], proposals: result.proposals || [] });
     if (id) localStorage.setItem(storageKey, id); else localStorage.removeItem(storageKey);
-  }, [identity, patch, storageKey]);
+  }, [identity, patch, storageKey, clearAccess]);
 
   useEffect(() => {
     if (!enabled || !user?.id) return;
@@ -80,7 +83,7 @@ export function AssistantProvider({ children }) {
   }, [enabled, identity, patch, selectConversation, storageKey, user?.id]);
 
   const send = async (context) => {
-    if (busy.current || !state.message.trim()) return;
+    if (busy.current || state.accessInvalidated || !state.message.trim()) return;
     busy.current = true;
     patch({ loading: true });
     const generation = epoch.current;
@@ -101,6 +104,9 @@ export function AssistantProvider({ children }) {
       if (!valid()) return;
       patch({ messages: [...baseline.filter((m) => ![result.user_message.id, result.assistant_message.id].includes(m.id)), result.user_message, result.assistant_message], sources: result.sources || [], proposals: result.proposals || [], message: "" });
       retry.current = null;
+    } catch (err) {
+      if (valid() && [401, 402, 403].includes(err?.response?.status)) clearAccess();
+      throw err;
     } finally {
       if (valid()) { busy.current = false; patch({ loading: false }); }
     }

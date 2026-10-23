@@ -132,7 +132,7 @@ test("renders Business Assistant workspace with modes, text chat, sources, and v
   expect(await screen.findByDisplayValue("Morning check")).toBeInTheDocument();
   expect(await screen.findByTestId("assistant-insights")).toHaveTextContent("Open invoices");
 
-  await user.type(screen.getByTestId("assistant-message-input"), "What is the latest invoice?");
+  await user.type(screen.getByRole("textbox", { name: "Message Business Assistant" }), "What is the latest invoice?");
   await user.click(screen.getByTestId("assistant-send"));
 
   await waitFor(() => expect(sendAssistantMessage).toHaveBeenCalled());

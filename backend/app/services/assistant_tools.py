@@ -26,6 +26,7 @@ class ReadArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
     query: str | None = Field(default=None, max_length=160)
     record_id: str | None = Field(default=None, max_length=160)
+    customer_id: str | None = Field(default=None, max_length=160)
     day: Literal["today", "tomorrow"] = "today"
     invoice_filter: Literal["unpaid", "overdue", "latest"] = "unpaid"
     due_day: Literal["today", "tomorrow"] | None = None
@@ -45,9 +46,9 @@ PERMISSIONS = {
 DESCRIPTIONS = {
     "find_customers": "Find customers by name, company, email or partial name; clarify multiple matches.",
     "customer_history": "Customer identity and recent Orders. Supply customer record_id; use quote_followups separately for Quotes.",
-    "recent_orders": "Recent Orders, one Order by record_id/name/number query, or Orders due today/tomorrow using due_day. Bounded results; no writes.",
+    "recent_orders": "Recent Orders, one Order by record_id/name/number query, or Orders due today/tomorrow using due_day. Returns a permitted linked customer_id for Customer follow-ups. Bounded results; no writes.",
     "work_order_status": "Work Orders and their actual production stages, recorded blockers and due dates.",
-    "invoices": "Canonical current unpaid/overdue invoice balances, latest invoice or a specific invoice. Overdue is before today in the selected timezone.",
+    "invoices": "Canonical current unpaid/overdue invoice balances, latest invoice or a specific invoice. Supply exact customer_id to restrict to a permitted Customer; never assume shop-wide invoices belong to that Customer. Overdue is before today in the selected timezone.",
     "quote_followups": "Open sent/viewed Quotes that can be reviewed for follow-up; no assumed last-contact date or sending.",
     "tasks": "Permitted open tasks due today or tomorrow in the selected timezone.",
     "shop_schedule": "Shop Schedule and permitted projected work for today/tomorrow, or upcoming 30 days using schedule_window=next_30_days. Query matches event titles, e.g. installation. Bounded results, not proof nothing exists later.",
@@ -288,6 +289,8 @@ async def execute(
     if name not in PERMISSIONS or not all(has_perm(user, p) for p in PERMISSIONS[name]):
         raise ToolError("This tool is not permitted")
     args = ReadArgs.model_validate(raw_args)
+    if args.customer_id and name != "invoices":
+        raise ToolError("customer_id is supported only for the invoice lookup")
     zone = ZoneInfo(timezone_name)
     today = utc_now().astimezone(zone).date()
     selected = today + timedelta(days=args.day == "tomorrow")
@@ -296,11 +299,20 @@ async def execute(
     complete = True
     tenant = user["tenant_id"]
     if name == "find_customers":
-        matches = await customer_service.find_matching_customers(
-            tenant_id=tenant, name=args.query, email=args.query
+        matches = (
+            []
+            if args.record_id
+            else await customer_service.find_matching_customers(
+                tenant_id=tenant, name=args.query, email=args.query
+            )
         )
         rows = [match["customer"] for match in matches]
-        if not rows and args.query:
+        if args.record_id:
+            row = await db.customers.find_one(
+                {"tenant_id": tenant, "id": args.record_id}, {"_id": 0}
+            )
+            rows = [row] if row else []
+        if not rows and args.query and not args.record_id:
             term = {"$regex": re.escape(args.query), "$options": "i"}
             rows = [
                 r
@@ -349,9 +361,15 @@ async def execute(
         ]
         complete = complete and len(rows) <= 25
         for row in rows[:25]:
-            items.append(
-                project(row, "number", "title", "status", "due_date", "created_at")
-            )
+            item = project(row, "number", "title", "status", "due_date", "created_at")
+            if row.get("customer_id") and has_perm(user, Perm.CUSTOMER_READ.value):
+                customer = await db.customers.find_one(
+                    {"tenant_id": tenant, "id": row["customer_id"]}, {"_id": 0}
+                )
+                if customer:
+                    item["customer_id"] = customer["id"]
+                    refs.append(reference("customer", customer))
+            items.append(item)
             refs.append(reference("order", row))
     elif name == "work_order_status":
         rows = [
@@ -389,6 +407,16 @@ async def execute(
         )
     elif name == "invoices":
         filt = {**_filter(user, args), "document_status": "issued"}
+        if args.customer_id:
+            if not has_perm(user, Perm.CUSTOMER_READ.value):
+                raise ToolError("Customer lookup is not permitted")
+            customer = await db.customers.find_one(
+                {"tenant_id": tenant, "id": args.customer_id}, {"_id": 0}
+            )
+            if not customer:
+                raise ToolError("Customer is missing or inaccessible")
+            filt["customer_id"] = customer["id"]
+            refs.append(reference("customer", customer))
         if args.invoice_filter == "overdue":
             # Coarse offset-tolerant bound; the local calendar date below is authoritative.
             filt["due_date"] = {

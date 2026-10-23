@@ -1,6 +1,6 @@
 # SignGuy AI — Progress Register
 
-**Current owner authorization, October 22, 2026:** Stages B and D engineering/mock verification are accepted; Stage C engineering remains the voice foundation, with commercially cleared previews still required for release. Stage E controlled actions and approved private memory are implemented for owner review in the existing Business Assistant worktree/branch and draft PR #63. See docs/BUSINESS_ASSISTANT_V1_STAGE_E_REVIEW.md (repository-relative). This supersedes historical B-pending, D-pending and E-prohibited wording below only for the authorized scope. No paid calls, preview generation, Stage F, merge or deployment are authorized. Unrelated feature holds remain unchanged.
+**Current owner authorization, October 23, 2026:** Stage E implementation/verification is accepted. Stage F final verification, focused security/quality and release readiness are authorized and completed for engineering review in the existing Business Assistant worktree/branch and draft PR #63. See docs/BUSINESS_ASSISTANT_V1_RELEASE_READINESS.md (repository-relative). This supersedes historical E-pending/F-prohibited wording below. Live text/voice compatibility, approved original previews and commercial configuration remain release gates. No paid calls, preview generation, merge, deployment or commercial activation is authorized. Unrelated feature holds remain unchanged.
 
 ## Business Assistant Stage C — October 21, 2026
 
