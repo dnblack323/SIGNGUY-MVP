@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test-utils";
 import WebstoreOwnerPortalPage from "@/pages/WebstoreOwnerPortalPage";
 import portalApi from "@/portal/portalApi";
+import OwnerPortalProducts from "@/components/webstores/owner-portal/OwnerPortalProducts";
 
 jest.mock("@/portal/portalApi", () => ({
   __esModule: true,
@@ -58,6 +59,22 @@ beforeEach(() => {
     });
   });
   portalApi.post.mockResolvedValue({ data: {} });
+});
+
+test("owner review explains the submitted configuration without editing controls", () => {
+  renderWithProviders(<OwnerPortalProducts products={[{
+    id: "hoodie", name: "School Hoodie", approval_status: "approved", selling_price_cents: 4200,
+    variants: [{ id: "navy-m", size: "M", color: "Navy", sku: "HOODIE-N-M", status: "active", available: false }],
+    personalization_enabled: true,
+    personalization_fields: [
+      { key: "name", label: "Player Name", type: "text", required: false, max_length: 20 },
+      { key: "year", label: "Graduation Year", type: "select", required: true, choices: ["2026", "2027", "2028"] },
+    ],
+  }]} productComments={{}} />);
+  expect(screen.getByText(/SKU HOODIE-N-M/)).toHaveTextContent("active · manually unavailable");
+  expect(screen.getByText(/Player Name/)).toHaveTextContent("Optional · text · Maximum 20 characters");
+  expect(screen.getByText(/Graduation Year/)).toHaveTextContent("Required · select · 2026, 2027, 2028");
+  expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
 });
 
 test("owner portal records product and mockup approval decisions separately from launch approval", async () => {

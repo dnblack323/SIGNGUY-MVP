@@ -110,7 +110,13 @@ def _validate_personalization(product: dict, supplied: dict[str, Any]) -> None:
             except (TypeError, ValueError) as exc:
                 raise WebstoreError("personalization_invalid", f"Personalization field {key} must be a number", 400) from exc
         if field_type in {"select", "dropdown", "radio"}:
-            options = {str(item.get("value", item.get("id", item.get("label", item)))) for item in field.get("options") or []}
+            # Product configuration stores canonical choices. Retain reads of
+            # legacy options without allowing them to override current choices.
+            configured_choices = field.get("choices") if "choices" in field else field.get("options")
+            options = {
+                str(item.get("value", item.get("id", item.get("label", "")))) if isinstance(item, dict) else str(item)
+                for item in configured_choices or []
+            }
             if options and str(value) not in options:
                 raise WebstoreError("personalization_invalid", f"Personalization field {key} has an invalid choice", 400)
         if field_type in {"multi_select", "multiselect", "checkboxes"}:

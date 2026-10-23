@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { centsToDollarsString } from "@/lib/format";
 import { toast } from "sonner";
@@ -16,6 +17,14 @@ const API = API_BASE;
 
 function productFulfillment(product) {
   return product.fulfillment_methods || [product.default_fulfillment_method || "pickup"];
+}
+
+function variantAvailable(variant) {
+  return !["inactive", "archived", "unavailable"].includes(variant.status) && variant.available !== false && (variant.inventory_quantity == null || Number(variant.inventory_quantity) > 0);
+}
+
+function productPersonalization(product) {
+  return product.personalization_enabled === false ? [] : product.personalization_fields || [];
 }
 
 function lineKey(productId, variant, personalization, fulfillmentMethod) {
@@ -100,7 +109,7 @@ export default function PublicWebstorePage() {
   const openProduct = (product) => {
     const methods = productFulfillment(product);
     setSelectedProduct(product);
-    setSelectedVariant(product.variants?.[0] || {});
+    setSelectedVariant(product.variants?.find(variantAvailable) || {});
     setPersonalization({});
     setSelectedFulfillment(product.default_fulfillment_method || (methods.length === 1 ? methods[0] : ""));
     setProductChoiceError(null);
@@ -111,11 +120,19 @@ export default function PublicWebstorePage() {
     const variant = choices.variant || {};
     const personalizationValues = choices.personalization || {};
     const fulfillmentMethod = choices.fulfillmentMethod || product.default_fulfillment_method || (methods.length === 1 ? methods[0] : "");
+    if (productPersonalization(product).length && !choices.personalization) {
+      openProduct(product);
+      return;
+    }
     if (product.variants?.length && !variant.id && !variant.name && !variant.sku && !variant.size && !variant.color && !variant.style && !variant.material && !Object.keys(variant.options || {}).length) {
       openProduct(product);
       return;
     }
-    const missingFields = (product.personalization_fields || []).filter((field) => field.required && !String(personalizationValues[field.key] || "").trim());
+    if (product.variants?.length && !variantAvailable(variant)) {
+      setProductChoiceError("Choose an available product option.");
+      return;
+    }
+    const missingFields = productPersonalization(product).filter((field) => field.required && !String(personalizationValues[field.key] || "").trim());
     if (missingFields.length) {
       setProductChoiceError(`Complete: ${missingFields.map((field) => field.label || field.key).join(", ")}`);
       return;
@@ -239,14 +256,33 @@ export default function PublicWebstorePage() {
               <CardHeader className="flex-row items-start justify-between gap-3"><div><CardTitle>{selectedProduct.name}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{selectedProduct.full_description || selectedProduct.description}</p></div><Button type="button" variant="ghost" size="icon" title="Close product details" onClick={() => setSelectedProduct(null)}><X className="size-4" /></Button></CardHeader>
               <CardContent className="space-y-4">
                 {selectedProduct.variants?.length > 0 && (
-                  <div className="grid gap-1.5"><Label htmlFor="public-product-variant">Options</Label><Select value={JSON.stringify(selectedVariant)} onValueChange={(value) => setSelectedVariant(JSON.parse(value))}><SelectTrigger id="public-product-variant"><SelectValue /></SelectTrigger><SelectContent>{selectedProduct.variants.map((variant, index) => <SelectItem key={variant.id || index} value={JSON.stringify(variant)}>{variant.name || [variant.size, variant.color, variant.style].filter(Boolean).join(" / ") || `Option ${index + 1}`}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="grid gap-1.5"><Label htmlFor="public-product-variant">Options</Label><Select value={JSON.stringify(selectedVariant)} onValueChange={(value) => setSelectedVariant(JSON.parse(value))}><SelectTrigger id="public-product-variant"><SelectValue placeholder="Choose an available option" /></SelectTrigger><SelectContent>{selectedProduct.variants.map((variant, index) => <SelectItem key={variant.id || index} value={JSON.stringify(variant)} disabled={!variantAvailable(variant)}>{variant.name || [variant.size, variant.color, variant.style].filter(Boolean).join(" / ") || `Option ${index + 1}`}{!variantAvailable(variant) ? " (unavailable)" : ""}</SelectItem>)}</SelectContent></Select></div>
                 )}
-                {selectedProduct.personalization_fields?.map((field) => <div key={field.key} className="grid gap-1.5"><Label htmlFor={`public-personalization-${field.key}`}>{field.label || field.key}{field.required ? " *" : ""}</Label><Input id={`public-personalization-${field.key}`} value={personalization[field.key] || ""} placeholder={field.placeholder || ""} maxLength={field.max_length || undefined} onChange={(event) => setPersonalization((current) => ({ ...current, [field.key]: event.target.value }))} /></div>)}
+                {productPersonalization(selectedProduct).map((field) => {
+                  const inputProps = {
+                    id: `public-personalization-${field.key}`,
+                    value: personalization[field.key] || "",
+                    required: Boolean(field.required),
+                    placeholder: field.placeholder || "",
+                    maxLength: field.max_length || undefined,
+                    onChange: (event) => setPersonalization((current) => ({ ...current, [field.key]: event.target.value })),
+                  };
+                  return <div key={field.key} className="grid gap-1.5">
+                    <Label htmlFor={inputProps.id}>{field.label || field.key}{field.required ? " *" : ""}</Label>
+                    {field.type === "select" ? (
+                      <select {...inputProps} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                        <option value="">Choose {field.label || field.key}</option>
+                        {[...new Set(field.choices || [])].map((choice) => <option key={choice} value={choice}>{choice}</option>)}
+                      </select>
+                    ) : field.type === "textarea" ? <Textarea {...inputProps} /> : <Input {...inputProps} type={field.type === "number" ? "number" : "text"} />}
+                    {field.max_length && ["text", "textarea"].includes(field.type || "text") && <p className="text-xs text-muted-foreground">Maximum {field.max_length} characters.</p>}
+                  </div>;
+                })}
                 {selectedMethods.length > 1 && <div className="grid gap-1.5"><Label htmlFor="public-fulfillment-method">Fulfillment</Label><Select value={selectedFulfillment} onValueChange={setSelectedFulfillment}><SelectTrigger id="public-fulfillment-method"><SelectValue placeholder="Choose pickup or shipping" /></SelectTrigger><SelectContent>{selectedMethods.map((method) => <SelectItem key={method} value={method}>{method === "pickup" ? "Pickup" : "Shipping"}</SelectItem>)}</SelectContent></Select></div>}
                 {selectedProduct.pickup_instructions && selectedFulfillment === "pickup" && <p className="text-sm text-muted-foreground">{selectedProduct.pickup_instructions}</p>}
                 {selectedFulfillment === "shipping" && <p className="text-sm text-muted-foreground">Shipping estimate: {centsToDollarsString(selectedProduct.shipping_cost_cents || 0)} per item.</p>}
                 {productChoiceError && <p className="text-sm text-rose-700" role="alert">{productChoiceError}</p>}
-                <Button type="button" onClick={() => addProduct(selectedProduct, { variant: selectedVariant, personalization, fulfillmentMethod: selectedFulfillment })}><ShoppingCart className="mr-1 size-4" />Add to cart</Button>
+                <Button type="button" disabled={Boolean(selectedProduct.variants?.length) && !selectedProduct.variants.some(variantAvailable)} onClick={() => addProduct(selectedProduct, { variant: selectedVariant, personalization, fulfillmentMethod: selectedFulfillment })}><ShoppingCart className="mr-1 size-4" />Add to cart</Button>
               </CardContent>
             </Card>
           )}

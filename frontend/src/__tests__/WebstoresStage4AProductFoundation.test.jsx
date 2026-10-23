@@ -721,6 +721,41 @@ test("recommended template selection uses the existing private draft creation co
   await waitFor(() => expect(createProductFromTemplate).toHaveBeenCalledWith("ws-1", expect.objectContaining({ source_template_id: "tpl-platform" })));
 });
 
+test("staff saves required select choices, text limits, and manual variant controls in the existing product", async () => {
+  const user = userEvent.setup();
+  renderWithProviders(<WebstoreDetailPage />, { route: "/webstores/ws-1", path: "/webstores/:id" });
+  await screen.findByText(/Team Store/);
+  await user.click(screen.getByRole("tab", { name: "Products" }));
+  await user.click(screen.getByTestId("webstore-product-row-prod-1"));
+  await user.click(screen.getByRole("tab", { name: "Options and Personalization" }));
+  await user.click(screen.getByRole("button", { name: "Add Variant" }));
+  fireEvent.change(screen.getByLabelText("Variant 1 size"), { target: { value: "M" } });
+  fireEvent.change(screen.getByLabelText("Variant 1 color"), { target: { value: "Navy" } });
+  await user.click(screen.getByLabelText("Variant 1 manually available"));
+  await user.click(screen.getByLabelText("Variant 1 status"));
+  await user.click(screen.getByRole("option", { name: "Inactive" }));
+  await user.click(screen.getByTestId("webstore-add-personalization"));
+  fireEvent.change(screen.getByLabelText("Prompt 1 name"), { target: { value: "Player Name" } });
+  fireEvent.change(screen.getByLabelText("Maximum characters"), { target: { value: "20" } });
+  await user.click(screen.getByTestId("webstore-add-personalization"));
+  fireEvent.change(screen.getByLabelText("Prompt 2 name"), { target: { value: "Graduation Year" } });
+  await user.click(screen.getByLabelText("Prompt 2 type"));
+  await user.click(screen.getByRole("option", { name: "Select" }));
+  expect(screen.getByText("Add at least one choice before saving.")).toBeInTheDocument();
+  // Typing newlines must not discard an unfinished last line.
+  await user.type(screen.getByLabelText("Choices (one per line, up to 20)"), "2026{enter}2027{enter}2028");
+  await user.click(screen.getByLabelText("Prompt 2 required"));
+  await user.click(screen.getByRole("tab", { name: "Review Status" }));
+  await user.click(screen.getByTestId("webstore-save-product"));
+  await waitFor(() => expect(updateWebstoreProduct).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({
+    variants: [expect.objectContaining({ size: "M", color: "Navy", available: false, status: "inactive" })],
+    personalization_fields: [
+      expect.objectContaining({ label: "Player Name", type: "text", required: false, max_length: 20 }),
+      expect.objectContaining({ label: "Graduation Year", type: "select", required: true, choices: ["2026", "2027", "2028"] }),
+    ],
+  })));
+});
+
 test("stale product saves keep the editor open and offer a reload action", async () => {
   const user = userEvent.setup();
   updateWebstoreProduct.mockRejectedValueOnce({ response: { data: { detail: "This product changed after you opened it. Reload it before saving." } } });

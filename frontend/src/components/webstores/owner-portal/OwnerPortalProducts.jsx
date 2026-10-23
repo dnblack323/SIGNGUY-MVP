@@ -60,8 +60,22 @@ export default function OwnerPortalProducts({
               <div className="text-xs text-muted-foreground">
                 {p.description || p.product_type}
               </div>
-              {(p.variants || []).length > 0 && <div className="mt-2 text-xs">Product options: {p.variants.map((variant) => [variant.color, variant.size].filter(Boolean).join(" / ")).filter(Boolean).join(", ")}</div>}
-              {p.personalization_enabled && <div className="mt-1 text-xs">Personalization: {(p.personalization_fields || []).map((field) => field.label).filter(Boolean).join(", ") || "Available"}</div>}
+              {(p.variants || []).length > 0 && <div className="mt-2 space-y-1 text-xs">
+                <div className="font-medium">Product options</div>
+                {p.variants.map((variant, index) => <div key={variant.id || index}>
+                  {[variant.color, variant.size].filter(Boolean).join(" / ") || variant.name || `Option ${index + 1}`}
+                  {variant.sku ? ` · SKU ${variant.sku}` : ""}
+                  {` · ${variant.status || "active"} · ${variant.available === false ? "manually unavailable" : "manually available"}`}
+                </div>)}
+              </div>}
+              {p.personalization_enabled && <div className="mt-2 space-y-1 text-xs">
+                <div className="font-medium">Personalization</div>
+                {(p.personalization_fields || []).map((field) => <div key={field.key}>
+                  {field.label || field.key} · {field.required ? "Required" : "Optional"} · {field.type || "text"}
+                  {field.type === "select" ? ` · ${(field.choices || []).join(", ")}` : ""}
+                  {field.max_length && ["text", "textarea"].includes(field.type || "text") ? ` · Maximum ${field.max_length} characters` : ""}
+                </div>)}
+              </div>}
               {p.review_notice && (
                 <p className="mt-2 text-xs text-amber-800" role="status">{p.review_notice}</p>
               )}
