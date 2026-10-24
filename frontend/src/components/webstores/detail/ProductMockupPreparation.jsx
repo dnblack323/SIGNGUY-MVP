@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { DecisionRoomMedia } from "@/components/decisionRoom/DecisionRoomMedia";
 import { extractError } from "@/lib/api";
 import { createWebstoreArtwork, createWebstoreMockup, uploadWebstoreSetupFile } from "@/lib/webstores";
+import ProductMockupComposer from "./ProductMockupComposer";
 
 export default function ProductMockupPreparation({ model }) {
   const { id, productDraft, setupFileItems = [], artworkOptions, mockupOptions,
@@ -74,6 +75,12 @@ export default function ProductMockupPreparation({ model }) {
       <div><h3 className="font-medium">Artwork and reviewed mockups</h3>
         <p className="text-xs text-muted-foreground">Artwork stays private. Review the prepared image, attach it, then Save Product. Submit the product before sending its mockup for owner approval. Replacements stay private until resubmission.</p></div>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      <ProductMockupComposer model={model} files={files} onAccepted={async ({ mockup, artwork }) => {
+        addAssociation("artwork_associations", "artwork_id", artwork.id);
+        addAssociation("mockup_associations", "mockup_id", mockup.id);
+        await artworkOptions.refetch();
+        await mockupOptions.refetch();
+      }} />
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label className="grid gap-1.5">Upload customer artwork

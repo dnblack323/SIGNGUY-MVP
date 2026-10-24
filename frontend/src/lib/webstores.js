@@ -239,6 +239,15 @@ export async function createWebstoreMockup(webstoreId, payload) {
   return (await api.post(`/webstores/${webstoreId}/mockups`, payload)).data;
 }
 
+export async function previewWebstoreMockupComposition(webstoreId, productId, payload) {
+  const response = await api.post(`/webstores/${webstoreId}/products/${productId}/mockup-composition/preview`, payload, { responseType: "blob" });
+  return { image: response.data, sha256: response.headers["x-preview-sha256"] };
+}
+
+export async function acceptWebstoreMockupComposition(webstoreId, productId, payload) {
+  return (await api.post(`/webstores/${webstoreId}/products/${productId}/mockup-composition`, payload)).data;
+}
+
 export async function createWebstoreProductCategory(webstoreId, payload) {
   const r = await api.post(`/webstores/${webstoreId}/product-categories`, payload);
   return r.data;
