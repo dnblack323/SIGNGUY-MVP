@@ -14,6 +14,7 @@ from .webstores_setup_routes import router as webstores_setup_routes_router
 from .webstores_branding_routes import router as webstores_branding_routes_router
 from .webstores_setup_file_removal import router as webstores_setup_file_removal_router
 from .webstores_catalog import router as webstores_catalog_router
+from .webstore_mockup_composition import router as webstore_mockup_composition_router
 from .webstores_launch_operations import router as webstores_launch_operations_router
 from .webstores_reference import router as webstores_reference_router
 
@@ -29,6 +30,7 @@ for subrouter in (
     webstores_branding_routes_router,
     webstores_setup_file_removal_router,
     webstores_catalog_router,
+    webstore_mockup_composition_router,
     webstores_launch_operations_router,
     webstores_reference_router,
 ):

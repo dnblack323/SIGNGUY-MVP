@@ -102,6 +102,7 @@ async def create_mockup(user: dict, webstore_id: str, fields: dict[str, Any]) ->
         artwork_id=fields.get("artwork_id"),
         mockup_file_id=fields.get("mockup_file_id"),
         generation_source=fields.get("generation_source", "manual"),
+        preparation=fields.get("preparation") or {},
         purpose=_clean_optional_text(fields.get("purpose"), limit=120),
         alt_text=_clean_optional_text(fields.get("alt_text"), limit=200),
         staff_note=_clean_optional_text(fields.get("staff_note")),

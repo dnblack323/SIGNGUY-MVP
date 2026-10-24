@@ -486,6 +486,7 @@ class WebstoreMockup(BaseDoc):
     artwork_id: Optional[str] = None
     mockup_file_id: Optional[str] = None
     generation_source: str = "manual"
+    preparation: dict[str, Any] = Field(default_factory=dict)
     purpose: Optional[str] = None
     alt_text: Optional[str] = None
     staff_note: Optional[str] = None
