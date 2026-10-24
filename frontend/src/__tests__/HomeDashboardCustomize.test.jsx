@@ -10,6 +10,12 @@ jest.mock("@/lib/api", () => ({
   extractError: (_err, fallback) => fallback,
 }));
 
+// Home renders the Guided Setup invitation, which reads the signed-in user; a staff user shows nothing.
+jest.mock("@/auth/AuthContext", () => ({
+  __esModule: true,
+  useAuth: () => ({ hasPerm: () => false, user: { id: "u1", role: "staff" } }),
+}));
+
 const W = {
   ordersKpi: { key: "active_orders_kpi", family: "active_orders", kind: "kpi", title: "Active orders", to: "/orders" },
   ordersList: { key: "active_orders_list", family: "active_orders", kind: "list", title: "Active orders", to: "/orders" },

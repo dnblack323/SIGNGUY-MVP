@@ -7,9 +7,10 @@ from __future__ import annotations
 COMPANY_PROFILE = {
     "shop_name": "SIGNGUY DEMO SHOP", "legal_name": "SignGuy Demo Shop LLC", "phone": "555-0100",
     "email": "hello@signguy-demo.example.com", "website": "https://signguy-demo.example.com",
-    "address": "100 Commerce Way, Fairhaven, OH 44800", "timezone": "America/New_York",
+    "address_line1": "100 Commerce Way", "city": "Fairhaven", "state": "OH", "postal_code": "44800",
+    "timezone": "America/New_York",
 }
-BRANDING = {"brand_color": "#E4572E"}
+BRANDING = {"primary_color": "#E4572E"}
 
 # (key, full name, email, role label, hourly cents, hire date)
 STAFF = [

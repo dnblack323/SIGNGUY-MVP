@@ -96,21 +96,15 @@ async def test_platform_bootstrap_dashboard_permissions_and_portal_boundary(ctx)
         second = await platform.post("/api/onboarding/platform/bootstrap")
         assert first.status_code == 201, first.text
         assert second.status_code == 201, second.text
-        assert await db.onboarding_program_definitions.count_documents({"program_key": "shop_launch_v1", "version": 1}) == 1
-
-    async with await _client_as(ctx["owner"]) as owner:
-        dashboard = await owner.get("/api/onboarding/dashboard")
-        assert dashboard.status_code == 200, dashboard.text
-        assert dashboard.json()["progress"]["required_tasks"] >= 3
-        company = await owner.post("/api/onboarding/company-profile/apply", json={"company_profile": {"shop_name": "EC19 Signs", "email": "shop@example.com"}})
-        assert company.status_code == 200, company.text
-        assert (await db.settings.find_one({"tenant_id": ctx["tenant_id"], "namespace": "company_profile", "key": "shop_name"}, {"_id": 0}))["value"] == "EC19 Signs"
+        assert await db.onboarding_program_definitions.count_documents({"program_key": "shop_launch_v1", "version": 2}) == 1
 
     async with await _client_as(ctx["staff"]) as staff:
         read = await staff.get("/api/onboarding/dashboard")
-        write = await staff.post("/api/onboarding/tasks/company_profile/status", json={"status": "completed"})
+        write = await staff.post("/api/onboarding/tasks/time_clock/status", json={"status": "completed"})
+        position = await staff.post("/api/onboarding/position", json={"task_key": "company_profile"})
         assert read.status_code == 200
         assert write.status_code == 403
+        assert position.status_code == 403
 
     async with await _portal_client(ctx["portal_token"]) as portal:
         denied = await portal.get("/api/onboarding/dashboard")
@@ -118,85 +112,21 @@ async def test_platform_bootstrap_dashboard_permissions_and_portal_boundary(ctx)
 
 
 @pytest.mark.asyncio
-async def test_pricing_import_placeholders_template_and_setup_handoff_boundaries(ctx):
+async def test_setup_package_handoff_boundary(ctx):
     async with await _client_as(ctx["owner"]) as owner:
-        scenario = await owner.post("/api/onboarding/pricing/scenario", json={
-            "category": "banners",
-            "job_duration_hours": 2,
-            "crew_size": 1,
-            "material_cost_estimate": 50,
-            "customer_charge": 250,
-            "price_floor": 125,
-            "includes_design": True,
-        })
-        assert scenario.status_code == 201, scenario.text
-        suggestions = scenario.json()["derived_suggestions"]["suggested_shop_defaults_map"]
-        applied = await owner.post(f"/api/onboarding/pricing/scenario/{scenario.json()['id']}/apply", json={"accepted_shop_defaults": suggestions})
-        assert applied.status_code == 200, applied.text
-        assert applied.json()["status"] == "applied"
-
-        before_invoices = await db.invoices.count_documents({"tenant_id": ctx["tenant_id"]})
-        before_payments = await db.payments.count_documents({"tenant_id": ctx["tenant_id"]})
-        historical = await owner.post("/api/onboarding/historical-invoices", json={"file_name": "old-invoices.csv", "file_type": "csv", "file_size_bytes": 1200, "request_analysis": True})
-        assert historical.status_code == 201, historical.text
-        assert historical.json()["analysis_status"] == "unavailable"
-        assert "provider" in historical.json()["analysis_boundary"]
-        assert await db.invoices.count_documents({"tenant_id": ctx["tenant_id"]}) == before_invoices
-        assert await db.payments.count_documents({"tenant_id": ctx["tenant_id"]}) == before_payments
-
-        registry = await owner.get("/api/onboarding/placeholders")
-        preview = await owner.post("/api/onboarding/placeholders/preview", json={"content": "Hi {{customer_name}} {{order_number}}", "context": {"customer_name": "Acme"}})
-        unknown = await owner.post("/api/onboarding/placeholders/preview", json={"content": "Hi {{not_allowed}}", "context": {}})
-        assert registry.status_code == 200
-        assert any(p["key"] == "customer_name" for p in registry.json()["placeholders"])
-        assert preview.status_code == 200
-        assert preview.json()["missing_placeholders"] == ["order_number"]
-        assert unknown.status_code == 400
-
-        template = await owner.post("/api/onboarding/template-exercises", json={
-            "name": "Install reminder",
-            "template_type": "email",
-            "body": {"channels": {"email_body": "Hi {{customer_name}}, install is on {{appointment_date}}."}},
-            "context": {"customer_name": "Acme", "appointment_date": "2026-08-01"},
-            "save_as_template": True,
-        })
-        assert template.status_code == 201, template.text
-        assert template.json()["status"] == "saved"
-        assert template.json()["template_id"]
-        assert await db.ai_usage_events.count_documents({"tenant_id": ctx["tenant_id"]}) == 0
-
+        assert (await owner.get("/api/onboarding/setup-package-handoff")).json()["available"] is False
         setup_before = await db.checkout_session_records.count_documents({"tenant_id": ctx["tenant_id"]})
-        account = {
-            "id": f"acct-{ctx['suffix']}",
-            "tenant_id": ctx["tenant_id"],
-            "status": "pending",
-            "created_at": _now(),
-            "updated_at": _now(),
-        }
+        account = {"id": f"acct-{ctx['suffix']}", "tenant_id": ctx["tenant_id"], "status": "pending", "created_at": _now(), "updated_at": _now()}
         await db.tenant_billing_accounts.insert_one(account)
         purchase = {
-            "id": f"setup-{ctx['suffix']}",
-            "tenant_id": ctx["tenant_id"],
-            "billing_account_id": account["id"],
-            "package_key": "standard",
-            "status": "paid",
-            "amount_cents": 49900,
-            "currency": "usd",
-            "ec19_handoff_status": "not_started",
-            "created_at": _now(),
-            "updated_at": _now(),
+            "id": f"setup-{ctx['suffix']}", "tenant_id": ctx["tenant_id"], "billing_account_id": account["id"], "package_key": "standard",
+            "status": "paid", "amount_cents": 49900, "currency": "usd", "ec19_handoff_status": "not_started", "created_at": _now(), "updated_at": _now(),
         }
         await db.setup_package_purchases.insert_one(purchase)
         handoff = await owner.post("/api/onboarding/setup-package-handoff", json={"purchase_id": purchase["id"], "status": "ready_for_intake", "notes": "ready"})
         assert handoff.status_code == 200, handoff.text
         assert handoff.json()["handoff_status"] == "ready_for_intake"
         assert await db.checkout_session_records.count_documents({"tenant_id": ctx["tenant_id"]}) == setup_before
-
-    async with await _client_as(ctx["other_owner"]) as other:
-        other_dashboard = await other.get("/api/onboarding/dashboard")
-        assert other_dashboard.status_code == 200
-        assert other_dashboard.json()["instance"]["tenant_id"] == ctx["other_tenant_id"]
-        assert not await db.onboarding_step_responses.count_documents({"tenant_id": ctx["other_tenant_id"], "payload.import_record_id": historical.json()["id"]})
 
 
 @pytest.mark.asyncio

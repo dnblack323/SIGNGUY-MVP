@@ -8,6 +8,7 @@ import { CardsSkeleton } from "@/components/common/LoadingSkeleton";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/ui/button";
 import DashboardCustomizer from "@/components/home/DashboardCustomizer";
+import GuidedSetupBanner from "@/components/onboarding/GuidedSetupBanner";
 import { KpiWidget, ListWidget, SummaryWidget } from "@/components/home/HomeWidgets";
 import { toast } from "sonner";
 
@@ -133,6 +134,7 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto max-w-[1540px] space-y-3" data-testid="home-dashboard-page">
       <PageHeader title="Home" subtitle="Your shop at a glance." actions={customizeButton} testId="dashboard-header" />
+      <GuidedSetupBanner />
 
       {visible.length === 0 ? (
         <div className="rounded-lg border bg-card px-4 py-10 text-center" data-testid="home-all-hidden">

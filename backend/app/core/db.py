@@ -1221,20 +1221,6 @@ async def ensure_indexes() -> None:
     await db.onboarding_task_states.create_index([("tenant_id", 1), ("program_key", 1), ("task_key", 1)], unique=True)
     await db.onboarding_task_states.create_index([("tenant_id", 1), ("status", 1), ("updated_at", -1)])
 
-    await db.onboarding_step_responses.create_index("id", unique=True)
-    await db.onboarding_step_responses.create_index([("tenant_id", 1), ("task_key", 1), ("created_at", -1)])
-    await db.onboarding_step_responses.create_index(
-        [("tenant_id", 1), ("idempotency_key", 1)],
-        unique=True,
-        partialFilterExpression={"idempotency_key": {"$type": "string"}},
-    )
-
-    await db.onboarding_import_records.create_index("id", unique=True)
-    await db.onboarding_import_records.create_index([("tenant_id", 1), ("import_type", 1), ("status", 1), ("created_at", -1)])
-
-    await db.onboarding_template_exercises.create_index("id", unique=True)
-    await db.onboarding_template_exercises.create_index([("tenant_id", 1), ("template_id", 1), ("status", 1), ("updated_at", -1)])
-
     await db.contextual_help_definitions.create_index("id", unique=True)
     await db.contextual_help_definitions.create_index([("surface_key", 1), ("help_key", 1)], unique=True)
     await db.contextual_help_definitions.create_index([("module", 1), ("status", 1)])

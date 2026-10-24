@@ -8,32 +8,8 @@ export async function updateOnboardingTask(taskKey, payload) {
   return (await api.post(`/onboarding/tasks/${taskKey}/status`, payload)).data;
 }
 
-export async function applyCompanyProfile(payload) {
-  return (await api.post("/onboarding/company-profile/apply", payload)).data;
-}
-
-export async function submitPricingScenario(payload) {
-  return (await api.post("/onboarding/pricing/scenario", payload)).data;
-}
-
-export async function applyPricingScenario(submissionId, acceptedShopDefaults) {
-  return (await api.post(`/onboarding/pricing/scenario/${submissionId}/apply`, { accepted_shop_defaults: acceptedShopDefaults })).data;
-}
-
-export async function createHistoricalInvoiceImport(payload) {
-  return (await api.post("/onboarding/historical-invoices", payload)).data;
-}
-
-export async function getPlaceholderRegistry() {
-  return (await api.get("/onboarding/placeholders")).data;
-}
-
-export async function previewPlaceholders(payload) {
-  return (await api.post("/onboarding/placeholders/preview", payload)).data;
-}
-
-export async function createTemplateExercise(payload) {
-  return (await api.post("/onboarding/template-exercises", payload)).data;
+export async function saveOnboardingPosition(payload) {
+  return (await api.post("/onboarding/position", payload)).data;
 }
 
 export async function getSetupPackageHandoff() {
@@ -44,8 +20,13 @@ export async function updateSetupPackageHandoff(payload) {
   return (await api.post("/onboarding/setup-package-handoff", payload)).data;
 }
 
-export async function recordTestPortal(payload) {
-  return (await api.post("/onboarding/test-portal", { result: payload })).data;
+/**
+ * Shared Help link contract: article links use `/help/docs?article=<slug>`.
+ * Until the Help Center resolves the `article` param the route simply opens
+ * the docs index, so a missing article degrades gracefully.
+ */
+export function helpHref(slug) {
+  return slug ? `/help/docs?article=${encodeURIComponent(slug)}` : "/help/docs";
 }
 
 export async function searchHelp(params = {}) {
