@@ -1,0 +1,50 @@
+[
+  {
+    "voice": "alloy",
+    "source": "https://cdn.openai.com/API/docs/audio/alloy.wav",
+    "bytes": 222764,
+    "seconds": 6.96,
+    "source_sha256": "ea11c143ae799f2e1931265b4ee7093e83cc5a9b57166bcbdf01b52c014465ce",
+    "sha256": "ada6b10c0b810b5060369c1f593cd5ab0b9860840e71ab9bad66c885ccbeaa91"
+  },
+  {
+    "voice": "ash",
+    "source": "https://cdn.openai.com/API/docs/audio/ash.wav",
+    "bytes": 456644,
+    "seconds": 9.512,
+    "source_sha256": "91a668ea97a3f2b67080bb968fc5893a0e3d42720ba9cd0be181759d922be22f",
+    "sha256": "7879298c01d27af6d833a1191bc2af97bc7bf536ce73857c699feb3b29317228"
+  },
+  {
+    "voice": "coral",
+    "source": "https://cdn.openai.com/API/docs/audio/coral.wav",
+    "bytes": 558044,
+    "seconds": 11.625,
+    "source_sha256": "59d24af80271d4906b4fa4491f0a14c4c995661fedfdcaccbb73c105255c1b9c",
+    "sha256": "2525e84fe92eef834be542c4bf03befa943307ce0acc0182774802ac02baf48f"
+  },
+  {
+    "voice": "echo",
+    "source": "https://cdn.openai.com/API/docs/audio/echo.wav",
+    "bytes": 286508,
+    "seconds": 8.952,
+    "source_sha256": "3ea8d9ab371540a2d4a7eed34e186740fc85ec5f288008f2096d817ef2075792",
+    "sha256": "068001aa3dac4581b49143146550e0b05eb03394fbf5224ee2957f140f5cffb0"
+  },
+  {
+    "voice": "sage",
+    "source": "https://cdn.openai.com/API/docs/audio/sage.wav",
+    "bytes": 476444,
+    "seconds": 9.925,
+    "source_sha256": "a7f21bfe811fbb36e70599b63b5af65a4ae6e16da0909e419d866b2d89c2781b",
+    "sha256": "3ad67bbabe44e5c87ea3dc0420a604b2ebbfe729619225e4463e76ded0cb7d60"
+  },
+  {
+    "voice": "shimmer",
+    "source": "https://cdn.openai.com/API/docs/audio/shimmer.wav",
+    "bytes": 271148,
+    "seconds": 8.472,
+    "source_sha256": "9bf5b994e8d8811a0de3a8813e71d183a7f867ebca4d03dee90eedf615b1084e",
+    "sha256": "025fdbb66a85420e8c6333d873569659efe4e0111bf0d3a526c20434d349ba14"
+  }
+]

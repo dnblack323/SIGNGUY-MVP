@@ -1,5 +1,7 @@
 # EC18 Paid Business Assistant, Actions, Intelligence, and Realtime Voice Preflight
 
+> **October 21, 2026 continuation — STAGE A APPROVED; STAGE B IMPLEMENTED, OWNER ACCEPTANCE PENDING:** Business Assistant V1 is **REQUIRED for initial release**, with the approved launch scope/architecture, user-private conversations/memory and five personalities. See [Stage B review](../docs/BUSINESS_ASSISTANT_V1_STAGE_B_REVIEW.md), [Stage A approval](../docs/BUSINESS_ASSISTANT_V1_STAGE_A_REVIEW.md) and [integrated plan](../docs/BUSINESS_ASSISTANT_V1_IMPLEMENTATION_PLAN.md). Stage B implementation and mocked verification are delivered in the linked report. Historical preflight/implementation claims below remain historical; C–F, paid AI calls, provider/commercial activation and merge remain unauthorized.
+
 **Status:** PREFLIGHT COMPLETE - READY TO BUILD
 **Date:** 2026-07-19
 **Branch:** `CODEX-ec18-branch`

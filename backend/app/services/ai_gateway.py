@@ -618,14 +618,14 @@ async def _active_policies(tenant_id: str, capability_key: str, model_profile_id
     return policies
 
 
-async def _enforce_governance(tenant_id: str, capability_key: str, model_profile_id: Optional[str], requested_credits: int, requested_cost_micros: int) -> None:
+async def _enforce_governance(tenant_id: str, capability_key: str, model_profile_id: Optional[str], requested_credits: int, requested_cost_micros: int, *, existing_request: bool = False) -> None:
     day_start = _day_start_iso()
     for policy in await _active_policies(tenant_id, capability_key, model_profile_id):
         if capability_key in set(policy.get("disabled_capability_keys") or []):
             await _open_alert(tenant_id, "rate_limit", "AI capability disabled by governance policy", capability_key=capability_key)
             raise AIGatewayError("capability_disabled_by_policy", "AI capability is disabled by governance policy", 403)
         max_requests = policy.get("max_requests_per_day")
-        if max_requests is not None:
+        if max_requests is not None and not existing_request:
             count = await db.ai_action_requests.count_documents({"tenant_id": tenant_id, "capability_key": capability_key, "created_at": {"$gte": day_start}})
             if count >= max_requests:
                 await _open_alert(tenant_id, "rate_limit", "AI request blocked by daily request limit", observed=count, threshold=max_requests, capability_key=capability_key)
@@ -638,14 +638,19 @@ async def _enforce_governance(tenant_id: str, capability_key: str, model_profile
                 {"_id": 0, "amount_credits": 1},
             ):
                 used += abs(int(row.get("amount_credits") or 0))
-            if used + requested_credits > max_credits:
+            account = await _ensure_credit_account(tenant_id)
+            in_flight = int(account.get("reserved_credits") or 0)
+            if used + in_flight + requested_credits > max_credits:
                 await _open_alert(tenant_id, "spend_cap", "AI request blocked by daily credit limit", observed=used + requested_credits, threshold=max_credits, capability_key=capability_key)
                 raise AIGatewayError("ai_credit_limit_exceeded", "AI daily credit limit exceeded", 429)
         max_cost = policy.get("max_cost_micros_per_day")
         if max_cost is not None:
             pipeline = [
-                {"$match": {"tenant_id": tenant_id, "created_at": {"$gte": day_start}}},
-                {"$group": {"_id": None, "cost": {"$sum": "$actual_cost_micros"}}},
+                {"$match": {"tenant_id": tenant_id, "$or": [
+                    {"created_at": {"$gte": day_start}},
+                    {"reconciliation_status": {"$in": ["reserved_maximum", "incomplete_reserved_maximum"]}}
+                ]}},
+                {"$group": {"_id": None, "cost": {"$sum": {"$ifNull": ["$actual_cost_micros", "$estimated_cost_micros"]}}}},
             ]
             used_cost = 0
             async for row in db.ai_provider_cost_ledger_entries.aggregate(pipeline):
@@ -659,10 +664,14 @@ async def create_gateway_request(user: dict, fields: dict[str, Any]) -> dict[str
     if not (_has_staff_perm(user, "ai_tool:use") or _has_staff_perm(user, "ai_assistant:use")):
         raise AIGatewayError("ai_use_permission_required", "AI tool or assistant permission is required", 403)
     idempotency_key = fields.get("idempotency_key")
+    if idempotency_key and str(idempotency_key).startswith("assistant:"):
+        raise AIGatewayError("reserved_request_namespace", "Assistant requests use the private assistant endpoint", 409)
     if idempotency_key:
         existing = await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "idempotency_key": idempotency_key}, {"_id": 0})
         if existing:
-            return serialize_doc(existing)
+            if existing.get("feature_key") == "business_assistant" and existing.get("user_id") != user["id"]:
+                raise AIGatewayError("request_not_found", "AI request not found", 404)
+            return _public_action(existing)
     capability_key = _clean_key(fields.get("capability_key"), "capability_key")
     capability = await db.ai_capabilities.find_one({"capability_key": capability_key}, {"_id": 0})
     if not capability or capability.get("status") != "active":
@@ -697,7 +706,10 @@ async def create_gateway_request(user: dict, fields: dict[str, Any]) -> dict[str
         await db.ai_action_requests.insert_one(prepare_for_mongo(action))
     except DuplicateKeyError:
         if idempotency_key:
-            return serialize_doc(await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "idempotency_key": idempotency_key}, {"_id": 0}))
+            existing = await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "idempotency_key": idempotency_key}, {"_id": 0})
+            if existing.get("feature_key") == "business_assistant" and existing.get("user_id") != user["id"]:
+                raise AIGatewayError("request_not_found", "AI request not found", 404)
+            return _public_action(existing)
         raise
     try:
         reserve = await _reserve_credits(user["tenant_id"], action["id"], credit_charge, idempotency_key=idempotency_key)
@@ -808,12 +820,21 @@ async def _maybe_low_credit_alert(tenant_id: str, capability_key: str) -> None:
         await _open_alert(tenant_id, "low_credit", "AI credits are below configured threshold", observed=account["available_credits"], threshold=threshold, capability_key=capability_key)
 
 
+def _public_action(action: dict) -> dict:
+    # Billing/history access must never become an alternate private transcript endpoint.
+    hidden = {"assistant_result", "input_fingerprint"}
+    if action.get("feature_key") == "business_assistant":
+        hidden.update({"source_links", "context_packet_id", "session_id"})
+    return serialize_doc({k: v for k, v in action.items() if k not in hidden})
+
+
 async def list_action_history(user: dict, *, limit: int = 100) -> dict[str, Any]:
     if not _has_staff_perm(user, "ai_history:read"):
         raise AIGatewayError("ai_history_read_required", "AI history read permission is required", 403)
     items = [
-        serialize_doc(d)
-        async for d in db.ai_action_requests.find({"tenant_id": user["tenant_id"]}, {"_id": 0}).sort("created_at", -1).limit(limit)
+        _public_action(d)
+        async for d in db.ai_action_requests.find({"tenant_id": user["tenant_id"], "$or": [
+            {"feature_key": {"$ne": "business_assistant"}}, {"user_id": user["id"]}]}, {"_id": 0}).sort("created_at", -1).limit(limit)
     ]
     return {"items": items, "total": len(items)}
 
@@ -828,13 +849,26 @@ async def platform_dashboard(user: dict) -> dict[str, Any]:
     total_cost = 0
     async for row in db.ai_provider_cost_ledger_entries.aggregate(cost_pipeline):
         total_cost = int(row.get("actual_cost_micros") or 0)
+    unverified = {"actual_cost_micros": None}
+    estimated_cost = 0
+    async for row in db.ai_provider_cost_ledger_entries.aggregate([
+        {"$match": unverified}, {"$group": {"_id": None, "cost": {"$sum": "$estimated_cost_micros"}}}
+    ]):
+        estimated_cost = int(row.get("cost") or 0)
+    dispatches = 0
+    async for row in db.ai_action_requests.aggregate([
+        {"$group": {"_id": None, "count": {"$sum": "$provider_dispatch_count"}}}
+    ]):
+        dispatches = int(row.get("count") or 0)
     return {
         "tenant_credit_accounts": tenants,
         "open_alerts": open_alerts,
         "action_requests": actions,
         "usage_events": usage,
         "actual_provider_cost_micros": total_cost,
-        "external_provider_calls": 0,
+        "estimated_unverified_provider_cost_micros": estimated_cost,
+        "unverified_provider_cost_entries": await db.ai_provider_cost_ledger_entries.count_documents(unverified),
+        "external_provider_calls": dispatches,
     }
 
 

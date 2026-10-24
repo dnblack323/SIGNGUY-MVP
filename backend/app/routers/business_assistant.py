@@ -4,11 +4,13 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from ..models.user import AssistantPreferences
 
 from ..deps import get_current_user
 from ..services import business_assistant as svc
 from ..services.business_assistant import BusinessAssistantError
+from ..services.assistant_tools import ToolError
 
 router = APIRouter(prefix="/assistant", tags=["business-assistant"])
 
@@ -23,11 +25,43 @@ class ConversationIn(BaseModel):
 
 
 class AssistantAskIn(BaseModel):
-    message: str
+    model_config = ConfigDict(extra="forbid")
+    message: str = Field(min_length=1, max_length=4000)
     conversation_id: Optional[str] = None
     mode: str = "owner"
     context: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: Optional[str] = None
+
+
+class PreferencesUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    personality_key: Optional[str] = None
+    display_name: Optional[str] = None
+    response_length: Optional[str] = None
+    voice: Optional[str] = None
+    spoken_replies: Optional[bool] = None
+    timezone: Optional[str] = None
+
+
+@router.get("/preferences")
+async def get_preferences(user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.get_preferences(user)
+    except BusinessAssistantError as exc:
+        _raise(exc)
+
+
+@router.put("/preferences")
+async def update_preferences(payload: PreferencesUpdateIn, user: dict = Depends(get_current_user)) -> dict:
+    try:
+        updates = payload.model_dump(exclude_unset=True)
+        current = (await svc.get_preferences(user))["preferences"]
+        AssistantPreferences.model_validate({**current, **updates})
+        return await svc.update_preferences(user, updates)
+    except BusinessAssistantError as exc:
+        _raise(exc)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid assistant preferences")
 
 
 class ActionProposalIn(BaseModel):
@@ -48,14 +82,25 @@ class ActionProposalIn(BaseModel):
 
 
 class ProposalEditIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision: Optional[int] = Field(default=None, ge=1)
     title: Optional[str] = None
     summary: Optional[str] = None
     editable_payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class MemoryIn(BaseModel):
-    memory_key: str
-    content_text: str
+    model_config = ConfigDict(extra="forbid")
+    memory_key: str = Field(min_length=1, max_length=80)
+    content_text: str = Field(min_length=1, max_length=1000)
+    source_type: Optional[str] = None
+    source_id: Optional[str] = Field(default=None, max_length=160)
+    expected_updated_at: Optional[str] = None
+
+
+class ConfirmationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision: Optional[int] = Field(default=None, ge=1)
 
 
 class RoutineIn(BaseModel):
@@ -83,8 +128,12 @@ class StudioDelegationIn(BaseModel):
 
 
 class VoiceSessionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     conversation_id: Optional[str] = None
     mode: str = "owner"
+    offer_sdp: str = Field(min_length=1, max_length=64000)
+    idempotency_key: str = Field(min_length=1, max_length=160)
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
 class VoiceUsageIn(BaseModel):
@@ -158,10 +207,19 @@ async def edit_proposal(proposal_id: str, payload: ProposalEditIn, user: dict = 
         _raise(exc)
 
 
-@router.post("/actions/proposals/{proposal_id}/confirm")
-async def confirm_proposal(proposal_id: str, user: dict = Depends(get_current_user)) -> dict:
+@router.get("/actions/proposals/{proposal_id}/record")
+async def saved_action_record(proposal_id: str, user: dict = Depends(get_current_user)) -> dict:
+    from ..services.assistant_actions import saved_record
     try:
-        return await svc.confirm_proposal(user, proposal_id)
+        return await saved_record(user, proposal_id)
+    except BusinessAssistantError as exc:
+        _raise(exc)
+
+
+@router.post("/actions/proposals/{proposal_id}/confirm")
+async def confirm_proposal(proposal_id: str, payload: ConfirmationIn = ConfirmationIn(), user: dict = Depends(get_current_user)) -> dict:
+    try:
+        return await svc.confirm_proposal(user, proposal_id, payload.revision)
     except BusinessAssistantError as exc:
         _raise(exc)
 
@@ -197,7 +255,7 @@ async def list_memory(user: dict = Depends(get_current_user)) -> dict:
 @router.post("/memory", status_code=201)
 async def upsert_memory(payload: MemoryIn, user: dict = Depends(get_current_user)) -> dict:
     try:
-        return await svc.upsert_memory(user, payload.model_dump())
+        return await svc.upsert_memory(user, payload.model_dump(exclude_unset=True))
     except BusinessAssistantError as exc:
         _raise(exc)
 
@@ -206,6 +264,15 @@ async def upsert_memory(payload: MemoryIn, user: dict = Depends(get_current_user
 async def delete_memory(memory_id: str, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.delete_memory(user, memory_id)
+    except BusinessAssistantError as exc:
+        _raise(exc)
+
+
+@router.patch("/memory/{memory_id}")
+async def edit_memory(memory_id: str, payload: MemoryIn, user: dict = Depends(get_current_user)) -> dict:
+    from ..services.assistant_memory import save
+    try:
+        return await save(user, payload.model_dump(exclude_unset=True), memory_id=memory_id)
     except BusinessAssistantError as exc:
         _raise(exc)
 
@@ -304,8 +371,41 @@ async def get_voice_config(user: dict = Depends(get_current_user)) -> dict:
 async def create_voice_session(payload: VoiceSessionIn, user: dict = Depends(get_current_user)) -> dict:
     try:
         return await svc.create_realtime_session(user, payload.model_dump(exclude_none=True))
+    except (BusinessAssistantError, svc.ai_gateway.AIGatewayError, ToolError) as exc:
+        if isinstance(exc, ToolError):
+            raise HTTPException(status_code=409, detail=str(exc))
+        _raise(exc)
+
+
+@router.get("/voice/sessions/{voice_session_id}")
+async def voice_session_status(voice_session_id: str, user: dict = Depends(get_current_user)) -> dict:
+    from ..services import assistant_realtime
+    try:
+        return await assistant_realtime.status(user, voice_session_id)
     except BusinessAssistantError as exc:
         _raise(exc)
+    except ToolError:
+        raise HTTPException(status_code=403, detail="Voice access changed; session is ending")
+
+
+async def _control_voice(user: dict, voice_session_id: str, operation: str) -> dict:
+    from ..services import assistant_realtime
+    try:
+        return await assistant_realtime.control(user, voice_session_id, operation)
+    except BusinessAssistantError as exc:
+        _raise(exc)
+    except ToolError:
+        raise HTTPException(status_code=403, detail="Voice access changed; session is ending")
+
+
+@router.post("/voice/sessions/{voice_session_id}/stop")
+async def stop_voice_session(voice_session_id: str, user: dict = Depends(get_current_user)) -> dict:
+    return await _control_voice(user, voice_session_id, "stop")
+
+
+@router.post("/voice/sessions/{voice_session_id}/interrupt")
+async def interrupt_voice_session(voice_session_id: str, user: dict = Depends(get_current_user)) -> dict:
+    return await _control_voice(user, voice_session_id, "interrupt")
 
 
 @router.post("/voice/sessions/{voice_session_id}/usage", status_code=201)

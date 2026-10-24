@@ -1,5 +1,20 @@
 import api from "@/lib/api";
 
+export async function createAssistantConversation(payload) {
+  const { data } = await api.post("/assistant/conversations", payload);
+  return data;
+}
+
+export async function getAssistantPreferences() {
+  const { data } = await api.get("/assistant/preferences");
+  return data;
+}
+
+export async function saveAssistantPreferences(payload) {
+  const { data } = await api.put("/assistant/preferences", payload);
+  return data;
+}
+
 export async function getAssistantCatalog() {
   const { data } = await api.get("/assistant/catalog");
   return data;
@@ -16,7 +31,7 @@ export async function getAssistantConversation(conversationId) {
 }
 
 export async function sendAssistantMessage(payload) {
-  const { data } = await api.post("/assistant/messages", payload);
+  const { data } = await api.post("/assistant/messages", payload, { timeout: 75000 });
   return data;
 }
 
@@ -30,8 +45,13 @@ export async function editAssistantProposal(proposalId, payload) {
   return data;
 }
 
-export async function confirmAssistantProposal(proposalId) {
-  const { data } = await api.post(`/assistant/actions/proposals/${proposalId}/confirm`);
+export async function getAssistantSavedRecord(proposalId) {
+  const { data } = await api.get(`/assistant/actions/proposals/${proposalId}/record`);
+  return data;
+}
+
+export async function confirmAssistantProposal(proposalId, revision) {
+  const { data } = await api.post(`/assistant/actions/proposals/${proposalId}/confirm`, { revision });
   return data;
 }
 
@@ -55,8 +75,18 @@ export async function createVoiceSession(payload) {
   return data;
 }
 
-export async function recordVoiceUsage(voiceSessionId, payload) {
-  const { data } = await api.post(`/assistant/voice/sessions/${voiceSessionId}/usage`, payload);
+export async function getVoiceSession(sessionId) {
+  const { data } = await api.get(`/assistant/voice/sessions/${sessionId}`);
+  return data;
+}
+
+export async function stopVoiceSession(sessionId) {
+  const { data } = await api.post(`/assistant/voice/sessions/${sessionId}/stop`);
+  return data;
+}
+
+export async function interruptVoiceSession(sessionId) {
+  const { data } = await api.post(`/assistant/voice/sessions/${sessionId}/interrupt`);
   return data;
 }
 
@@ -82,6 +112,11 @@ export async function saveAssistantMemory(payload) {
 
 export async function deleteAssistantMemory(memoryId) {
   const { data } = await api.delete(`/assistant/memory/${memoryId}`);
+  return data;
+}
+
+export async function editAssistantMemory(memoryId, payload) {
+  const { data } = await api.patch(`/assistant/memory/${memoryId}`, payload);
   return data;
 }
 

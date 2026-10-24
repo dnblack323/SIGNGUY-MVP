@@ -1,4 +1,11 @@
 .git
+.cache
+**/.cache
+evidence
+backend/tests
+frontend/src/__tests__
+frontend/coverage
+frontend/public/assistant-voice-samples
 .github
 .codex-preview-logs
 .pytest_cache

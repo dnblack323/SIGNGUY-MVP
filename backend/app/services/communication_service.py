@@ -366,12 +366,25 @@ async def archive_thread(*, tenant_id: str, thread_id: str, actor_user_id: str, 
 
 
 async def create_note(*, tenant_id: str, actor_user_id: Optional[str] = None, actor_employee_id: Optional[str] = None,
-                      actor_email: str = "system", payload: dict) -> dict:
+                      actor_email: str = "system", payload: dict, record_id: Optional[str] = None) -> dict:
+    if record_id:
+        existing = await db.internal_notes.find_one({"tenant_id": tenant_id, "id": record_id, "author_user_id": actor_user_id}, {"_id": 0})
+        if existing:
+            return serialize_doc(existing)
     if payload.get("visibility") not in NOTE_VISIBILITIES:
         raise CommunicationError("invalid_note_visibility", "Unsupported note visibility", 400)
     await _validate_links(tenant_id, payload, for_note=True)
     doc = InternalNote(tenant_id=tenant_id, author_user_id=actor_user_id, author_employee_id=actor_employee_id, **payload).model_dump()
-    await db.internal_notes.insert_one(prepare_for_mongo(dict(doc)))
+    if record_id:
+        doc["id"] = record_id
+    try:
+        await db.internal_notes.insert_one(prepare_for_mongo(dict(doc)))
+    except DuplicateKeyError:
+        if record_id:
+            existing = await db.internal_notes.find_one({"tenant_id": tenant_id, "id": record_id, "author_user_id": actor_user_id}, {"_id": 0})
+            if existing:
+                return serialize_doc(existing)
+        raise
     await record_activity_with_audit(
         tenant_id=tenant_id, actor_user_id=actor_user_id or f"employee:{actor_employee_id}", actor_email=actor_email,
         module="team", action="note.created", entity_type="internal_note", entity_id=doc["id"],

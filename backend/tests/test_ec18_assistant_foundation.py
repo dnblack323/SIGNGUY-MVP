@@ -138,29 +138,20 @@ async def test_entitlement_permission_portal_and_tenant_isolation(ctx):
     async with await _client_as(ctx["owner"]) as owner:
         cross = await owner.post(
             "/api/assistant/messages",
-            json={"message": "summarize this customer", "context": {"source_entity_type": "customer", "source_entity_id": ctx["other_customer_id"]}},
+            json={"message": "summarize this customer", "idempotency_key": "cross-context", "context": {"source_entity_type": "customer", "source_entity_id": ctx["other_customer_id"]}},
         )
         assert cross.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_source_linked_bi_answer_and_no_invoice_payment_mutation(ctx):
-    before = {
-        "invoices": await db.invoices.count_documents({"tenant_id": ctx["tenant_id"]}),
-        "payments": await db.payments.count_documents({"tenant_id": ctx["tenant_id"]}),
-    }
+async def test_unconfigured_real_text_fails_closed_without_business_mutation(ctx):
+    before = await db.invoices.find_one({"tenant_id": ctx["tenant_id"]})
     async with await _client_as(ctx["owner"]) as client:
-        response = await client.post("/api/assistant/messages", json={"message": "What is the latest invoice?", "mode": "finance", "idempotency_key": f"ask-{ctx['suffix']}"})
-        assert response.status_code == 201, response.text
-    body = response.json()
-    assert "Latest invoice" in body["answer"]
-    assert body["sources"][0]["source_type"] == "invoice"
-    assert body["sources"][0]["route"].startswith("/invoices/")
-    assert body["credit_display"] == "AI credits apply"
-    assert await db.invoices.count_documents({"tenant_id": ctx["tenant_id"]}) == before["invoices"]
-    assert await db.payments.count_documents({"tenant_id": ctx["tenant_id"]}) == before["payments"]
-    action = await db.ai_action_requests.find_one({"tenant_id": ctx["tenant_id"], "id": body["action_request"]["id"]}, {"_id": 0})
-    assert action["capability_key"] == "assistant.chat"
+        response = await client.post("/api/assistant/messages", json={"message": "What is the latest invoice?", "idempotency_key": f"ask-{ctx['suffix']}"})
+    assert response.status_code == 503, response.text
+    assert await db.invoices.find_one({"tenant_id": ctx["tenant_id"]}) == before
+    assert await db.payments.count_documents({"tenant_id": ctx["tenant_id"]}) == 0
+    assert await db.ai_action_requests.count_documents({"tenant_id": ctx["tenant_id"], "capability_key": "assistant.chat"}) == 0
 
 
 @pytest.mark.asyncio
@@ -184,7 +175,7 @@ async def test_action_proposal_requires_confirm_and_creates_draft_only(ctx):
         blocked = await client.post(f"/api/assistant/actions/proposals/{proposal_id}/execute", headers={"Idempotency-Key": f"exec-{ctx['suffix']}"})
         assert blocked.status_code == 409
 
-        confirmed = await client.post(f"/api/assistant/actions/proposals/{proposal_id}/confirm")
+        confirmed = await client.post(f"/api/assistant/actions/proposals/{proposal_id}/confirm", json={"revision": 1})
         assert confirmed.status_code == 200, confirmed.text
         executed = await client.post(f"/api/assistant/actions/proposals/{proposal_id}/execute", headers={"Idempotency-Key": f"exec-{ctx['suffix']}"})
         assert executed.status_code == 200, executed.text
@@ -211,7 +202,7 @@ async def test_confirmed_safe_canonical_task_and_note_execution(ctx):
             },
         )
         assert task_proposal.status_code == 201, task_proposal.text
-        await client.post(f"/api/assistant/actions/proposals/{task_proposal.json()['id']}/confirm")
+        await client.post(f"/api/assistant/actions/proposals/{task_proposal.json()['id']}/confirm", json={"revision": 1})
         task_executed = await client.post(f"/api/assistant/actions/proposals/{task_proposal.json()['id']}/execute", headers={"Idempotency-Key": f"task-exec-{ctx['suffix']}"})
         assert task_executed.status_code == 200, task_executed.text
 
@@ -227,7 +218,7 @@ async def test_confirmed_safe_canonical_task_and_note_execution(ctx):
             },
         )
         assert note_proposal.status_code == 201, note_proposal.text
-        await client.post(f"/api/assistant/actions/proposals/{note_proposal.json()['id']}/confirm")
+        await client.post(f"/api/assistant/actions/proposals/{note_proposal.json()['id']}/confirm", json={"revision": 1})
         note_executed = await client.post(f"/api/assistant/actions/proposals/{note_proposal.json()['id']}/execute", headers={"Idempotency-Key": f"note-exec-{ctx['suffix']}"})
         assert note_executed.status_code == 200, note_executed.text
 
@@ -249,10 +240,9 @@ async def test_voice_unconfigured_returns_safe_unavailable_without_fake_session(
     async with await _client_as(ctx["owner"]) as client:
         config = await client.get("/api/assistant/voice/config")
         assert config.status_code == 200
-        response = await client.post("/api/assistant/voice/sessions", json={})
-        assert response.status_code == 201, response.text
+        response = await client.post("/api/assistant/voice/sessions", json={"offer_sdp": "v=0\nm=audio 9 UDP/TLS/RTP/SAVPF 111", "idempotency_key": "unconfigured"})
+        assert response.status_code == 503, response.text
     body = response.json()
-    assert body["configured"] is False
-    assert body["status"] == "unavailable"
-    assert "OpenAI Voice is not configured" in body["message"]
+    assert "Voice is not enabled" in body["detail"]
+    assert config.json()["interactions_available"] is False
     assert "api_key" not in str(body).lower()

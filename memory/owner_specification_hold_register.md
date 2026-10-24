@@ -1,5 +1,9 @@
 # SignGuy AI — Owner Specification Hold Register
 
+**Current owner authorization, October 23, 2026:** Stage E implementation/verification is accepted. Stage F final verification, focused security/quality and release readiness are authorized and completed for engineering review in the existing Business Assistant worktree/branch and draft PR #63. See docs/BUSINESS_ASSISTANT_V1_RELEASE_READINESS.md (repository-relative). This supersedes historical E-pending/F-prohibited wording below. Live text/voice compatibility, approved original previews and commercial configuration remain release gates. No paid calls, preview generation, merge, deployment or commercial activation is authorized. Unrelated feature holds remain unchanged.
+
+**Current Business Assistant authorization, October 21, 2026:** Owner explicitly accepted Stage B and authorized Stage C voice selection, prerecorded preview and interface/microphone readiness in the existing worktree. The original C/D split is restored; full Realtime remains D. Paid provider calls, D–F, merge and deployment remain held. H7 commercial activation is not waived.
+
 **Purpose:** Every explicit "do not proceed without owner authorization" hold currently in force, in one place, so no hold is silently forgotten or silently cleared. Created 2026-02 during the SignGuy AI Checkpoint Specification Pack intake.
 
 **Rule:** No checkpoint below begins — no code, no models, no routers, no pages — until its hold is explicitly lifted by the owner. Completing this documentation-only intake and delivering the Intake Report does **not** lift any hold.
@@ -248,7 +252,7 @@ Binding conditions:
 - Material selling rates per square foot / linear foot are editable suggested Starter values, separate from purchase cost, never presented as verified market averages; Cost Plus and Target Margin stay independent; no double-charging of labor already included in a selling rate.
 - Track 1 features preserve MVP backend business logic, tenant isolation, permissions and Order/Work Order terminology, may use approved Price Lab layouts and interaction patterns as references, and must not copy SQLite, Electron or desktop architecture or overwrite working MVP features.
 - Each feature and each stage requires separate owner implementation authorization and its own PR.
-- The rest of UX1, Advanced Onboarding, the remainder of EC21 and EC22, Webstores, Wrap Lab and AI move to post-launch updates. H7 remains active.
+- The rest of UX1, Advanced Onboarding, the remainder of EC21 and EC22, Webstores, Wrap Lab and AI outside required Business Assistant V1 move to post-launch updates. **The Business Assistant deferral is superseded by the 2026-10-21 owner decision below.** H7 remains active.
 
 ## F1 lapsed-access policy - owner decision 2026-10-14
 
@@ -262,4 +266,14 @@ The standard subscription includes released AI Studio tools and the AI Business 
 
 **Supersedes where they conflict (historical specifications preserved for reference):** C3's statement that the paid Business Assistant (EC18) is a separately entitled add-on and EC18's separate commercial terms for it; the Wrap Lab add-on and standalone pricing in the EC13 commercial authority and C1 (Wrap Lab standalone $139/mo); and hold H6, which only governed a standalone Wrap Lab sale that no longer exists. Webstores add-on/standalone pricing is unchanged.
 
-**Register last updated:** 2026-10-14 - AI commercial model recorded; F1 lapsed-access policy recorded; Commercial V1 three-track sequence recorded (owner direction; effective on PR #41 approval). Previous update 2026-07-20: EC19 foundation complete; Advanced Onboarding pending UX1.
+## Business Assistant V1 initial-release requirement — owner decision 2026-10-21
+
+Business Assistant V1 is **REQUIRED for the initial SignGuy MVP release**, including real text and voice over the same shop-data logic, permissions and tools; useful operational answers; bounded conversational history and appropriate memory; reliable explicitly authorized tasks; all five approved personalities; API usage tracking and cost controls. Personality UI polish must not displace core usefulness. This supersedes October 14's post-launch classification for Business Assistant/provider text and voice needed by this feature only. Other features and their unfinished work retain their existing authorization boundaries.
+
+**Owner approval/follow-up, 2026-10-21:** [Stage A](../docs/BUSINESS_ASSISTANT_V1_STAGE_A_REVIEW.md) is APPROVED, including recommended launch scope/architecture and **user-private conversations and memory**. The owner subsequently authorized Stage B implementation and completion with mocked verification. The [Stage B evidence](../docs/BUSINESS_ASSISTANT_V1_STAGE_B_REVIEW.md#stage-b-implementation-and-final-verification) is delivered for owner acceptance. **Not authorized:** C–F, paid AI evaluations, provider activation/provisioning, commercial AI values, production changes, PR publication or merge. No live spending cap has been granted. Review approval is not automatic implementation authorization.
+
+H7 remains active for its final commercial/provider decisions. Resolve an owner-approved pre-launch measured-cost validation path before release; the old paying-shop audit wording cannot silently move a required launch capability back to post-launch, and this assessment does not waive that hold or invent numeric prices, credits or budgets.
+
+**Register last updated:** 2026-10-21 — Business Assistant V1 initial-release requirement, Stage A approval and Stage B implementation authorization and pending owner acceptance recorded. Previous commercial decisions and unrelated holds are preserved.
+
+**Stage B final acceptance authorization, October 21, 2026:** owner approved the intended functionality and authorized unchanged-main comparison, focused dependency/safety verification, Stage A/B commit in the existing Assistant worktree, draft PR and GitHub CI. This supersedes earlier commit/PR publication restrictions for Stage B only. Full owner acceptance remains pending; C implementation, paid provider calls, production activation, merge and deployment remain excluded. Evidence: ../evidence/EC18_STAGE_B_ACCEPTANCE.md.

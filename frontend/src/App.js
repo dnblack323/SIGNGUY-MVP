@@ -1,6 +1,8 @@
 import "@/App.css";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/auth/AuthContext";
+import { AssistantProvider } from "@/components/assistant/AssistantSession";
+import AssistantSettings from "@/components/assistant/AssistantSettings";
 import RequireAuth from "@/auth/RequireAuth";
 import GoogleAuthCallback from "@/auth/GoogleAuthCallback";
 import AppShell from "@/components/app-shell/AppShell";
@@ -232,6 +234,7 @@ function AppRoutes() {
         <Route path="/studio/assets" element={<GeneratedAssetsPage />} />
         <Route path="/studio/activity" element={<AIActivityPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings/assistant" element={<AssistantSettings />} />
         <Route path="/settings/company" element={<CompanySettingsPage />} />
         <Route path="/settings/integrations" element={<IntegrationsPage />} />
         <Route path="/settings/subscriptions" element={<BillingPage />} />
@@ -265,8 +268,10 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <GlobalPlatformBanner />
-        <AppRoutes />
+        <AssistantProvider>
+          <GlobalPlatformBanner />
+          <AppRoutes />
+        </AssistantProvider>
       </BrowserRouter>
       <Toaster richColors position="top-right" />
     </AuthProvider>

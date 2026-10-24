@@ -6,29 +6,28 @@ deterministic BI contracts. AI governance and metering remain owned by EC16.
 from __future__ import annotations
 
 from datetime import timedelta
-import hashlib
+import uuid
 from typing import Any, Optional
 
-import httpx
 from pymongo.errors import DuplicateKeyError
 
+from ..core.assistant_voices import VOICE_KEYS, voice_options, voice_policy
 from ..core.config import get_settings
 from ..core.db import db
 from ..core.permissions import Perm, permissions_for_role
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
 from ..models.ai_gateway import AICapability, AIModelProfile, AIPromptVersion, AIProviderConfig
 from ..models.ai_studio import AIStudioEditableDraft
+from ..models.user import AssistantPreferences
+from . import assistant_context, assistant_personality
 from ..models.business_assistant import (
-    AssistantActionExecution,
     AssistantActionProposal,
     AssistantContextSnapshot,
     AssistantConversation,
     AssistantInsight,
-    AssistantMemoryEntry,
     AssistantMessage,
     AssistantRoutine,
     AssistantSourceCitation,
-    AssistantVoiceSession,
 )
 from . import ai_gateway, communication_service, task_service
 from .activity import record_activity_with_audit
@@ -122,6 +121,34 @@ async def _require_assistant_access(user: dict[str, Any]) -> None:
 
 async def assert_assistant_access(user: dict[str, Any]) -> None:
     await _require_assistant_access(user)
+
+
+async def get_preferences(user: dict) -> dict:
+    await _require_assistant_access(user)
+    row = await db.users.find_one({"tenant_id": user["tenant_id"], "id": user["id"]}, {"_id": 0, "assistant_preferences": 1})
+    saved = (row or {}).get("assistant_preferences") or {}
+    try:
+        preferences = AssistantPreferences.model_validate(saved).model_dump()
+    except ValueError:
+        # Legacy unknown preferences are preserved in storage, not trusted as instructions.
+        preferences = AssistantPreferences().model_dump()
+    return {"preferences": preferences, "options": assistant_personality.options(), "source": "user" if saved else "system",
+            "voices": voice_options(), "effective_voice": preferences.get("voice") if preferences.get("voice") in VOICE_KEYS else "alloy",
+            "voice_policy": voice_policy()}
+
+
+async def update_preferences(user: dict, updates: dict) -> dict:
+    await _require_assistant_access(user)
+    if "voice" in updates and updates["voice"] is not None and updates["voice"] not in VOICE_KEYS:
+        raise BusinessAssistantError("invalid_assistant_voice", "Select an available assistant voice", 422)
+    current = (await get_preferences(user))["preferences"]
+    AssistantPreferences.model_validate({**current, **updates})
+    if updates:
+        result = await db.users.update_one({"tenant_id": user["tenant_id"], "id": user["id"]},
+            {"$set": {f"assistant_preferences.{key}": value for key, value in updates.items()}})
+        if not result.matched_count:
+            raise BusinessAssistantError("user_not_found", "User not found", 404)
+    return await get_preferences(user)
 
 
 async def _audit(user: dict[str, Any], action: str, entity_type: str, entity_id: str, summary: str, metadata: Optional[dict[str, Any]] = None) -> None:
@@ -305,7 +332,7 @@ async def create_conversation(user: dict[str, Any], fields: dict[str, Any]) -> d
 
 async def _conversation(user: dict[str, Any], conversation_id: Optional[str], *, mode: Optional[str] = None) -> dict[str, Any]:
     if conversation_id:
-        doc = await db.assistant_conversations.find_one({"tenant_id": user["tenant_id"], "id": conversation_id, "status": {"$ne": "deleted"}}, {"_id": 0})
+        doc = await db.assistant_conversations.find_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "id": conversation_id, "status": {"$ne": "deleted"}}, {"_id": 0})
         if not doc:
             raise BusinessAssistantError("conversation_not_found", "Assistant conversation not found", 404)
         return serialize_doc(doc)
@@ -323,20 +350,31 @@ async def list_conversations(user: dict[str, Any], *, limit: int = 50) -> dict[s
 
 
 async def get_conversation(user: dict[str, Any], conversation_id: str) -> dict[str, Any]:
+    from .assistant_actions import actor, list_for_conversation
+    user = await actor(user)
     await _require_assistant_access(user)
     convo = await _conversation(user, conversation_id)
     messages = [
         serialize_doc(d)
-        async for d in db.assistant_messages.find({"tenant_id": user["tenant_id"], "conversation_id": conversation_id}, {"_id": 0}).sort("created_at", 1)
+        async for d in db.assistant_messages.find({"tenant_id": user["tenant_id"], "conversation_id": conversation_id}, {"_id": 0}).sort("created_at", -1).limit(100)
     ]
-    return {"conversation": convo, "messages": messages}
+    messages.reverse()
+    for message in messages:
+        if not await assistant_context.visible(user, message):
+            message["content_text"] = "Earlier message hidden because its current access cannot be verified."
+            message["metadata"] = {}
+            message["source_citation_ids"] = []
+            message["parts"] = []
+            message["context_snapshot_id"] = None
+            message["action_proposal_ids"] = []
+    return {"conversation": {k: v for k, v in convo.items() if k != "active_turn"}, "messages": messages[-100:], "proposals": await list_for_conversation(user, conversation_id)}
 
 
 async def _insert_message(user: dict[str, Any], *, conversation_id: str, role: str, content_text: str, mode: str, context_snapshot_id: Optional[str] = None, action_request_id: Optional[str] = None, citation_ids: Optional[list[str]] = None, proposal_ids: Optional[list[str]] = None, voice_session_id: Optional[str] = None, metadata: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     msg = AssistantMessage(
         tenant_id=user["tenant_id"],
         conversation_id=conversation_id,
-        user_id=user["id"] if role == "user" else None,
+        user_id=user["id"],
         role=role,  # type: ignore[arg-type]
         content_text=content_text[:12000],
         mode=mode,  # type: ignore[arg-type]
@@ -409,192 +447,14 @@ async def _create_citation(tenant_id: str, *, conversation_id: str, source_type:
     return serialize_doc(cite)
 
 
-async def _meter_assistant(user: dict[str, Any], *, capability_key: str, conversation_id: str, prompt: str, source_links: Optional[list[dict[str, Any]]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
-    capability = await db.ai_capabilities.find_one({"capability_key": capability_key, "status": "active"}, {"_id": 0})
-    if not capability:
-        raise BusinessAssistantError("assistant_capability_not_bootstrapped", "Platform AI admin must bootstrap EC18 assistant capabilities before execution", 409)
-    prompt_doc = await db.ai_prompt_versions.find_one({"capability_key": capability_key, "status": "published"}, {"_id": 0}, sort=[("published_at", -1)])
-    try:
-        return await ai_gateway.create_gateway_request(
-            user,
-            {
-                "capability_key": capability_key,
-                "prompt_version_id": prompt_doc.get("id") if prompt_doc else None,
-                "session_id": conversation_id,
-                "idempotency_key": idempotency_key,
-                "input_units": max(1, len(prompt) // 4),
-                "output_units": 1,
-                "estimated_cost_micros": 0,
-                "duration_ms": 0,
-                "source_links": source_links or [],
-                "simulate_result": "success",
-            },
-        )
-    except ai_gateway.AIGatewayError as exc:
-        raise BusinessAssistantError(exc.code, exc.detail, exc.status_code)
-
-
 async def ask_assistant(user: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    prompt = str(fields.get("message") or "").strip()
-    if not prompt:
-        raise BusinessAssistantError("message_required", "Message is required", 400)
-    mode = _mode_key(fields.get("mode"))
-    convo = await _conversation(user, fields.get("conversation_id"), mode=mode)
-    context = await _validate_context(user, fields.get("context") or {}, conversation_id=convo["id"], mode=mode)
-    user_msg = await _insert_message(user, conversation_id=convo["id"], role="user", content_text=prompt, mode=mode, context_snapshot_id=context.get("id") if context else None)
-    action = await _meter_assistant(
-        user,
-        capability_key="assistant.chat",
-        conversation_id=convo["id"],
-        prompt=prompt,
-        source_links=(context.get("source_links") if context else []),
-        idempotency_key=fields.get("idempotency_key"),
-    )
-    answer, citations, missing = await _answer_business_question(user, conversation_id=convo["id"], prompt=prompt, mode=mode, context=context)
-    assistant_msg = await _insert_message(
-        user,
-        conversation_id=convo["id"],
-        role="assistant",
-        content_text=answer,
-        mode=mode,
-        context_snapshot_id=context.get("id") if context else None,
-        action_request_id=action["id"],
-        citation_ids=[c["id"] for c in citations],
-        metadata={"missing_data": missing, "credit_display": CREDIT_DISPLAY},
-    )
-    for citation in citations:
-        await db.assistant_source_citations.update_one({"id": citation["id"]}, {"$set": {"message_id": assistant_msg["id"]}})
-    await _audit(user, "assistant.message_answered", "assistant_conversation", convo["id"], "Assistant answered with source-linked context")
-    return {
-        "conversation": await _conversation(user, convo["id"]),
-        "user_message": user_msg,
-        "assistant_message": assistant_msg,
-        "answer": answer,
-        "sources": citations,
-        "missing_data": missing,
-        "action_request": action,
-        "credit_display": CREDIT_DISPLAY,
-    }
+    from .assistant_conversation import ask
+    return await ask(user, fields)
 
 
-async def _answer_business_question(user: dict[str, Any], *, conversation_id: str, prompt: str, mode: str, context: Optional[dict[str, Any]]) -> tuple[str, list[dict[str, Any]], list[str]]:
-    text = prompt.lower()
-    citations: list[dict[str, Any]] = []
-    missing: list[str] = []
-    tenant_id = user["tenant_id"]
-    if "latest invoice" in text or ("last" in text and "invoice" in text):
-        _require_perm(user, Perm.INVOICE_READ.value)
-        invoice = await db.invoices.find_one({"tenant_id": tenant_id}, {"_id": 0}, sort=[("created_at", -1)])
-        if not invoice:
-            return "I could not find any invoices for this tenant.", [], ["invoices"]
-        route = f"/invoices/{invoice['id']}"
-        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="invoice", source_id=invoice["id"], source_label=f"Invoice {invoice.get('number') or invoice['id']}", route=route, source_updated_at=str(invoice.get("updated_at") or invoice.get("created_at"))))
-        total = int(invoice.get("total_cents") or 0)
-        return f"Latest invoice: {invoice.get('number') or invoice['id']} for ${total / 100:.2f}. Status: {invoice.get('financial_status') or invoice.get('document_status') or 'unknown'}.", citations, []
-    if "overdue invoice" in text or "unpaid invoice" in text:
-        _require_perm(user, Perm.INVOICE_READ.value)
-        filt = {"tenant_id": tenant_id, "document_status": {"$ne": "void"}, "financial_status": {"$nin": ["paid", "refunded", "voided"]}}
-        invoices = [d async for d in db.invoices.find(filt, {"_id": 0}).sort("created_at", -1).limit(25)]
-        total = sum(int(inv.get("balance_due_cents", inv.get("total_cents", 0)) or 0) for inv in invoices)
-        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="invoice", source_id="invoice_list", source_label="Invoice list", route="/invoices", calculation={"basis": "open_non_paid_invoices", "count": len(invoices), "amount_cents": total}, missing_data=["due dates"] if invoices else []))
-        return f"I found {len(invoices)} open non-paid invoice(s) totaling about ${total / 100:.2f}. This is invoice-basis and may not equal cash collected.", citations, ["due dates"] if invoices else []
-    if "money this week" in text or "revenue" in text:
-        _require_perm(user, Perm.FINANCE_READ.value)
-        week_start = (utc_now() - timedelta(days=7)).isoformat()
-        invoices = [d async for d in db.invoices.find({"tenant_id": tenant_id, "document_status": "issued", "created_at": {"$gte": week_start}}, {"_id": 0}).limit(200)]
-        total = sum(int(inv.get("total_cents") or 0) for inv in invoices)
-        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="invoice", source_id="invoice_week", source_label="Issued invoices this week", route="/finance", date_range={"start": week_start, "end": _now_iso()}, calculation={"basis": "issued_invoices_created_last_7_days", "count": len(invoices), "amount_cents": total}, missing_data=["payments received", "cost of goods", "labor cost"]))
-        return f"Invoice-basis revenue for issued invoices created in the last 7 days is ${total / 100:.2f} across {len(invoices)} invoice(s). This is an estimate because payment and cost categories are not included.", citations, ["payments received", "cost of goods", "labor cost"]
-    if "what am i doing today" in text or "my day" in text or "today" in text and ("doing" in text or "agenda" in text):
-        _require_perm(user, Perm.TASK_READ.value)
-        today = utc_now().date().isoformat()
-        tasks = [d async for d in db.tasks.find({"tenant_id": tenant_id, "archived_at": None, "due_at": {"$regex": f"^{today}"}, "status": {"$nin": ["completed", "canceled"]}}, {"_id": 0}).sort("due_at", 1).limit(50)]
-        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="task", source_id="today", source_label="Tasks due today", route="/team/tasks", date_range={"date": today}, calculation={"basis": "open_tasks_due_today", "count": len(tasks)}, missing_data=["calendar events not included unless linked to tasks"] if tasks else []))
-        return f"You have {len(tasks)} open task(s) due today. This is based on task due dates and does not invent calendar work that is not in tenant records.", citations, ["calendar events not included unless linked to tasks"] if tasks else []
-    if "vehicle arriving" in text or "vehicle arrival" in text or "car arriving" in text:
-        _require_perm(user, Perm.WRAP_LAB_READ.value)
-        schedules = [d async for d in db.wrap_schedules.find({"tenant_id": tenant_id, "schedule_type": {"$in": ["vehicle_dropoff", "install_scheduled"]}, "status": {"$ne": "canceled"}}, {"_id": 0}).sort("start_at", 1).limit(10)]
-        start = schedules[0].get("start_at") if schedules else None
-        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="wrap_schedule", source_id=schedules[0]["id"] if schedules else "wrap_schedule_list", source_label="Vehicle schedule", route="/wrap-lab", source_updated_at=str(schedules[0].get("updated_at") or schedules[0].get("created_at")) if schedules else None, calculation={"basis": "next_vehicle_dropoff_or_install_schedule", "count": len(schedules)}, missing_data=[] if schedules else ["vehicle schedule"]))
-        if not schedules:
-            return "I could not find a scheduled vehicle arrival in Wrap Lab records.", citations, ["vehicle schedule"]
-        return f"The next vehicle-related schedule starts at {start}. Confirm the Wrap Lab schedule before committing to the customer.", citations, []
-    if "behind schedule" in text or "jobs are behind" in text:
-        _require_perm(user, Perm.TASK_READ.value)
-        today = utc_now().date().isoformat()
-        tasks = [d async for d in db.tasks.find({"tenant_id": tenant_id, "archived_at": None, "due_at": {"$lt": today}, "status": {"$nin": ["completed", "canceled"]}}, {"_id": 0}).sort("due_at", 1).limit(50)]
-        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="task", source_id="overdue_task_list", source_label="Overdue task list", route="/team/tasks", date_range={"before": today}, calculation={"basis": "open_tasks_due_before_today", "count": len(tasks)}, missing_data=["work-order stage due dates"] if tasks else []))
-        return f"I found {len(tasks)} open task(s) due before today. This is the safest behind-schedule signal available from current tenant records.", citations, ["work-order stage due dates"] if tasks else []
-    if "quote follow" in text or (("follow up" in text or "follow-up" in text or "followup" in text) and "quote" in text):
-        _require_perm(user, Perm.QUOTE_READ.value)
-        quotes = [d async for d in db.quotes.find({"tenant_id": tenant_id, "status": {"$nin": ["accepted", "declined", "converted"]}}, {"_id": 0}).sort("updated_at", -1).limit(25)]
-        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="quote", source_id="quote_followup_list", source_label="Quote follow-up list", route="/quotes", calculation={"basis": "open_non_converted_quotes", "count": len(quotes)}, missing_data=["last customer contact"] if quotes else []))
-        return f"I found {len(quotes)} open quote(s) that may need follow-up. Create a bulk email-draft proposal if you want a reviewable draft list; no emails are sent automatically.", citations, ["last customer contact"] if quotes else []
-    if "margin" in text or "profit" in text or "losing money" in text or "apparel" in text:
-        if _has_perm(user, Perm.FINANCE_READ.value):
-            _require_perm(user, Perm.FINANCE_READ.value)
-        elif _has_perm(user, Perm.PRICING_READ.value):
-            _require_perm(user, Perm.PRICING_READ.value)
-        else:
-            _require_perm(user, Perm.FINANCE_READ.value)
-        count = await db.pricing_snapshots.count_documents({"tenant_id": tenant_id})
-        invoices = [d async for d in db.invoices.find({"tenant_id": tenant_id, "document_status": "issued"}, {"_id": 0}).limit(200)]
-        revenue = sum(int(inv.get("total_cents") or 0) for inv in invoices)
-        missing_costs = ["actual labor time", "actual material usage", "overhead allocation", "refunds/discounts"]
-        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="pricing_snapshot", source_id="pricing_snapshot_list", source_label="Pricing snapshots and issued invoices", route="/pricing-foundation", calculation={"basis": "issued_invoice_revenue_and_pricing_snapshot_count", "invoice_count": len(invoices), "pricing_snapshot_count": count, "included_revenue_cents": revenue, "included_direct_cost_cents": None, "confirmed": False}, missing_data=missing_costs))
-        return f"Margin is estimated, not confirmed. Included revenue: ${revenue / 100:.2f} from issued invoices. Included direct costs: none confirmed from actual-cost records in this adapter. Missing/excluded cost categories: actual labor time, actual material usage, overhead allocation, and refunds/discounts. Apparel margin can improve only after comparing quoted assumptions against actual labor/material usage; I will not invent those numbers.", citations, missing_costs
-    if "late job" in text or "production blocker" in text or "blocking production" in text or "what is blocking" in text or "production report" in text:
-        _require_perm(user, Perm.WORK_ORDER_READ.value)
-        work_orders = [d async for d in db.work_orders.find({"tenant_id": tenant_id}, {"_id": 0}).sort("updated_at", -1).limit(25)]
-        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="work_order", source_id="work_order_list", source_label="Work order list", route="/work-orders", calculation={"basis": "recent_work_orders", "count": len(work_orders)}, missing_data=["stage due dates"] if work_orders else []))
-        return f"I found {len(work_orders)} recent work order(s). I can summarize blockers only where production stages or due dates are present; missing stage dates are called out as incomplete data.", citations, ["stage due dates"] if work_orders else []
-    if "worker" in text or "working today" in text or "staff" in text:
-        _require_perm(user, Perm.SCHEDULE_READ.value)
-        today = utc_now().date().isoformat()
-        shifts = [d async for d in db.schedule_shifts.find({"tenant_id": tenant_id, "start_at": {"$regex": f"^{today}"}}, {"_id": 0}).limit(100)]
-        citations.append(await _create_citation(tenant_id, conversation_id=conversation_id, source_type="schedule_shift", source_id="today", source_label="Today's schedule", route="/team/schedule", date_range={"date": today}, calculation={"basis": "schedule_shifts_starting_today", "count": len(shifts)}, missing_data=[]))
-        return f"{len(shifts)} shift(s) are scheduled today based on shop schedule records.", citations, []
-    if context:
-        citations.append(await _create_citation(
-            tenant_id,
-            conversation_id=conversation_id,
-            source_type=context["source_entity_type"],
-            source_id=context["source_entity_id"],
-            source_label=context["payload_summary"].get("label") or context["source_entity_type"],
-            route=context.get("source_route"),
-            source_updated_at=context.get("source_updated_at"),
-            missing_data=[],
-        ))
-        return f"I found the selected {context['source_entity_type'].replace('_', ' ')} and can use it as context. Ask for a specific summary, draft, follow-up, schedule, invoice, or production question.", citations, []
-    return "I can answer shop questions when the answer is supported by tenant records. Try asking about latest invoice, overdue invoices, money this week, workers today, late jobs, quote follow-ups, or production blockers.", [], []
-
-
-async def propose_action(user: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    mode = _mode_key(fields.get("mode"))
-    convo = await _conversation(user, fields.get("conversation_id"), mode=mode)
-    action_type = str(fields.get("action_type") or "").strip()
-    if not action_type:
-        raise BusinessAssistantError("action_type_required", "Action type is required", 400)
-    if action_type not in ACTION_PERMISSIONS:
-        proposal = await _save_proposal(user, convo["id"], mode, fields, status="unsupported", warnings=["Unsupported action. No app data was changed."], required_permissions=[])
-        await _audit(user, "assistant.action_unsupported", "assistant_action_proposal", proposal["id"], "Unsupported assistant action rejected")
-        return proposal
-    required = ACTION_PERMISSIONS[action_type]
-    for perm in required:
-        _require_perm(user, perm)
-    target_refs = fields.get("target_refs") or []
-    source_links = []
-    for ref in target_refs:
-        snap = await _validate_context(user, {"source_entity_type": ref.get("type"), "source_entity_id": ref.get("id")}, conversation_id=convo["id"], mode=mode)
-        if snap:
-            source_links.extend(snap.get("source_links") or [])
-    await _meter_assistant(user, capability_key="assistant.action_parse", conversation_id=convo["id"], prompt=str(fields), source_links=source_links, idempotency_key=fields.get("metering_idempotency_key"))
-    proposal = await _save_proposal(user, convo["id"], mode, fields, status="proposed", warnings=_proposal_warnings(action_type, target_refs), required_permissions=required)
-    await _insert_message(user, conversation_id=convo["id"], role="assistant", content_text=f"Action proposal ready: {proposal['title']}", mode=mode, proposal_ids=[proposal["id"]])
-    await _audit(user, "assistant.action_proposed", "assistant_action_proposal", proposal["id"], "Assistant action proposal created")
-    return proposal
+async def propose_action(user: dict, fields: dict) -> dict:
+    from .assistant_actions import propose
+    return await propose(user, fields)
 
 
 async def _save_proposal(user: dict[str, Any], conversation_id: str, mode: str, fields: dict[str, Any], *, status: str, warnings: list[str], required_permissions: list[str]) -> dict[str, Any]:
@@ -616,15 +476,19 @@ async def _save_proposal(user: dict[str, Any], conversation_id: str, mode: str, 
         editable_payload=fields.get("editable_payload") or preview,
         warnings=warnings,
         idempotency_key=fields.get("idempotency_key"),
-        expires_at=(utc_now() + timedelta(hours=24)).isoformat(),
+        expires_at=fields.get("expires_at") or (utc_now() + timedelta(hours=24)).isoformat(),
+        input_fingerprint=fields.get("input_fingerprint"),
+        permission_signature=fields.get("permission_signature"),
     ).model_dump()
     try:
         await db.assistant_action_proposals.insert_one(prepare_for_mongo(proposal))
     except DuplicateKeyError:
-        existing = await db.assistant_action_proposals.find_one({"tenant_id": user["tenant_id"], "idempotency_key": fields.get("idempotency_key")}, {"_id": 0})
+        existing = await db.assistant_action_proposals.find_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "idempotency_key": fields.get("idempotency_key")}, {"_id": 0})
         if existing:
+            if fields.get("input_fingerprint") and existing.get("input_fingerprint") != fields["input_fingerprint"]:
+                raise BusinessAssistantError("proposal_key_conflict", "This proposal key belongs to different content", 409)
             return serialize_doc(existing)
-        raise
+        raise BusinessAssistantError("proposal_key_conflict", "This proposal request key is already in use", 409)
     return serialize_doc(proposal)
 
 
@@ -729,117 +593,40 @@ def _note_link_payload(ref: dict[str, Any]) -> dict[str, Any]:
     return {field: ref_id} if field and ref_id else {}
 
 
-async def edit_proposal(user: dict[str, Any], proposal_id: str, fields: dict[str, Any]) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    proposal = await _proposal(user, proposal_id)
-    if proposal["status"] not in {"proposed", "edited"}:
-        raise BusinessAssistantError("proposal_not_editable", "Only proposed or edited actions can be changed", 409)
-    updates = {"editable_payload": fields.get("editable_payload") or proposal.get("editable_payload") or {}, "status": "edited", "updated_at": _now_iso()}
-    if fields.get("title"):
-        updates["title"] = str(fields["title"])[:160]
-    if fields.get("summary"):
-        updates["summary"] = str(fields["summary"])[:1000]
-    await db.assistant_action_proposals.update_one({"tenant_id": user["tenant_id"], "id": proposal_id}, {"$set": prepare_for_mongo(updates)})
-    await _audit(user, "assistant.action_edited", "assistant_action_proposal", proposal_id, "Assistant action proposal edited")
-    return await _proposal(user, proposal_id)
+async def edit_proposal(user: dict, proposal_id: str, fields: dict) -> dict:
+    from .assistant_actions import edit
+    return await edit(user, proposal_id, fields)
 
 
-async def confirm_proposal(user: dict[str, Any], proposal_id: str) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    proposal = await _proposal(user, proposal_id)
-    if proposal["status"] not in {"proposed", "edited"}:
-        raise BusinessAssistantError("proposal_not_confirmable", "Only proposed or edited actions can be confirmed", 409)
-    for perm in proposal.get("required_permissions") or []:
-        _require_perm(user, perm)
-    await _check_stale_targets(user, proposal)
-    await db.assistant_action_proposals.update_one(
-        {"tenant_id": user["tenant_id"], "id": proposal_id},
-        {"$set": {"status": "confirmed", "confirmed_by_user_id": user["id"], "confirmed_at": _now_iso(), "updated_at": _now_iso()}},
-    )
-    await _audit(user, "assistant.action_confirmed", "assistant_action_proposal", proposal_id, "Assistant action proposal confirmed")
-    return await _proposal(user, proposal_id)
+async def confirm_proposal(user: dict, proposal_id: str, revision=None) -> dict:
+    from .assistant_actions import confirm
+    return await confirm(user, proposal_id, revision)
 
 
-async def cancel_proposal(user: dict[str, Any], proposal_id: str) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    proposal = await _proposal(user, proposal_id)
-    if proposal["status"] in {"succeeded", "failed", "canceled"}:
-        return proposal
-    await db.assistant_action_proposals.update_one(
-        {"tenant_id": user["tenant_id"], "id": proposal_id},
-        {"$set": {"status": "canceled", "canceled_by_user_id": user["id"], "canceled_at": _now_iso(), "updated_at": _now_iso()}},
-    )
-    await _audit(user, "assistant.action_canceled", "assistant_action_proposal", proposal_id, "Assistant action proposal canceled")
-    return await _proposal(user, proposal_id)
+async def cancel_proposal(user: dict, proposal_id: str) -> dict:
+    from .assistant_actions import cancel
+    return await cancel(user, proposal_id)
 
 
-async def execute_proposal(user: dict[str, Any], proposal_id: str, *, idempotency_key: Optional[str] = None) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    proposal = await _proposal(user, proposal_id)
-    if proposal["status"] != "confirmed":
-        raise BusinessAssistantError("proposal_confirmation_required", "Action must be confirmed before execution", 409)
-    for perm in proposal.get("required_permissions") or []:
-        _require_perm(user, perm)
-    await _check_stale_targets(user, proposal)
-    if idempotency_key:
-        existing = await db.assistant_action_executions.find_one({"tenant_id": user["tenant_id"], "idempotency_key": idempotency_key}, {"_id": 0})
-        if existing:
-            return serialize_doc(existing)
-    await db.assistant_action_proposals.update_one({"tenant_id": user["tenant_id"], "id": proposal_id}, {"$set": {"status": "executing", "updated_at": _now_iso()}})
-    action = await _meter_assistant(user, capability_key=proposal.get("capability_key") or "assistant.action_parse", conversation_id=proposal["conversation_id"], prompt=str(proposal.get("editable_payload") or proposal.get("preview") or {}), idempotency_key=idempotency_key)
-    result = await _execute_safe_canonical_action(user, proposal)
-    execution = AssistantActionExecution(
-        tenant_id=user["tenant_id"],
-        proposal_id=proposal_id,
-        conversation_id=proposal["conversation_id"],
-        user_id=user["id"],
-        status=result["status"],  # type: ignore[arg-type]
-        idempotency_key=idempotency_key,
-        canonical_service=result["canonical_service"],
-        canonical_result=result,
-        action_request_id=action["id"],
-        executed_at=_now_iso(),
-    ).model_dump()
-    await db.assistant_action_executions.insert_one(prepare_for_mongo(execution))
-    await db.assistant_action_proposals.update_one(
-        {"tenant_id": user["tenant_id"], "id": proposal_id},
-        {"$set": {"status": result["status"], "updated_at": _now_iso()}},
-    )
-    await _insert_message(user, conversation_id=proposal["conversation_id"], role="assistant", content_text=result["assistant_summary"], mode=proposal.get("mode", "owner"), action_request_id=action["id"])
-    await _audit(user, f"assistant.action_{result['status']}", "assistant_action_proposal", proposal_id, result["assistant_summary"])
-    return serialize_doc(execution)
+async def execute_proposal(user: dict, proposal_id: str, *, idempotency_key=None) -> dict:
+    from .assistant_actions import execute
+    return await execute(user, proposal_id, idempotency_key)
 
 
 async def _proposal(user: dict[str, Any], proposal_id: str) -> dict[str, Any]:
-    doc = await db.assistant_action_proposals.find_one({"tenant_id": user["tenant_id"], "id": proposal_id}, {"_id": 0})
+    doc = await db.assistant_action_proposals.find_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "id": proposal_id}, {"_id": 0})
     if not doc:
         raise BusinessAssistantError("proposal_not_found", "Assistant action proposal not found", 404)
     return serialize_doc(doc)
-
-
-async def _check_stale_targets(user: dict[str, Any], proposal: dict[str, Any]) -> None:
-    for ref in proposal.get("target_refs") or []:
-        ref_type = ref.get("type")
-        ref_id = ref.get("id")
-        if ref_type not in CONTEXT_TARGETS or not ref_id:
-            continue
-        target = CONTEXT_TARGETS[ref_type]
-        coll = getattr(db, target["collection"])
-        doc = await coll.find_one({"tenant_id": user["tenant_id"], "id": ref_id}, {"_id": 0, "updated_at": 1})
-        if not doc:
-            await db.assistant_action_proposals.update_one({"id": proposal["id"]}, {"$set": {"status": "stale", "stale_reason": "target_missing", "updated_at": _now_iso()}})
-            raise BusinessAssistantError("proposal_stale", "Action target changed or disappeared; reconfirmation is required", 409)
-        previous = ref.get("source_updated_at")
-        if previous and str(doc.get("updated_at")) != str(previous):
-            await db.assistant_action_proposals.update_one({"id": proposal["id"]}, {"$set": {"status": "stale", "stale_reason": "target_updated", "updated_at": _now_iso()}})
-            raise BusinessAssistantError("proposal_stale", "Action target changed; reconfirmation is required", 409)
 
 
 async def _execute_safe_canonical_action(user: dict[str, Any], proposal: dict[str, Any]) -> dict[str, Any]:
     action_type = proposal.get("action_type")
     payload = proposal.get("editable_payload") or {}
     if action_type == "email_draft":
+        draft_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"assistant-draft:{user['tenant_id']}:{proposal['id']}"))
         draft = AIStudioEditableDraft(
+            id=draft_id,
             tenant_id=user["tenant_id"],
             creator_user_id=user["id"],
             tool_key="business_assistant",
@@ -853,8 +640,8 @@ async def _execute_safe_canonical_action(user: dict[str, Any], proposal: dict[st
             content_json={"subject": payload.get("subject") or "", "recipients": payload.get("recipients") or [], "assistant_proposal_id": proposal["id"]},
             warnings=["Draft only. No email was sent."],
         ).model_dump()
-        await db.ai_studio_editable_drafts.insert_one(prepare_for_mongo(draft))
-        return {"status": "succeeded", "canonical_service": "ai_studio_editable_drafts", "draft_id": draft["id"], "sent": False, "assistant_summary": "Email draft created. No email was sent."}
+        await db.ai_studio_editable_drafts.update_one({"tenant_id": user["tenant_id"], "id": draft_id}, {"$setOnInsert": prepare_for_mongo(draft)}, upsert=True)
+        return {"status": "succeeded", "canonical_service": "ai_studio_editable_drafts", "draft_id": draft["id"], "route": f"/studio/generated-assets?draft={draft_id}", "sent": False, "assistant_summary": "Email draft saved. No email was sent."}
     if action_type == "document_draft":
         draft = AIStudioEditableDraft(
             tenant_id=user["tenant_id"],
@@ -903,6 +690,7 @@ async def _execute_safe_canonical_action(user: dict[str, Any], proposal: dict[st
             "task_type": payload.get("task_type") or "assistant_followup",
             "due_at": payload.get("due_at"),
             "visibility": "staff",
+            "assigned_user_id": user["id"],
             "internal_only": True,
             "employee_visible": False,
             "idempotency_key": f"assistant-task:{proposal['id']}",
@@ -940,6 +728,7 @@ async def _execute_safe_canonical_action(user: dict[str, Any], proposal: dict[st
                 actor_user_id=user["id"],
                 actor_email=user.get("email") or "assistant",
                 payload={k: v for k, v in note_payload.items() if v is not None},
+                record_id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"assistant-note:{user['tenant_id']}:{proposal['id']}")),
             )
         except communication_service.CommunicationError as exc:
             raise BusinessAssistantError(exc.code, exc.detail, exc.status_code) from exc
@@ -947,7 +736,7 @@ async def _execute_safe_canonical_action(user: dict[str, Any], proposal: dict[st
             "status": "succeeded",
             "canonical_service": "internal_notes",
             "note_id": note["id"],
-            "route": "/team/notes",
+            "route": f"/team/notes?note={note['id']}",
             "mutated": True,
             "assistant_summary": "Internal note created after confirmation.",
         }
@@ -987,36 +776,27 @@ async def _execute_safe_canonical_action(user: dict[str, Any], proposal: dict[st
 
 
 async def list_memory(user: dict[str, Any]) -> dict[str, Any]:
+    from .assistant_actions import actor
+    user = await actor(user)
     await _require_assistant_access(user)
     cursor = db.assistant_memory_entries.find({"tenant_id": user["tenant_id"], "user_id": user["id"], "status": "active"}, {"_id": 0}).sort("updated_at", -1)
-    items = [serialize_doc(d) async for d in cursor]
+    items = [serialize_doc(d) async for d in cursor if await assistant_context.memory_visible(user, d)]
     return {"items": items, "total": len(items)}
 
 
-async def upsert_memory(user: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    key = str(fields.get("memory_key") or "").strip().lower()
-    content = str(fields.get("content_text") or "").strip()
-    if not key or not content:
-        raise BusinessAssistantError("memory_required", "Memory key and content are required", 400)
-    if "api key" in content.lower() or "password" in content.lower() or "secret" in content.lower():
-        raise BusinessAssistantError("secret_memory_rejected", "Secrets and credentials cannot be saved as assistant memory", 400)
-    existing = await db.assistant_memory_entries.find_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "memory_key": key, "status": "active"}, {"_id": 0})
-    if existing:
-        await db.assistant_memory_entries.update_one({"id": existing["id"]}, {"$set": {"content_text": content, "updated_at": _now_iso()}})
-        return serialize_doc(await db.assistant_memory_entries.find_one({"id": existing["id"]}, {"_id": 0}))
-    doc = AssistantMemoryEntry(tenant_id=user["tenant_id"], user_id=user["id"], memory_key=key, content_text=content).model_dump()
-    await db.assistant_memory_entries.insert_one(prepare_for_mongo(doc))
-    await _audit(user, "assistant.memory_saved", "assistant_memory_entry", doc["id"], "Assistant memory saved")
-    return serialize_doc(doc)
+async def upsert_memory(user: dict, fields: dict) -> dict:
+    from .assistant_memory import save
+    return await save(user, fields)
 
 
 async def delete_memory(user: dict[str, Any], memory_id: str) -> dict[str, Any]:
+    from .assistant_actions import actor
+    user = await actor(user)
     await _require_assistant_access(user)
     doc = await db.assistant_memory_entries.find_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "id": memory_id}, {"_id": 0})
     if not doc:
         raise BusinessAssistantError("memory_not_found", "Assistant memory not found", 404)
-    await db.assistant_memory_entries.update_one({"id": memory_id}, {"$set": {"status": "deleted", "deleted_at": _now_iso(), "updated_at": _now_iso()}})
+    await db.assistant_memory_entries.update_one({"tenant_id": user["tenant_id"], "user_id": user["id"], "id": memory_id}, {"$set": {"status": "deleted", "deleted_at": _now_iso(), "updated_at": _now_iso()}})
     await _audit(user, "assistant.memory_deleted", "assistant_memory_entry", memory_id, "Assistant memory deleted")
     return {"deleted": True, "id": memory_id}
 
@@ -1139,9 +919,14 @@ async def list_insights(user: dict[str, Any], *, generate: bool = False) -> dict
     await _require_assistant_access(user)
     if generate:
         await _generate_proactive_insights(user)
-    cursor = db.assistant_insights.find({"tenant_id": user["tenant_id"], "status": "new"}, {"_id": 0}).sort("created_at", -1).limit(100)
-    items = [serialize_doc(d) async for d in cursor]
+    cursor = db.assistant_insights.find({"tenant_id": user["tenant_id"], "user_id": user["id"], "status": "new"}, {"_id": 0}).sort("created_at", -1).limit(100)
+    items = [serialize_doc(d) async for d in cursor if _insight_visible(user, d)]
     return {"items": items, "total": len(items)}
+
+
+def _insight_visible(user: dict, insight: dict) -> bool:
+    return all(ref.get("source_type") in CONTEXT_TARGETS and _has_perm(user, CONTEXT_TARGETS[ref["source_type"]]["read_perm"])
+               for ref in insight.get("source_citations", []))
 
 
 async def _generate_proactive_insights(user: dict[str, Any]) -> None:
@@ -1150,7 +935,7 @@ async def _generate_proactive_insights(user: dict[str, Any]) -> None:
     count = await db.invoices.count_documents({"tenant_id": user["tenant_id"], "document_status": {"$ne": "void"}, "financial_status": {"$nin": ["paid", "refunded", "voided"]}})
     if count <= 0:
         return
-    dedupe = f"{user['tenant_id']}:open-invoices:{utc_now().date().isoformat()}"
+    dedupe = f"{user['tenant_id']}:{user['id']}:open-invoices:{utc_now().date().isoformat()}"
     existing = await db.assistant_insights.find_one({"tenant_id": user["tenant_id"], "dedupe_key": dedupe, "status": "new"}, {"_id": 0})
     if existing:
         return
@@ -1170,16 +955,26 @@ async def _generate_proactive_insights(user: dict[str, Any]) -> None:
 
 async def dismiss_insight(user: dict[str, Any], insight_id: str) -> dict[str, Any]:
     await _require_assistant_access(user)
-    doc = await db.assistant_insights.find_one({"tenant_id": user["tenant_id"], "id": insight_id}, {"_id": 0})
-    if not doc:
+    filt = {"tenant_id": user["tenant_id"], "user_id": user["id"], "id": insight_id}
+    doc = await db.assistant_insights.find_one(filt, {"_id": 0})
+    if not doc or not _insight_visible(user, doc):
         raise BusinessAssistantError("insight_not_found", "Assistant insight not found", 404)
-    await db.assistant_insights.update_one({"id": insight_id}, {"$set": {"status": "dismissed", "dismissed_by_user_id": user["id"], "dismissed_at": _now_iso(), "updated_at": _now_iso()}})
-    return serialize_doc(await db.assistant_insights.find_one({"id": insight_id}, {"_id": 0}))
+    await db.assistant_insights.update_one(filt, {"$set": {"status": "dismissed", "dismissed_by_user_id": user["id"], "dismissed_at": _now_iso(), "updated_at": _now_iso()}})
+    return serialize_doc(await db.assistant_insights.find_one(filt, {"_id": 0}))
 
 
 def voice_config() -> dict[str, Any]:
+    from . import assistant_realtime
     settings = get_settings()
     return {
+        **voice_policy(),
+        "stage": "realtime",
+        "interactions_available": assistant_realtime.configured(),
+        "max_seconds": settings.assistant_voice_max_seconds,
+        "idle_seconds": settings.assistant_voice_idle_seconds,
+        "max_responses": settings.assistant_voice_max_responses,
+        "message": "Voice is available when an authorized compatible model, credits and server budget are configured. Text remains available.",
+        "voices": voice_options(),
         "provider": "openai",
         "architecture": "realtime_webrtc",
         "enabled": bool(settings.openai_realtime_enabled),
@@ -1193,166 +988,19 @@ def voice_config() -> dict[str, Any]:
     }
 
 
-async def create_realtime_session(user: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]:
+async def create_realtime_session(user: dict, fields: dict) -> dict:
+    from . import assistant_realtime
+    return await assistant_realtime.start(user, fields)
+
+
+
+
+
+
+
+
+
+
+async def record_voice_usage(user: dict, voice_session_id: str, fields: dict) -> dict:
     await _require_assistant_access(user)
-    settings = get_settings()
-    mode = _mode_key(fields.get("mode"))
-    convo = await _conversation(user, fields.get("conversation_id"), mode=mode)
-    config = voice_config()
-    if not config["configured"]:
-        voice_doc = AssistantVoiceSession(
-            tenant_id=user["tenant_id"],
-            user_id=user["id"],
-            conversation_id=convo["id"],
-            status="unavailable",
-            model_key=settings.openai_realtime_model,
-            voice=settings.openai_realtime_voice,
-            unavailable_reason="OpenAI Voice is not configured",
-        ).model_dump()
-        await db.assistant_voice_sessions.insert_one(prepare_for_mongo(voice_doc))
-        return {"configured": False, "status": "unavailable", "message": "OpenAI Voice is not configured", "voice_session": serialize_doc(voice_doc)}
-    await _require_voice_credit_authorized(user)
-    await _voice_rate_limit(user)
-    safety_id = _safety_identifier(user)
-    payload = {
-        "session": {
-            "type": "realtime",
-            "model": settings.openai_realtime_model,
-            "audio": {
-                "output": {"voice": settings.openai_realtime_voice},
-            },
-            "turn_detection": {"type": settings.openai_realtime_turn_detection} if settings.openai_realtime_turn_detection else None,
-            "instructions": "You are SignGuy AI Business Assistant. Use tool calls only to request backend proposals; never claim external actions succeeded without backend confirmation.",
-            "tools": [
-                {
-                    "type": "function",
-                    "name": "propose_assistant_action",
-                    "description": "Create a visible SignGuy Business Assistant action proposal. The user must preview and explicitly confirm before any canonical service execution.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "action_type": {"type": "string", "enum": sorted(ACTION_PERMISSIONS.keys())},
-                            "title": {"type": "string"},
-                            "summary": {"type": "string"},
-                            "body": {"type": "string"},
-                            "route": {"type": "string"},
-                            "target_refs": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {"type": {"type": "string"}, "id": {"type": "string"}, "source_updated_at": {"type": "string"}},
-                                    "required": ["type", "id"],
-                                },
-                            },
-                        },
-                        "required": ["action_type", "title"],
-                    },
-                }
-            ],
-        }
-    }
-    payload["session"] = {k: v for k, v in payload["session"].items() if v is not None}
-    try:
-        secret = await _request_openai_realtime_client_secret(settings=settings, safety_id=safety_id, payload=payload)
-    except httpx.HTTPError as exc:
-        voice_doc = AssistantVoiceSession(
-            tenant_id=user["tenant_id"],
-            user_id=user["id"],
-            conversation_id=convo["id"],
-            status="failed",
-            model_key=settings.openai_realtime_model,
-            voice=settings.openai_realtime_voice,
-            unavailable_reason="OpenAI Realtime session creation failed",
-            metadata={"error_type": exc.__class__.__name__},
-        ).model_dump()
-        await db.assistant_voice_sessions.insert_one(prepare_for_mongo(voice_doc))
-        await _audit(user, "assistant.voice_session_failed", "assistant_voice_session", voice_doc["id"], "OpenAI Realtime session creation failed")
-        raise BusinessAssistantError("voice_session_failed", "OpenAI Realtime session creation failed", 502)
-    provider_session_id = secret.get("id") or secret.get("session", {}).get("id")
-    voice_doc = AssistantVoiceSession(
-        tenant_id=user["tenant_id"],
-        user_id=user["id"],
-        conversation_id=convo["id"],
-        status="created",
-        model_key=settings.openai_realtime_model,
-        voice=settings.openai_realtime_voice,
-        provider_session_id=provider_session_id,
-        metadata={"ephemeral_credential_issued": True, "raw_audio_stored": False},
-    ).model_dump()
-    await db.assistant_voice_sessions.insert_one(prepare_for_mongo(voice_doc))
-    await _audit(user, "assistant.voice_session_created", "assistant_voice_session", voice_doc["id"], "OpenAI Realtime voice session credential created")
-    return {
-        "configured": True,
-        "voice_session": serialize_doc(voice_doc),
-        "realtime": secret,
-        "model": settings.openai_realtime_model,
-        "voice": settings.openai_realtime_voice,
-    }
-
-
-async def _request_openai_realtime_client_secret(*, settings: Any, safety_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    async with httpx.AsyncClient(timeout=settings.openai_realtime_timeout_seconds) as client:
-        response = await client.post(
-            "https://api.openai.com/v1/realtime/client_secrets",
-            headers={
-                "Authorization": f"Bearer {settings.openai_api_key}",
-                "Content-Type": "application/json",
-                "OpenAI-Safety-Identifier": safety_id,
-            },
-            json=payload,
-        )
-        response.raise_for_status()
-        return response.json()
-
-
-def _safety_identifier(user: dict[str, Any]) -> str:
-    raw = f"{user['tenant_id']}:{user['id']}".encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()
-
-
-async def _voice_rate_limit(user: dict[str, Any]) -> None:
-    settings = get_settings()
-    window_start = (utc_now() - timedelta(seconds=settings.openai_realtime_rate_limit_window_seconds)).isoformat()
-    count = await db.assistant_voice_sessions.count_documents({"tenant_id": user["tenant_id"], "user_id": user["id"], "created_at": {"$gte": window_start}})
-    if count >= settings.openai_realtime_rate_limit_sessions:
-        raise BusinessAssistantError("voice_rate_limit", "Too many voice sessions. Try again shortly.", 429)
-
-
-async def _require_voice_credit_authorized(user: dict[str, Any]) -> None:
-    capability = await db.ai_capabilities.find_one({"capability_key": "assistant.voice_reply", "status": "active"}, {"_id": 0})
-    if not capability:
-        raise BusinessAssistantError("assistant_capability_not_bootstrapped", "Platform AI admin must bootstrap EC18 assistant capabilities before voice activation", 409)
-    try:
-        account = await ai_gateway.get_credit_account(user["tenant_id"])
-    except ai_gateway.AIGatewayError as exc:
-        raise BusinessAssistantError(exc.code, exc.detail, exc.status_code)
-    if account.get("status") != "active" or int(account.get("available_credits") or 0) <= 0:
-        raise BusinessAssistantError("insufficient_ai_credits", "Insufficient AI credits", 402)
-
-
-async def record_voice_usage(user: dict[str, Any], voice_session_id: str, fields: dict[str, Any]) -> dict[str, Any]:
-    await _require_assistant_access(user)
-    voice = await db.assistant_voice_sessions.find_one({"tenant_id": user["tenant_id"], "id": voice_session_id}, {"_id": 0})
-    if not voice:
-        raise BusinessAssistantError("voice_session_not_found", "Voice session not found", 404)
-    provider_event_id = fields.get("provider_event_id")
-    if not provider_event_id:
-        raise BusinessAssistantError("provider_event_required", "Provider usage event id is required", 400)
-    action = await _meter_assistant(
-        user,
-        capability_key="assistant.voice_reply",
-        conversation_id=voice.get("conversation_id") or voice_session_id,
-        prompt="voice usage event",
-        idempotency_key=f"voice:{voice_session_id}:{provider_event_id}",
-    )
-    updates = {
-        "input_audio_seconds": int(fields.get("input_audio_seconds") or 0),
-        "output_audio_seconds": int(fields.get("output_audio_seconds") or 0),
-        "usage_event_ids": list(set((voice.get("usage_event_ids") or []) + [action["id"]])),
-        "updated_at": _now_iso(),
-    }
-    await db.assistant_voice_sessions.update_one({"tenant_id": user["tenant_id"], "id": voice_session_id}, {"$set": updates})
-    return {
-        "voice_session": serialize_doc(await db.assistant_voice_sessions.find_one({"tenant_id": user["tenant_id"], "id": voice_session_id}, {"_id": 0})),
-        "action_request": action,
-    }
+    raise BusinessAssistantError("client_voice_usage_rejected", "Voice usage is observed by the backend; browser billing events are not accepted", 403)

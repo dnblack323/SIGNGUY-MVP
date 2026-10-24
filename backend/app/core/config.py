@@ -100,6 +100,21 @@ class Settings:
 
         # AI provider. Only required when AI generation is enabled.
         self.ai_enabled: bool = os.environ.get("AI_ENABLED", "false").lower() == "true"
+        # Assistant-only paid execution is opt-in; never inferred from a configured key.
+        self.assistant_text_enabled = os.environ.get("ASSISTANT_TEXT_ENABLED", "false").lower() == "true"
+        self.assistant_text_model_profile_id = os.environ.get("ASSISTANT_TEXT_MODEL_PROFILE_ID", "")
+        self.assistant_max_history_messages = 20
+        self.assistant_max_context_bytes = 32000
+        self.assistant_max_output_tokens = 1000
+        self.assistant_max_provider_calls = 3
+        self.assistant_provider_timeout_seconds = 20
+        self.assistant_realtime_enabled = os.environ.get("ASSISTANT_REALTIME_ENABLED", "false").lower() == "true"
+        self.assistant_voice_model_profile_id = os.environ.get("ASSISTANT_VOICE_MODEL_PROFILE_ID", "")
+        self.assistant_voice_max_seconds = max(15, min(600, int(os.environ.get("ASSISTANT_VOICE_MAX_SECONDS", "180"))))
+        self.assistant_voice_idle_seconds = max(5, min(120, int(os.environ.get("ASSISTANT_VOICE_IDLE_SECONDS", "45"))))
+        self.assistant_voice_max_responses = max(1, min(30, int(os.environ.get("ASSISTANT_VOICE_MAX_RESPONSES", "12"))))
+        self.assistant_voice_max_output_tokens = max(64, min(1200, int(os.environ.get("ASSISTANT_VOICE_MAX_OUTPUT_TOKENS", "600"))))
+        self.assistant_voice_context_tokens = 4096
         self.google_auth_enabled: bool = os.environ.get("GOOGLE_AUTH_ENABLED", "false").lower() == "true"
         self.google_oauth_client_id: str | None = os.environ.get("GOOGLE_OAUTH_CLIENT_ID") or None
         self.google_oauth_client_secret: str | None = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET") or None

@@ -31,7 +31,7 @@
 |---|---|---|
 | Shared AI Gateway: provider/model router, capability registry, prompt/version registry, context/action services, usage + provider-cost + credit ledgers, generation history, rate limits/budget alerts, entitlement checks | EC16 | H4 |
 | Studio AI Tools consolidation (28+ legacy tools → families), Prompt Library, Generated Assets, AI Activity | EC17 | H4 + **H5/H8 blocking** — owner must complete the Keep/Combine/Change/Rename/Defer/Remove worksheet (with Final Name + Family per tool) before any implementation prompt is issued. AI-tier-pricing question (C3) is **RESOLVED 2026-02** — no separate AI subscription tiers; plan-included credits + existing top-up packs only. |
-| Paid Business Assistant: conversational business intelligence, structured actions with preview/confirm, Realtime Voice (WebRTC, VAD, push-to-talk) | EC18 | H4 |
+| **Business Assistant V1 — REQUIRED for initial MVP release (owner, 2026-10-21):** real text/shared voice tools, bounded private history/memory, confirmed actions, five personalities and usage/cost controls. Stage A launch scope/architecture/privacy APPROVED; [Stage B report](../docs/BUSINESS_ASSISTANT_V1_STAGE_B_REVIEW.md) ready for review. | EC18 / Business Assistant V1 continuation | Stage B review only authorized; implementation B–F not started; H7 remains; no paid evaluations |
 
 ## P2 — Platform/commercial-surround (no product-specific hold beyond H1)
 

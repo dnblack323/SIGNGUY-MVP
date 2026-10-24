@@ -1,9 +1,13 @@
 # SignGuy AI MVP — Commercial V1 Launch Plan
 
+**Current owner authorization, October 23, 2026:** Stage E implementation/verification is accepted. Stage F final verification, focused security/quality and release readiness are authorized and completed for engineering review in the existing Business Assistant worktree/branch and draft PR #63. See docs/BUSINESS_ASSISTANT_V1_RELEASE_READINESS.md (repository-relative). This supersedes historical E-pending/F-prohibited wording below. Live text/voice compatibility, approved original previews and commercial configuration remain release gates. No paid calls, preview generation, merge, deployment or commercial activation is authorized. Unrelated feature holds remain unchanged.
+
+**Current owner decision, October 21, 2026:** Stage B is ACCEPTED for its approved scope. Stage C voice selection, prerecorded preview and microphone/interface readiness is authorized and implemented for review. The original C/D split applies; complete Realtime remains D. This supersedes historical B-pending/C-unstarted or combined-C/D statements below. No paid evaluation, D–F implementation, merge or deployment is authorized. See [Stage C report](../evidence/EC18_STAGE_C_EVIDENCE.md). Unrelated features, including postponed onboarding/Help Center, remain outside this work.
+
 **Prepared:** 2026-10-14 from the completed audits (no new general audit was performed).
-**Revised:** 2026-10-14 (owner priority update) — two tracks. **Track 1** builds independent MVP features now. **Track 2** integrates Price Lab pricing (Engine, Pricing Foundation, all nine calculators) **before launch**, but only after Price Lab's V1 pricing contracts are stable (gate in §E).
+**Revised:** 2026-10-21 — Business Assistant V1 required for initial release; Stage A APPROVED; Stage B implemented with mocks, awaiting owner acceptance. The October 14 tracks and unrelated work are preserved: **Track 1** independent MVP features; **Track 2** pricing integration when its gate opens; **Track 3** launch completion. BA1 is required before launch; C–F remains held.
 **Status:** APPROVED by the owner 2026-10-14 (three-track strategy and order). Each feature and each stage still needs separate owner authorization and its own PR. Business decisions in §B remain open.
-**Current feature:** none. **F1 — Subscription access control is COMPLETE** (owner-approved, merged 2026-10-15 via PR #42, merge commit `31d9df9`). **F2 — Customizable Home dashboard widgets is COMPLETE** (owner-approved, merged 2026-10-15 via PR #43, merge commit `a667f65`). Next: F3 — Shop Schedule UI modernization, awaiting owner authorization.
+**Current authorized feature (owner, 2026-10-21): Business Assistant V1 Stage B implementation, now awaiting owner acceptance.** [Stage A](BUSINESS_ASSISTANT_V1_STAGE_A_REVIEW.md) is APPROVED with recommended launch scope/architecture and user-private conversations/memory. Business Assistant is **REQUIRED for initial release**, including real text, shared tools/context, memory, authorized actions, voice and five personalities. See [Stage B review](BUSINESS_ASSISTANT_V1_STAGE_B_REVIEW.md) and [implementation plan](BUSINESS_ASSISTANT_V1_IMPLEMENTATION_PLAN.md). **Stage B was implemented and tested with mocks; C–F, paid evaluations and merge are not authorized.** Preserve unfinished F3 and other work; unrelated ordering is unchanged. Historical F1/F2 completion (#42/#43) remains; the original checkout's F3/launch-plan WIP is not overwritten.
 
 **Sources used:** `docs/audits/MVP_BASELINE_AUDIT_2026-10-10.md`, `docs/audits/MVP_FEATURE_INVENTORY_2026-10-10.csv` (124 rows, cited below as `#n`), `docs/MVP_CODE_HEALTH_AND_CLEANUP_AUDIT.md` (`CH-n`), `memory/code_issue_register.md` (`CIR-n`), `memory/owner_specification_hold_register.md`, targeted source checks recorded in §B, and Price Lab `origin/main` merge history (read-only).
 
@@ -23,7 +27,7 @@
 | Subscription business | Stripe subscription checkout, billing portal, 48-hour and 7-day trials, setup packages, day-based dunning, platform-fee ledger (EC13 and EC20 closed), platform admin console |
 | Quality gates | GitHub CI runs backend tests, frontend tests and a production build on every branch; 24 of 32 code-issue-register defects fixed and verified; Shop Operations section reviewed and corrected end-to-end |
 
-Also built but **not** V1 material: Webstores, Wrap Lab, Team/payroll, inventory/purchasing, AI Studio/Assistant (local mocks only, no real AI provider).
+Also built but outside the currently approved first-release implementation scope: Webstores, Wrap Lab, Team/payroll, inventory/purchasing and AI Studio. **Business Assistant V1 is required before launch** (owner, 2026-10-21); its current deterministic/local text foundation is not release acceptance, and the provider, shared text/voice tools, cost controls and real workflow evidence must be completed.
 
 ## B. Launch blockers
 
@@ -40,6 +44,7 @@ B1, B2, B4 and B5 were confirmed by direct source checks on 2026-10-14; B9 is ow
 | **B7** | **Open data-integrity defects in V1 workflows:** CIR-025 (customer merge), CIR-028 (Shop Schedule conflicts), CIR-031 (production timers/stage moves). | `memory/code_issue_register.md` |
 | **B8** | **Unfinished modules must not be sold:** Webstores (CIR-026/027), AI (mock only, hold H7), customer-facing public links (CIR-005/030/032). B1 enforcement is the switch. | Audit §3, §8; CIR register |
 | **B9** | **MVP pricing does not match the approved Price Lab pricing.** MVP runs Engine 0.1.0 and an older Pricing Foundation and calculators. Price Lab's Foundation, nine calculators and newer Engine are required before launch. | Owner direction 2026-10-14; `#48`–`#52` |
+| **B10** | **Required Business Assistant V1 is not launch-ready.** Real text conversation, bounded history/memory, correct permitted shop-data tools, safe task/note/draft actions, shared Realtime behavior, five personalities and trustworthy usage/cost enforcement need implementation and acceptance. | Owner direction 2026-10-21; [Stage A review](BUSINESS_ASSISTANT_V1_STAGE_A_REVIEW.md); `#93–#96`; H7 remains a release gate, not permission to defer this feature |
 
 **Owner decisions:**
 
@@ -54,13 +59,13 @@ B1, B2, B4 and B5 were confirmed by direct source checks on 2026-10-14; B9 is ow
 
 ## C. First release scope — "Core V1"
 
-**Included:** signup → trial (per owner trial decision) → Core subscription purchase → company settings → **Price Lab Pricing Foundation** → staff users and roles → customizable Home dashboard → customers → quotes priced with the **Price Lab category calculators** (all nine, full-page and order overlay) → staff-recorded quote approval → quote-to-order → work orders, production board and Shop Schedule → invoices → manual payment recording → billing portal, dunning and suspension → onboarding checklist, Help Center and support email.
+**Included:** signup → trial (per owner trial decision) → Core subscription purchase → company settings → **Price Lab Pricing Foundation** → staff users and roles → customizable Home dashboard → customers → quotes priced with the **Price Lab category calculators** (all nine, full-page and order overlay) → staff-recorded quote approval → quote-to-order → work orders, production board and Shop Schedule → invoices → manual payment recording → billing portal, dunning and suspension → onboarding checklist, Help Center and support email → **Business Assistant V1 with real text and voice, shared permitted shop tools, bounded conversational context/memory, confirmed actions and all five personalities** (owner, 2026-10-21; launch boundary proposed in the Stage A review).
 
 **Commercial rules (owner, 2026-10-14):** Core includes all standard business-management modules, including Wrap Lab, AI Studio and the AI Business Assistant when released; AI usage draws on monthly included credits and optional purchased packs (§E-AI). **Webstores is the only separately purchased feature add-on**: publishing is enforced by the `webstores` entitlement in the backend, and the module is also marked not yet released for V1. Technical entitlement keys may remain for backend authorization, but Core-included features never require a separate purchase. Release availability is separate from commercial entitlement: unreleased features stay unavailable until approved. Online card payment of invoices stays off until Stripe Connect (U2). **Open owner decision:** whether unfinished Core modules (inventory/purchasing, team time clock/payroll/employee portal, decision rooms and proofs, intake forms, customer portal and public approval links) are hidden at V1 launch (release availability, not a tier).
 
 ## D. Development order
 
-One feature at a time, each on its own branch and PR, each started only with owner authorization. All three tracks are **required before the first paid launch**; Track 2 starts only when its gate opens. If Track 1 finishes first, continue with Track 3 items that do not depend on pricing (L3, L4) rather than waiting.
+One feature at a time, each on its own branch and PR, each started only with owner authorization. All three tracks and **BA1 Business Assistant V1** are **required before the first paid launch**; Track 2 starts only when its gate opens. Business Assistant Stage A is APPROVED; Stage B implementation is delivered for owner acceptance, and C–F remains held. Its launch requirement supersedes earlier AI deferral without changing unrelated feature priorities or authorizing live provider/commercial activation. If Track 1 finishes first, separately authorized Track 3 items that do not depend on pricing (L3, L4) may proceed.
 
 **Track 1 — Independent MVP features (now, while Price Lab finishes its categories)**
 
@@ -93,6 +98,7 @@ Preserve MVP backend business logic, tenant isolation, permissions and Order/Wor
 | **L2 Production workflow completion** | Order → work orders → stages, timers → completion; fix CIR-031 | B6, B7; `#42 #43 #45 #46`; CIR-031 | C |
 | **L3 Signup, subscription purchase and email** | Minimal public plan page (approved price only), Terms and Privacy, registration → trial → Stripe test-mode checkout → webhook → entitlements; password reset via SendGrid; invoice card payments confirmed off | B2, B4, B5; `#1 #2 #4 #104` | C |
 | **L4 Secure production deployment** | TLS, real secrets, `ENV=production`, private database, automated database and file backups with tested restore, error monitoring, health checks, staging copy | B3; re-verify `#6` | C |
+| **BA1 Business Assistant V1 — REQUIRED BEFORE LAUNCH** | Complete the canonical assistant with the approved Stage A launch scope/architecture and user-private conversations/memory. Stage A APPROVED; Stage B IMPLEMENTED with mocks, owner acceptance pending; C–F NOT STARTED. Text/voice, safe actions, five personalities and real usage/cost controls remain required. No paid tests without a separate cap. | B10; `#93–#96`; H7; [Stage B review](BUSINESS_ASSISTANT_V1_STAGE_B_REVIEW.md) | C |
 | **L5 Complete workflow verification and commercial launch** | Full critical-path run on staging, platform admin check, truthful plan copy, owner visual review, live Stripe keys, first Founder shops | `#108` | C |
 
 **First feature updates after launch** (owner may reorder)
@@ -109,7 +115,7 @@ Preserve MVP backend business logic, tenant isolation, permissions and Order/Wor
 | U8 Finance reports | Expenses, finance dashboard, tax reports | `#61–#63` |
 | U9 Experience polish | Rest of UX1 (visual system, ribbons/sidebar), Advanced Onboarding, help topic pages, Google sign-in, integrations and security views, community | `#3 #99 #103 #105–#107` |
 
-**Later expansion** (permanent roadmap, not dropped): real AI provider, Studio, Business Assistant and voice after the H7 cost audit (`#92–#96 #102`); pricing advisory (`#53`); live supplier connectors (`#60`); reporting rebuilds and payouts (`#64`); statutory payroll (`#77`); Wrap Lab post-install reports (`#91`); SMS.
+**Later expansion** (permanent roadmap, not dropped): AI Studio and other AI capabilities outside the required Business Assistant V1 (`#92 #102`), subject to their own approvals and H7; pricing advisory (`#53`); live supplier connectors (`#60`); reporting rebuilds and payouts (`#64`); statutory payroll (`#77`); Wrap Lab post-install reports (`#91`); SMS. **Business Assistant, its real text provider integration and voice are initial-release requirements, not later expansion** (owner, 2026-10-21). Proposed later assistant enhancements are separated in the Stage A review and require owner acceptance.
 
 ## E. Price Lab pricing integration (Track 2)
 
@@ -150,11 +156,11 @@ Future Engine changes do not automatically block the MVP migration. MVP and Pric
 
 **MVP components reused (per the audits):** Engine adapter and financial-unit boundary (`pricing_engine_adapter.py`, `core/money.py`, `services/commerce_totals.py`); immutable pricing snapshots and legacy readers (`#52`); quote/order line-item pricing and conversion (`#21`, `#22`, after CH-02/03); saved calculations (`#51`); engine contract fixtures and EC9 quote/order financial integration tests; app shell, navigation, permission gates, design system and `MoneyInput`. Calculator draft/payload logic in `LineItemDialog`, `PricingCalculatorPage` and `CategorySpecificFields` is kept where it matches (CH-04, CH-05, CH-20); old layouts are replaced. `wizardConfigs.js` is replaced by Price Lab Guided Setup where Price Lab covers the category.
 
-**Original SignGuy AI** remains a donor for proofs/markup, portals and AI growth tools in post-launch updates only.
+**Original SignGuy AI** supplies read-only assistant/personality/history/recorded-voice behavior references for required first-release Business Assistant V1. Proofs/markup, portals and broader AI growth tools remain separately scheduled; no wholesale donor import is authorized.
 
 ## E-AI. AI credit model reference (owner direction 2026-10-14)
 
-Reference for the later AI credit integration; **not implemented in F1**. Behavior comes from the original `dnblack323/signguyai` (`backend/services/founders_config.py`, `credit_service.py`, `models/credits.py`, `routes/credits.py`, `frontend/src/components/founders/CreditMeter.js`, `frontend/src/components/credits/`). Reuse MVP's EC16 AI Gateway (credit accounts, reserve/commit/release, credit ledger, provider-cost ledger); do not copy the legacy wallet.
+Reference for AI credit integration; **not implemented in F1**. Required Business Assistant V1 must use and complete the existing EC16 usage/cost/credit/governance boundary before first release; broader AI Studio activation remains separately governed. Behavior comes from the original `dnblack323/signguyai` (`backend/services/founders_config.py`, `credit_service.py`, `models/credits.py`, `routes/credits.py`, `frontend/src/components/founders/CreditMeter.js`, `frontend/src/components/credits/`). Reuse MVP's EC16 AI Gateway (credit accounts, reserve/commit/release, credit ledger, provider-cost ledger); do not copy the legacy wallet. H7's final commercial/provider values remain gated and need an owner-approved pre-launch validation path; no prices or allowances are finalized here.
 
 | Original behavior to preserve | Original implementation | EC16 starting point |
 |---|---|---|

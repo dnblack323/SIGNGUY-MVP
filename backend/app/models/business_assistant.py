@@ -14,7 +14,7 @@ ActionStatus = Literal["proposed", "edited", "confirmed", "canceled", "expired",
 MemoryStatus = Literal["active", "archived", "deleted"]
 RoutineStatus = Literal["active", "paused", "archived"]
 InsightStatus = Literal["new", "dismissed", "archived"]
-VoiceSessionStatus = Literal["created", "connecting", "active", "ended", "failed", "unavailable"]
+VoiceSessionStatus = Literal["created", "connecting", "active", "ended", "failed", "unavailable", "termination_pending", "recovery_required"]
 
 
 class AssistantSourceCitation(BaseDoc):
@@ -101,6 +101,11 @@ class AssistantActionProposal(BaseDoc):
     canceled_by_user_id: Optional[str] = None
     canceled_at: Optional[str] = None
     stale_reason: Optional[str] = None
+    revision: int = 1
+    input_fingerprint: Optional[str] = None
+    permission_signature: Optional[str] = None
+    confirmation_expires_at: Optional[str] = None
+    confirmed_payload_hash: Optional[str] = None
 
 
 class AssistantActionExecution(BaseDoc):

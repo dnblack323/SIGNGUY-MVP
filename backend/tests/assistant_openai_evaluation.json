@@ -1,0 +1,71 @@
+{
+  "spending_authorized": false,
+  "project_name": "SignGuy-MVP-Evaluation",
+  "pricing_checked": "2026-10-23",
+  "pricing_sources": [
+    "https://developers.openai.com/api/docs/models/gpt-6-luna",
+    "https://developers.openai.com/api/docs/models/gpt-realtime-2.1",
+    "https://developers.openai.com/api/docs/models/gpt-transcribe",
+    "https://developers.openai.com/api/docs/pricing"
+  ],
+  "text": {
+    "profile_id": "evaluation-gpt-6-luna",
+    "model": "gpt-6-luna",
+    "reasoning_effort": "none",
+    "max_turns": 2,
+    "max_calls_per_turn": 2,
+    "max_calls_total": 4,
+    "max_context_bytes": 16384,
+    "max_output_tokens": 256,
+    "max_history_messages": 10,
+    "input_usd_per_million_tokens": "0.10",
+    "cached_input_usd_per_million_tokens": "0.01",
+    "cache_write_usd_per_million_tokens": "0.125",
+    "cache_write_12h_usd_per_million_tokens": "0.25",
+    "output_usd_per_million_tokens": "0.50"
+  },
+  "voice": {
+    "profile_id": "evaluation-gpt-realtime-2.1",
+    "model": "gpt-realtime-2.1",
+    "transcription_model": "gpt-transcribe",
+    "voice": "alloy",
+    "max_sessions": 1,
+    "max_seconds": 60,
+    "idle_seconds": 15,
+    "max_utterances": 3,
+    "max_responses": 4,
+    "max_output_tokens": 256,
+    "context_tokens": 2048,
+    "max_instruction_bytes": 16000,
+    "realtime_pricing": {
+      "input_text": "4.00",
+      "input_audio": "32.00",
+      "cached_text": "0.40",
+      "cached_audio": "0.40",
+      "output_text": "24.00",
+      "output_audio": "64.00",
+      "transcription_usd_per_minute": "0.0045"
+    }
+  },
+  "budget": {
+    "project_hard_limit_usd": "5.00",
+    "project_hard_limit_role": "additional safeguard; local admission and request/session caps remain authoritative",
+    "provider_cost_micros": 4500000,
+    "contingency_micros": 500000,
+    "owner_ceiling_micros": 5000000,
+    "included_fixture_credits": 3,
+    "credit_charge_per_text_turn_or_voice_session": 1
+  },
+  "read_tools": ["invoices"],
+  "max_read_tools_per_turn": 1,
+  "preview": {
+    "spending_authorized": false,
+    "ceiling_micros": 1000000,
+    "model": "gpt-realtime-2.1",
+    "voices": ["alloy", "ash", "coral", "echo", "sage", "shimmer"],
+    "max_requests": 6,
+    "max_input_tokens_per_request": 200,
+    "max_output_tokens_per_request": 512,
+    "script": "Hi, I'm your AI assistant at SignGuy. I can help you find shop information, review order status, and plan your next step."
+  }
+}

@@ -1,7 +1,22 @@
 import React from "react";
-import { act, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test-utils";
+import {
+  createVoiceSession,
+  createAssistantConversation,
+  getAssistantConversation,
+  listAssistantConversations,
+  getAssistantPreferences,
+  getAssistantCatalog,
+  getVoiceConfig,
+  listAssistantInsights,
+  listAssistantMemory,
+  listAssistantQuickActions,
+  listAssistantRoutines,
+  sendAssistantMessage,
+} from "@/lib/businessAssistant";
+import BusinessAssistantPage from "@/pages/BusinessAssistantPage";
 
 jest.mock("@/auth/AuthContext", () => ({
   __esModule: true,
@@ -14,11 +29,15 @@ jest.mock("@/auth/AuthContext", () => ({
 jest.mock("@/lib/businessAssistant", () => ({
   __esModule: true,
   getAssistantCatalog: jest.fn(),
+  createAssistantConversation: jest.fn(),
+  getAssistantConversation: jest.fn(),
+  listAssistantConversations: jest.fn(),
+  getAssistantPreferences: jest.fn(),
+  saveAssistantPreferences: jest.fn(),
   getVoiceConfig: jest.fn(),
   sendAssistantMessage: jest.fn(),
   proposeAssistantAction: jest.fn(),
   createVoiceSession: jest.fn(),
-  recordVoiceUsage: jest.fn(),
   listAssistantQuickActions: jest.fn(),
   createStudioDelegation: jest.fn(),
   confirmAssistantProposal: jest.fn(),
@@ -37,18 +56,7 @@ jest.mock("@/lib/businessAssistant", () => ({
   dismissAssistantInsight: jest.fn(),
 }));
 
-import {
-  createVoiceSession,
-  getAssistantCatalog,
-  getVoiceConfig,
-  listAssistantInsights,
-  listAssistantMemory,
-  listAssistantQuickActions,
-  listAssistantRoutines,
-  recordVoiceUsage,
-  sendAssistantMessage,
-} from "@/lib/businessAssistant";
-import BusinessAssistantPage from "@/pages/BusinessAssistantPage";
+
 
 const originalFetch = global.fetch;
 const originalRtcPeerConnection = global.RTCPeerConnection;
@@ -56,6 +64,11 @@ const originalMediaDevices = global.navigator.mediaDevices;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  localStorage.clear();
+  createAssistantConversation.mockResolvedValue({ id: "conv-1", title: "Conversation" });
+  getAssistantConversation.mockResolvedValue({ messages: [] });
+  listAssistantConversations.mockResolvedValue([]);
+  getAssistantPreferences.mockResolvedValue({ preferences: { personality_key: "ops_partner", timezone: "UTC", response_length: "concise" }, options: [] });
   getAssistantCatalog.mockResolvedValue({
     entitlement_feature_key: "business_assistant",
     credit_display: "AI credits apply",
@@ -68,6 +81,7 @@ beforeEach(() => {
     ],
   });
   getVoiceConfig.mockResolvedValue({
+    interactions_available: false,
     provider: "openai",
     configured: false,
     enabled: false,
@@ -113,83 +127,30 @@ test("renders Business Assistant workspace with modes, text chat, sources, and v
   await waitFor(() => expect(listAssistantQuickActions).toHaveBeenCalled());
   expect(screen.getByTestId("assistant-quick-actions")).toHaveTextContent("Latest invoice");
   expect(screen.getAllByText("AI credits apply").length).toBeGreaterThan(0);
-  expect(screen.getByTestId("assistant-voice-unconfigured")).toHaveTextContent("OpenAI Voice is not configured");
+  expect(screen.getByTestId("assistant-voice-readiness")).toBeInTheDocument();
   expect(await screen.findByTestId("assistant-memory")).toHaveTextContent("Use concise updates.");
   expect(await screen.findByDisplayValue("Morning check")).toBeInTheDocument();
   expect(await screen.findByTestId("assistant-insights")).toHaveTextContent("Open invoices");
 
-  await user.type(screen.getByTestId("assistant-message-input"), "What is the latest invoice?");
+  await user.type(screen.getByRole("textbox", { name: "Message Business Assistant" }), "What is the latest invoice?");
   await user.click(screen.getByTestId("assistant-send"));
 
   await waitFor(() => expect(sendAssistantMessage).toHaveBeenCalled());
   expect(screen.getByTestId("assistant-history")).toHaveTextContent("Latest invoice: 1201");
   expect(screen.getByTestId("assistant-sources")).toHaveTextContent("Invoice 1201");
 
-  await user.click(screen.getByTestId("assistant-voice-connect"));
-  await waitFor(() => expect(createVoiceSession).toHaveBeenCalled());
-  expect(screen.getByTestId("assistant-voice-transcript")).toHaveValue("OpenAI Voice is not configured");
-  expect(screen.getByTestId("assistant-push-to-talk")).toBeInTheDocument();
-  expect(screen.getByTestId("assistant-text-fallback")).toBeInTheDocument();
+  expect(createVoiceSession).not.toHaveBeenCalled();
 });
 
-test("connects mocked WebRTC voice with push-to-talk, transcript, and usage metering", async () => {
+test("Stage C exposes local readiness and text while configured paid voice remains disabled", async () => {
   const user = userEvent.setup();
-  const audioTrack = { enabled: true, stop: jest.fn() };
-  const stream = { getAudioTracks: () => [audioTrack], getTracks: () => [audioTrack] };
-  const addTrack = jest.fn();
-  const setLocalDescription = jest.fn();
-  const setRemoteDescription = jest.fn();
-  let dataChannel;
-  global.fetch = jest.fn().mockResolvedValue({ ok: true, text: async () => "answer-sdp" });
-  Object.defineProperty(global.navigator, "mediaDevices", {
-    configurable: true,
-    value: { getUserMedia: jest.fn().mockResolvedValue(stream) },
-  });
-  global.RTCPeerConnection = jest.fn().mockImplementation(() => ({
-    addTrack,
-    createDataChannel: jest.fn(() => {
-      dataChannel = { readyState: "open", send: jest.fn(), close: jest.fn(), onopen: null, onmessage: null };
-      return dataChannel;
-    }),
-    createOffer: jest.fn().mockResolvedValue({ type: "offer", sdp: "offer-sdp" }),
-    setLocalDescription,
-    setRemoteDescription,
-    close: jest.fn(),
-    connectionState: "connected",
-  }));
-  getVoiceConfig.mockResolvedValue({
-    provider: "openai",
-    configured: true,
-    enabled: true,
-    model: "gpt-realtime-2.1",
-    voice: "alloy",
-    push_to_talk_default: true,
-    turn_detection: "server_vad",
-  });
-  createVoiceSession.mockResolvedValue({
-    configured: true,
-    model: "gpt-realtime-2.1",
-    voice_session: { id: "voice-1" },
-    realtime: { value: "eph-test" },
-  });
-
+  getVoiceConfig.mockResolvedValue({ configured: true, interactions_available: false });
   renderWithProviders(<BusinessAssistantPage />, { route: "/studio/assistant" });
-  await screen.findByTestId("assistant-voice");
-  await user.click(screen.getByTestId("assistant-voice-connect"));
-  await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("/v1/realtime/calls"), expect.any(Object)));
-  expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({ audio: true });
-  expect(addTrack).toHaveBeenCalled();
-  expect(audioTrack.enabled).toBe(false);
-
-  dataChannel.onopen();
-  await user.pointer([{ keys: "[MouseLeft>]", target: screen.getByTestId("assistant-push-to-talk") }, { keys: "[/MouseLeft]", target: screen.getByTestId("assistant-push-to-talk") }]);
-  expect(dataChannel.send).toHaveBeenCalledWith(expect.stringContaining("input_audio_buffer.commit"));
-
-  await act(async () => {
-    await dataChannel.onmessage({ data: JSON.stringify({ type: "conversation.item.input_audio_transcription.completed", transcript: "hello" }) });
-    await dataChannel.onmessage({ data: JSON.stringify({ type: "response.audio_transcript.done", transcript: "hi there" }) });
-    await dataChannel.onmessage({ data: JSON.stringify({ type: "response.done", response: { id: "resp-1", usage: { input_token_details: { audio_tokens: 100 }, output_token_details: { audio_tokens: 50 } } } }) });
-  });
-  expect(await screen.findByDisplayValue(/You: hello/)).toBeInTheDocument();
-  await waitFor(() => expect(recordVoiceUsage).toHaveBeenCalledWith("voice-1", expect.objectContaining({ provider_event_id: "resp-1" })));
+  expect(await screen.findByTestId("assistant-voice-readiness")).toBeInTheDocument();
+  expect(screen.queryByTestId("assistant-voice-connect")).not.toBeInTheDocument();
+  expect(createVoiceSession).not.toHaveBeenCalled();
+  await user.type(screen.getByTestId("assistant-message-input"), "What is the latest invoice?");
+  await user.click(screen.getByTestId("assistant-send"));
+  expect(await screen.findByText("Latest invoice: 1201 for $425.00.")).toBeInTheDocument();
+  expect(createVoiceSession).not.toHaveBeenCalled();
 });

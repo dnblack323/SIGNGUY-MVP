@@ -1,8 +1,14 @@
 # SignGuy AI — Documentation Authority Register
 
+**Current owner authorization, October 23, 2026:** Stage E implementation/verification is accepted. Stage F final verification, focused security/quality and release readiness are authorized and completed for engineering review in the existing Business Assistant worktree/branch and draft PR #63. See docs/BUSINESS_ASSISTANT_V1_RELEASE_READINESS.md (repository-relative). This supersedes historical E-pending/F-prohibited wording below. Live text/voice compatibility, approved original previews and commercial configuration remain release gates. No paid calls, preview generation, merge, deployment or commercial activation is authorized. Unrelated feature holds remain unchanged.
+
+**Latest owner decision, October 21, 2026:** Business Assistant Stage B is accepted for its approved scope. Stage C selection/preview/interface readiness is authorized; full Realtime remains Stage D. This overrides earlier B-pending/plan-only or combined-C/D wording below. No paid calls, D–F, merge or deployment. See docs/BUSINESS_ASSISTANT_V1_STAGE_C_REVIEW.md and evidence/EC18_STAGE_C_EVIDENCE.md.
+
 **Purpose:** Single register naming every planning document in the repository and its exact authority ranking, so no two documents wear the same crown. Created 2026-02 during the SignGuy AI Checkpoint Specification Pack intake.
 
 ## Authority order (highest wins on conflict)
+
+**Current owner override, 2026-10-21:** Business Assistant V1 is required for initial MVP release, including text/voice, shared permitted tools/context, appropriate memory, confirmed actions, five personalities and cost controls. Earlier post-launch classifications are superseded. Stage A's recommended launch scope/architecture and user-private conversations/memory are APPROVED. Only preparation of the [Stage B Phase Review Report](../docs/BUSINESS_ASSISTANT_V1_STAGE_B_REVIEW.md) is authorized; product implementation and paid evaluations remain prohibited. See the [launch plan](../docs/MVP_COMMERCIAL_V1_LAUNCH_PLAN.md), [hold register](owner_specification_hold_register.md) and [Stage A approval](../docs/BUSINESS_ASSISTANT_V1_STAGE_A_REVIEW.md). Historical wording does not override these decisions.
 
 1. **Explicit current owner decisions** — this Prompt + subsequent owner ratifications (verbal/chat instructions), always wins.
 2. **`/app/specs_pack/extracted/*.docx`** — the SignGuy AI Checkpoint Specification Pack (Master Index + EC09–EC22). **Authoritative for all remaining work from EC9 onward.** Supersedes the old master plan's EC9–EC14 sections.
@@ -49,4 +55,4 @@
 
 **Implementation note:** these are naming corrections registered for future implementation. No file, route, model, or UI label has been renamed as part of this documentation-only intake (no code was touched). Renaming existing code is deferred to the checkpoint that owns each surface (EC14 for Webstores, EC15 for Wrap Lab), per EC14's own "temporary compatibility naming" allowance.
 
-**Register last updated:** 2026-02 — SignGuy AI Checkpoint Specification Pack intake; contradictions C1/C2/C3 resolved by explicit owner decision (see `owner_specification_hold_register.md`).
+**Register last updated:** 2026-10-21 — Business Assistant V1 launch requirement, Stage A approval and Stage B review-only authorization recorded. Historical authority ordering, checkpoint intake and C1/C2/C3 decisions are retained (see `owner_specification_hold_register.md`).

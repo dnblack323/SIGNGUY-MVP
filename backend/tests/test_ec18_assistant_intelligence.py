@@ -10,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.db import db
 from app.deps import get_current_user
-from app.services import ai_gateway
+from app.services import ai_gateway, assistant_tools
 from app.services.entitlements import _upsert_entitlement_for_tests
 from server import app
 
@@ -124,10 +124,10 @@ async def test_routines_quick_actions_insights_and_studio_delegation_are_non_mut
 @pytest.mark.asyncio
 async def test_quote_followup_bi_and_bulk_email_draft_do_not_send(ctx):
     async with await _client_as(ctx["owner"]) as client:
-        answer = await client.post("/api/assistant/messages", json={"message": "Which quotes need follow-up?", "idempotency_key": f"quote-follow-{ctx['suffix']}"})
-        assert answer.status_code == 201, answer.text
-        assert "open quote" in answer.json()["answer"]
-        assert answer.json()["sources"][0]["source_type"] == "quote"
+        answer = await assistant_tools.execute(ctx["owner"], "quote_followups", {})
+        assert answer["items"][0]["status"] == "sent"
+        assert answer["sources"][0]["source_type"] == "quote"
+        assert "not inferred" in answer["missing_data"][0]
 
         proposed = await client.post(
             "/api/assistant/actions/proposals",
@@ -178,33 +178,9 @@ async def test_shop_specific_questions_are_source_cited_and_do_not_invent_number
         "archived_at": None,
         "created_by_user_id": ctx["owner"]["id"],
     })
-    await db.wrap_schedules.insert_one({
-        "id": f"wrap-schedule-{ctx['suffix']}",
-        "tenant_id": ctx["tenant_id"],
-        "project_id": ctx["wrap_id"],
-        "schedule_type": "vehicle_dropoff",
-        "status": "scheduled",
-        "start_at": "2026-07-20T09:00:00+00:00",
-        "updated_at": "2026-07-19T12:00:00+00:00",
-    })
-
-    async with await _client_as(ctx["owner"]) as client:
-        prompts = [
-            ("What am I doing today?", "task"),
-            ("What time is the vehicle arriving?", "wrap_schedule"),
-            ("Which jobs are behind schedule?", "task"),
-            ("What is blocking production?", "work_order"),
-            ("Where might we be losing money?", "pricing_snapshot"),
-            ("How could apparel margin improve?", "pricing_snapshot"),
-        ]
-        for prompt, expected_source in prompts:
-            response = await client.post("/api/assistant/messages", json={"message": prompt, "idempotency_key": f"{ctx['suffix']}-{prompt}"})
-            assert response.status_code == 201, response.text
-            body = response.json()
-            assert body["sources"], prompt
-            assert body["sources"][0]["source_type"] == expected_source
-            assert body["sources"][0].get("calculation") is not None
-
-    margin = body
-    assert "Included revenue" in margin["answer"]
-    assert "Missing/excluded cost categories" in margin["answer"]
+    result = await assistant_tools.execute(ctx["owner"], "tasks", {"day": "today"})
+    assert [r["title"] for r in result["items"]] == ["Install prep"]
+    assert result["sources"][0]["source_type"] == "task"
+    assert result["sources"][0]["route"] == "/team/tasks"
+    assert "not infer overall totals" in result["notice"]
+    assert "pricing_snapshot" not in {t["name"] for t in assistant_tools.tool_definitions(ctx["owner"])}
