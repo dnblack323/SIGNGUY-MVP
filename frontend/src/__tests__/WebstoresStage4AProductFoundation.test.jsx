@@ -243,9 +243,11 @@ beforeEach(() => {
   previewWebstoreProductAiAction.mockResolvedValue({
     action: "product_description",
     label: "Product description draft",
-    credit_charge_credits: 1,
+    credit_charge_credits: 0,
     available_credits: 8,
-    credit_display: "1 AI credit",
+    credit_display: "Demonstration · 0 customer credits",
+    h7_local_mock: true,
+    can_run: true,
     confirmation_required: true,
     insufficient_credits: false,
     auto_apply: false,
@@ -394,7 +396,7 @@ test("staff previews and confirms Webstore product AI output without applying it
 
   await user.click(screen.getByTestId("webstore-ai-preview-description"));
   expect(await screen.findByTestId("webstore-ai-preview")).toBeInTheDocument();
-  expect(screen.getByTestId("webstore-ai-credit-display")).toHaveTextContent("1 AI credit");
+  expect(screen.getByTestId("webstore-ai-credit-display")).toHaveTextContent("0 customer credits");
   expect(screen.getByText(/8 credits available/)).toBeInTheDocument();
 
   await user.type(screen.getByTestId("webstore-ai-prompt"), "booster club shirt");
@@ -403,7 +405,7 @@ test("staff previews and confirms Webstore product AI output without applying it
   await waitFor(() => {
     expect(runWebstoreProductAiAction).toHaveBeenCalledWith("ws-1", "prod-1", expect.objectContaining({
       action: "product_description",
-      confirmed_credit_charge_credits: 1,
+      confirmed_credit_charge_credits: 0,
       prompt: "booster club shirt",
     }));
   });

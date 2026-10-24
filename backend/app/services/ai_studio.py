@@ -332,16 +332,21 @@ def _active_capability_keys() -> set[str]:
 
 
 def list_catalog() -> dict[str, Any]:
+    demo_allowed = ai_gateway.local_demonstrations_allowed()
     tools = []
     for tool in TOOL_CATALOG:
         cloned = deepcopy(tool)
         cloned["status"] = "active"
         cloned["entitlement_feature_key"] = AI_STUDIO_ENTITLEMENT_FEATURE_KEY
+        for mode in cloned["modes"]:
+            mode["can_run"] = demo_allowed
+            mode["credit_display"] = "Demonstration · 0 customer credits" if demo_allowed else "Unavailable — provider not connected"
+            mode["simulated"] = True
         tools.append(cloned)
     return {
         "families": TOOL_FAMILIES,
         "usage_bands": USAGE_BANDS,
-        "credit_display": CREDIT_DISPLAY,
+        "credit_display": "Demonstration · 0 customer credits" if demo_allowed else "Unavailable — provider not connected",
         "tools": tools,
         "inactive_capability_identifiers": INACTIVE_CAPABILITY_IDENTIFIERS,
     }
@@ -351,10 +356,7 @@ def get_tool(tool_key: str) -> dict[str, Any]:
     tool = _catalog_map().get(tool_key)
     if not tool:
         raise AIStudioError("tool_not_found", "AI Studio tool not found", 404)
-    cloned = deepcopy(tool)
-    cloned["status"] = "active"
-    cloned["entitlement_feature_key"] = AI_STUDIO_ENTITLEMENT_FEATURE_KEY
-    return cloned
+    return next(item for item in list_catalog()["tools"] if item["tool_key"] == tool_key)
 
 
 async def bootstrap_platform_catalog(user: dict[str, Any]) -> dict[str, Any]:
@@ -494,10 +496,17 @@ async def run_tool(user: dict[str, Any], fields: dict[str, Any]) -> dict[str, An
         _require_perm(user, perm)
     await _validate_context_and_permissions(user, fields.get("context") or {}, tool, mode)
 
+    preview = await ai_gateway.preview_gateway_request(user, {"capability_key": mode["capability_key"]}, local_only=True)
+    if not preview["can_run"]:
+        raise AIStudioError("ai_execution_unavailable", preview["unavailable_reason"] or "AI execution is unavailable", 409)
+
     idempotency_key = fields.get("idempotency_key")
     if idempotency_key:
         existing = await _find_existing_result(user["tenant_id"], idempotency_key)
         if existing:
+            prior_action = await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "id": existing.get("action_request_id")}, {"_id": 0})
+            if not prior_action or prior_action["capability_key"] != mode["capability_key"] or prior_action.get("credit_charge_credits", 0):
+                raise AIStudioError("historical_demo_charge", "Existing result cannot be rerun as a free demonstration; historical charges require separate reconciliation", 409)
             return existing
 
     capability = await db.ai_capabilities.find_one({"capability_key": mode["capability_key"], "status": "active"}, {"_id": 0})
@@ -517,7 +526,6 @@ async def run_tool(user: dict[str, Any], fields: dict[str, Any]) -> dict[str, An
             "estimated_cost_micros": 0,
             "duration_ms": 0,
             "source_links": fields.get("source_links") or [],
-            "simulate_result": "success",
         },
     )
     result = _build_local_result(tool, mode, fields)
@@ -525,6 +533,7 @@ async def run_tool(user: dict[str, Any], fields: dict[str, Any]) -> dict[str, An
         saved = await _save_generated_asset(user, tool, mode, fields, result, action, context_packet, prompt, idempotency_key)
     else:
         saved = await _save_editable_draft(user, tool, mode, fields, result, action, context_packet, prompt, idempotency_key)
+    saved["credit_display"] = preview["credit_display"]
     await _audit(user, "ai_studio.tool_run", saved["record_type"], saved["id"], f"AI Studio tool run: {tool['name']} - {mode['name']}")
     return saved
 
@@ -676,6 +685,7 @@ async def _save_generated_asset(user: dict[str, Any], tool: dict[str, Any], mode
         family_key=tool["family_key"],
         capability_key=mode["capability_key"],
         usage_band=mode["usage_band"],
+        credit_display="Demonstration · 0 customer credits",
         title=result["title"],
         asset_type=_asset_type_for(mode),
         content_text=result["content_text"],
@@ -707,6 +717,7 @@ async def _save_editable_draft(user: dict[str, Any], tool: dict[str, Any], mode:
         family_key=tool["family_key"],
         capability_key=mode["capability_key"],
         usage_band=mode["usage_band"],
+        credit_display="Demonstration · 0 customer credits",
         draft_type=_draft_type_for(mode),
         title=result["title"],
         content_text=result["content_text"],

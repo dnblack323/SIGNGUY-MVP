@@ -61,3 +61,10 @@ test("renders AI credit account, ledger, and history", async () => {
   expect(screen.getByTestId("ai-ledger-table")).toBeInTheDocument();
   expect(screen.getByText("pricing.analysis")).toBeInTheDocument();
 });
+
+test("free simulation remains identifiable in the existing usage history", async () => {
+  listAIHistory.mockResolvedValue([{ id: "demo", capability_key: "studio.image.mockup", status: "succeeded",
+    result_summary: "simulated_nonbillable_demonstration", provider_key: "ec17_local_mock", credit_charge_credits: 0 }]);
+  renderWithProviders(<AICreditsPage />);
+  expect(await screen.findByText("Demonstration (simulated)")).toBeInTheDocument();
+});

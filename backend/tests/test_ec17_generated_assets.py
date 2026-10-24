@@ -98,7 +98,7 @@ async def test_image_edit_fill_preserves_original_and_links_ec16_records(ctx):
         assert action["capability_key"] == "studio.image.edit_fill"
         assert action["status"] == "succeeded"
         usage = await db.ai_usage_ledger_entries.find_one({"tenant_id": ctx["tenant_id"], "action_request_id": action["id"]}, {"_id": 0})
-        assert usage and usage["credits_charged"] == 1
+        assert usage and usage["credits_charged"] == 0
         cost = await db.ai_provider_cost_ledger_entries.find_one({"tenant_id": ctx["tenant_id"], "action_request_id": action["id"]}, {"_id": 0})
         assert cost and cost["actual_cost_micros"] == 0
 

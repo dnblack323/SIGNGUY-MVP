@@ -140,7 +140,7 @@ export default function AIStudioPage() {
     <div className="space-y-4" data-testid="ai-studio-page">
       <PageHeader
         title="AI Studio"
-        subtitle="AI credits apply"
+        subtitle={catalog?.credit_display || "Checking AI availability"}
         actions={(
           <>
             <Button asChild size="sm" variant="outline"><Link to="/studio/prompts"><Library className="size-4 mr-2" />Prompts</Link></Button>
@@ -156,7 +156,7 @@ export default function AIStudioPage() {
         <Card className="border-primary/30 bg-primary/5" data-testid="featured-image-generator">
           <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Sparkles className="size-5" />AI Image Generator</CardTitle></CardHeader>
           <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm">
-            <div className="text-muted-foreground">General Text-to-Image and Custom Image Concept modes are ready for local mock generation.</div>
+            <div className="text-muted-foreground">Local demonstrations produce sample text and metadata, not generated images. Real image generation is not connected.</div>
             <Button size="sm" onClick={() => { setSelectedFamily("design_image"); chooseTool("ai_image_generator"); }}>Open</Button>
           </CardContent>
         </Card>
@@ -212,7 +212,8 @@ export default function AIStudioPage() {
                     </Alert>
                   )}
 
-                  <Button onClick={onRun} disabled={loading || !mode} data-testid="ai-run-tool">
+                  {mode?.simulated && <p className="text-sm text-amber-800">{mode.can_run ? "Demonstration only — no provider call; 0 customer credits charged." : "Image/provider execution is not available. Demonstrations cannot run in production."}</p>}
+                  <Button onClick={onRun} disabled={loading || !mode || mode.can_run === false} data-testid="ai-run-tool">
                     <Sparkles className="size-4 mr-2" />{loading ? "Creating..." : "Create Draft"}
                   </Button>
 

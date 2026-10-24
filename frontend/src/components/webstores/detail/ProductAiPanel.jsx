@@ -48,8 +48,9 @@ return (
                         {productAiPreview && (
                           <div className="mt-3 space-y-3" data-testid="webstore-ai-preview">
                             {productAiPreview.h7_local_mock && (
-                              <p className="text-xs text-amber-800">Local demonstration output only; this action does not generate an image. The displayed credit charge still applies if confirmed.</p>
+                              <p className="text-xs text-amber-800">Local demonstration only; no provider call or generated image. Customer credits are not charged.</p>
                             )}
+                            {productAiPreview.unavailable_reason && <p role="alert" className="text-sm text-amber-800">{productAiPreview.unavailable_reason}</p>}
                             <div className="flex flex-wrap items-center gap-2">
                               <Badge variant="outline">{productAiPreview.label}</Badge>
                               <Badge variant={productAiPreview.insufficient_credits ? "destructive" : "secondary"} data-testid="webstore-ai-credit-display">
@@ -70,7 +71,7 @@ return (
                               <Button
                                 type="button"
                                 size="sm"
-                                disabled={runProductAi.isPending || productAiPreview.insufficient_credits}
+                                disabled={runProductAi.isPending || productAiPreview.can_run === false || productAiPreview.insufficient_credits}
                                 onClick={() => runProductAi.mutate()}
                                 data-testid="webstore-ai-run-confirmed"
                               >
