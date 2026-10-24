@@ -579,7 +579,11 @@ async def _execute(
             money = await invoice_reconciliation.read_financials(
                 tenant_id=tenant, invoice=row
             )
-            if money["balance_due_cents"] <= 0 and args.invoice_filter != "latest":
+            if (
+                money["balance_due_cents"] <= 0
+                and args.invoice_filter != "latest"
+                and not args.record_id
+            ):
                 continue
             if len(items) >= 25:
                 complete = False
@@ -588,7 +592,11 @@ async def _execute(
                 {
                     **project(row, "number", "due_date", "total_cents"),
                     **money,
-                    "overdue": due < today if due is not None else None,
+                    "overdue": (
+                        (due < today and money["balance_due_cents"] > 0)
+                        if due is not None
+                        else None
+                    ),
                 }
             )
             refs.append(reference("invoice", row))

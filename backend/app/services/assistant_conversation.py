@@ -292,6 +292,7 @@ async def ask(user: dict, fields: dict) -> dict:
                 "permission_signature": signature,
                 "sources": list(dependencies.values()),
                 "record_references": focus,
+                "page_references": prompt_data["page_reference"],
                 "personality_key": prefs["personality_key"],
                 "personality_version": assistant_personality.VERSION,
                 "missing_data": list(dict.fromkeys(missing)),

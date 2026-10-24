@@ -252,6 +252,20 @@ async def test_invoice_followups_current_money_structured_ids_and_resume(
         ]
         == inv["id"]
     )
+    await db.payments.insert_one(
+        {
+            "id": uuid.uuid4().hex,
+            "tenant_id": ctx["tenant"],
+            "invoice_id": inv["id"],
+            "status": "confirmed",
+            "amount_cents": 10000,
+        }
+    )
+    current = await assistant_tools.execute(
+        ctx["user"], "invoices", {"record_id": "discussed"}, conversation_id=cid
+    )
+    assert current["items"][0]["balance_due_cents"] == 0
+    assert current["items"][0]["overdue"] is False
 
 
 @pytest.mark.asyncio
@@ -577,3 +591,55 @@ def test_explicit_flex_prices_and_service_tier():
     profile["metadata"]["service_tier"] = "flex"
     assert ai_text_pricing.request_options(profile) == {"service_tier": "flex"}
     assert ai_text_pricing.cost(profile, usage(1000, 100, tier="flex"))[0] == 75
+
+
+@pytest.mark.asyncio
+async def test_unchanged_customer_page_preserves_invoice_focus_but_new_page_changes_it(
+    ctx, monkeypatch
+):
+    customer_id, other_id = "customer-" + ctx["tenant"], "other-" + ctx["tenant"]
+    await db.customers.insert_many(
+        [
+            {"id": customer_id, "tenant_id": ctx["tenant"], "name": "First Customer"},
+            {"id": other_id, "tenant_id": ctx["tenant"], "name": "Other Customer"},
+        ]
+    )
+    inv = await invoice(ctx, customer_id=customer_id)
+    script(
+        monkeypatch,
+        ctx,
+        tool("invoices", record_id=inv["id"]),
+        text("Current invoice."),
+    )
+    first = await ask(
+        ctx,
+        "Show this invoice",
+        context={"source_entity_type": "customer", "source_entity_id": customer_id},
+    )
+    cid = first["conversation"]["id"]
+    script(
+        monkeypatch,
+        ctx,
+        tool("invoices", record_id="discussed"),
+        text("Current due date."),
+    )
+    await ask(ctx, "When was that due?", conversation_id=cid)
+    assert (
+        json.loads(ctx["calls"][-2]["input"][-1]["content"])["record_references"][0][
+            "source_id"
+        ]
+        == inv["id"]
+    )
+    script(monkeypatch, ctx, text("Other Customer selected."))
+    await ask(
+        ctx,
+        "Use this Customer now",
+        conversation_id=cid,
+        context={"source_entity_type": "customer", "source_entity_id": other_id},
+    )
+    assert (
+        json.loads(ctx["calls"][-1]["input"][-1]["content"])["record_references"][0][
+            "source_id"
+        ]
+        == other_id
+    )

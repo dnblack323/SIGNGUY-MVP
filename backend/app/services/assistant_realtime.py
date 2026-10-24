@@ -216,6 +216,7 @@ async def start(user: dict, fields: dict) -> dict:
             "permission_signature": assistant_context.permission_signature(user),
             "dependencies": refs,
             "record_references": memory["record_references"],
+            "page_references": memory["page_reference"],
             "state": "connecting",
             "stop_requested": False,
             "client_seen_at": utc_now().isoformat(),

@@ -30,19 +30,27 @@ async def references(user, conversation_id, context=None):
     if not conversation:
         raise assistant_tools.ToolError("Conversation is unavailable")
     selected = (context or {}).get("source_links", [])
-    if not selected:
-        message = await db.assistant_messages.find_one(
-            {
-                "tenant_id": user["tenant_id"],
-                "conversation_id": conversation_id,
-                "role": "assistant",
-                "metadata.interrupted": {"$ne": True},
-            },
-            {"_id": 0},
-            sort=[("created_at", -1), ("id", -1)],
-        )
-        if message and await assistant_context.visible(user, message):
-            metadata = message.get("metadata") or {}
+    message = await db.assistant_messages.find_one(
+        {
+            "tenant_id": user["tenant_id"],
+            "conversation_id": conversation_id,
+            "role": "assistant",
+            "metadata.interrupted": {"$ne": True},
+        },
+        {"_id": 0},
+        sort=[("created_at", -1), ("id", -1)],
+    )
+    if message and await assistant_context.visible(user, message):
+        metadata = message.get("metadata") or {}
+
+        def identities(refs):
+            return {(r.get("source_type"), r.get("source_id")) for r in refs}
+
+        # A persisted page context is background, not a request to forget the
+        # invoice just discussed. A genuinely different page still takes priority.
+        if not selected or identities(selected) == identities(
+            metadata.get("page_references", [])
+        ):
             selected = metadata.get("record_references", metadata.get("sources", []))
     result = []
     seen = set()

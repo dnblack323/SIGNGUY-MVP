@@ -242,6 +242,7 @@ class VoiceRuntime:
                 "permission_signature": self.row["metadata"]["permission_signature"],
                 "sources": list(self.refs.values()),
                 "record_references": self.record_references,
+                "page_references": self.row["metadata"].get("page_references", []),
                 "personality_key": self.prefs["personality_key"],
                 "personality_version": assistant_personality.VERSION,
                 "provider_event_id": event_id,
