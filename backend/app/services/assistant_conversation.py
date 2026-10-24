@@ -16,6 +16,8 @@ from . import (
     assistant_personality,
     assistant_tools,
     openai_assistant_provider,
+    ai_text_pricing,
+    assistant_record_context,
 )
 
 
@@ -117,6 +119,7 @@ async def ask(user: dict, fields: dict) -> dict:
         inputs, refs, prompt_data = await assistant_context.inputs(
             user, convo["id"], settings.assistant_max_history_messages, context
         )
+        focus = prompt_data["record_references"]
         if context:
             await db.assistant_conversations.update_one(
                 {**scope, "id": convo["id"]},
@@ -162,6 +165,7 @@ async def ask(user: dict, fields: dict) -> dict:
                 "store": False,
                 "max_output_tokens": settings.assistant_max_output_tokens,
                 "parallel_tool_calls": False,
+                **ai_text_pricing.request_options(profile),
             }
             # Bytes give a conservative token bound; never silently truncate a tool call/output pair.
             while (
@@ -187,7 +191,11 @@ async def ask(user: dict, fields: dict) -> dict:
                 response.get("output"), list
             ):
                 raise assistant_tools.ToolError("Invalid provider response")
-            await ai_gateway_execution.observe(user, action, response)
+            await ai_gateway_execution.observe(user, action, response, profile=profile)
+            if not action.get("provider_cost_complete", True):
+                raise assistant_tools.ToolError(
+                    "Provider usage cannot be priced; no further dispatch"
+                )
             output = response.get("output") or []
             if any(not isinstance(item, dict) for item in output):
                 raise assistant_tools.ToolError("Invalid provider output")
@@ -217,15 +225,14 @@ async def ask(user: dict, fields: dict) -> dict:
                         "Permissions changed during the turn"
                     )
                 try:
-                    args = json.loads(call.get("arguments") or "{}")
-                    result = await assistant_tools.execute(
+                    result = await assistant_tools.execute_call(
                         current,
-                        call["name"],
-                        args,
+                        call,
                         timezone_name=prefs["timezone"],
                         conversation_id=convo["id"],
                         request_key=f"{action['id']}:{call['call_id']}",
                         mode=mode,
+                        record_references=focus,
                     )
                 except (ValueError, assistant_tools.ToolError):
                     result = {
@@ -235,6 +242,8 @@ async def ask(user: dict, fields: dict) -> dict:
                     if ref not in sources:
                         sources.append(ref)
                     dependencies[(ref["source_type"], ref["source_id"])] = ref
+                if "items" in result:
+                    focus = assistant_record_context.focus(result)
                 if result.get("memory_preview"):
                     memory_preview = result["memory_preview"]
                 if len(dependencies) > 100:
@@ -282,6 +291,7 @@ async def ask(user: dict, fields: dict) -> dict:
             metadata={
                 "permission_signature": signature,
                 "sources": list(dependencies.values()),
+                "record_references": focus,
                 "personality_key": prefs["personality_key"],
                 "personality_version": assistant_personality.VERSION,
                 "missing_data": list(dict.fromkeys(missing)),

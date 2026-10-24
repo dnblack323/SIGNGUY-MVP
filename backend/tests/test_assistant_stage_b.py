@@ -638,7 +638,9 @@ async def test_missing_usage_retains_estimate_and_numeric_lookup(ctx, monkeypatc
     found = await assistant_tools.execute(ctx["user"], "invoices", {"query": "1201"})
     assert found["items"][0]["id"] == inv["id"]
     script(monkeypatch, ctx, text(usage=False))
-    await ask(ctx, key="no-usage")
+    with pytest.raises(svc.BusinessAssistantError):
+        await ask(ctx, key="no-usage")
+    assert len(ctx["calls"]) == 1  # Incomplete accounting stops without another dispatch.
     cost = await db.ai_provider_cost_ledger_entries.find_one(
         {"tenant_id": ctx["tenant"]}
     )

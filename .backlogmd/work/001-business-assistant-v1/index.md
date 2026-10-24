@@ -8,6 +8,14 @@ assignee: codex
 
 <!-- DESCRIPTION -->
 
+Current owner authorization: correct only the first live evaluation's record-continuity and cache-aware cost findings, with safe private diagnostics, mocked verification, commit/push and required CI. The single paid evaluation stopped after its second text turn; no voice was opened. New paid tests, previews, additional stages, SDK migration, merge, deploy and production activation remain prohibited. Historical preparation/authorization wording below is superseded by this focused correction task (009).
+
+Latest dedicated-project follow-up: owner uses SignGuy-MVP-Evaluation. Different installed key preserved, three model metadata GETs passed, dedicated project ID pinned; explicit file-only credential binding and runtime guard checks prevent shared-key/production-default fallback. Task 009 is in review with 12 focused checks and standalone disposable dry-run passed. No new stage or paid authorization. Stop for explicit $5 trial approval; provider hard-limit delays/account charges are disclosed residual risks, not a demand for an impossible absolute invoice guarantee.
+
+October 23 latest owner authorization: task 009 prepares direct OpenAI evaluation configuration only. Text gpt-6-luna, voice gpt-realtime-2.1, compatible transcription, fictional disposable data, current sourced rates and safe local key setup. Stage F engineering is complete; no additional development stage. No paid evaluation/preview, project/key creation, production activation, Webstore work, merge or deployment is authorized.
+
+Task 009 preparation complete for review. Reused the original MVP backend environment's existing direct OpenAI key/current Realtime model/alloy voice in the Assistant worktree's ignored backend/.env, preserving source and DB/auth isolation. Prepared gpt-6-luna/gpt-realtime-2.1/gpt-transcribe evaluation profiles and local-only guard instruments; paid flags remain false. 79 affected regressions plus final 8 preparation checks passed. Instructions/results are in the existing live verification proposal. No provider calls, new account/project/key, commit/push, merge or deployment.
+
 October 23 owner authorization: Stage E accepted; Stage F final verification/security/quality/readiness is in progress in task 008. No feature expansion except genuine release-blocking corrections. No paid calls, previews, merge or deployment. Earlier F-prohibited and E-pending wording is historical.
 
 Current authorization: Stage D engineering/mock verification accepted; Stage E controlled tasks, Customer/Order notes, professional saved drafts and private approved memory improvements are authorized in task 007. Earlier E-prohibited wording is historical. No paid calls, preview generation, Stage F, merge or deploy.

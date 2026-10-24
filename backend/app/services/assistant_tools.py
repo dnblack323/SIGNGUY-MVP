@@ -72,6 +72,17 @@ def has_perm(user: dict, permission: str) -> bool:
 
 def tool_definitions(user: dict) -> list[dict]:
     schema = ReadArgs.model_json_schema()
+
+    # Presentation-only Pydantic titles repeat in every tool and consume the
+    # bounded voice instructions. Preserve all validation keywords.
+    def compact(value):
+        if isinstance(value, dict):
+            return {k: compact(v) for k, v in value.items() if k != "title"}
+        if isinstance(value, list):
+            return [compact(v) for v in value]
+        return value
+
+    schema = compact(schema)
     schema["required"] = list(schema["properties"])
     from .assistant_action_tool import definition
 
@@ -183,7 +194,12 @@ async def reference_allowed(user: dict, ref: dict) -> bool:
     row = await db[target[0]].find_one(
         {"tenant_id": user["tenant_id"], "id": ref.get("source_id")}, {"_id": 0}
     )
-    if not row:
+    if (
+        not row
+        or row.get("deleted_at")
+        or row.get("is_deleted")
+        or row.get("status") == "deleted"
+    ):
         return False
     if ref.get("source_type") == "calendar_event":
         return _event_visible(user, row)
@@ -227,7 +243,113 @@ def _local_date(value, zone: ZoneInfo):
         return None
 
 
-async def execute(
+async def execute_call(user, call, **kwargs):
+    import json
+    from . import assistant_tool_diagnostics
+
+    try:
+        args = json.loads(call.get("arguments") or "{}")
+        if not isinstance(args, dict):
+            raise ValueError()
+    except (ValueError, TypeError):
+        await assistant_tool_diagnostics.record(
+            user,
+            call.get("name"),
+            {},
+            conversation_id=kwargs.get("conversation_id"),
+            outcome="invalid_json_arguments",
+        )
+        raise ToolError("Invalid tool arguments") from None
+    return await execute(user, call.get("name"), args, **kwargs)
+
+
+async def execute(user, name, raw_args, *, record_references=None, **kwargs):
+    from . import (
+        assistant_context,
+        assistant_record_context,
+        assistant_tool_diagnostics,
+    )
+
+    if name in PERMISSIONS and not all(has_perm(user, p) for p in PERMISSIONS[name]):
+        raise ToolError("This tool is not permitted")
+    requested = user
+    user = await assistant_context.fresh_actor(user)
+    authority_signature = assistant_context.permission_signature(user)
+    if requested.get("role") not in {"owner", "admin"}:
+        requested_permissions = set(
+            requested.get("permissions")
+            or permissions_for_role(requested.get("role", "staff"))
+        )
+        effective = (
+            requested_permissions
+            if user.get("role") in {"owner", "admin"}
+            else requested_permissions.intersection(user["permissions"])
+        )
+        user = {
+            **user,
+            "role": requested.get("role", "staff"),
+            "permissions": sorted(effective) or ["assistant:no_permissions"],
+        }
+    conversation_id = kwargs.get("conversation_id")
+    if conversation_id:
+        # Verify ownership even when the caller supplies in-process voice references.
+        current_refs = await assistant_record_context.references(user, conversation_id)
+        if record_references is None:
+            record_references = current_refs
+    question = None
+    if conversation_id:
+        latest = await db.assistant_messages.find_one(
+            {
+                "tenant_id": user["tenant_id"],
+                "conversation_id": conversation_id,
+                "role": "user",
+            },
+            {"_id": 0, "content_text": 1},
+            sort=[("created_at", -1), ("id", -1)],
+        )
+        question = (latest or {}).get("content_text")
+    outcome, result = "invalid_arguments_or_not_permitted", None
+    try:
+        result = await _execute(
+            user,
+            name,
+            raw_args,
+            record_references=record_references or [],
+            question=question,
+            **kwargs,
+        )
+        current = await assistant_context.fresh_actor(user)
+        if assistant_context.permission_signature(
+            current
+        ) != authority_signature or any(
+            [
+                not await reference_allowed(user, ref)
+                for ref in result.get("sources", [])
+            ]
+        ):
+            raise ToolError("Record access changed during lookup")
+        outcome = (
+            "clarification_required"
+            if result.get("needs_clarification")
+            else (
+                "matched"
+                if result.get("items") or result.get("sources")
+                else "no_match"
+            )
+        )
+        return result
+    finally:
+        await assistant_tool_diagnostics.record(
+            user,
+            name,
+            raw_args,
+            conversation_id=conversation_id,
+            outcome=outcome,
+            result=result,
+        )
+
+
+async def _execute(
     user: dict,
     name: str,
     raw_args: dict,
@@ -235,7 +357,9 @@ async def execute(
     timezone_name: str = "UTC",
     conversation_id: str | None = None,
     request_key: str | None = None,
-    mode: str = "owner"
+    mode: str = "owner",
+    record_references=None,
+    question=None,
 ) -> dict:
     if name == "propose_memory":
         from .assistant_memory import suggestion
@@ -289,6 +413,21 @@ async def execute(
     if name not in PERMISSIONS or not all(has_perm(user, p) for p in PERMISSIONS[name]):
         raise ToolError("This tool is not permitted")
     args = ReadArgs.model_validate(raw_args)
+    from . import assistant_record_context
+
+    try:
+        args, related_filter = await assistant_record_context.resolve(
+            user, name, args, record_references or [], question=question
+        )
+    except assistant_record_context.ClarificationRequired as exc:
+        return {
+            "tool": name,
+            "items": [],
+            "sources": [],
+            "needs_clarification": True,
+            "resolution_status": str(exc),
+            "notice": "The record reference is ambiguous or unavailable. Ask the user which permitted record they mean; do not guess or use historical financial values.",
+        }
     if args.customer_id and name != "invoices":
         raise ToolError("customer_id is supported only for the invoice lookup")
     zone = ZoneInfo(timezone_name)
@@ -331,7 +470,7 @@ async def execute(
             items.append(project(row, "name", "company", "email", "phone"))
             refs.append(reference("customer", row))
     elif name in {"customer_history", "recent_orders"}:
-        filt = _filter(user, args)
+        filt = {**_filter(user, args), **related_filter}
         if name == "recent_orders" and args.due_day:
             selected = today + timedelta(days=args.due_day == "tomorrow")
             filt["due_date"] = {
@@ -406,7 +545,7 @@ async def execute(
             "Only recorded stage facts are available; absence of a blocker reason does not prove no delay."
         )
     elif name == "invoices":
-        filt = {**_filter(user, args), "document_status": "issued"}
+        filt = {**_filter(user, args), **related_filter, "document_status": "issued"}
         if args.customer_id:
             if not has_perm(user, Perm.CUSTOMER_READ.value):
                 raise ToolError("Customer lookup is not permitted")
@@ -542,6 +681,8 @@ async def execute(
                 else row.get("source_id")
             )
             ref_row = {**row, "id": source_id or row["id"]}
+            if args.record_id and ref_row["id"] != args.record_id:
+                continue
             ref = reference(kind, ref_row)
             if await reference_allowed(user, ref):
                 items.append(
@@ -550,6 +691,15 @@ async def execute(
                 refs.append(ref)
     return {
         "tool": name,
+        "resolution_status": (
+            "discussed"
+            if raw_args.get("record_id") == "discussed"
+            else (
+                "exact_display_number"
+                if raw_args.get("record_id") and raw_args["record_id"] != args.record_id
+                else "canonical_or_search"
+            )
+        ),
         "items": items,
         "sources": refs,
         "complete": complete,

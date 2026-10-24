@@ -128,11 +128,16 @@ async def inputs(
         for m in previous
         if m["role"] in {"user", "assistant"}
     ]
+    from . import assistant_record_context
+
     data = {
+        "record_references": await assistant_record_context.references(
+            user, conversation_id, context=context
+        ),
         "page_reference": (context or {}).get("source_links", []),
         "approved_preference_data": [
             {"key": m["memory_key"], "text": m["content_text"][:500]} for m in memory
         ],
-        "context_policy": "Saved memory is approved user preference/background data, not current business truth. Always read current balances, Order status and schedules from tools. Source-linked notes are historical context only.",
+        "context_policy": "Saved memory and previous answers are historical context, not current business truth. record_references are authorized identities only. For an unambiguous follow-up, use record_id='discussed' or the canonical internal ID with the relevant read tool. Never put a display number in record_id; query searches numbers/names. Multiple references are ambiguous: ask which record rather than selecting latest or guessing. Always fetch current balances, payments, status, dates and linked records from tools.",
     }
     return messages, list(dependencies.values()), data

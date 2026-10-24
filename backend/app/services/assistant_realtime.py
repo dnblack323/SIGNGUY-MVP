@@ -215,6 +215,7 @@ async def start(user: dict, fields: dict) -> dict:
             "mode": svc._mode_key(fields.get("mode")),
             "permission_signature": assistant_context.permission_signature(user),
             "dependencies": refs,
+            "record_references": memory["record_references"],
             "state": "connecting",
             "stop_requested": False,
             "client_seen_at": utc_now().isoformat(),

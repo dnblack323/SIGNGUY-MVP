@@ -200,6 +200,24 @@ async def begin(
     worst = (
         estimate(profile, max_input * max_calls, max_output * max_calls) + voice_reserve
     )
+    if capability_key == "assistant.chat":
+        from . import ai_text_pricing
+
+        try:
+            worst = (
+                int(
+                    ai_text_pricing.reserve(
+                        profile, max_input, max_output
+                    ).to_integral_value(rounding=ROUND_CEILING)
+                )
+                * max_calls
+            )
+        except ValueError as exc:
+            raise gateway.AIGatewayError(
+                "assistant_rates_missing",
+                "Configure complete sourced text/cache/tier rates before execution",
+                409,
+            ) from exc
     policies = await gateway._active_policies(
         scope["tenant_id"], capability_key, profile_id
     )
@@ -360,6 +378,7 @@ async def observe(
     *,
     estimated_cost_micros: int | None = None,
     usage_detail: dict | None = None,
+    profile: dict | None = None,
 ) -> None:
     usage = response.get("usage") or {}
     if not isinstance(usage, dict):
@@ -375,6 +394,18 @@ async def observe(
         "output_tokens": usage.get("output_tokens") if valid else None,
         "usage_observed": valid,
     }
+    if profile is not None:
+        from . import ai_text_pricing
+
+        try:
+            amount, usage_detail = ai_text_pricing.cost(profile, response)
+            estimated_cost_micros = int(
+                amount.to_integral_value(rounding=ROUND_CEILING)
+            )
+            attempt["estimated_cost_micros_decimal"] = str(amount)
+        except (ValueError, TypeError, ArithmeticError):
+            action["provider_cost_complete"] = False
+            usage_detail = {"provider_usage": usage, "cost_unavailable": True}
     if estimated_cost_micros is not None:
         attempt["estimated_cost_micros"] = estimated_cost_micros
     if usage_detail is not None:
@@ -395,9 +426,31 @@ async def observe(
             "$set": {
                 "provider_attempts": action["provider_attempts"],
                 "provider_usage_complete": action["provider_usage_complete"],
+                "provider_cost_complete": action.get("provider_cost_complete", True),
             }
         },
     )
+    if profile is not None and action.get("provider_cost_complete", True):
+        observed = sum(
+            a.get("estimated_cost_micros", 0) for a in action["provider_attempts"]
+        )
+        cost_row = await db.ai_provider_cost_ledger_entries.find_one(
+            {
+                "tenant_id": user["tenant_id"],
+                "id": action["provider_cost_ledger_entry_id"],
+            },
+            {"_id": 0},
+        )
+        if cost_row and observed > cost_row["estimated_cost_micros"]:
+            await db.ai_provider_cost_ledger_entries.update_one(
+                {"tenant_id": user["tenant_id"], "id": cost_row["id"]},
+                {"$max": {"estimated_cost_micros": observed}},
+            )
+            raise gateway.AIGatewayError(
+                "assistant_reservation_exceeded",
+                "Observed provider usage exceeded its reservation; no further dispatch",
+                502,
+            )
 
 
 async def finish(
@@ -459,14 +512,29 @@ async def finish(
                 else "incomplete_reserved_maximum"
             ),
         }
-        if complete:
+        if complete and action.get("provider_cost_complete", True):
             cost_update["estimated_cost_micros"] = (
-                sum(a["estimated_cost_micros"] for a in action["provider_attempts"])
+                int(
+                    sum(
+                        (
+                            Decimal(
+                                a.get(
+                                    "estimated_cost_micros_decimal",
+                                    str(a["estimated_cost_micros"]),
+                                )
+                            )
+                            for a in action["provider_attempts"]
+                        ),
+                        Decimal(0),
+                    ).to_integral_value(rounding=ROUND_CEILING)
+                )
                 if all(
                     "estimated_cost_micros" in a for a in action["provider_attempts"]
                 )
                 else estimate(profile, incoming, outgoing)
             )
+        elif complete:
+            cost_update["reconciliation_status"] = "unpriced_usage_reserved_maximum"
         elif no_dispatch:
             cost_update.update(
                 estimated_cost_micros=0, reconciliation_status="no_dispatch"

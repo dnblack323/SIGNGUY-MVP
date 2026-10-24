@@ -28,6 +28,7 @@ class VoiceRuntime:
             prefs,
         )
         self.refs = {(r["source_type"], r["source_id"]): r for r in refs}
+        self.record_references = row["metadata"].get("record_references", list(refs))
         self.ws = None
         self.tasks = []
         self.closing = False
@@ -240,6 +241,7 @@ class VoiceRuntime:
             metadata={
                 "permission_signature": self.row["metadata"]["permission_signature"],
                 "sources": list(self.refs.values()),
+                "record_references": self.record_references,
                 "personality_key": self.prefs["personality_key"],
                 "personality_version": assistant_personality.VERSION,
                 "provider_event_id": event_id,
@@ -396,14 +398,14 @@ class VoiceRuntime:
             for call in calls if not interrupted else []:
                 current = await self.check()
                 try:
-                    result = await assistant_tools.execute(
+                    result = await assistant_tools.execute_call(
                         current,
-                        call["name"],
-                        json.loads(call.get("arguments") or "{}"),
+                        call,
                         timezone_name=self.prefs["timezone"],
                         conversation_id=self.row["conversation_id"],
                         request_key=f"{self.action['id']}:{self.latest_input}:{call['call_id']}",
                         mode=self.row["metadata"].get("mode", "owner"),
+                        record_references=self.record_references,
                     )
                 except (ValueError, assistant_tools.ToolError):
                     result = {
@@ -417,6 +419,10 @@ class VoiceRuntime:
                     )
                 for ref in result.get("sources", []):
                     self.refs[(ref["source_type"], ref["source_id"])] = ref
+                if "items" in result:
+                    from .assistant_record_context import focus
+
+                    self.record_references = focus(result)
                 await self.check()
                 if result.get("memory_preview"):
                     await self.persist(
