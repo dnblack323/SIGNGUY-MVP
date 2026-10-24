@@ -1,0 +1,17 @@
+{
+  "fixture": "isolated HTTP provider double; no live AI calls",
+  "generated_actions": 2,
+  "configured_charge_per_action": 7,
+  "starting_credits": 100,
+  "ending_credits": 86,
+  "reserved_credits": 0,
+  "commits": 2,
+  "composition_extra_charge": 0,
+  "original_artwork_unchanged": true,
+  "owner_retained_submitted_image": true,
+  "approval_snapshot_unchanged": true,
+  "private_generation_owner_download_status": 404,
+  "unfinished_description_hidden": true,
+  "owner_image_sha256": "a2f6a25ed12cf06149cb91e7bdc3738a9a68de1a6faaac60d478a0a2d25fe6c3",
+  "product_revision": 3
+}

@@ -22,7 +22,7 @@ export default function ProductMockupPreparation({ model }) {
   const [uploaded, setUploaded] = useState([]);
   const [error, setError] = useState("");
   const files = [...new Map([...setupFileItems, ...uploaded].map((file) => [file.id, file])).values()];
-  const images = files.filter((file) => file.safe_preview_available && file.inline_preview_allowed && !file.private_download_only && ["png", "jpg", "jpeg", "webp", "svg"].includes(file.extension));
+  const images = files.filter((file) => !file.ai_presentation && file.safe_preview_available && file.inline_preview_allowed && !file.private_download_only && ["png", "jpg", "jpeg", "webp", "svg"].includes(file.extension));
   const staffToken = localStorage.getItem("signguy.token");
   const fail = (err) => { const message = extractError(err); setError(message); toast.error(message); };
   const upload = useMutation({
@@ -86,7 +86,7 @@ export default function ProductMockupPreparation({ model }) {
           <Label className="grid gap-1.5">Upload customer artwork
             <Input type="file" data-testid="webstore-artwork-upload" disabled={upload.isPending} onChange={(e) => { if (e.target.files?.[0]) upload.mutate({ file: e.target.files[0], kind: "artwork" }); }} />
           </Label>
-          {picker("Or select an existing artwork file", "webstore-artwork-file", artFile, setArtFile, files)}
+          {picker("Or select an existing artwork file", "webstore-artwork-file", artFile, setArtFile, files.filter((file) => !file.ai_presentation))}
           <Button variant="outline" disabled={!artFile || attachArtwork.isPending || upload.isPending} onClick={() => attachArtwork.mutate()}>Attach artwork to draft</Button>
           {picker("Or associate registered artwork", "webstore-product-artwork-associations", "", (value) => { if (value) addAssociation("artwork_associations", "artwork_id", value); }, artworkOptions.data || [])}
           {(productDraft.artwork_associations || []).map((item) => <div key={item.artwork_id} className="flex items-center justify-between gap-2 text-xs">

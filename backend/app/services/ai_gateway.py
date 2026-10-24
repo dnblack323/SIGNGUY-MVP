@@ -1,12 +1,15 @@
 """EC16 shared AI gateway service.
 
-This module implements local metering, ledger, governance, and provider-boundary
-contracts only. It never calls an external AI provider.
+Owns metering, ledger, governance and trusted server adapter dispatch. Provider
+transports cannot reserve or settle customer credits.
 """
 from __future__ import annotations
 
 from datetime import timezone
+from dataclasses import dataclass
+import asyncio
 import re
+from uuid import uuid4
 from typing import Any, Optional
 
 from pymongo import ReturnDocument
@@ -40,6 +43,20 @@ class AIGatewayError(Exception):
         self.detail = detail
         self.status_code = status_code
         super().__init__(detail)
+
+
+@dataclass(frozen=True)
+class ProviderExecution:
+    """Server-owned adapter; never accepted from an API body. EC16 settles credits."""
+    scope: str
+    fingerprint: str
+    estimated_cost_micros: int
+    execute: Any
+
+
+def _public_action(doc: dict) -> dict:
+    # Extra execution receipts can contain private asset IDs and prompts.
+    return serialize_doc(AIActionRequest.model_validate(doc).model_dump())
 
 
 KEY_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
@@ -639,6 +656,8 @@ async def _enforce_governance(tenant_id: str, capability_key: str, model_profile
                 {"_id": 0, "amount_credits": 1},
             ):
                 used += abs(int(row.get("amount_credits") or 0))
+            async for row in db.ai_action_requests.find({"tenant_id": tenant_id, "status": {"$in": ["received", "reserved", "executing"]}, "created_at": {"$gte": day_start}}, {"credit_charge_credits": 1}):
+                used += int(row.get("credit_charge_credits") or 0)
             if used + requested_credits > max_credits:
                 await _open_alert(tenant_id, "spend_cap", "AI request blocked by daily credit limit", observed=used + requested_credits, threshold=max_credits, capability_key=capability_key)
                 raise AIGatewayError("ai_credit_limit_exceeded", "AI daily credit limit exceeded", 429)
@@ -646,7 +665,7 @@ async def _enforce_governance(tenant_id: str, capability_key: str, model_profile
         if max_cost is not None:
             pipeline = [
                 {"$match": {"tenant_id": tenant_id, "created_at": {"$gte": day_start}}},
-                {"$group": {"_id": None, "cost": {"$sum": "$actual_cost_micros"}}},
+                {"$group": {"_id": None, "cost": {"$sum": {"$ifNull": ["$actual_cost_micros", "$estimated_cost_micros"]}}}},
             ]
             used_cost = 0
             async for row in db.ai_provider_cost_ledger_entries.aggregate(pipeline):
@@ -669,7 +688,7 @@ def local_demonstrations_allowed() -> bool:
     return get_settings().env in {"development", "test"}
 
 
-async def _execution_context(user: dict, fields: dict[str, Any], *, local_only: bool = False) -> dict:
+async def _execution_context(user: dict, fields: dict[str, Any], *, local_only: bool = False, execution: Optional[ProviderExecution] = None) -> dict:
     if not (_has_staff_perm(user, "ai_tool:use") or _has_staff_perm(user, "ai_assistant:use")):
         raise AIGatewayError("ai_use_permission_required", "AI tool or assistant permission is required", 403)
     capability_key = _clean_key(fields.get("capability_key"), "capability_key")
@@ -691,6 +710,8 @@ async def _execution_context(user: dict, fields: dict[str, Any], *, local_only: 
                  or any(m.get("ec17_local_mock") or m.get("ec18_local_contract")
                         or m.get("execution_mode") in {"local", "mock", "demo", "simulated"} for m in metadata))
     executor = None if simulated or local_only else _provider_executor_for(provider, model_profile)
+    if execution and not simulated and not local_only:
+        executor = execution.execute
     available = local_demonstrations_allowed() if simulated else executor is not None
     reason = None if available else ("Local demonstrations are unavailable in production." if simulated
                                     else "AI provider execution is not connected for this capability.")
@@ -701,8 +722,8 @@ async def _execution_context(user: dict, fields: dict[str, Any], *, local_only: 
             "credit_charge_credits": 0 if simulated else configured_charge}
 
 
-async def preview_gateway_request(user: dict, fields: dict[str, Any], *, local_only: bool = False) -> dict:
-    context = await _execution_context(user, fields, local_only=local_only)
+async def preview_gateway_request(user: dict, fields: dict[str, Any], *, local_only: bool = False, execution: Optional[ProviderExecution] = None) -> dict:
+    context = await _execution_context(user, fields, local_only=local_only, execution=execution)
     account = await get_credit_account(user["tenant_id"])
     charge = context["credit_charge_credits"]
     insufficient = account["available_credits"] < charge
@@ -713,8 +734,48 @@ async def preview_gateway_request(user: dict, fields: dict[str, Any], *, local_o
     }
 
 
-async def create_gateway_request(user: dict, fields: dict[str, Any]) -> dict[str, Any]:
-    context = await _execution_context(user, fields)
+async def create_gateway_request(user: dict, fields: dict[str, Any], *, execution: Optional[ProviderExecution] = None) -> dict[str, Any]:
+    context = await _execution_context(user, fields, execution=execution)
+    if not context["can_run"]:
+        raise AIGatewayError("ai_execution_unavailable", context["unavailable_reason"], 409)
+    key = fields.get("idempotency_key")
+    if execution and (context["simulated"] or not key):
+        raise AIGatewayError("provider_request_invalid", "Provider execution requires a nonlocal profile and request key", 409)
+    existing = await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "idempotency_key": key}, {"_id": 0}) if key else None
+    if existing:
+        binding = existing.get("_execution")
+        if (existing.get("user_id") != user["id"] or existing["capability_key"] != fields.get("capability_key")
+                or bool(binding) != bool(execution)
+                or (binding and (binding["scope"] != execution.scope or binding["fingerprint"] != execution.fingerprint))):
+            raise AIGatewayError("ai_idempotency_conflict", "This request key belongs to different inputs or execution", 409)
+        if context["simulated"] and existing.get("credit_charge_credits", 0):
+            raise AIGatewayError("historical_demo_charge", "This historical demonstration needs separate reconciliation; use a new request key", 409)
+        return _public_action(existing)
+    # Serialize canonical-account admission/settlement. A crashed lock requires
+    # reconciliation, never an expiring lease that redispatches a paid request.
+    await _ensure_credit_account(user["tenant_id"])
+    lock = str(uuid4())
+    for _ in range(100):
+        acquired = await db.ai_credit_accounts.update_one({"tenant_id": user["tenant_id"], "gateway_execution_lock": {"$exists": False}}, {"$set": {"gateway_execution_lock": lock}})
+        if acquired.modified_count:
+            break
+        await asyncio.sleep(.01)  # Admission wait only; never retries a provider call.
+    if not acquired.modified_count:
+        raise AIGatewayError("ai_request_in_progress", "Another AI action is in progress; check its status before trying again", 409)
+    try:
+        return await _create_gateway_request(user, fields, context=context, execution=execution)
+    except Exception:
+        if execution:
+            pending = await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "idempotency_key": key, "status": "executing"}, {"_id": 0})
+            if pending:
+                await db.ai_action_requests.update_one({"tenant_id": user["tenant_id"], "id": pending["id"]}, {"$set": {"reconciliation_required": True, "failure_reason": "execution_or_settlement_interrupted"}})
+                return _public_action(pending)
+        raise
+    finally:
+        await db.ai_credit_accounts.update_one({"tenant_id": user["tenant_id"], "gateway_execution_lock": lock}, {"$unset": {"gateway_execution_lock": ""}})
+
+
+async def _create_gateway_request(user: dict, fields: dict[str, Any], *, context: dict, execution: Optional[ProviderExecution]) -> dict:
     if not context["can_run"]:
         raise AIGatewayError("ai_execution_unavailable", context["unavailable_reason"], 409)
     capability, model_profile = context["capability"], context["model"]
@@ -723,14 +784,19 @@ async def create_gateway_request(user: dict, fields: dict[str, Any]) -> dict[str
     if idempotency_key:
         existing = await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "idempotency_key": idempotency_key}, {"_id": 0})
         if existing:
-            if existing["capability_key"] != capability_key:
+            if (existing["capability_key"] != capability_key or existing.get("user_id") != user["id"]
+                    or existing.get("_execution") != ({"scope": execution.scope, "fingerprint": execution.fingerprint} if execution else None)):
                 raise AIGatewayError("ai_idempotency_conflict", "This request key belongs to another capability", 409)
             if context["simulated"] and existing.get("credit_charge_credits", 0):
                 raise AIGatewayError("historical_demo_charge", "This historical demonstration needs separate reconciliation; use a new request key", 409)
-            return serialize_doc(existing)
+            return _public_action(existing)
     credit_charge = context["credit_charge_credits"]
+    if execution and await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "_execution.scope": execution.scope, "status": {"$in": ["received", "reserved", "executing"]}}):
+        raise AIGatewayError("image_reconciliation_required", "Previous execution is unresolved; reconcile it before starting another generation", 409)
+    if execution and fields.get("confirmed_credit_charge_credits") != credit_charge:
+        raise AIGatewayError("ai_credit_confirmation_stale", "The AI credit charge changed. Refresh and confirm again", 409)
     charge_source = "server_nonbillable_demonstration" if context["simulated"] else "capability.default_credit_charge"
-    estimated_cost_micros = 0 if context["simulated"] else _estimate_cost(model_profile, fields)
+    estimated_cost_micros = execution.estimated_cost_micros if execution else (0 if context["simulated"] else _estimate_cost(model_profile, fields))
     await _enforce_governance(user["tenant_id"], capability_key, model_profile["id"], credit_charge, estimated_cost_micros)
     action = AIActionRequest(
         tenant_id=user["tenant_id"],
@@ -750,11 +816,13 @@ async def create_gateway_request(user: dict, fields: dict[str, Any]) -> dict[str
         credit_charge_credits=credit_charge,
         source_links=fields.get("source_links") or [],
     ).model_dump()
+    if execution:
+        action["_execution"] = {"scope": execution.scope, "fingerprint": execution.fingerprint}
     try:
         await db.ai_action_requests.insert_one(prepare_for_mongo(action))
     except DuplicateKeyError:
         if idempotency_key:
-            return serialize_doc(await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "idempotency_key": idempotency_key}, {"_id": 0}))
+            return _public_action(await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "idempotency_key": idempotency_key}, {"_id": 0}))
         raise
     try:
         reserve = await _reserve_credits(user["tenant_id"], action["id"], credit_charge, idempotency_key=idempotency_key)
@@ -767,29 +835,36 @@ async def create_gateway_request(user: dict, fields: dict[str, Any]) -> dict[str
     # Only the trusted backend executor may report provider success and usage.
     # Caller-supplied simulation, units and costs never prove provider delivery.
     execution_fields = dict(fields)
+    if execution:
+        await _record_provider_cost(action, model_profile, None, {**fields, "estimated_cost_micros": estimated_cost_micros}, actual_cost_micros=None)
     result = {"verified_success": True, "simulated": True} if context["simulated"] else {}
     if not context["simulated"]:
         try:
-            result = await context["executor"](model_profile, fields)
+            result = await execution.execute(model_profile, fields, action["id"]) if execution else await context["executor"](model_profile, fields)
             if not isinstance(result, dict):
                 result = {"verified_success": False}
             if any(isinstance(result.get(key), bool) or not isinstance(result.get(key, 0), int) or result.get(key, 0) < 0
-                   for key in ("input_units", "output_units", "duration_ms", "actual_cost_micros")):
+                   for key in (("input_units", "output_units", "duration_ms") if execution else ("input_units", "output_units", "duration_ms", "actual_cost_micros"))):
                 result = {"verified_success": False}
             if not result.get("provider_event_id"):
                 result["verified_success"] = False
         except Exception:
-            result = {"verified_success": False}
+            result = {"verified_success": False, "uncertain": bool(execution)}
         execution_fields = {**fields, **{k: result.get(k, 0) for k in ("input_units", "output_units", "duration_ms")}}
         execution_fields.pop("actual_cost_cents", None)
         execution_fields.pop("estimated_cost_micros", None)
         execution_fields["provider_event_id"] = result.get("provider_event_id")
+        if execution:
+            execution_fields["estimated_cost_micros"] = result.get("estimated_cost_micros", estimated_cost_micros)
+            if result.get("uncertain"):
+                await db.ai_action_requests.update_one({"tenant_id": user["tenant_id"], "id": action["id"]}, {"$set": {"reconciliation_required": True, "failure_reason": "provider_outcome_uncertain", "updated_at": _now_iso()}})
+                return _public_action(await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "id": action["id"]}, {"_id": 0}))
     else:
         execution_fields.update(input_units=0, output_units=0, duration_ms=0, estimated_cost_micros=0, provider_event_id=None)
         execution_fields.pop("actual_cost_cents", None)
     if result.get("verified_success") is not True:
         usage = await _record_usage(user, action, model_profile, execution_fields, result_status="failed", credits_charged=0)
-        cost = await _record_provider_cost(action, model_profile, usage["id"], execution_fields, actual_cost_micros=0)
+        cost = await _record_provider_cost(action, model_profile, usage["id"], execution_fields, actual_cost_micros=(None if execution and result.get("provider_event_id") and not result.get("rejected_before_execution") else 0))
         release = await _release_credits(user["tenant_id"], action["id"], credit_charge, idempotency_key=idempotency_key, reason="provider_failure")
         await db.ai_action_requests.update_one(
             {"tenant_id": user["tenant_id"], "id": action["id"]},
@@ -798,10 +873,10 @@ async def create_gateway_request(user: dict, fields: dict[str, Any]) -> dict[str
         await _audit(user, "ai.gateway_request_failed", "ai_action_request", action["id"], "AI execution failed; reserved customer credits released", {"credit_charge_credits": credit_charge, "charge_source": charge_source})
         result = await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "id": action["id"]}, {"_id": 0})
         result["released_credit_ledger_entry_id"] = release["id"] if release else None
-        return serialize_doc(result)
+        return _public_action(result)
     usage = await _record_usage(user, action, model_profile, execution_fields, result_status="succeeded", credits_charged=credit_charge)
     cost = await _record_provider_cost(action, model_profile, usage["id"], execution_fields,
-                                       actual_cost_micros=0 if context["simulated"] else int(result.get("actual_cost_micros") or 0))
+                                       actual_cost_micros=None if execution else (0 if context["simulated"] else int(result.get("actual_cost_micros") or 0)))
     commit = await _commit_credits(user["tenant_id"], action["id"], credit_charge, idempotency_key=idempotency_key)
     await db.ai_action_requests.update_one(
         {"tenant_id": user["tenant_id"], "id": action["id"]},
@@ -812,7 +887,7 @@ async def create_gateway_request(user: dict, fields: dict[str, Any]) -> dict[str
     await _audit(user, "ai.gateway_request_metered", "ai_action_request", action["id"],
                  "Nonbillable local demonstration recorded" if context["simulated"] else "Verified provider execution metered",
                  {"credit_charge_credits": credit_charge, "charge_source": charge_source})
-    return serialize_doc(await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "id": action["id"]}, {"_id": 0}))
+    return _public_action(await db.ai_action_requests.find_one({"tenant_id": user["tenant_id"], "id": action["id"]}, {"_id": 0}))
 
 
 async def _select_model_profile(capability: dict[str, Any], requested_model_profile_id: Optional[str]) -> dict[str, Any]:
@@ -862,7 +937,8 @@ async def _record_usage(user: dict, action: dict[str, Any], model_profile: dict[
     return serialize_doc(usage)
 
 
-async def _record_provider_cost(action: dict[str, Any], model_profile: dict[str, Any], usage_id: str, fields: dict[str, Any], *, actual_cost_micros: int) -> dict[str, Any]:
+async def _record_provider_cost(action: dict[str, Any], model_profile: dict[str, Any], usage_id: Optional[str], fields: dict[str, Any], *, actual_cost_micros: Optional[int]) -> dict[str, Any]:
+    existing = await db.ai_provider_cost_ledger_entries.find_one({"tenant_id": action["tenant_id"], "action_request_id": action["id"]}, {"_id": 0})
     cost = AIProviderCostLedgerEntry(
         tenant_id=action["tenant_id"],
         action_request_id=action["id"],
@@ -871,12 +947,17 @@ async def _record_provider_cost(action: dict[str, Any], model_profile: dict[str,
         model_key=model_profile["model_key"],
         estimated_cost_micros=int(fields.get("estimated_cost_micros") or _estimate_cost(model_profile, fields)),
         actual_cost_micros=actual_cost_micros,
+        status="estimated" if actual_cost_micros is None else "actual",
         actual_cost_cents=fields.get("actual_cost_cents"),
         input_units=int(fields.get("input_units") or 0),
         output_units=int(fields.get("output_units") or 0),
         provider_event_id=fields.get("provider_event_id"),
         idempotency_key=f"{fields.get('idempotency_key')}:cost" if fields.get("idempotency_key") else None,
     ).model_dump()
+    if existing:
+        cost["id"], cost["created_at"] = existing["id"], existing["created_at"]
+        await db.ai_provider_cost_ledger_entries.update_one({"tenant_id": action["tenant_id"], "id": existing["id"]}, {"$set": prepare_for_mongo(cost)})
+        return serialize_doc(cost)
     await db.ai_provider_cost_ledger_entries.insert_one(prepare_for_mongo(cost))
     return serialize_doc(cost)
 
@@ -895,7 +976,7 @@ async def list_action_history(user: dict, *, limit: int = 100) -> dict[str, Any]
     if not _has_staff_perm(user, "ai_history:read"):
         raise AIGatewayError("ai_history_read_required", "AI history read permission is required", 403)
     items = [
-        serialize_doc(d)
+        _public_action(d)
         async for d in db.ai_action_requests.find({"tenant_id": user["tenant_id"]}, {"_id": 0}).sort("created_at", -1).limit(limit)
     ]
     return {"items": items, "total": len(items)}
@@ -917,7 +998,7 @@ async def platform_dashboard(user: dict) -> dict[str, Any]:
         "action_requests": actions,
         "usage_events": usage,
         "actual_provider_cost_micros": total_cost,
-        "external_provider_calls": 0,
+        "external_provider_calls": await db.ai_action_requests.count_documents({"_provider.client_request_id": {"$exists": True}}),
     }
 
 

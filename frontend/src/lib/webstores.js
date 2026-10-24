@@ -248,6 +248,19 @@ export async function acceptWebstoreMockupComposition(webstoreId, productId, pay
   return (await api.post(`/webstores/${webstoreId}/products/${productId}/mockup-composition`, payload)).data;
 }
 
+export async function previewWebstorePresentation(storeId, productId) {
+  return (await api.get(`/webstores/${storeId}/products/${productId}/ai-presentations/preview`)).data;
+}
+export async function listWebstorePresentations(storeId, productId) {
+  return (await api.get(`/webstores/${storeId}/products/${productId}/ai-presentations`)).data;
+}
+export async function generateWebstorePresentation(storeId, productId, fields) {
+  return (await api.post(`/webstores/${storeId}/products/${productId}/ai-presentations`, fields, { timeout: 200000 })).data;
+}
+export async function reviewWebstorePresentation(storeId, productId, fileId, fields) {
+  return (await api.post(`/webstores/${storeId}/products/${productId}/ai-presentations/${fileId}/review`, fields)).data;
+}
+
 export async function createWebstoreProductCategory(webstoreId, payload) {
   const r = await api.post(`/webstores/${webstoreId}/product-categories`, payload);
   return r.data;

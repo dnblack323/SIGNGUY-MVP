@@ -8,6 +8,7 @@ import { acceptWebstoreMockupComposition, previewWebstoreMockupComposition, uplo
 jest.mock("@/lib/webstores", () => ({ acceptWebstoreMockupComposition: jest.fn(), previewWebstoreMockupComposition: jest.fn(), uploadWebstoreSetupFile: jest.fn() }));
 jest.mock("@/components/decisionRoom/DecisionRoomMedia", () => ({ DecisionRoomMedia: ({ src, authToken, alt }) => <img src={src} data-token={authToken} alt={alt} /> }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn() } }));
+jest.mock("@/components/webstores/detail/ProductAIPresentation", () => () => null);
 const files = ["blank", "logo"].map((id) => ({ id, file_name: id + ".png", extension: "png", safe_preview_available: true, inline_preview_allowed: true }));
 const model = { id: "store", productDraft: { id: "tee", product_type: "t-shirt", revision: 3, variants: [{ id: "navy", color: "Navy", size: "M" }, { id: "inactive", color: "Red", status: "inactive" }] } };
 beforeEach(() => {
@@ -77,5 +78,5 @@ test("blank uploads reuse private canonical artwork storage without claiming AI 
   await user.upload(screen.getByLabelText("Upload a matching blank"), new File(["image"], "blue.png", { type: "image/png" }));
   await waitFor(() => expect(screen.getByLabelText("Blank product image")).toHaveValue("uploaded-blank"));
   expect(uploadWebstoreSetupFile.mock.calls[0][1].get("category")).toBe("artwork");
-  expect(screen.getByText(/Real AI presentation generation is not connected/)).toBeInTheDocument();
+  expect(screen.getByText(/Composition itself never consumes AI credits/)).toBeInTheDocument();
 });

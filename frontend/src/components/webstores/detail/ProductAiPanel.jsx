@@ -19,7 +19,7 @@ return (
                             </div>
                             <div className="mt-1 text-xs text-muted-foreground">
                               Outputs are saved for review only and are not applied to product fields or mockups.
-                              {" "}Image generation is not connected yet. Upload a prepared mockup below for staff review.
+                              {" "}These local draft actions do not generate images. Use Images and Mockups for product presentations, original-artwork composition or prepared uploads.
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
