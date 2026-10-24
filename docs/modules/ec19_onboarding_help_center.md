@@ -5,7 +5,7 @@ EC19 adds the canonical onboarding and help/documentation layer for internal Sig
 ## Delivered Runtime Surface
 
 - Tenant onboarding dashboard at `/onboarding` and `/help/onboarding`.
-- Help Center at `/help`, `/help/docs`, and `/help/whats-new`.
+- Help Center home at `/help`, Documentation at `/help/docs` (`?article=<slug>`), What's New at `/help/whats-new`. See `help_documentation_v1.md` and `help_article_slug_registry.md`.
 - Reusable contextual help component for module surfaces.
 - Backend APIs under `/api/onboarding` and `/api/help`.
 
@@ -20,7 +20,7 @@ EC19 adds the canonical onboarding and help/documentation layer for internal Sig
 - `help_articles`: lifecycle-managed Help Center content.
 - `contextual_help_definitions`: module/surface-specific guidance.
 - `help_feedback`: tenant-scoped article usefulness feedback.
-- `support_escalations`: tenant-scoped help escalation records.
+- `support_escalations`: retired. Help Center support now uses the community support queue.
 
 ## Boundaries
 
@@ -37,7 +37,7 @@ EC19 adds the canonical onboarding and help/documentation layer for internal Sig
 - `onboarding:write`: owner/admin setup mutation.
 - `help:read`: owner/admin/staff Help Center access.
 - `help:manage`: owner/admin permission catalog entry; platform help master mutation still requires explicit platform-admin status.
-- `support:write`: support escalation creation.
+- `support:write`: creating support requests (community queue).
 
 Portal identities cannot access EC19 internal routes.
 

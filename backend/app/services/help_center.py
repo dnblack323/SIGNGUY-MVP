@@ -1,6 +1,12 @@
-"""EC19 Help Center and contextual help service."""
+"""EC19 Help Center and contextual help service.
+
+Documentation content has one authoritative source: ``app/help_content`` (Markdown articles + catalog). It is
+synced into ``help_articles`` / ``contextual_help_definitions`` by ``sync_seed_content``; edits made through the
+platform API are marked ``content_source="custom"`` and are never overwritten by a later sync.
+"""
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 from pymongo.errors import DuplicateKeyError
@@ -8,7 +14,9 @@ from pymongo.errors import DuplicateKeyError
 from ..core.db import db
 from ..core.permissions import has_platform_admin_access
 from ..core.time_utils import prepare_for_mongo, serialize_doc, utc_now
-from ..models.onboarding import ContextualHelpDefinition, HelpArticle, HelpFeedback, SupportEscalation
+from ..help_content import load_articles
+from ..help_content.catalog import CATEGORIES, CATEGORY_KEYS, CONTEXTUAL_HELP
+from ..models.onboarding import ContextualHelpDefinition, HelpArticle, HelpFeedback
 from .activity import record_activity_with_audit
 
 
@@ -20,25 +28,10 @@ class HelpCenterError(Exception):
         super().__init__(detail)
 
 
-HELP_ARTICLES: list[dict[str, Any]] = [
-    {"slug": "getting-started", "title": "Getting started", "category": "onboarding", "module": "onboarding", "body": "Set up company profile, pricing, production workflow, templates, and a first order in a short guided checklist.", "search_keywords": ["onboarding", "setup", "launch"]},
-    {"slug": "owner-guide", "title": "Owner guide", "category": "role_guides", "module": "role_owner", "body": "Owners manage billing, settings, users, pricing defaults, templates, and final setup approvals.", "search_keywords": ["owner", "admin", "permissions"]},
-    {"slug": "staff-guide", "title": "Staff guide", "category": "role_guides", "module": "role_staff", "body": "Staff can work from customers, quotes, orders, production, tasks, documents, and help based on granted permissions.", "search_keywords": ["staff", "permissions"]},
-    {"slug": "pricing-setup-guide", "title": "Pricing setup guide", "category": "module_guides", "module": "pricing", "body": "Use Pricing Foundation and the grouped pricing quiz to derive provisional shop defaults, then approve only the fields you want to apply.", "search_keywords": ["pricing", "quiz", "defaults"]},
-    {"slug": "templates-and-placeholders", "title": "Templates and placeholders", "category": "module_guides", "module": "templates", "body": "Templates reuse approved placeholders and preview missing values before they are applied to operational records.", "search_keywords": ["templates", "placeholders"]},
-    {"slug": "failed-subscription-guidance", "title": "Failed subscription guidance", "category": "billing", "module": "billing", "body": "Past-due billing states come from EC13. Guidance explains the current state and safe next steps without mutating billing records.", "search_keywords": ["billing", "subscription", "failed payment", "dunning"]},
-    {"slug": "ai-boundaries", "title": "AI boundaries", "category": "ai", "module": "ai", "body": "AI tools route through EC16/EC17/EC18 contracts. Live providers and final numeric credit pricing remain controlled by H7.", "search_keywords": ["ai", "credits", "provider", "H7"]},
-    {"slug": "privacy-data-deletion", "title": "Privacy and data deletion", "category": "trust", "module": "data_security", "body": "Data-security guidance explains where tenant records, audit trails, generated assets, and support requests are managed.", "search_keywords": ["privacy", "delete", "security"]},
-    {"slug": "release-notes", "title": "Release notes", "category": "release_notes", "module": "release_notes", "body": "Recent checkpoints delivered Webstores, Wrap Lab, AI Gateway, Studio AI, Business Assistant, and EC19 onboarding/help.", "search_keywords": ["release", "what's new"]},
-]
-
-CONTEXTUAL_HELP: list[dict[str, Any]] = [
-    {"surface_key": "onboarding.dashboard", "help_key": "progress", "module": "onboarding", "title": "Setup progress", "body": "Required steps drive launch readiness; skipped required steps remain visible until completed.", "article_slug": "getting-started", "keywords": ["progress", "required"]},
-    {"surface_key": "pricing.quiz", "help_key": "approval", "module": "pricing", "title": "Pricing approval", "body": "Quiz suggestions are provisional. Pricing settings change only after owner/admin approval.", "article_slug": "pricing-setup-guide", "keywords": ["pricing", "approval"]},
-    {"surface_key": "templates.editor", "help_key": "placeholders", "module": "templates", "title": "Placeholders", "body": "Use approved placeholder tokens and preview missing values before saving reusable templates.", "article_slug": "templates-and-placeholders", "keywords": ["placeholder"]},
-    {"surface_key": "billing.subscriptions", "help_key": "failed_payment", "module": "billing", "title": "Failed payments", "body": "Failed-payment states are informational in help; EC13 remains the billing source of truth.", "article_slug": "failed-subscription-guidance", "keywords": ["billing"]},
-    {"surface_key": "studio.assistant", "help_key": "assistant_boundary", "module": "ai", "title": "Assistant boundary", "body": "The Business Assistant is the canonical assistant. EC19 links to guidance and does not duplicate assistant behavior.", "article_slug": "ai-boundaries", "keywords": ["assistant"]},
-]
+# Fields the HelpArticle model does not declare; stored alongside it (the model ignores extras).
+_SEED_FIELDS = ("summary", "order", "links", "related", "aliases", "release", "release_date")
+MAX_SEARCH_TERMS = 8
+SEARCH_RESULT_LIMIT = 200
 
 
 def _now_iso() -> str:
@@ -68,25 +61,127 @@ async def _audit(user: dict, action: str, entity_type: str, entity_id: str, summ
     )
 
 
-async def bootstrap_help_content(user: dict) -> dict:
-    _require_platform_admin(user)
-    inserted = {"help_articles": 0, "contextual_help": 0}
-    for item in HELP_ARTICLES:
-        doc = HelpArticle(**item, status="published", published_at=_now_iso(), created_by_user_id=user.get("id")).model_dump()
-        res = await db.help_articles.update_one({"slug": doc["slug"]}, {"$setOnInsert": prepare_for_mongo(doc)}, upsert=True)
-        inserted["help_articles"] += int(bool(res.upserted_id))
+def _is_seed_managed(doc: dict) -> bool:
+    """Seeded and never edited through the platform API (legacy rows predate ``content_source``)."""
+    source = doc.get("content_source")
+    if source:
+        return source == "seed"
+    return not doc.get("updated_by_user_id")
+
+
+_LIST_SEED_FIELDS = ("links", "related", "aliases")
+_OPTIONAL_SEED_FIELDS = ("release", "release_date")
+
+
+def _seed_extra(item: dict[str, Any]) -> dict[str, Any]:
+    """Every seed field is written (lists as ``[]``), so removing one from a packaged article clears it."""
+    extra: dict[str, Any] = {"summary": item.get("summary") or "", "order": item.get("order") or 100}
+    extra.update({key: item.get(key) or [] for key in _LIST_SEED_FIELDS})
+    extra.update({key: item[key] for key in _OPTIONAL_SEED_FIELDS if item.get(key)})
+    extra.update(content_source="seed", seed_hash=item["seed_hash"])
+    return extra
+
+
+async def sync_seed_content() -> dict:
+    """Idempotently load the packaged documentation. Safe on every start and from several workers."""
+    now = _now_iso()
+    out = {"inserted": {"help_articles": 0, "contextual_help": 0}, "updated": 0, "archived": 0}
+    seen: set[str] = set()
+    for item in load_articles():
+        seen.add(item["slug"])
+        existing = await db.help_articles.find_one({"slug": item["slug"]}, {"_id": 0})
+        core = {
+            "title": item["title"], "category": item["category"], "module": item["module"],
+            "body": item["body"], "search_keywords": item["search_keywords"],
+        }
+        if existing is None:
+            published_at = f"{item['release_date']}T00:00:00+00:00" if item.get("release_date") else now
+            doc = HelpArticle(slug=item["slug"], status="published", published_at=published_at, **core).model_dump()
+            doc.update(_seed_extra(item))
+            try:
+                await db.help_articles.insert_one(prepare_for_mongo(doc))
+            except DuplicateKeyError:
+                continue
+            out["inserted"]["help_articles"] += 1
+        elif _is_seed_managed(existing) and (existing.get("seed_hash") != item["seed_hash"] or existing.get("retired_by_seed")):
+            patch = {**core, **_seed_extra(item), "updated_at": now}
+            update: dict[str, Any] = {"$set": prepare_for_mongo(patch)}
+            unset = {key: "" for key in _OPTIONAL_SEED_FIELDS if not item.get(key)}
+            if existing.get("retired_by_seed"):
+                # Back in the package after being retired by an earlier sync: publish again.
+                patch.update(status="published", archived_at=None, retired_by_seed=False)
+                update = {"$set": prepare_for_mongo(patch)}
+            if unset:
+                update["$unset"] = unset
+            await db.help_articles.update_one({"slug": item["slug"]}, update)
+            out["updated"] += 1
+    async for doc in db.help_articles.find({"slug": {"$nin": sorted(seen)}, "status": {"$ne": "archived"}}, {"_id": 0}):
+        if _is_seed_managed(doc):
+            await db.help_articles.update_one({"slug": doc["slug"]}, {"$set": {"status": "archived", "archived_at": now, "updated_at": now, "retired_by_seed": True}})
+            out["archived"] += 1
     for item in CONTEXTUAL_HELP:
         doc = ContextualHelpDefinition(**item).model_dump()
+        key = {"surface_key": doc.pop("surface_key"), "help_key": doc.pop("help_key")}
+        patch = {k: item[k] for k in ("module", "title", "body", "article_slug", "keywords")}
+        for k in (*patch, "status", "updated_at"):
+            doc.pop(k, None)
         res = await db.contextual_help_definitions.update_one(
-            {"surface_key": doc["surface_key"], "help_key": doc["help_key"]},
-            {"$setOnInsert": prepare_for_mongo(doc)},
+            key,
+            {"$set": prepare_for_mongo({**patch, "status": "published", "content_source": "seed", "updated_at": now}), "$setOnInsert": prepare_for_mongo(doc)},
             upsert=True,
         )
-        inserted["contextual_help"] += int(bool(res.upserted_id))
-    return {"inserted": inserted}
+        out["inserted"]["contextual_help"] += int(bool(res.upserted_id))
+    current = [{"surface_key": c["surface_key"], "help_key": c["help_key"]} for c in CONTEXTUAL_HELP]
+    retired = await db.contextual_help_definitions.update_many(
+        {"content_source": "seed", "status": "published", "$nor": current},
+        {"$set": {"status": "archived", "updated_at": now}},
+    )
+    out["archived"] += retired.modified_count
+    return out
 
 
-async def search_help(*, q: Optional[str] = None, category: Optional[str] = None, module: Optional[str] = None, include_archived: bool = False) -> dict:
+async def bootstrap_help_content(user: dict) -> dict:
+    _require_platform_admin(user)
+    return await sync_seed_content()
+
+
+def _plain(text: str) -> str:
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
+    return re.sub(r"[#*`>_]+", "", text)
+
+
+def _snippet(body: str, terms: list[str]) -> str:
+    plain = re.sub(r"\s+", " ", _plain(body)).strip()
+    lowered = plain.lower()
+    hits = [i for i in (lowered.find(t.lower()) for t in terms) if i >= 0]
+    if not hits:
+        return plain[:160]
+    start = max(min(hits) - 60, 0)
+    text = plain[start:start + 180].strip()
+    return ("..." if start else "") + text + ("..." if start + 180 < len(plain) else "")
+
+
+def _score(doc: dict, terms: list[str]) -> int:
+    score = 0
+    for term in terms:
+        t = term.lower()
+        score += 10 * (t in (doc.get("title") or "").lower())
+        score += 5 * any(t in k.lower() for k in doc.get("search_keywords") or [])
+        score += 3 * (t in (doc.get("summary") or "").lower())
+        score += 2 * ((t in (doc.get("module") or "").lower()) or (t in (doc.get("category") or "").lower()))
+        score += 1 * (t in (doc.get("body") or "").lower())
+    return score
+
+
+async def search_help(
+    *,
+    q: Optional[str] = None,
+    category: Optional[str] = None,
+    module: Optional[str] = None,
+    include_archived: bool = False,
+    include_body: bool = False,
+) -> dict:
+    """Every search term must match a title, summary, body, keyword, alias, module or category (key or label)."""
     filt: dict[str, Any] = {}
     if not include_archived:
         filt["status"] = "published"
@@ -94,21 +189,56 @@ async def search_help(*, q: Optional[str] = None, category: Optional[str] = None
         filt["category"] = category
     if module:
         filt["module"] = module
-    if q:
-        pattern = {"$regex": q, "$options": "i"}
-        filt["$or"] = [{"title": pattern}, {"body": pattern}, {"search_keywords": pattern}, {"module": pattern}]
-    cursor = db.help_articles.find(filt, {"_id": 0}).sort([("category", 1), ("title", 1)]).limit(100)
-    return {"items": [serialize_doc(doc) async for doc in cursor]}
+    terms = [t for t in (q or "").split() if t][:MAX_SEARCH_TERMS]
+    clauses = []
+    for term in terms:
+        pattern = {"$regex": re.escape(term), "$options": "i"}
+        label_keys = [c["key"] for c in CATEGORIES if term.lower() in c["label"].lower()]
+        clauses.append({"$or": [
+            {"title": pattern}, {"summary": pattern}, {"body": pattern}, {"search_keywords": pattern},
+            {"aliases": pattern}, {"module": pattern}, {"category": pattern}, {"category": {"$in": label_keys}},
+        ]})
+    if clauses:
+        filt["$and"] = clauses
+    rank = {key: i for i, key in enumerate(CATEGORY_KEYS)}
+    docs = [serialize_doc(d) async for d in db.help_articles.find(filt, {"_id": 0}).limit(SEARCH_RESULT_LIMIT)]
+    docs.sort(key=lambda d: (-_score(d, terms), rank.get(d.get("category"), 99), d.get("order") or 100, d.get("title") or ""))
+    for doc in docs:
+        if terms:
+            doc["snippet"] = _snippet(doc.get("body") or "", terms)
+        if not include_body:
+            doc.pop("body", None)
+    return {"items": docs, "total": len(docs)}
+
+
+async def list_categories() -> dict:
+    counts: dict[str, int] = {}
+    async for row in db.help_articles.aggregate([{"$match": {"status": "published"}}, {"$group": {"_id": "$category", "count": {"$sum": 1}}}]):
+        counts[row["_id"]] = row["count"]
+    return {"items": [{**c, "count": counts.get(c["key"], 0)} for c in CATEGORIES]}
 
 
 async def get_article(slug: str, *, include_archived: bool = False) -> dict:
-    filt: dict[str, Any] = {"slug": slug}
-    if not include_archived:
-        filt["status"] = "published"
-    doc = await db.help_articles.find_one(filt, {"_id": 0})
+    """Resolve by slug first, then by alias, so renamed and onboarding-era slugs keep working."""
+    slug = (slug or "").strip().lower()
+    base: dict[str, Any] = {} if include_archived else {"status": "published"}
+    doc = await db.help_articles.find_one({**base, "slug": slug}, {"_id": 0})
+    if not doc:
+        doc = await db.help_articles.find_one({**base, "aliases": slug}, {"_id": 0})
     if not doc:
         raise HelpCenterError("help_article_not_found", "Help article not found", 404)
     return serialize_doc(doc)
+
+
+async def _check_slug_and_aliases(slug: str, aliases: list[str]) -> None:
+    others = [name for name in aliases if name != slug]
+    clash = await db.help_articles.find_one({"slug": {"$in": others}}, {"_id": 0, "slug": 1})
+    if not clash:
+        clash = await db.help_articles.find_one(
+            {"slug": {"$ne": slug}, "$or": [{"aliases": {"$in": others}}, {"aliases": slug}]}, {"_id": 0, "slug": 1}
+        )
+    if clash:
+        raise HelpCenterError("help_alias_conflict", "A slug or alias is already used by another article", 409)
 
 
 async def upsert_article(user: dict, payload: dict[str, Any]) -> dict:
@@ -120,19 +250,35 @@ async def upsert_article(user: dict, payload: dict[str, Any]) -> dict:
     status = payload.get("status") or (existing or {}).get("status") or "draft"
     if status not in {"draft", "published", "archived"}:
         raise HelpCenterError("invalid_status", "Invalid help article status", 400)
+    category = payload.get("category") or (existing or {}).get("category") or "general"
+    release = payload.get("release") or (existing or {}).get("release")
+    release_date = payload.get("release_date") or (existing or {}).get("release_date")
+    if category == "release_notes" and status == "published" and not (release and release_date):
+        raise HelpCenterError("release_metadata_required", "Published release notes need a release identifier and release date", 400)
+    aliases = [a.strip().lower() for a in (payload.get("aliases") or (existing or {}).get("aliases") or []) if a and a.strip()]
+    await _check_slug_and_aliases(slug, aliases)
     patch = {
         "slug": slug,
         "title": (payload.get("title") or (existing or {}).get("title") or slug).strip(),
-        "category": payload.get("category") or (existing or {}).get("category") or "general",
+        "category": category,
         "module": payload.get("module") or (existing or {}).get("module"),
         "body": payload.get("body") or (existing or {}).get("body") or "",
         "status": status,
         "audience": payload.get("audience") or (existing or {}).get("audience") or ["owner", "admin", "staff"],
         "search_keywords": payload.get("search_keywords") or (existing or {}).get("search_keywords") or [],
+        "summary": payload.get("summary") or (existing or {}).get("summary") or "",
+        "related": payload.get("related") or (existing or {}).get("related") or [],
+        "aliases": aliases,
+        "links": payload.get("links") or (existing or {}).get("links") or [],
+        "content_source": "custom",
         "platform_managed": True,
         "updated_by_user_id": user["id"],
         "updated_at": _now_iso(),
     }
+    if payload.get("order") is not None:
+        patch["order"] = payload["order"]
+    if release:
+        patch["release"], patch["release_date"] = release, release_date
     if status == "published" and not (existing or {}).get("published_at"):
         patch["published_at"] = _now_iso()
     if status == "archived":
@@ -154,6 +300,9 @@ async def upsert_article(user: dict, payload: dict[str, Any]) -> dict:
             created_by_user_id=user["id"],
             updated_by_user_id=user["id"],
         ).model_dump()
+        doc_to_insert.update({k: patch[k] for k in ("summary", "related", "aliases", "links", "content_source", "release", "release_date") if k in patch})
+        if "order" in patch:
+            doc_to_insert["order"] = patch["order"]
         await db.help_articles.insert_one(prepare_for_mongo(doc_to_insert))
     doc = serialize_doc(await db.help_articles.find_one({"slug": slug}, {"_id": 0}))
     await _audit(user, "help.article_upserted", "help_article", doc["id"], "Help article saved", {"slug": slug, "status": status})
@@ -210,29 +359,6 @@ async def feedback(user: dict, payload: dict[str, Any]) -> dict:
         await db.help_feedback.insert_one(prepare_for_mongo(doc))
     except DuplicateKeyError:
         return serialize_doc(await db.help_feedback.find_one({"tenant_id": user["tenant_id"], "idempotency_key": payload["idempotency_key"]}, {"_id": 0}))
-    return serialize_doc(doc)
-
-
-async def support_escalation(user: dict, payload: dict[str, Any]) -> dict:
-    subject = (payload.get("subject") or "").strip()
-    message = (payload.get("message") or "").strip()
-    if not subject or not message:
-        raise HelpCenterError("support_subject_message_required", "subject and message are required", 400)
-    existing = None
-    if payload.get("idempotency_key"):
-        existing = await db.support_escalations.find_one({"tenant_id": user["tenant_id"], "idempotency_key": payload["idempotency_key"]}, {"_id": 0})
-    if existing:
-        return serialize_doc(existing)
-    doc = SupportEscalation(
-        tenant_id=user["tenant_id"],
-        subject=subject[:180],
-        message=message[:5000],
-        source_surface=payload.get("source_surface"),
-        idempotency_key=payload.get("idempotency_key"),
-        created_by_user_id=user["id"],
-    ).model_dump()
-    await db.support_escalations.insert_one(prepare_for_mongo(doc))
-    await _audit(user, "help.support_escalated", "support_escalation", doc["id"], "Support escalation created", {"source_surface": payload.get("source_surface")})
     return serialize_doc(doc)
 
 

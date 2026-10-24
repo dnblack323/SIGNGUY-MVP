@@ -1,3 +1,4 @@
+import ContextualHelp from "@/components/help/ContextualHelp";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -44,7 +45,7 @@ export default function WebstoreFulfillmentSettingsDialog({ open, onOpenChange }
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[560px]" data-testid="webstore-fulfillment-settings">
         <DialogHeader>
-          <DialogTitle>Webstore fulfillment settings</DialogTitle>
+          <DialogTitle>Webstore fulfillment settings <ContextualHelp surfaceKey="webstores.fulfillment" module="webstores" /></DialogTitle>
           <DialogDescription>Choose how your shop can get orders to buyers. Questionnaires only offer these methods.{form?.timezone ? ` Times use your shop timezone (${form.timezone}).` : ""}</DialogDescription>
         </DialogHeader>
         {form && (

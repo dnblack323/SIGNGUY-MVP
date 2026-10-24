@@ -52,6 +52,8 @@ import AIStudioPage from "@/pages/AIStudioPage";
 import BusinessAssistantPage from "@/pages/BusinessAssistantPage";
 import OnboardingPage from "@/pages/OnboardingPage";
 import HelpCenterPage from "@/pages/HelpCenterPage";
+import HelpDocsPage from "@/pages/HelpDocsPage";
+import WhatsNewPage from "@/pages/WhatsNewPage";
 import GeneratedAssetsPage from "@/pages/GeneratedAssetsPage";
 import PromptLibraryPage from "@/pages/PromptLibraryPage";
 import DataSecurityPage from "@/pages/DataSecurityPage";
@@ -208,9 +210,9 @@ function AppRoutes() {
         <Route path="/team/payroll" element={<PayrollPage />} />
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/help" element={<HelpCenterPage />} />
-        <Route path="/help/docs" element={<HelpCenterPage />} />
+        <Route path="/help/docs" element={<HelpDocsPage />} />
         <Route path="/help/onboarding" element={<OnboardingPage />} />
-        <Route path="/help/whats-new" element={<HelpCenterPage />} />
+        <Route path="/help/whats-new" element={<WhatsNewPage />} />
         <Route path="/help/community" element={<CommunityPage />} />
         <Route path="/help/bugs" element={<CommunityPage />} />
         <Route path="/help/feature-requests" element={<CommunityPage />} />

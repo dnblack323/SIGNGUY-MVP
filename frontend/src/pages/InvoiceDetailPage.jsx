@@ -1,3 +1,4 @@
+import ContextualHelp from "@/components/help/ContextualHelp";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -91,6 +92,7 @@ export default function InvoiceDetailPage() {
           </span>}
           actions={(
             <div className="flex items-center gap-2 flex-wrap">
+              <ContextualHelp surfaceKey="invoices.detail" module="invoices" />
               <AIContextualActions contextType="invoice" contextId={id} actions={[
                 { label: "Payment Email", tool: "email_draft_assistant", mode: "payment_reminder" },
                 { label: "Create Document", tool: "document_writer", mode: "customer_order_document" },

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ContextualHelp from "@/components/help/ContextualHelp";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api, { extractError } from "@/lib/api";
@@ -82,7 +83,7 @@ export default function EmployeesPage() {
 
   return (
     <div className="space-y-4" data-testid="employees-page">
-      <PageHeader title="Employees" subtitle="Your team, one place." actions={canManage && <NewEmployeeDialog onCreated={() => qc.invalidateQueries({ queryKey: ["employees"] })} />} />
+      <PageHeader title="Employees" subtitle="Your team, one place." actions={<>{<ContextualHelp surfaceKey="employees.list" module="employees" />}{canManage && <NewEmployeeDialog onCreated={() => qc.invalidateQueries({ queryKey: ["employees"] })} />}</>} />
       <div className="relative w-full max-w-md">
         <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or email" className="pl-9" data-testid="employees-search-input" />

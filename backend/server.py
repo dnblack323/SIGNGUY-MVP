@@ -455,4 +455,10 @@ app.add_middleware(
 async def _startup():
     await ensure_indexes()
     init_storage()
+    try:
+        from app.services import help_center
+
+        await help_center.sync_seed_content()
+    except Exception:  # documentation sync must never keep the API from starting
+        logger.exception("Help Center content sync failed")
     logger.info("SignGuy AI backend started")

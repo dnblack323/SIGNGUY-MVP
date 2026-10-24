@@ -1,50 +1,42 @@
-import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, MessageSquare, RotateCcw, Search } from "lucide-react";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, BookOpen, Bug, LifeBuoy, Search, Sparkles } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
-import ContextualHelp from "@/components/help/ContextualHelp";
+import useHelpCatalog, { iconForCategory } from "@/components/help/useHelpCatalog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/auth/AuthContext";
-import { extractError } from "@/lib/api";
-import { createSupportEscalation, getFailedSubscriptionGuidance, searchHelp, sendHelpFeedback } from "@/lib/onboarding";
-import { toast } from "sonner";
+import { getFailedSubscriptionGuidance, helpDocsPath, HELP_ARTICLE_SLUGS, listHelpArticles } from "@/lib/help";
+
+const GETTING_STARTED = [
+  { slug: HELP_ARTICLE_SLUGS.gettingStarted, text: "Read the short path from a new account to a finished order." },
+  { slug: HELP_ARTICLE_SLUGS.companyProfile, text: "Enter your business details once." },
+  { slug: HELP_ARTICLE_SLUGS.pricingSetup, text: "Make estimates usable with your own costs." },
+  { slug: HELP_ARTICLE_SLUGS.firstOrder, text: "Run one real job from customer to payment." },
+];
+const POPULAR = ["quotes", "orders", "invoices-and-payments", "production-board", "customer-portal", "webstore-setup", "time-clock", "pricing-methods"];
+const COMMON_TASKS = [
+  ["Create an order", "first-order"],
+  ["Record a payment", "invoices-and-payments"],
+  ["Add an employee", "employees-and-permissions"],
+  ["Set labor rates and overhead", "materials-labor-equipment"],
+  ["Publish a Webstore", "webstore-products-and-launch"],
+  ["Get customer artwork approved", "approvals-and-proofs"],
+];
 
 export default function HelpCenterPage() {
   const { hasPerm } = useAuth();
-  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const canRead = hasPerm("help:read");
   const [q, setQ] = useState("");
-  const [category, setCategory] = useState("all");
-  const [selected, setSelected] = useState(null);
-  const [support, setSupport] = useState({ subject: "", message: "" });
+  const term = q.trim();
+  const catalog = useHelpCatalog(canRead);
+  const suggestions = useQuery({ queryKey: ["help", "suggest", term], queryFn: () => listHelpArticles({ q: term }), enabled: canRead && term.length >= 2 });
+  const billing = useQuery({ queryKey: ["failed-subscription-guidance"], queryFn: getFailedSubscriptionGuidance, enabled: hasPerm("subscription:read") });
 
-  const params = useMemo(() => ({ q: q || undefined, category: category === "all" ? undefined : category }), [q, category]);
-  const help = useQuery({ queryKey: ["help-articles", params], queryFn: () => searchHelp(params), enabled: hasPerm("help:read") });
-  const billingGuidance = useQuery({ queryKey: ["failed-subscription-guidance"], queryFn: getFailedSubscriptionGuidance, enabled: hasPerm("subscription:read") });
-  const articles = help.data?.items || [];
-  const current = selected || articles[0];
-  const feedback = useMutation({
-    mutationFn: (helpful) => sendHelpFeedback({ article_id: current?.id, article_slug: current?.slug, helpful, idempotency_key: `${current?.slug}-${helpful}` }),
-    onSuccess: () => toast.success("Feedback saved"),
-    onError: (err) => toast.error(extractError(err)),
-  });
-  const escalation = useMutation({
-    mutationFn: () => createSupportEscalation({ ...support, source_surface: "help_center", idempotency_key: `help-${Date.now()}` }),
-    onSuccess: async () => {
-      toast.success("Support escalation created");
-      setSupport({ subject: "", message: "" });
-      await qc.invalidateQueries({ queryKey: ["help-articles"] });
-    },
-    onError: (err) => toast.error(extractError(err)),
-  });
-
-  if (!hasPerm("help:read")) {
+  if (!canRead) {
     return (
       <div className="space-y-4" data-testid="help-center-page">
         <PageHeader title="Help Center" subtitle="Documentation is available to internal shop users." />
@@ -53,84 +45,97 @@ export default function HelpCenterPage() {
     );
   }
 
+  const items = (suggestions.data?.items || []).filter((a) => a.category !== "release_notes");
+  const popular = POPULAR.map((slug) => catalog.byName.get(slug)).filter(Boolean);
+  const submit = (e) => {
+    e.preventDefault();
+    if (term) navigate(helpDocsPath(null, { q: term }));
+  };
+  const pastDue = billing.data && billing.data.dunning_state && billing.data.dunning_state !== "current";
+
   return (
-    <div className="space-y-5" data-testid="help-center-page">
-      <PageHeader
-        title="Help Center"
-        subtitle="Searchable product documentation, role guides, module guides, and support escalation."
-        actions={<><ContextualHelp surfaceKey="billing.subscriptions" module="billing" /><Button variant="outline" size="sm" onClick={() => help.refetch()}><RotateCcw className="size-4 mr-2" />Refresh</Button></>}
-      />
+    <div className="space-y-8" data-testid="help-center-page">
+      <PageHeader title="Help Center" subtitle="Find answers, learn how SIGNGUY works, or get in touch." actions={<Button asChild variant="outline" size="sm"><Link to="/help/docs"><BookOpen className="mr-1 size-4" aria-hidden="true" />Browse Documentation</Link></Button>} />
 
-      <div className="grid grid-cols-1 xl:grid-cols-[380px_1fr] gap-4">
-        <Card>
-          <CardHeader><CardTitle className="text-base">Articles</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            <div className="relative">
-              <Search className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
-              <Input className="pl-8" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search help" data-testid="help-search-input" />
-            </div>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {["all", "onboarding", "role_guides", "module_guides", "billing", "ai", "trust", "release_notes"].map((v) => <SelectItem key={v} value={v}>{v.replace(/_/g, " ")}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <div className="grid gap-2">
-              {articles.map((article) => (
-                <button
-                  type="button"
-                  key={article.id}
-                  onClick={() => setSelected(article)}
-                  className="rounded-md border p-3 text-left hover:bg-muted/60"
-                  data-testid={`help-article-${article.slug}`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-sm">{article.title}</span>
-                    <Badge variant="outline">{article.category.replace(/_/g, " ")}</Badge>
-                  </div>
-                  <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{article.body}</div>
-                </button>
+      <section aria-label="Search for help" className="max-w-2xl space-y-2">
+        <form onSubmit={submit} role="search" className="relative">
+          <Search className="absolute left-3 top-3 size-4 text-muted-foreground" aria-hidden="true" />
+          <Input className="h-10 pl-9" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search for help, e.g. deposit, labor rate, Webstore" aria-label="Search for help" data-testid="help-search-input" />
+        </form>
+        {term.length >= 2 && !suggestions.isLoading && (
+          items.length ? (
+            <ul className="divide-y rounded-md border bg-card" data-testid="help-search-results">
+              {items.slice(0, 6).map((a) => (
+                <li key={a.slug}><Link to={helpDocsPath(a.slug)} className="block p-2.5 hover:bg-muted/60"><span className="text-sm font-medium">{a.title}</span><span className="block text-xs text-muted-foreground">{a.snippet || a.summary}</span></Link></li>
               ))}
-            </div>
-          </CardContent>
-        </Card>
+              {items.length > 6 && <li><Link to={helpDocsPath(null, { q: term })} className="block p-2.5 text-sm text-primary hover:underline">See all {items.length} results</Link></li>}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground" data-testid="help-search-empty">No articles match "{term}". Try different words, or <Link to="/help/contact" className="text-primary underline">contact support</Link>.</p>
+          )
+        )}
+      </section>
 
-        <div className="space-y-4">
-          <Card>
-            <CardHeader><CardTitle className="text-base">{current?.title || "No article selected"}</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              {current ? (
-                <>
-                  <div className="prose prose-sm max-w-none whitespace-pre-wrap text-sm">{current.body}</div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={() => feedback.mutate(true)}>Helpful</Button>
-                    <Button variant="outline" size="sm" onClick={() => feedback.mutate(false)}>Needs work</Button>
-                  </div>
-                </>
-              ) : <div className="text-sm text-muted-foreground">No matching article.</div>}
-            </CardContent>
-          </Card>
+      {pastDue && (
+        <Alert data-testid="billing-guidance"><AlertTriangle className="size-4" /><AlertTitle>Subscription payment needs attention</AlertTitle><AlertDescription>{billing.data.guidance} <Link className="underline" to={helpDocsPath("subscription-and-billing")}>Learn more</Link></AlertDescription></Alert>
+      )}
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Subscription Guidance</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex items-center gap-2"><Badge variant="outline">{billingGuidance.data?.dunning_state || "current"}</Badge><span>{billingGuidance.data?.mutated_billing === false ? "read-only" : ""}</span></div>
-              <p className="text-muted-foreground">{billingGuidance.data?.guidance || "Billing guidance is available to subscription-enabled users."}</p>
-            </CardContent>
-          </Card>
+      <section aria-labelledby="hc-start" className="space-y-2">
+        <h2 id="hc-start" className="text-base font-semibold">Getting started</h2>
+        <ol className="list-decimal space-y-1 pl-5 text-sm">
+          {GETTING_STARTED.map(({ slug, text }) => {
+            const a = catalog.byName.get(slug);
+            return <li key={slug}><Link to={helpDocsPath(slug)} className="font-medium text-primary hover:underline">{a?.title || slug}</Link> <span className="text-muted-foreground">{text}</span></li>;
+          })}
+        </ol>
+        <p className="text-sm text-muted-foreground">Prefer a checklist? Use <Link to="/help/onboarding" className="text-primary underline">Guided Onboarding</Link>.</p>
+      </section>
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Contact Support</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid gap-1"><Label htmlFor="help-support-subject">Subject</Label><Input id="help-support-subject" value={support.subject} onChange={(e) => setSupport({ ...support, subject: e.target.value })} /></div>
-              <div className="grid gap-1"><Label htmlFor="help-support-message">Message</Label><Textarea id="help-support-message" rows={4} value={support.message} onChange={(e) => setSupport({ ...support, message: e.target.value })} /></div>
-              <Button disabled={!hasPerm("support:write") || escalation.isPending || !support.subject || !support.message} onClick={() => escalation.mutate()}>
-                <MessageSquare className="size-4 mr-2" />Send
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
+      <div className="grid gap-8 md:grid-cols-2">
+        <section aria-labelledby="hc-popular" className="space-y-2">
+          <h2 id="hc-popular" className="text-base font-semibold">Popular topics</h2>
+          <ul className="space-y-1.5 text-sm">
+            {popular.map((a) => <li key={a.slug}><Link to={helpDocsPath(a.slug)} className="font-medium text-primary hover:underline">{a.title}</Link><span className="block text-xs text-muted-foreground">{a.summary}</span></li>)}
+          </ul>
+        </section>
+        <section aria-labelledby="hc-tasks" className="space-y-2">
+          <h2 id="hc-tasks" className="text-base font-semibold">Common tasks</h2>
+          <ul className="space-y-1 text-sm">
+            {COMMON_TASKS.map(([label, slug]) => <li key={slug}><Link to={helpDocsPath(slug)} className="text-primary hover:underline">{label}</Link></li>)}
+          </ul>
+        </section>
       </div>
+
+      <section aria-labelledby="hc-browse" className="space-y-2">
+        <h2 id="hc-browse" className="text-base font-semibold">Browse by category</h2>
+        <div className="grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+          {catalog.groups.map((g) => {
+            const Icon = iconForCategory(g.key);
+            return (
+              <Link key={g.key} to={helpDocsPath(null, { category: g.key })} className="flex gap-2 rounded-md p-2 hover:bg-muted/60" data-testid={`help-category-${g.key}`}>
+                <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span><span className="text-sm font-medium">{g.label}</span> <span className="text-xs text-muted-foreground">({g.articles.length})</span><span className="block text-xs text-muted-foreground">{g.description}</span></span>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
+      <section aria-labelledby="hc-help" className="grid gap-6 border-t pt-6 md:grid-cols-2">
+        <div className="space-y-1">
+          <h2 id="hc-help" className="text-base font-semibold">Troubleshooting</h2>
+          <p className="text-sm text-muted-foreground">Something not working? Start with <Link to={helpDocsPath("troubleshooting")} className="text-primary underline">common problems</Link> or the <Link to={helpDocsPath("faq")} className="text-primary underline">FAQ</Link>.</p>
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-base font-semibold">Contact support</h2>
+          <div className="flex flex-wrap gap-2">
+            {hasPerm("support:write") && <Button asChild size="sm"><Link to="/help/contact"><LifeBuoy className="mr-1 size-4" aria-hidden="true" />Contact Support</Link></Button>}
+            <Button asChild size="sm" variant="outline"><Link to="/help/bugs"><Bug className="mr-1 size-4" aria-hidden="true" />Report a bug</Link></Button>
+            <Button asChild size="sm" variant="outline"><Link to="/help/feature-requests"><Sparkles className="mr-1 size-4" aria-hidden="true" />Request a feature</Link></Button>
+            <Button asChild size="sm" variant="ghost"><Link to="/help/whats-new">What's New</Link></Button>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

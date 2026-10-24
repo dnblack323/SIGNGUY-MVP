@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import ContextualHelp from "@/components/help/ContextualHelp";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ExternalLink, MessageSquareReply, Plus, Search } from "lucide-react";
@@ -406,10 +407,13 @@ export default function ApprovalCenterPage() {
         onValueChange={(next) => setSearchParams(next === "decision-rooms" ? { tab: "decision-rooms" } : { tab: "queue" })}
         data-testid="approval-center-tabs"
       >
-        <TabsList>
-          <TabsTrigger value="approval-queue" data-testid="approval-center-tab-queue">Approval Queue</TabsTrigger>
-          <TabsTrigger value="decision-rooms" data-testid="approval-center-tab-decision-rooms">Decision Rooms</TabsTrigger>
-        </TabsList>
+        <div className="flex items-center gap-2">
+          <TabsList>
+            <TabsTrigger value="approval-queue" data-testid="approval-center-tab-queue">Approval Queue</TabsTrigger>
+            <TabsTrigger value="decision-rooms" data-testid="approval-center-tab-decision-rooms">Decision Rooms</TabsTrigger>
+          </TabsList>
+          <ContextualHelp surfaceKey="approvals.center" module="approvals" />
+        </div>
         <TabsContent value="approval-queue">
           <AuthorityQueue />
         </TabsContent>
