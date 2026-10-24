@@ -100,7 +100,7 @@ async def test_catalog_uses_approved_identifiers_and_keeps_removed_ec18_meta_ina
     assert "integration.facebook.message_classify" in inactive["meta_only"]
     assert "order.service_prefill" in inactive["removed"]
 
-    assert catalog["credit_display"] == "AI credits apply"
+    assert catalog["credit_display"] == "Demonstration · 0 customer credits"
     assert set(catalog["usage_bands"]) == {"light", "standard", "heavy", "premium"}
     rendered = json.dumps(catalog)
     assert "default_credit_charge" not in rendered

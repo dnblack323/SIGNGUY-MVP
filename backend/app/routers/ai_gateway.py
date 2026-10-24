@@ -142,7 +142,6 @@ class GatewayRequestIn(BaseModel):
     duration_ms: StrictInt = Field(default=0, ge=0)
     source_links: list[dict[str, Any]] = Field(default_factory=list)
     provider_event_id: Optional[str] = None
-    simulate_result: str = "success"
 
 
 class AlertUpdateIn(BaseModel):

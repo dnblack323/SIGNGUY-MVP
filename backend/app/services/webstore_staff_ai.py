@@ -58,9 +58,12 @@ async def _webstore_product_ai_preview(user: dict, webstore_id: str, product_id:
             "Platform AI admin must bootstrap the EC17 local mock catalog before this Webstore AI action can run.",
             409,
         )
-    account = await ai_gateway.get_credit_account(user["tenant_id"])
-    credit_charge = int(capability.get("default_credit_charge") or 0)
-    available = int(account.get("available_credits") or 0)
+    try:
+        gateway_preview = await ai_gateway.preview_gateway_request(user, {"capability_key": config["capability_key"]}, local_only=True)
+    except ai_gateway.AIGatewayError as exc:
+        raise WebstoreError(exc.code, exc.detail, exc.status_code) from exc
+    credit_charge = gateway_preview["credit_charge_credits"]
+    available = gateway_preview["available_credits"]
     return {
         "action": config["action"],
         "label": config["label"],
@@ -71,15 +74,16 @@ async def _webstore_product_ai_preview(user: dict, webstore_id: str, product_id:
         "output_kind": config["output_kind"],
         "credit_charge_credits": credit_charge,
         "available_credits": available,
-        "credit_display": f"{credit_charge} AI credit{'s' if credit_charge != 1 else ''}",
+        "credit_display": gateway_preview["credit_display"],
         "confirmation_required": True,
-        "can_run": available >= credit_charge,
-        "insufficient_credits": available < credit_charge,
+        "can_run": gateway_preview["can_run"],
+        "insufficient_credits": gateway_preview["insufficient_credits"],
+        "unavailable_reason": gateway_preview["unavailable_reason"],
         "usage_note": config["usage_note"],
         "review_required": True,
         "auto_apply": False,
         "manual_setup_available": True,
-        "h7_local_mock": True,
+        "h7_local_mock": gateway_preview["simulated"],
         "external_provider_calls": 0,
         "webstore": {"id": store["id"], "name": store.get("name")},
         "product": {"id": product["id"], "name": product.get("name"), "revision": product.get("revision")},
@@ -104,6 +108,8 @@ def _webstore_product_ai_prompt(product: dict[str, Any], fields: dict[str, Any],
 
 async def run_product_ai_action(user: dict, webstore_id: str, product_id: str, fields: dict[str, Any]) -> dict[str, Any]:
     preview = await _webstore_product_ai_preview(user, webstore_id, product_id, fields.get("action"))
+    if not preview["can_run"]:
+        raise WebstoreError("ai_execution_unavailable", preview.get("unavailable_reason") or "AI execution is unavailable", 409)
     confirmed = fields.get("confirmed_credit_charge_credits")
     if confirmed is None:
         raise WebstoreError("ai_credit_confirmation_required", "Confirm the displayed AI credit charge before running this Webstore AI action.", 400)
@@ -112,26 +118,29 @@ async def run_product_ai_action(user: dict, webstore_id: str, product_id: str, f
     product = await _get_product(user["tenant_id"], product_id, webstore_id)
     config = _webstore_product_ai_action(fields.get("action"))
     idempotency_key = _clean_optional_text(fields.get("idempotency_key"), limit=160)
-    result = await ai_studio.run_tool(
-        user,
-        {
-            "tool_key": config["tool_key"],
-            "mode_key": config["mode_key"],
-            "inputs": {
-                "prompt": _webstore_product_ai_prompt(product, fields, config),
-                "context_notes": _clean_optional_text(fields.get("context_notes"), limit=1000),
+    try:
+        result = await ai_studio.run_tool(
+            user,
+            {
+                "tool_key": config["tool_key"],
+                "mode_key": config["mode_key"],
+                "inputs": {
+                    "prompt": _webstore_product_ai_prompt(product, fields, config),
+                    "context_notes": _clean_optional_text(fields.get("context_notes"), limit=1000),
+                },
+                "context": {
+                    "context_type": "webstore",
+                    "context_id": webstore_id,
+                    "webstore_product_id": product_id,
+                    "webstore_product_revision": product.get("revision"),
+                },
+                "source_links": [{"entity_type": "webstore_product", "entity_id": product_id}],
+                "idempotency_key": idempotency_key,
+                "title": f"{preview['label']} - {product.get('name') or 'Webstore product'}",
             },
-            "context": {
-                "context_type": "webstore",
-                "context_id": webstore_id,
-                "webstore_product_id": product_id,
-                "webstore_product_revision": product.get("revision"),
-            },
-            "source_links": [{"entity_type": "webstore_product", "entity_id": product_id}],
-            "idempotency_key": idempotency_key,
-            "title": f"{preview['label']} - {product.get('name') or 'Webstore product'}",
-        },
-    )
+        )
+    except (ai_studio.AIStudioError, ai_gateway.AIGatewayError) as exc:
+        raise WebstoreError(exc.code, exc.detail, exc.status_code) from exc
     event = WebstoreAIUsageEvent(
         tenant_id=user["tenant_id"],
         webstore_id=webstore_id,

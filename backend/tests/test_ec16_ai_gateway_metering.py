@@ -11,6 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core.db import db
 from app.deps import get_current_user
 from server import app
+from tests.ai_provider_contract import install_provider_contract
 
 
 def _override(user: dict):
@@ -26,7 +27,8 @@ async def _client_as(user: dict) -> AsyncClient:
 
 
 @pytest_asyncio.fixture
-async def ctx():
+async def ctx(monkeypatch):
+    install_provider_contract(monkeypatch)
     suffix = uuid.uuid4().hex[:8]
     tenant_id = f"t-ec16-meter-{suffix}"
     owner = {"id": f"owner-{suffix}", "tenant_id": tenant_id, "email": f"owner-{suffix}@example.com", "role": "owner", "is_active": True}
@@ -143,7 +145,7 @@ async def test_provider_failure_releases_reserved_credits_without_provider_call(
     async with await _client_as(ctx["owner"]) as owner:
         failed = await owner.post(
             "/api/ai/gateway/requests",
-            json={"capability_key": capability_key, "idempotency_key": f"fail-{ctx['suffix']}", "simulate_result": "provider_failure", "input_units": 20},
+            json={"capability_key": capability_key, "idempotency_key": f"fail-{ctx['suffix']}", "input_units": 20},
         )
         assert failed.status_code == 201, failed.text
         assert failed.json()["status"] == "failed"

@@ -85,3 +85,16 @@ test("renders four EC17 families, featured image generator, and mode fields", as
   expect(screen.getByText("Customer/publicity permission")).toBeInTheDocument();
   expect(screen.getAllByText("AI credits apply").length).toBeGreaterThan(0);
 });
+
+test("production-unavailable demonstration has no enabled execution action", async () => {
+  const catalog = await getAIStudioCatalog();
+  catalog.credit_display = "Unavailable — provider not connected";
+  catalog.tools.forEach((tool) => tool.modes.forEach((mode) => Object.assign(mode, {
+    can_run: false, simulated: true, credit_display: catalog.credit_display,
+  })));
+  getAIStudioCatalog.mockResolvedValue(catalog);
+  renderWithProviders(<AIStudioPage />, { route: "/studio" });
+  await waitFor(() => expect(screen.getByTestId("ai-run-tool")).toBeDisabled());
+  expect(screen.getByText(/Demonstrations cannot run in production/)).toBeInTheDocument();
+  expect(screen.getByText(/Real image generation is not connected/)).toBeInTheDocument();
+});

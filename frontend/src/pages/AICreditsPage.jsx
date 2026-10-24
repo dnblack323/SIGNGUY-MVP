@@ -187,7 +187,7 @@ export default function AICreditsPage() {
                 {history.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell className="mono text-sm">{item.capability_key}</TableCell>
-                    <TableCell><StatusBadge value={item.status} /></TableCell>
+                    <TableCell>{item.result_summary === "simulated_nonbillable_demonstration" ? "Demonstration (simulated)" : <StatusBadge value={item.status} />}</TableCell>
                     <TableCell>{item.provider_key || "-"}</TableCell>
                     <TableCell>{item.model_key || "-"}</TableCell>
                     <TableCell>{item.credit_charge_credits}</TableCell>

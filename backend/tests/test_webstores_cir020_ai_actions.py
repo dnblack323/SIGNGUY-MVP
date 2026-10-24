@@ -92,7 +92,7 @@ async def test_webstore_product_description_ai_requires_preview_confirmation_and
         )
         assert preview.status_code == 200, preview.text
         preview_body = preview.json()
-        assert preview_body["credit_charge_credits"] == 1
+        assert preview_body["credit_charge_credits"] == 0
         assert preview_body["confirmation_required"] is True
         assert preview_body["auto_apply"] is False
         assert preview_body["manual_setup_available"] is True
@@ -105,7 +105,7 @@ async def test_webstore_product_description_ai_requires_preview_confirmation_and
 
         stale_confirmation = await client.post(
             f"/api/webstores/{cir020_ctx['webstore_id']}/products/{cir020_ctx['product_id']}/ai-actions",
-            json={"action": "product_description", "confirmed_credit_charge_credits": 0},
+            json={"action": "product_description", "confirmed_credit_charge_credits": 1},
         )
         assert stale_confirmation.status_code == 409
 
@@ -132,7 +132,7 @@ async def test_webstore_product_description_ai_requires_preview_confirmation_and
     assert product["revision"] == 3
     assert await db.webstore_mockups.count_documents({"tenant_id": cir020_ctx["tenant_id"], "webstore_id": cir020_ctx["webstore_id"]}) == 0
     assert await db.ai_action_requests.count_documents({"tenant_id": cir020_ctx["tenant_id"], "capability_key": "webstore.product_description"}) == 1
-    assert await db.ai_credit_ledger_entries.count_documents({"tenant_id": cir020_ctx["tenant_id"], "entry_type": "commit"}) == 1
+    assert await db.ai_credit_ledger_entries.count_documents({"tenant_id": cir020_ctx["tenant_id"], "entry_type": "commit"}) == 0
     assert await db.webstore_ai_usage_events.count_documents({"tenant_id": cir020_ctx["tenant_id"], "webstore_id": cir020_ctx["webstore_id"], "action": "product_description"}) == 1
 
 
