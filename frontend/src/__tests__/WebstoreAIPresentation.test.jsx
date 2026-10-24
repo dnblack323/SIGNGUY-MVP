@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom";
+import { useState } from "react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test-utils";
@@ -17,7 +18,7 @@ beforeEach(() => {
   generateWebstorePresentation.mockResolvedValue({ items: [{ id: "action", status: "succeeded", credit_charge_credits: 7, file }] });
   reviewWebstorePresentation.mockResolvedValue({ items: [{ id: "action", status: "succeeded", credit_charge_credits: 7, file: { ...file, ai_presentation: { ...file.ai_presentation, review_status: "accepted" } } }] });
 });
-afterEach(() => localStorage.clear());
+afterEach(() => { localStorage.clear(); sessionStorage.clear(); });
 
 test("configured credit confirmation precedes private generation and explicit staff acceptance", async () => {
   const user = userEvent.setup(); const accepted = jest.fn();
@@ -61,9 +62,33 @@ test("staff can reject a delivered private image without selecting it for compos
 
 test("a lost browser response never automatically retries a paid POST", async () => {
   generateWebstorePresentation.mockRejectedValue(new Error("Network interrupted"));
-  renderWithProviders(<ProductAIPresentation model={model} variantId="navy-m" onAccepted={jest.fn()} />);
+  const view = renderWithProviders(<ProductAIPresentation model={model} variantId="navy-m" onAccepted={jest.fn()} />);
   await userEvent.click(await screen.findByRole("checkbox", { name: /I confirm 7 AI credits/ }));
   await userEvent.click(screen.getByRole("button", { name: "Generate private presentation" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(/same request identity is retained/);
   expect(generateWebstorePresentation).toHaveBeenCalledTimes(1);
+  expect(sessionStorage.getItem("webstore-presentation-request:tee")).toBe("request-identity-123");
+  view.unmount();
+  generateWebstorePresentation.mockResolvedValue({ items: [{ id: "original-action", status: "succeeded", credit_charge_credits: 7, file }] });
+  renderWithProviders(<ProductAIPresentation model={model} variantId="navy-m" onAccepted={jest.fn()} />);
+  await userEvent.click(await screen.findByRole("checkbox", { name: /I confirm 7 AI credits/ }));
+  await userEvent.click(screen.getByRole("button", { name: "Generate private presentation" }));
+  await screen.findByTestId("presentation-original-action");
+  expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+  expect(generateWebstorePresentation.mock.calls[1][2].idempotency_key).toBe("request-identity-123");
+  expect(sessionStorage.getItem("webstore-presentation-request:tee")).toBeNull();
+});
+
+test("changing the selected configuration requires a fresh credit confirmation", async () => {
+  function ChangingVariant() {
+    const [variant, setVariant] = useState("navy-m");
+    return <><button onClick={() => setVariant("red-m")}>Change selected variant</button><ProductAIPresentation model={model} variantId={variant} onAccepted={jest.fn()} /></>;
+  }
+  renderWithProviders(<ChangingVariant />);
+  const checkbox = await screen.findByRole("checkbox", { name: /I confirm 7 AI credits/ });
+  await userEvent.click(checkbox);
+  expect(checkbox).toBeChecked();
+  await userEvent.click(screen.getByRole("button", { name: "Change selected variant" }));
+  await waitFor(() => expect(screen.getByRole("checkbox", { name: /I confirm 7 AI credits/ })).not.toBeChecked());
+  expect(generateWebstorePresentation).not.toHaveBeenCalled();
 });

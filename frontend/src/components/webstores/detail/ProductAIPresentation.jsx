@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,23 +14,30 @@ export default function ProductAIPresentation({ model, variantId, onAccepted, bu
   const qc = useQueryClient();
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
-  const key = useRef(null);
+  const requestStorageKey = `webstore-presentation-request:${productDraft.id}`;
+  const key = useRef(sessionStorage.getItem(requestStorageKey));
   const preview = useQuery({ queryKey: ["webstore-presentation-preview", id, productDraft.id], queryFn: () => previewWebstorePresentation(id, productDraft.id), enabled: supported, retry: false });
   const queryKey = ["webstore-presentations", id, productDraft.id];
   const history = useQuery({ queryKey, queryFn: () => listWebstorePresentations(id, productDraft.id), enabled: supported, retry: false });
   const rows = history.data?.items || [];
   const unresolved = rows.some((r) => ["received", "reserved", "executing"].includes(r.status));
   const charge = preview.data?.credit_charge_credits;
+  useEffect(() => { setConfirmed(false); }, [charge, variantId, productDraft.revision]);
   const acceptResult = (data) => { qc.setQueryData(queryKey, data); qc.invalidateQueries({ queryKey: ["webstore-setup-files", id] }); };
   const run = useMutation({ retry: false,
     mutationFn: () => {
-      if (!key.current) key.current = crypto.randomUUID();
+      if (!key.current) {
+        key.current = crypto.randomUUID();
+        sessionStorage.setItem(requestStorageKey, key.current);
+      }
       return generateWebstorePresentation(id, productDraft.id, { expected_revision: productDraft.revision, variant_id: variantId,
         idempotency_key: key.current, confirmed_credit_charge_credits: charge });
     },
     onSuccess: (data) => {
       acceptResult(data); setConfirmed(false); setError("");
-      if (!(data.items || []).some((r) => ["received", "reserved", "executing"].includes(r.status))) key.current = null;
+      if (!(data.items || []).some((r) => ["received", "reserved", "executing"].includes(r.status))) {
+        key.current = null; sessionStorage.removeItem(requestStorageKey);
+      }
     },
     onError: (e) => { setError(`${extractError(e)} Check request status before trying again; the same request identity is retained.`); history.refetch(); },
   });
