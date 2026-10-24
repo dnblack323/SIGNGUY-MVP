@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom";
+jest.mock("@/components/webstores/detail/ProductAIPresentation", () => () => null);
 import { useState } from "react";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

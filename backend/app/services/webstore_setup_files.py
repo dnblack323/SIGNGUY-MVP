@@ -64,6 +64,7 @@ def _safe_file_record(doc: dict, *, staff: bool = False) -> dict:
     }
     if staff:
         allowed.add("uploaded_by_id")
+        allowed.add("ai_presentation")
     result = {k: v for k, v in doc.items() if k in allowed}
     if staff and doc.get("status") == "active" and doc.get("safe_preview_available") and doc.get("inline_preview_allowed"):
         result["preview_url"] = f"/api/webstores/{doc['webstore_id']}/setup-files/{doc['id']}/preview"
@@ -88,6 +89,7 @@ async def store_setup_file(
     category: str,
     notes: Optional[str] = None,
     replaces_file_id: Optional[str] = None,
+    ai_presentation: Optional[dict] = None,
 ) -> dict:
     await _get_store(tenant_id, webstore_id)
     if not data:
@@ -128,6 +130,7 @@ async def store_setup_file(
             "status": "active", "version": version, "replaces_file_id": replaces_file_id,
             "safe_preview_available": inline, "inline_preview_allowed": inline, "private_download_only": not inline,
             "svg_sanitized": svg_safe, "notes": notes,
+            **({"ai_presentation": ai_presentation} if ai_presentation else {}),
         },
     ).model_dump()
     await db.file_links.insert_one(prepare_for_mongo(link))

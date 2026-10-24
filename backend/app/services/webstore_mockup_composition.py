@@ -74,6 +74,10 @@ async def prepare_composition(user: dict, webstore_id: str, product_id: str, fie
     try:
         for file_id in (fields["blank_file_id"], fields["artwork_file_id"]):
             doc, data, _ = await preview_setup_file(user, webstore_id, file_id)
+            generation = doc.get("ai_presentation")
+            if generation and (generation.get("review_status") != "accepted" or generation.get("product_id") != product_id
+                               or generation.get("variant_id") != variant["id"] or generation.get("color") != variant["color"]):
+                raise WebstoreError("presentation_review_required", "Accept a presentation matching this product and variant before composition", 409)
             if doc.get("extension") not in {"png", "jpg", "jpeg", "webp"}:
                 raise WebstoreError("composition_format_unsupported", "Use PNG, JPEG or WebP; export SVG/PDF artwork to a transparent PNG or upload a prepared mockup", 400)
             sources.append((doc, data))
@@ -88,6 +92,9 @@ async def prepare_composition(user: dict, webstore_id: str, product_id: str, fie
                   "blank_sha256": hashlib.sha256(sources[0][1]).hexdigest(),
                   "artwork_sha256": hashlib.sha256(sources[1][1]).hexdigest(),
                   "placement": fields["placement"], "blank_match_confirmed_by": user["id"], **dimensions}
+    generation = sources[0][0].get("ai_presentation")
+    if generation:
+        provenance["ai_presentation"] = {key: generation[key] for key in ("model_key", "action_request_id", "sha256")}
     digest = hashlib.sha256(png + json.dumps(provenance, sort_keys=True).encode()).hexdigest()
     return png, provenance, digest
 

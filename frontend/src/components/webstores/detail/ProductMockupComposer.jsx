@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { DecisionRoomMedia } from "@/components/decisionRoom/DecisionRoomMedia";
 import { extractError } from "@/lib/api";
 import { acceptWebstoreMockupComposition, previewWebstoreMockupComposition, uploadWebstoreSetupFile } from "@/lib/webstores";
+import ProductAIPresentation from "./ProductAIPresentation";
 
 const supported = new Set(["t-shirt", "tshirt", "tee", "hoodie"]);
 export default function ProductMockupComposer({ model, files, onAccepted }) {
@@ -32,7 +33,8 @@ export default function ProductMockupComposer({ model, files, onAccepted }) {
   useEffect(() => () => { if (preview?.url) URL.revokeObjectURL(preview.url); }, [preview]);
   const validPreview = preview?.key === key;
   const images = [...new Map([...files, ...uploaded].map((file) => [file.id, file])).values()].filter((file) =>
-    file.safe_preview_available && file.inline_preview_allowed && !file.private_download_only && ["png", "jpg", "jpeg", "webp"].includes(file.extension));
+    file.safe_preview_available && file.inline_preview_allowed && !file.private_download_only && ["png", "jpg", "jpeg", "webp"].includes(file.extension)
+    && (!file.ai_presentation || (file.ai_presentation.review_status === "accepted" && file.ai_presentation.product_id === productDraft.id)));
   const variants = (productDraft.variants || []).filter((v) => v.color && v.status !== "inactive" && v.status !== "archived" && v.available !== false);
   const fail = async (err) => {
     // Axios blob responses include JSON errors as blobs as well.
@@ -85,9 +87,13 @@ export default function ProductMockupComposer({ model, files, onAccepted }) {
       <div className="grid gap-3 md:grid-cols-2">
         {select("Blank product image", blank, (v) => { setBlank(v); setMatched(false); }, images)}
         <Label className="grid gap-1.5">Upload a matching blank<Input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={(e) => { if (e.target.files?.[0]) upload.mutate(e.target.files[0]); }} /></Label>
-        {select("Original artwork file", artwork, setArtwork, images)}
+        {select("Original artwork file", artwork, setArtwork, images.filter((file) => !file.ai_presentation))}
         {select("Product color and size", variant, (v) => { setVariant(v); setMatched(false); }, variants.map((v) => ({ ...v, label: [v.color, v.size, v.sku].filter(Boolean).join(" / ") })))}
       </div>
+      <ProductAIPresentation key={productDraft.id} model={model} variantId={variant} busy={busy} onAccepted={(file) => {
+        const accepted = { ...file, ai_presentation: { ...file.ai_presentation, review_status: "accepted" } };
+        setUploaded((rows) => [...rows.filter((r) => r.id !== file.id), accepted]); setBlank(file.id); setMatched(false); setReviewed(false);
+      }} />
       <p className="text-xs text-muted-foreground">Use the customer artwork upload or select an existing file. Transparent PNG is recommended; JPEG/WebP keep their existing background. SVG/PDF/vector artwork must first be exported to PNG, or use a prepared mockup upload. Originals stay unchanged.</p>
       <Label className="flex items-center gap-2"><Checkbox checked={matched} disabled={accept.isPending} onCheckedChange={(v) => { setMatched(Boolean(v)); setReviewed(false); }} />I verified this is the correct blank product, color and flat front view</Label>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -105,7 +111,7 @@ export default function ProductMockupComposer({ model, files, onAccepted }) {
         <Label className="flex items-center gap-2"><Checkbox checked={reviewed} onCheckedChange={(v) => setReviewed(Boolean(v))} />I reviewed the original artwork, product color and placement</Label>
         <Button disabled={!reviewed || !description.trim() || busy} onClick={() => accept.mutate()}>Accept mockup into draft</Button>
       </div>}
-      <p className="text-xs text-muted-foreground">Acceptance saves a new private file and reviewed mockup. Save Product to keep its selection; only explicit submission makes it available to the owner. Real AI presentation generation is not connected.</p>
+      <p className="text-xs text-muted-foreground">Acceptance saves a new private file and reviewed mockup. Save Product to keep its selection; only explicit submission makes it available to the owner. Composition itself never consumes AI credits.</p>
     </div>
   </details>;
 }

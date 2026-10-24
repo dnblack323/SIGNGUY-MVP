@@ -121,6 +121,7 @@ class Settings:
         # The permanent API key is backend-only. Browser clients receive only
         # short-lived Realtime credentials minted by the backend when enabled.
         self.openai_api_key: str | None = os.environ.get("OPENAI_API_KEY") or None
+        self.openai_image_generation_enabled = os.environ.get("OPENAI_IMAGE_GENERATION_ENABLED", "false").lower() == "true"
         self.openai_realtime_enabled: bool = (
             os.environ.get("OPENAI_REALTIME_ENABLED", "false").lower() == "true"
         )

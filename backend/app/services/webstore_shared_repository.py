@@ -53,6 +53,8 @@ async def _setup_file_for_product_reference(tenant_id: str, webstore_id: str, fi
     doc = await find_webstore_setup_file(tenant_id, webstore_id, file_id)
     if not doc:
         raise WebstoreError("product_file_not_found", "The selected product file was not found for this Webstore", 404)
+    if doc.get("ai_presentation"):
+        raise WebstoreError("presentation_composition_required", "Use a reviewed AI presentation in the original-artwork composer before attaching a product image or mockup", 409)
     ext = str(doc.get("extension") or "").lower()
     if ext not in PRODUCT_IMAGE_EXTENSIONS:
         raise WebstoreError("product_image_type_not_allowed", "Product images must be JPG, PNG, WebP, or a safe SVG image", 400)

@@ -47,7 +47,7 @@ return (
                                     <SelectItem value="none">
                                       No image
                                     </SelectItem>
-                                    {setupFileItems.map((file) => (
+                                    {setupFileItems.filter((file) => !file.ai_presentation).map((file) => (
                                       <SelectItem key={file.id} value={file.id}>
                                         {file.file_name || file.id}
                                       </SelectItem>
